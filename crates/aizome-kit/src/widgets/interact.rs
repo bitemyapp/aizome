@@ -398,6 +398,7 @@ pub struct CanvasEl<Msg, S> {
     on_event: Option<EventFn<S>>,
     parts: Option<PartsFn<S>>,
     focusable: bool,
+    ring: crate::widget::FocusRing,
     _m: PhantomData<fn() -> Msg>,
 }
 
@@ -415,6 +416,7 @@ pub fn canvas<Msg, S: Hash + 'static>(state: S, draw: impl Fn(&mut Canvas, Rect,
         on_event: None,
         parts: None,
         focusable: false,
+        ring: crate::widget::FocusRing::Keyboard,
         _m: PhantomData,
     }
 }
@@ -433,6 +435,14 @@ impl<Msg: Send + 'static, S: Hash + 'static> CanvasEl<Msg, S> {
         self
     }
 
+    /// When its focus ring shows: from the keyboard (the default), or
+    /// never, for a canvas that is the window's whole content (a picture,
+    /// a page).
+    pub fn focus_ring(mut self, ring: crate::widget::FocusRing) -> Self {
+        self.ring = ring;
+        self
+    }
+
     /// Parts of the drawing that change by themselves (a hovered bar, a
     /// cursor, a selection): `f` gives each its rectangle (the canvas's
     /// coordinates) and a hash of how it looks. When parts change and
@@ -448,7 +458,7 @@ impl<Msg: Send + 'static, S: Hash + 'static> CanvasEl<Msg, S> {
 impl<Msg, S: Hash + 'static> From<CanvasEl<Msg, S>> for Element<Msg> {
     fn from(c: CanvasEl<Msg, S>) -> Element<Msg> {
         let hash = hash_of(&c.state);
-        let w = CanvasWidget { state: c.state, hash, draw: c.draw, on_event: c.on_event, parts: c.parts, focusable: c.focusable };
+        let w = CanvasWidget { state: c.state, hash, draw: c.draw, on_event: c.on_event, parts: c.parts, focusable: c.focusable, ring: c.ring };
         Element::from_raw(RawElement::new(w, c.common, Vec::new()))
     }
 }
@@ -460,6 +470,7 @@ struct CanvasWidget<S> {
     on_event: Option<EventFn<S>>,
     parts: Option<PartsFn<S>>,
     focusable: bool,
+    ring: crate::widget::FocusRing,
 }
 
 impl<S: 'static> Widget for CanvasWidget<S> {
@@ -508,6 +519,10 @@ impl<S: 'static> Widget for CanvasWidget<S> {
 
     fn focusable(&self) -> Focusable {
         if self.focusable { Focusable::Click } else { Focusable::No }
+    }
+
+    fn focus_ring(&self) -> crate::widget::FocusRing {
+        self.ring
     }
 
     fn event(&mut self, cx: &mut EventCx, event: &Event) -> Status {
