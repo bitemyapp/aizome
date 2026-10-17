@@ -493,3 +493,22 @@ fn the_screenshot_chord_saves_and_announces() {
     let img = Image::load(&path);
     assert_eq!((img.width, img.height), (1280, 800));
 }
+
+#[test]
+fn the_settings_file_is_watched() {
+    let c = Compositor::start(opts(None));
+    let mut events = aizome_ipc::Client::connect_to(&c.ipc).unwrap().events().unwrap();
+    events.stream().set_read_timeout(Some(std::time::Duration::from_secs(10))).unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(1100));
+    std::fs::write(
+        c.dir.join("config/aizome/settings.toml"),
+        "[appearance]\neffects = \"austere\"\n[[desks]]\nname = \"Mail\"\n[[desks]]\nname = \"Build\"\nfolder = \"~/work\"\n",
+    )
+    .unwrap();
+    let changed = events.by_ref().any(|e| matches!(e, Ok(aizome_ipc::Event::ConfigChanged)));
+    assert!(changed, "config-changed without a reload request");
+    let aizome_ipc::Response::Desks { desks, .. } = c.request(Request::Desks) else { panic!() };
+    let names: Vec<&str> = desks.iter().map(|d| d.name.as_str()).collect();
+    assert_eq!(names, ["Mail", "Build"]);
+    assert_eq!(desks[1].folder.as_deref(), Some("~/work"));
+}

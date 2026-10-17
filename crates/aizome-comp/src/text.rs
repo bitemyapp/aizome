@@ -87,6 +87,18 @@ impl Labels {
         Labels { cache: HashMap::new(), widths: HashMap::new(), fonts: HashMap::new(), last_gc: Instant::now() }
     }
 
+    /// Loads the fonts and their first glyphs now, at start-up, rather
+    /// than in the first frame that shows a label.
+    pub fn warm_up(&mut self) {
+        let started = Instant::now();
+        for face in [Face::Tab, Face::TabLight, Face::UiSemibold, Face::UiBold, Face::Mono, Face::MonoBold] {
+            let style = Style::new(face, typeface::TAB, Rgba::hex(0xffffff));
+            let _ = self.get("Aizome 藍染 0123456789", style, 2.0, 400.0);
+        }
+        self.cache.clear();
+        tracing::debug!("fonts warmed up in {:?}", started.elapsed());
+    }
+
     fn font(&mut self, face: Face, size_q: u16) -> Font {
         self.fonts
             .entry((face, size_q))

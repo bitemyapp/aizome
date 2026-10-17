@@ -463,7 +463,11 @@ impl State {
             dirty_windows: HashSet::new(),
             window_outputs_dirty: false,
             remembered: crate::memory::Remembered::load(),
-            labels: Labels::new(),
+            labels: {
+                let mut l = Labels::new();
+                l.warm_up();
+                l
+            },
             icons: crate::icons::Icons::new(),
             anims: Animations::default(),
             overlays: Overlays::default(),
