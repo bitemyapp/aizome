@@ -4,5 +4,7 @@ pub mod chrome;
 pub mod controls;
 pub mod layout;
 pub mod menus;
+pub mod interact;
+pub mod panes;
 pub mod scroll;
 pub mod text_field;

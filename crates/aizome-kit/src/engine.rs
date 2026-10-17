@@ -889,7 +889,7 @@ impl Core {
                     }
                 }
                 None => {
-                    self.open_popup(win, anchor, Placement::Below, false, PopupKind::Popover { node, on_dismiss }, root, mapper, platform);
+                    self.open_popup(win, anchor, Placement::Below, true, PopupKind::Popover { node, on_dismiss }, root, mapper, platform);
                 }
             }
         }
@@ -994,8 +994,16 @@ impl Core {
         if rebuild && menu_popup {
             self.relayout_popup(win, platform);
         }
+        // A popover's content comes from its owner's view.
+        let owner = match self.wins.get(&win).map(|w| &w.kind) {
+            Some(WinKind::Popup { owner, .. }) if rebuild && !menu_popup => Some(*owner),
+            _ => None,
+        };
+        if let Some(o) = owner.and_then(|o| self.wins.get_mut(&o)) {
+            o.dirty = true;
+        }
         if let Some(w) = self.wins.get_mut(&win) {
-            if rebuild && !menu_popup {
+            if rebuild && !menu_popup && owner.is_none() {
                 w.dirty = true;
             }
             match capture {
