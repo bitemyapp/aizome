@@ -60,6 +60,11 @@ in
       defaultText = lib.literalExpression "aizome.packages.\${system}.aizome";
       description = "The Aizome package: compositor, shell, aizomectl and apps.";
     };
+    alarmsWakeSystem = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = "Let Tokei's alarms wake the computer from sleep (CAP_WAKE_ALARM for user services).";
+    };
     wallpapers = {
       night = lib.mkOption {
         type = lib.types.nullOr lib.types.path;
@@ -92,9 +97,30 @@ in
       pkgs.xkeyboard_config
       # Hako compresses and extracts archives with bsdtar.
       pkgs.libarchive
+      # Tokei rings with pw-play and the freedesktop sound theme.
+      pkgs.pipewire
+      pkgs.sound-theme-freedesktop
+      pkgs.libnotify
     ];
     services.displayManager.sessionPackages = [ session ];
     systemd.packages = [ cfg.package ];
+
+    # Tokei's alarms are transient systemd timers, which end with the user
+    # manager: schedule them again at each login, in any desktop.
+    systemd.user.services.aizome-tokei-alarms = {
+      description = "Schedule Tokei's alarms";
+      wantedBy = [ "graphical-session.target" ];
+      partOf = [ "graphical-session.target" ];
+      serviceConfig = {
+        Type = "oneshot";
+        ExecStart = "${cfg.package}/bin/aizome-tokei --sync";
+      };
+    };
+    # An alarm can wake the computer (Tokei's "Wake the computer"), which
+    # needs CAP_WAKE_ALARM for the user's timers.
+    systemd.services."user@".serviceConfig.AmbientCapabilities = lib.mkIf cfg.alarmsWakeSystem [
+      "CAP_WAKE_ALARM"
+    ];
 
     environment.etc = {
       "xdg/aizome/environment".text = lib.concatStrings (

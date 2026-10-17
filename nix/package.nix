@@ -87,7 +87,8 @@ rustPlatform.buildRustPackage {
     # Session: the login entry, the systemd user units and the portals.
     install -Dm755 session/aizome-session $out/bin/aizome-session
     install -Dm644 session/aizome.desktop $out/share/wayland-sessions/aizome.desktop
-    for unit in session/*.service session/*.target; do
+    shopt -s nullglob
+    for unit in session/*.service session/*.target apps/*/data/*.service; do
       install -Dm644 "$unit" "$out/lib/systemd/user/$(basename "$unit")"
     done
     install -Dm644 session/aizome-portals.conf $out/share/xdg-desktop-portal/aizome-portals.conf
