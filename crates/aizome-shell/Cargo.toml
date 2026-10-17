@@ -1,0 +1,26 @@
+[package]
+name = "aizome-shell"
+description = "Aizome's desktop shell: the menu bar, Toolchest, Desks strip, systray, Deskbar and Shelf, command palette, menus, notifications, OSD, desktop, lock screen and polkit dialog"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+aizome-theme.workspace = true
+aizome-ipc.workspace = true
+aizome-config.workspace = true
+aizome-kit.workspace = true
+aizome-sys.workspace = true
+aizome-search.workspace = true
+aizome-shell-proto = { path = "../aizome-shell-proto" }
+serde.workspace = true
+serde_json.workspace = true
+log.workspace = true
+env_logger.workspace = true
+libc = "0.2"
+
+[[bin]]
+name = "aizome-shell"
+path = "src/main.rs"
