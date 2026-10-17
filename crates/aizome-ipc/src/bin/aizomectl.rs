@@ -6,7 +6,7 @@
 use std::process::ExitCode;
 
 use aizome_ipc::{
-    AppSel, Client, DeskSel, Event, OutputInfo, Percentiles, Rect, Request, Response, Side, Synthetic, Transform, WindowInfo,
+    AppSel, Client, Event, OutputInfo, Percentiles, Rect, Request, Response, Side, Synthetic, Transform, WindowInfo,
 };
 
 const USAGE: &str = "\

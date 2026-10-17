@@ -15,7 +15,7 @@ use smithay::output::{Mode, Output, PhysicalProperties, Subpixel};
 use smithay::reexports::calloop::EventLoop;
 use smithay::utils::Transform;
 use smithay::wayland::dmabuf::DmabufFeedbackBuilder;
-use tracing::{info, warn};
+use tracing::warn;
 
 use super::{Capture, capture_with, post_frame, render_frame};
 use crate::render::{Purpose, output_elements};
@@ -36,14 +36,13 @@ impl WinitBackend {
             .handle()
             .insert_source(winit, |event, _, state: &mut State| match event {
                 WinitEvent::Resized { size, .. } => {
-                    if let crate::backend::Backend::Winit(w) = &mut state.backend {
-                        if let Some(o) = &w.output {
+                    if let crate::backend::Backend::Winit(w) = &mut state.backend
+                        && let Some(o) = &w.output {
                             let mode = Mode { size, refresh: 60_000 };
                             o.change_current_state(Some(mode), None, None, None);
                             o.set_preferred(mode);
                             w.full_redraw = 4;
                         }
-                    }
                     smithay::desktop::layer_map_for_output(&state.az.outputs[0]).arrange();
                     crate::outputs::outputs_changed(&mut state.az);
                     state.az.queue_redraw_all();
@@ -111,11 +110,10 @@ impl WinitBackend {
         };
         match result {
             Ok(frame) => {
-                if frame.damaged {
-                    if let Err(e) = self.backend.submit(None) {
+                if frame.damaged
+                    && let Err(e) = self.backend.submit(None) {
                         warn!("submit: {e}");
                     }
-                }
                 post_frame(az, output, &frame, true);
             }
             Err(e) => warn!("rendering failed: {e}"),

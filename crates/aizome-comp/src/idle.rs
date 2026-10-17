@@ -69,18 +69,16 @@ impl State {
             return;
         }
         let idle_for = self.az.idle.last_activity.elapsed();
-        if let Some(d) = self.az.idle.lock_after {
-            if idle_for >= d && !self.az.idle.lock_sent {
+        if let Some(d) = self.az.idle.lock_after
+            && idle_for >= d && !self.az.idle.lock_sent {
                 self.az.idle.lock_sent = true;
                 self.az.ipc.emit(&Event::Idle { kind: "lock".into() });
             }
-        }
-        if let Some(d) = self.az.idle.off_after {
-            if idle_for >= d && !self.az.idle.off_sent {
+        if let Some(d) = self.az.idle.off_after
+            && idle_for >= d && !self.az.idle.off_sent {
                 self.az.idle.off_sent = true;
                 self.az.ipc.emit(&Event::Idle { kind: "monitors-off".into() });
                 self.backend.set_power(&mut self.az, false);
             }
-        }
     }
 }

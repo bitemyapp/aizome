@@ -336,11 +336,10 @@ fn button_code(name: &str) -> Result<u32, String> {
 
 /// evdev key codes by name.
 pub fn key_code(name: &str) -> Result<u32, String> {
-    if let Ok(n) = name.parse::<u32>() {
-        if name.len() > 1 {
+    if let Ok(n) = name.parse::<u32>()
+        && name.len() > 1 {
             return Ok(n);
         }
-    }
     let lower = name.to_lowercase();
     let code = match lower.as_str() {
         "esc" | "escape" => 1,

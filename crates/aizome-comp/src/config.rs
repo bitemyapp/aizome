@@ -30,6 +30,8 @@ impl State {
     pub fn reload_config(&mut self) -> Result<(), String> {
         let path = self.az.options.config.clone().unwrap_or_else(Settings::path);
         let new = Settings::load_from(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+        // Installed apps and icon themes may have changed too.
+        self.az.icons.clear();
         self.apply_settings(new);
         Ok(())
     }
@@ -74,11 +76,10 @@ impl State {
         }
 
         // Pointer and touchpad (libinput devices on udev).
-        if old.input.pointer != s.input.pointer || old.input.touchpad != s.input.touchpad {
-            if let crate::backend::Backend::Udev(u) = &mut self.backend {
+        if (old.input.pointer != s.input.pointer || old.input.touchpad != s.input.touchpad)
+            && let crate::backend::Backend::Udev(u) = &mut self.backend {
                 u.apply_input_settings(&s.input);
             }
-        }
 
         // Desks.
         let wanted: Vec<(String, Option<String>)> = s.desks_or_default().into_iter().map(|d| (d.name, d.folder)).collect();

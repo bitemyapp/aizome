@@ -20,7 +20,7 @@ use smithay::reexports::calloop::generic::Generic;
 use smithay::reexports::calloop::{Interest, LoopHandle, LoopSignal, Mode, PostAction};
 use smithay::reexports::wayland_server::backend::{ClientData, ClientId, DisconnectReason};
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
-use smithay::reexports::wayland_server::{Display, DisplayHandle, Resource};
+use smithay::reexports::wayland_server::{Display, DisplayHandle};
 use smithay::utils::{Clock, Logical, Monotonic, Point, Rectangle, Size};
 use smithay::wayland::alpha_modifier::AlphaModifierState;
 use smithay::wayland::commit_timing::CommitTimingManagerState;
@@ -115,7 +115,6 @@ pub struct Mapped {
     pub resize_anchor: Option<ResizeAnchor>,
     /// The size last asked of the client.
     pub requested_size: Option<(i32, i32)>,
-    pub opened: Instant,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -191,6 +190,8 @@ pub struct State {
     pub az: Aizome,
 }
 
+// Protocol states live here to keep their globals alive; not all are read.
+#[allow(dead_code)]
 pub struct Aizome {
     pub dh: DisplayHandle,
     pub lh: LoopHandle<'static, State>,
@@ -497,6 +498,7 @@ impl State {
         crate::protocols::foreign_toplevel::refresh(self);
         self.redraw_due();
         self.check_lock();
+        self.az.labels.gc();
         crate::protocols::screencopy::flush_pending(self);
         if let Err(e) = self.az.dh.flush_clients() {
             warn!("flushing clients: {e}");
@@ -524,7 +526,6 @@ impl State {
     }
 }
 
-use smithay::utils::IsAlive;
 
 impl Aizome {
     // ---- outputs ---------------------------------------------------------

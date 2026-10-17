@@ -20,11 +20,6 @@ impl Remembered {
         Remembered { rects, path: Some(path) }
     }
 
-    /// In memory only (tests).
-    pub fn ephemeral() -> Remembered {
-        Remembered::default()
-    }
-
     pub fn get(&self, app_id: &str) -> Option<Rect> {
         if app_id.is_empty() {
             return None;

@@ -58,7 +58,6 @@ struct ConfigInner {
 
 #[derive(Default, Clone)]
 struct HeadConfig {
-    name: String,
     mode: Option<(i32, i32, Option<i32>)>,
     position: Option<(i32, i32)>,
     transform: Option<Transform>,
@@ -143,11 +142,10 @@ fn new_head(az: &Aizome, inst: &mut Instance, output: &smithay::output::Output) 
 fn send_state(az: &Aizome, inst: &Instance, output: &smithay::output::Output) {
     let Some((h, modes)) = inst.heads.get(&output.name()) else { return };
     h.enabled(1);
-    if let Some(cur) = output.current_mode() {
-        if let Some((mr, _)) = modes.iter().find(|(_, m)| *m == cur) {
+    if let Some(cur) = output.current_mode()
+        && let Some((mr, _)) = modes.iter().find(|(_, m)| *m == cur) {
             h.current_mode(mr);
         }
-    }
     let r = az.output_rect(output);
     h.position(r.x, r.y);
     h.transform(transform_to_wl(output.current_transform()));
@@ -232,7 +230,7 @@ impl Dispatch<Configuration, ConfigData> for State {
                     c.post_error(conf::Error::AlreadyConfiguredHead, "head configured twice");
                     return;
                 }
-                let hc = Arc::new(Mutex::new(HeadConfig { name: name.clone(), ..Default::default() }));
+                let hc = Arc::new(Mutex::new(HeadConfig::default()));
                 init.init(id, ConfigHeadData { inner: hc.clone() });
                 inner.heads.push((name, Some(hc)));
             }

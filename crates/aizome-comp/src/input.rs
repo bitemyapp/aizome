@@ -15,14 +15,13 @@ use smithay::backend::input::{
     PointerAxisEvent, PointerButtonEvent, PointerMotionEvent, TouchEvent,
 };
 use smithay::desktop::{WindowSurfaceType, layer_map_for_output};
-use smithay::input::keyboard::{FilterResult, Keycode, Keysym, KeysymHandle, ModifiersState, keysyms};
+use smithay::input::keyboard::{Keycode, Keysym, KeysymHandle, ModifiersState, keysyms};
 use smithay::input::pointer::{AxisFrame, ButtonEvent, MotionEvent, RelativeMotionEvent};
 use smithay::input::touch::{DownEvent, UpEvent};
 use smithay::output::Output;
 use smithay::utils::{Logical, Point, SERIAL_COUNTER, Serial};
 use smithay::wayland::keyboard_shortcuts_inhibit::KeyboardShortcutsInhibitorSeat;
 use smithay::wayland::pointer_constraints::{PointerConstraint, with_pointer_constraint};
-use smithay::wayland::seat::WaylandFocus;
 use smithay::wayland::shell::wlr_layer::{KeyboardInteractivity, Layer};
 
 use crate::bindings::{Action, Mods};
@@ -73,7 +72,6 @@ pub enum Owner {
     Window(WinId),
     Layer,
     Lock,
-    Other,
 }
 
 /// What a key does.
@@ -203,11 +201,10 @@ impl State {
         let Some(output) = self.az.outputs.first().cloned() else { return };
         let geo = self.az.output_geometry(&output);
         let pos = event.position_transformed(geo.size) + geo.loc.to_f64();
-        if let Under::Surface(_, _, Owner::Window(id)) = self.under(pos) {
-            if self.az.wm.focused() != Some(id) {
+        if let Under::Surface(_, _, Owner::Window(id)) = self.under(pos)
+            && self.az.wm.focused() != Some(id) {
                 self.focus_window(Some(id));
             }
-        }
         let under = self.surface_focus_at(pos);
         touch.down(
             self,
@@ -280,13 +277,11 @@ impl State {
         let mut locked = false;
         if let Some(f) = &focus {
             with_pointer_constraint(&f.0, &pointer, |c| {
-                if let Some(c) = c {
-                    if c.is_active() {
-                        if let PointerConstraint::Locked(_) = &*c {
+                if let Some(c) = c
+                    && c.is_active()
+                        && let PointerConstraint::Locked(_) = &*c {
                             locked = true;
                         }
-                    }
-                }
             });
         }
         let surface_loc = pointer.current_focus().and_then(|f| self.az.surface_origin(&f.0));
@@ -327,29 +322,25 @@ impl State {
             _ => None,
         };
         // Focus follows the mouse, when asked.
-        if self.az.settings.windows.focus_follows == aizome_config::FocusFollows::Mouse && !pointer.is_grabbed() {
-            if let Some((f, _)) = &focus {
-                if let Some(id) = self.az.window_for_root(&f.0) {
-                    if self.az.wm.focused() != Some(id) {
+        if self.az.settings.windows.focus_follows == aizome_config::FocusFollows::Mouse && !pointer.is_grabbed()
+            && let Some((f, _)) = &focus
+                && let Some(id) = self.az.window_for_root(&f.0)
+                    && self.az.wm.focused() != Some(id) {
                         let r = self.az.wm.get(id).map(|w| w.rect);
                         self.focus_window_no_raise(id);
                         if let Some(r) = r {
                             self.az.queue_redraw_rect(r);
                         }
                     }
-                }
-            }
-        }
         pointer.motion(self, focus, &MotionEvent { location: pos, serial: SERIAL_COUNTER.next_serial(), time });
         pointer.frame(self);
         // Activate a pointer constraint the client asked for.
         if let Some(f) = pointer.current_focus() {
             with_pointer_constraint(&f.0, &pointer, |c| {
-                if let Some(c) = c {
-                    if !c.is_active() {
+                if let Some(c) = c
+                    && !c.is_active() {
                         c.activate();
                     }
-                }
             });
         }
         for p in [old, pos] {
@@ -514,11 +505,10 @@ impl State {
         let Some(output) = self.az.output_at(pos) else { return Under::Nothing };
         let out_loc = self.az.output_geometry(&output).loc.to_f64();
         if self.az.lock.is_locked() {
-            if let Some(lock) = self.az.out.get(&output).and_then(|o| o.lock_surface.clone()) {
-                if let Some((s, loc)) = smithay::desktop::utils::under_from_surface_tree(lock.wl_surface(), pos - out_loc, (0, 0), WindowSurfaceType::ALL) {
+            if let Some(lock) = self.az.out.get(&output).and_then(|o| o.lock_surface.clone())
+                && let Some((s, loc)) = smithay::desktop::utils::under_from_surface_tree(lock.wl_surface(), pos - out_loc, (0, 0), WindowSurfaceType::ALL) {
                     return Under::Surface(Focus(s), loc.to_f64() + out_loc, Owner::Lock);
                 }
-            }
             return Under::Nothing;
         }
         if let Some(u) = layer_under(&output, &[Layer::Overlay], pos, out_loc) {
@@ -526,11 +516,10 @@ impl State {
         }
         let shown = self.az.wm.shown_stacking();
         let top_fullscreen = shown.last().copied().filter(|id| self.az.wm.get(*id).is_some_and(|w| w.fullscreen()) && self.az.wm.focused() == Some(*id));
-        if let Some(id) = top_fullscreen {
-            if let Some(u) = self.window_under(id, pos) {
+        if let Some(id) = top_fullscreen
+            && let Some(u) = self.window_under(id, pos) {
                 return u;
             }
-        }
         if let Some(u) = layer_under(&output, &[Layer::Top], pos, out_loc) {
             return u;
         }
@@ -554,18 +543,15 @@ impl State {
         let geo = m.window.geometry();
         let origin = Point::<f64, Logical>::from(((rect.x - geo.loc.x) as f64, (rect.y - geo.loc.y) as f64));
         // Popups first: they reach beyond the window.
-        if let Some((s, loc)) = m.window.surface_under(pos - origin, WindowSurfaceType::POPUP | WindowSurfaceType::SUBSURFACE) {
-            if !rect.contains(pos.x, pos.y) || s != *m.surface() {
+        if let Some((s, loc)) = m.window.surface_under(pos - origin, WindowSurfaceType::POPUP | WindowSurfaceType::SUBSURFACE)
+            && (!rect.contains(pos.x, pos.y) || s != *m.surface()) {
                 return Some(Under::Surface(Focus(s), loc.to_f64() + origin, Owner::Window(id)));
             }
-        }
-        if !fullscreen {
-            if let Some(layout) = self.az.decor_layout(id) {
-                if let Some(hit) = crate::decor::hit(&layout, pos.x, pos.y) {
+        if !fullscreen
+            && let Some(layout) = self.az.decor_layout(id)
+                && let Some(hit) = crate::decor::hit(&layout, pos.x, pos.y) {
                     return Some(Under::Decor(id, hit));
                 }
-            }
-        }
         let m = self.az.windows.get(&id)?;
         if let Some((s, loc)) = m.window.surface_under(pos - origin, WindowSurfaceType::ALL) {
             return Some(Under::Surface(Focus(s), loc.to_f64() + origin, Owner::Window(id)));
@@ -614,11 +600,10 @@ impl State {
 
     fn decide_key(&mut self, keycode: Keycode, pressed: bool, mods: &ModifiersState, handle: &KeysymHandle<'_>) -> KeyDecision {
         // A swallowed press swallows its release.
-        if !pressed {
-            if self.az.suppressed_keys.remove(&keycode) {
+        if !pressed
+            && self.az.suppressed_keys.remove(&keycode) {
                 return KeyDecision::Swallow;
             }
-        }
         let mut syms: Vec<Keysym> = Vec::new();
         if let Some(s) = handle.raw_latin_sym_or_raw_current_sym() {
             syms.push(s);
@@ -630,19 +615,17 @@ impl State {
         // Overlays (switcher, overview, marking menu, area picker) take
         // keys first, releases of ❖ included.
         if let Some(d) = crate::overlays::key(self, &syms, m, pressed, handle.modified_sym().key_char()) {
-            if pressed {
-                if let KeyDecision::Swallow | KeyDecision::Act(_) = d {
+            if pressed
+                && let KeyDecision::Swallow | KeyDecision::Act(_) = d {
                     self.az.suppressed_keys.insert(keycode);
                 }
-            }
             return d;
         }
         if !pressed {
-            if self.az.translated_keys.remove(&keycode) {
-                if let Some(fake) = self.translation(mods) {
+            if self.az.translated_keys.remove(&keycode)
+                && let Some(fake) = self.translation(mods) {
                     return KeyDecision::Translate(fake);
                 }
-            }
             return KeyDecision::Forward;
         }
         // VT switching works even when locked.
@@ -671,12 +654,11 @@ impl State {
                 return KeyDecision::Act(action);
             }
         }
-        if !inhibited {
-            if let Some(fake) = self.translation(mods) {
+        if !inhibited
+            && let Some(fake) = self.translation(mods) {
                 self.az.translated_keys.insert(keycode);
                 return KeyDecision::Translate(fake);
             }
-        }
         KeyDecision::Forward
     }
 
@@ -810,11 +792,10 @@ impl State {
             }
             Action::ScreenshotArea => crate::overlays::start_area_pick(self),
             Action::ScreenshotWindow => {
-                if let Some(id) = focused {
-                    if let Err(e) = crate::screenshot::take(self, crate::screenshot::What::Window(id), None, true) {
+                if let Some(id) = focused
+                    && let Err(e) = crate::screenshot::take(self, crate::screenshot::What::Window(id), None, true) {
                         tracing::warn!("screenshot: {e}");
                     }
-                }
             }
             Action::ChangeVt(vt) => self.backend.change_vt(vt),
             Action::Quit => self.quit(),

@@ -163,11 +163,10 @@ pub fn window_gone(az: &mut Aizome, id: WinId) {
     if az.overlays.marking.as_ref().is_some_and(|m| m.win == id) {
         az.overlays.marking = None;
     }
-    if let Some(ov) = &mut az.overlays.overview {
-        if ov.drag.is_some_and(|d| d.0 == id) {
+    if let Some(ov) = &mut az.overlays.overview
+        && ov.drag.is_some_and(|d| d.0 == id) {
             ov.drag = None;
         }
-    }
 }
 
 /// Feedback for a tab being dragged: drawn under the top layer.
@@ -222,7 +221,7 @@ where
 /// A dashed outline: dashes `dash` long with `gap` between, `t` thick.
 pub fn dashed(out: &mut Vec<Piece>, r: crate::wm::Rect, t: f64, dash: f64, gap: f64, color: aizome_theme::Rgba) {
     let (x, y, w, h) = (r.x as f64, r.y as f64, r.w as f64, r.h as f64);
-    let mut along = |len: f64, mut put: Box<dyn FnMut(f64, f64) + '_>| {
+    let along = |len: f64, mut put: Box<dyn FnMut(f64, f64) + '_>| {
         let mut s = 0.0;
         while s < len {
             let l = dash.min(len - s);

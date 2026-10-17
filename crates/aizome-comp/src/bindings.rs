@@ -20,9 +20,6 @@ impl Mods {
     pub fn from_state(m: &ModifiersState) -> Mods {
         Mods { ctrl: m.ctrl, alt: m.alt, shift: m.shift, logo: m.logo }
     }
-    pub fn is_empty(&self) -> bool {
-        !(self.ctrl || self.alt || self.shift || self.logo)
-    }
 }
 
 /// What a binding does.
@@ -280,11 +277,6 @@ impl Bindings {
     /// one first).
     pub fn find(&self, mods: Mods, syms: &[Keysym]) -> Option<&Action> {
         syms.iter().find_map(|s| self.map.get(&Chord { mods, sym: lower(*s) }))
-    }
-
-    /// Whether a chord is the system's (and so never translated for apps).
-    pub fn is_bound(&self, mods: Mods, syms: &[Keysym]) -> bool {
-        self.find(mods, syms).is_some()
     }
 }
 

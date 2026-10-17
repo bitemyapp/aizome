@@ -69,9 +69,9 @@ impl CompositorHandler for State {
                     _ => None,
                 })
             });
-            if let Some(dmabuf) = dmabuf {
-                if let Ok((blocker, source)) = dmabuf.generate_blocker(Interest::READ) {
-                    if let Some(client) = surface.client() {
+            if let Some(dmabuf) = dmabuf
+                && let Ok((blocker, source)) = dmabuf.generate_blocker(Interest::READ)
+                    && let Some(client) = surface.client() {
                         let res = state.az.lh.insert_source(source, move |_, _, state| {
                             let dh = state.az.dh.clone();
                             state.client_compositor_state(&client).blocker_cleared(state, &dh);
@@ -81,8 +81,6 @@ impl CompositorHandler for State {
                             add_blocker(surface, blocker);
                         }
                     }
-                }
-            }
         });
     }
 
@@ -106,11 +104,10 @@ impl CompositorHandler for State {
 
         self.az.popups.commit(surface);
         if let Some(popup) = self.az.popups.find_popup(surface) {
-            if let PopupKind::Xdg(ref p) = popup {
-                if !p.is_initial_configure_sent() {
+            if let PopupKind::Xdg(ref p) = popup
+                && !p.is_initial_configure_sent() {
                     let _ = p.send_configure();
                 }
-            }
             if let Ok(root) = find_popup_root_surface(&popup) {
                 self.redraw_for_surface(&root);
             }
@@ -171,7 +168,7 @@ impl State {
         crate::actions::place_new_window(self, id, size, parent);
         self.az.windows.insert(
             id,
-            Mapped { id, window: window.clone(), decor: DecorCache::default(), resize_anchor: None, requested_size: None, opened: Instant::now() },
+            Mapped { id, window: window.clone(), decor: DecorCache::default(), resize_anchor: None, requested_size: None },
         );
         self.az.by_surface.insert(surface.clone(), id);
         info!(id, app_id, title, ssd, "window opened");
@@ -179,11 +176,10 @@ impl State {
         // A new window of the focused app joins its group, when asked for.
         let focused = self.az.wm.focused();
         let same_app = focused.filter(|f| self.az.wm.get(*f).is_some_and(|w| w.app_id == app_id && w.id != id));
-        if self.az.settings.windows.stack_new_windows_of_same_app && parent.is_none() {
-            if let Some(f) = same_app {
+        if self.az.settings.windows.stack_new_windows_of_same_app && parent.is_none()
+            && let Some(f) = same_app {
                 self.stack(f, id);
             }
-        }
         self.az.window_outputs_dirty = true;
         self.focus_window(Some(id));
         self.az.configure(id);
@@ -249,11 +245,10 @@ impl State {
             self.az.queue_redraw_rect(old);
             self.az.window_changed(id);
             self.az.window_outputs_dirty = true;
-        } else if let Some(m) = self.az.windows.get_mut(&id) {
-            if m.requested_size == Some(size) {
+        } else if let Some(m) = self.az.windows.get_mut(&id)
+            && m.requested_size == Some(size) {
                 m.requested_size = None;
             }
-        }
         self.az.redraw_window(id);
     }
 
@@ -320,11 +315,10 @@ impl State {
         let before = map.non_exclusive_zone();
         map.arrange();
         let after = map.non_exclusive_zone();
-        if !initial_sent {
-            if let Some(layer) = map.layer_for_surface(surface, WindowSurfaceType::TOPLEVEL) {
+        if !initial_sent
+            && let Some(layer) = map.layer_for_surface(surface, WindowSurfaceType::TOPLEVEL) {
                 layer.layer_surface().send_configure();
             }
-        }
         drop(map);
         if before != after {
             // The usable area changed: windows filling it follow.
@@ -374,8 +368,8 @@ impl State {
     fn commit_misc(&mut self, surface: &WlSurface) {
         // The pointer's own surface, a drag icon or a lock surface.
         use smithay::input::pointer::{CursorImageStatus, CursorImageSurfaceData};
-        if let CursorImageStatus::Surface(s) = &self.az.cursor_status {
-            if s == surface {
+        if let CursorImageStatus::Surface(s) = &self.az.cursor_status
+            && s == surface {
                 with_states(surface, |states| {
                     if let Some(attrs) = states.data_map.get::<CursorImageSurfaceData>() {
                         let delta = states.cached_state.get::<SurfaceAttributes>().current().buffer_delta.take();
@@ -388,12 +382,10 @@ impl State {
                     self.az.queue_redraw(&o);
                 }
             }
-        }
-        if self.az.dnd_icon.as_ref() == Some(surface) {
-            if let Some(o) = self.az.active_output() {
+        if self.az.dnd_icon.as_ref() == Some(surface)
+            && let Some(o) = self.az.active_output() {
                 self.az.queue_redraw(&o);
             }
-        }
         let lock_out: Option<Output> = self
             .az
             .out

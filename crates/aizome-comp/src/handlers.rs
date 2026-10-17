@@ -23,7 +23,6 @@ use smithay::wayland::keyboard_shortcuts_inhibit::{
 };
 use smithay::wayland::output::OutputHandler;
 use smithay::wayland::pointer_constraints::{PointerConstraintsHandler, with_pointer_constraint};
-use smithay::wayland::seat::WaylandFocus;
 use smithay::wayland::security_context::{SecurityContext, SecurityContextHandler, SecurityContextListenerSource};
 use smithay::wayland::selection::data_device::{
     ClientDndGrabHandler, DataDeviceHandler, DataDeviceState, ServerDndGrabHandler, set_data_device_focus,

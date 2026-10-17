@@ -120,6 +120,8 @@ pub struct Udev {
     primary_gpu: DrmNode,
     renderers: Renderers,
     devices: HashMap<DrmNode, Device>,
+    // Kept so the context lives as long as the backend.
+    #[allow(dead_code)]
     libinput: Libinput,
     input_devices: Vec<libinput::Device>,
     powered: bool,
@@ -160,18 +162,16 @@ impl Udev {
                     let mut d = device.clone();
                     if let crate::backend::Backend::Udev(u) = &mut state.backend {
                         apply_device_settings(&mut d, &state.az.settings.input);
-                        if d.has_capability(DeviceCapability::Keyboard) {
-                            if let Some(kb) = state.az.seat.get_keyboard() {
+                        if d.has_capability(DeviceCapability::Keyboard)
+                            && let Some(kb) = state.az.seat.get_keyboard() {
                                 d.led_update(kb.led_state().into());
                             }
-                        }
                         u.input_devices.push(d);
                     }
-                } else if let InputEvent::DeviceRemoved { device } = &event {
-                    if let crate::backend::Backend::Udev(u) = &mut state.backend {
+                } else if let InputEvent::DeviceRemoved { device } = &event
+                    && let crate::backend::Backend::Udev(u) = &mut state.backend {
                         u.input_devices.retain(|d| d != device);
                     }
-                }
                 state.process_input(event);
             })
             .map_err(|e| e.to_string())?;
@@ -255,7 +255,7 @@ impl Udev {
         let primary = u.primary_gpu;
         match &mut u.renderers {
             Renderers::Gles(gpus) => {
-                if let Ok(mut r) = gpus.single_renderer(&primary) {
+                if let Ok(r) = gpus.single_renderer(&primary) {
                     state.az.shm.update_formats(r.shm_formats());
                     let formats = r.dmabuf_formats();
                     match DmabufFeedbackBuilder::new(primary.dev_id(), formats).build() {
@@ -273,11 +273,10 @@ impl Udev {
         }
         let _ = state.az.lh.insert_source(udev, |event, _, state: &mut State| match event {
             UdevEvent::Added { device_id, path } => {
-                if let Ok(node) = DrmNode::from_dev_id(device_id) {
-                    if let Err(e) = device_added(state, node, &path) {
+                if let Ok(node) = DrmNode::from_dev_id(device_id)
+                    && let Err(e) = device_added(state, node, &path) {
                         error!("skipping {}: {e}", path.display());
                     }
-                }
             }
             UdevEvent::Changed { device_id } => {
                 if let Ok(node) = DrmNode::from_dev_id(device_id) {
@@ -304,11 +303,10 @@ impl Udev {
     }
 
     pub fn early_import(&mut self, surface: &WlSurface) {
-        if let Renderers::Gles(g) = &mut self.renderers {
-            if let Err(e) = g.early_import(self.primary_gpu, surface) {
+        if let Renderers::Gles(g) = &mut self.renderers
+            && let Err(e) = g.early_import(self.primary_gpu, surface) {
                 tracing::debug!("early import: {e:?}");
             }
-        }
     }
 
     pub fn import_dmabuf(&mut self, dmabuf: &Dmabuf) -> bool {

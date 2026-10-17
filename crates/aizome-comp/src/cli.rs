@@ -103,13 +103,11 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Options, String> 
             other => return Err(format!("unknown option {other}")),
         }
     }
-    if o.renderer.is_none() {
-        if let Ok(r) = std::env::var("AIZOME_RENDERER") {
-            if !r.is_empty() {
+    if o.renderer.is_none()
+        && let Ok(r) = std::env::var("AIZOME_RENDERER")
+            && !r.is_empty() {
                 o.renderer = Some(parse_renderer(&r)?);
             }
-        }
-    }
     if o.headless_outputs.is_empty() {
         o.headless_outputs.push(HeadlessOutput { width: 2880, height: 1800, scale: 2.0 });
     }

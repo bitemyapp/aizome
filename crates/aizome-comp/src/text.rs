@@ -24,8 +24,6 @@ pub enum Face {
     Tab,
     /// Background tabs: Archivo 500 at 87.5%.
     TabLight,
-    /// Interface text: Archivo 400.
-    Ui,
     /// Interface text, semibold.
     UiSemibold,
     /// Headings: Archivo 750.
@@ -50,10 +48,6 @@ impl Style {
     }
     pub fn size(&self) -> f64 {
         self.size_q as f64 / 4.0
-    }
-    /// The tab title style.
-    pub fn tab(color: Rgba) -> Style {
-        Style::new(Face::Tab, typeface::TAB, color)
     }
 }
 
@@ -101,7 +95,6 @@ impl Labels {
                 let (family, weight) = match face {
                     Face::Tab => (typeface::UI, typeface::WEIGHT_TAB),
                     Face::TabLight => (typeface::UI, typeface::WEIGHT_MEDIUM),
-                    Face::Ui => (typeface::UI, typeface::WEIGHT_REGULAR),
                     Face::UiSemibold => (typeface::UI, typeface::WEIGHT_SEMIBOLD),
                     Face::UiBold => (typeface::UI, typeface::WEIGHT_BOLD),
                     Face::Mono => (typeface::MONO, typeface::WEIGHT_REGULAR),
@@ -240,6 +233,7 @@ impl Labels {
         self.cache.clear();
     }
 
+    #[allow(dead_code)]
     pub fn len(&self) -> usize {
         self.cache.len()
     }

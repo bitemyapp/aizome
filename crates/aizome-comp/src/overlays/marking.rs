@@ -124,15 +124,14 @@ pub fn open(state: &mut State, win: WinId, at: (f64, f64), shown: bool) {
     if !shown {
         // Show after the pause, if still held and not flicked.
         let _ = state.az.lh.insert_source(Timer::from_duration(PAUSE), move |_, _, state: &mut State| {
-            if let Some(m) = &mut state.az.overlays.marking {
-                if m.opened == opened && !m.shown {
+            if let Some(m) = &mut state.az.overlays.marking
+                && m.opened == opened && !m.shown {
                     m.shown = true;
                     if let Some(o) = m.output.clone() {
                         state.az.queue_redraw(&o);
                     }
                     keep_on_output(state);
                 }
-            }
             TimeoutAction::Drop
         });
     }
@@ -147,11 +146,10 @@ pub fn press(state: &mut State, win: WinId, pos: Point<f64, Logical>, serial: Se
 }
 
 fn close(state: &mut State) {
-    if let Some(m) = state.az.overlays.marking.take() {
-        if let Some(o) = m.output {
+    if let Some(m) = state.az.overlays.marking.take()
+        && let Some(o) = m.output {
             state.az.queue_redraw(&o);
         }
-    }
 }
 
 /// Runs the picked verb (or Desk).
@@ -385,8 +383,8 @@ where
     }
     // The Desk ring: a column beside "to Desk ▸".
     m.desk_boxes.clear();
-    if m.sub {
-        if let Some(tb) = todesk_box {
+    if m.sub
+        && let Some(tb) = todesk_box {
             let desks: Vec<(DeskId, String)> = az.wm.desks().iter().map(|d| (d.id, d.name.clone())).collect();
             let current = az.wm.get(m.win).map(|w| w.desk);
             let n = desks.len() as f64;
@@ -410,7 +408,6 @@ where
                 y += 28.0;
             }
         }
-    }
     let out = pt.finish(&mut m.cache);
     az.overlays.marking = Some(m);
     out

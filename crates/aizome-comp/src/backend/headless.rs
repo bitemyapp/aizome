@@ -3,7 +3,7 @@
 //! timer that runs only while something is damaged.
 
 use std::collections::HashMap;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use smithay::backend::allocator::Fourcc;
 use smithay::backend::allocator::dmabuf::Dmabuf;
@@ -166,11 +166,10 @@ impl Headless {
                     let token = az
                         .lh
                         .insert_source(Timer::from_deadline(due), move |_, _, state: &mut State| {
-                            if let Some(h) = state.backend.headless_mut() {
-                                if let Some(hs) = h.outputs.get_mut(&o) {
+                            if let Some(h) = state.backend.headless_mut()
+                                && let Some(hs) = h.outputs.get_mut(&o) {
                                     hs.timer = None;
                                 }
-                            }
                             TimeoutAction::Drop
                         })
                         .ok();
@@ -219,9 +218,6 @@ impl Headless {
             }
         }
     }
-
-    /// The time of a frame at 60 Hz.
-    pub const REFRESH: Duration = Duration::from_nanos(16_666_667);
 }
 
 /// GLES on the first render node that takes an EGL context.

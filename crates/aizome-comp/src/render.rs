@@ -9,12 +9,12 @@
 //! buffers, so the damage tracker redraws only what changed: moving a
 //! window composites and asks nothing of its client.
 
-use aizome_theme::{Rgba, typeface};
+use aizome_theme::typeface;
 use smithay::backend::renderer::element::memory::MemoryRenderBufferRenderElement;
 use smithay::backend::renderer::element::solid::SolidColorRenderElement;
 use smithay::backend::renderer::element::surface::{WaylandSurfaceRenderElement, render_elements_from_surface_tree};
 use smithay::backend::renderer::element::utils::{CropRenderElement, RelocateRenderElement, RescaleRenderElement};
-use smithay::backend::renderer::element::{AsRenderElements, Id, Kind};
+use smithay::backend::renderer::element::{AsRenderElements, Kind};
 use smithay::backend::renderer::{ImportAll, ImportMem, Renderer};
 use smithay::desktop::layer_map_for_output;
 use smithay::input::pointer::{CursorImageStatus, CursorImageSurfaceData};
@@ -342,14 +342,6 @@ where
             );
         }
     }
-}
-
-/// A solid rectangle in points with a fresh identity, for overlays that
-/// keep their own ids.
-pub fn solid(id: &Id, commit: smithay::backend::renderer::utils::CommitCounter, r: (f64, f64, f64, f64), origin: (f64, f64), scale: f64, color: Rgba, alpha: f32) -> SolidColorRenderElement {
-    let geo = decor::to_physical(r.0, r.1, r.2, r.3, origin, scale);
-    let c = color.to_premultiplied_f32();
-    SolidColorRenderElement::new(id.clone(), geo, commit, [c[0] * alpha, c[1] * alpha, c[2] * alpha, c[3] * alpha], Kind::Unspecified)
 }
 
 /// A window's surfaces scaled into a box (overview and switcher

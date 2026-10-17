@@ -230,6 +230,7 @@ impl Model {
         self.stacking.iter().filter_map(|id| self.wins.get(id))
     }
 
+    #[allow(dead_code)]
     pub fn len(&self) -> usize {
         self.wins.len()
     }
@@ -252,6 +253,7 @@ impl Model {
         self.wins.get(&id).is_some_and(|w| w.sticky || w.desk == self.current)
     }
 
+    #[allow(dead_code)]
     pub fn on_desk(&self, id: WinId, desk: DeskId) -> bool {
         self.wins.get(&id).is_some_and(|w| w.sticky || w.desk == desk)
     }
@@ -310,11 +312,10 @@ impl Model {
         if !self.wins.contains_key(&id) {
             return;
         }
-        if let Some(g) = self.wins[&id].group {
-            if let Some(g) = self.groups.get_mut(&g) {
+        if let Some(g) = self.wins[&id].group
+            && let Some(g) = self.groups.get_mut(&g) {
                 g.active = id;
             }
-        }
         self.focused = Some(id);
         self.mru.retain(|w| *w != id);
         self.mru.insert(0, id);
@@ -335,11 +336,10 @@ impl Model {
         if self.wins[&id].hidden {
             self.show_app(&app);
         }
-        if let Some(g) = self.wins[&id].group {
-            if let Some(g) = self.groups.get_mut(&g) {
+        if let Some(g) = self.wins[&id].group
+            && let Some(g) = self.groups.get_mut(&g) {
                 g.active = id;
             }
-        }
         if !sticky && desk != self.current {
             self.current = desk;
             true
@@ -588,7 +588,7 @@ impl Model {
             x += CASCADE_STEP;
             y += CASCADE_STEP;
             if x + w + insets.right > area.right() || y + h + insets.bottom > area.bottom() {
-                x = area.x + insets.left + CASCADE_STEP * ((tries % 4) as i32);
+                x = area.x + insets.left + CASCADE_STEP * (tries % 4);
                 y = area.y + insets.top;
             }
             tries += 1;
@@ -598,6 +598,7 @@ impl Model {
 
     // ---- tab groups ----------------------------------------------------
 
+    #[allow(dead_code)]
     pub fn group(&self, id: GroupId) -> Option<&Group> {
         self.groups.get(&id)
     }
@@ -705,14 +706,14 @@ impl Model {
 
     /// Shows a member of a group.
     pub fn set_group_active(&mut self, id: WinId) {
-        if let Some(g) = self.wins.get(&id).and_then(|w| w.group) {
-            if let Some(g) = self.groups.get_mut(&g) {
+        if let Some(g) = self.wins.get(&id).and_then(|w| w.group)
+            && let Some(g) = self.groups.get_mut(&g) {
                 g.active = id;
             }
-        }
     }
 
     /// Moves a tab within its group to position `index`.
+    #[allow(dead_code)]
     pub fn reorder_tab(&mut self, id: WinId, index: usize) {
         if let Some(g) = self.wins.get(&id).and_then(|w| w.group).and_then(|g| self.groups.get_mut(&g)) {
             g.members.retain(|m| *m != id);
@@ -721,6 +722,7 @@ impl Model {
         }
     }
 
+    #[allow(dead_code)]
     pub fn groups(&self) -> impl Iterator<Item = &Group> {
         self.groups.values()
     }

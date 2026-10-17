@@ -111,10 +111,6 @@ impl IpcServer {
             }
         }
     }
-
-    pub fn subscribers(&self) -> usize {
-        self.conns.values().filter(|c| c.subscribed).count()
-    }
 }
 
 impl Drop for IpcServer {

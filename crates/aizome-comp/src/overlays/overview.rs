@@ -303,21 +303,19 @@ where
             pt.outline(Box2::new(card.x - 3.0, card.y - 3.0, card.w + 6.0, card.h + 6.0), 2.0, p.focus);
         }
         // A thumbnail dragged over this card.
-        if let Some((_, _, (px, py))) = ov.drag {
-            if card.contains(px, py) && dragging.and_then(|d| az.wm.get(d)).is_some_and(|w| w.desk != desk) {
+        if let Some((_, _, (px, py))) = ov.drag
+            && card.contains(px, py) && dragging.and_then(|d| az.wm.get(d)).is_some_and(|w| w.desk != desk) {
                 pt.dashed(Box2::new(card.x - 3.0, card.y - 3.0, card.w + 6.0, card.h + 6.0), 2.0, p.focus);
             }
-        }
     }
     // The dragged thumbnail follows the pointer.
-    if let Some((id, from, at)) = ov.drag {
-        if let Some((_, _, b)) = ov.thumbs.iter().find(|(w, ..)| *w == id).cloned() {
+    if let Some((id, from, at)) = ov.drag
+        && let Some((_, _, b)) = ov.thumbs.iter().find(|(w, ..)| *w == id).cloned() {
             let moved = Box2::new(b.x + at.0 - from.0, b.y + at.1 - from.1, b.w, b.h);
             pt.fill(Box2::new(moved.x + 3.0, moved.y + 3.0, moved.w, moved.h), p.slab);
             pt.fill(moved, p.bevel_lo);
             pt.thumbnail(az, renderer, id, moved.inset(1.0), 1.0);
         }
-    }
 
     // Hints.
     let hy = g.bottom() - 40.0;

@@ -228,12 +228,11 @@ pub fn start_resize(state: &mut State, win: WinId, edges: Edges, pos: Point<f64,
             mm.resize_anchor = Some(ResizeAnchor { left: edges.contains(Edges::LEFT), top: edges.contains(Edges::TOP), start: start_rect });
             mm.toplevel().with_pending_state(|s| s.states.set(xdg_toplevel::State::Resizing));
         }
-        if let Some(w) = state.az.wm.get_mut(m) {
-            if w.placement != crate::wm::Placement::Free {
+        if let Some(w) = state.az.wm.get_mut(m)
+            && w.placement != crate::wm::Placement::Free {
                 w.placement = crate::wm::Placement::Free;
                 w.restore = None;
             }
-        }
     }
     let grab = ResizeGrab { start: start_data(pos, crate::input::BTN_LEFT), win, edges, start_rect };
     state.az.interactive.cursor_override = Some(edges.cursor_name());
@@ -245,7 +244,7 @@ pub fn start_resize(state: &mut State, win: WinId, edges: Edges, pos: Point<f64,
 fn size_limits(state: &State, win: WinId) -> ((i32, i32), (i32, i32)) {
     let Some(m) = state.az.windows.get(&win) else { return ((64, 32), (i32::MAX, i32::MAX)) };
     let (min, max) = smithay::wayland::compositor::with_states(m.surface(), |s| {
-        let c = s.cached_state.get::<smithay::wayland::shell::xdg::SurfaceCachedState>().current().clone();
+        let c = *s.cached_state.get::<smithay::wayland::shell::xdg::SurfaceCachedState>().current();
         (c.min_size, c.max_size)
     });
     let min = (min.w.max(64), min.h.max(32));

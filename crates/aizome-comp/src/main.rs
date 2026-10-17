@@ -116,11 +116,10 @@ fn main() -> ExitCode {
         let _ = tx.send(());
     });
     let _ = event_loop.handle().insert_source(rx, |event, _, state: &mut State| {
-        if let channel::Event::Msg(()) = event {
-            if let Err(e) = state.reload_config() {
+        if let channel::Event::Msg(()) = event
+            && let Err(e) = state.reload_config() {
                 warn!("settings: {e}");
             }
-        }
     });
 
     state.apply_output_settings();

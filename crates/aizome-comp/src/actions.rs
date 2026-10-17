@@ -188,12 +188,11 @@ impl State {
             return;
         }
         for m in self.az.wm.set_rect(id, rect) {
-            if let Some(w) = self.az.wm.get_mut(m) {
-                if w.placement != Placement::Free {
+            if let Some(w) = self.az.wm.get_mut(m)
+                && w.placement != Placement::Free {
                     w.placement = Placement::Free;
                     w.restore = None;
                 }
-            }
             self.az.window_changed(m);
         }
         self.az.queue_redraw_rect(old);

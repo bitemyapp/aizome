@@ -57,11 +57,10 @@ pub fn pointer_button(state: &mut State, pressed: bool, x: f64, y: f64) -> bool 
         if pressed {
             let w = window_at(state, x, y);
             finish(state);
-            if let Some(w) = w {
-                if let Err(e) = crate::screenshot::take(state, crate::screenshot::What::Window(w), None, true) {
+            if let Some(w) = w
+                && let Err(e) = crate::screenshot::take(state, crate::screenshot::What::Window(w), None, true) {
                     tracing::warn!("screenshot: {e}");
                 }
-            }
         }
         return true;
     }
@@ -71,11 +70,10 @@ pub fn pointer_button(state: &mut State, pressed: bool, x: f64, y: f64) -> bool 
     } else if let Some(s) = a.start.take() {
         let r = band(s, (x, y));
         finish(state);
-        if r.w > 2 && r.h > 2 {
-            if let Err(e) = crate::screenshot::take(state, crate::screenshot::What::Area(r), None, true) {
+        if r.w > 2 && r.h > 2
+            && let Err(e) = crate::screenshot::take(state, crate::screenshot::What::Area(r), None, true) {
                 tracing::warn!("screenshot: {e}");
             }
-        }
     }
     true
 }

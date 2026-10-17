@@ -31,10 +31,6 @@ impl CursorTheme {
         CursorTheme { name: name.to_string(), size: size.clamp(8, 256), theme: xcursor::CursorTheme::load(name), cache: HashMap::new() }
     }
 
-    pub fn name(&self) -> &str {
-        &self.name
-    }
-
     /// The image for a cursor name at an integer scale (the first frame of
     /// animated cursors).
     pub fn get(&mut self, name: &str, scale: u32) -> &CursorImage {
@@ -89,7 +85,7 @@ impl ArgbBytes for xcursor::parser::Image {
     /// Little-endian ARGB8888: B, G, R, A in memory, premultiplied (as
     /// xcursor files store them).
     fn pixels_argb_le(&self) -> Vec<u8> {
-        self.pixels_rgba.chunks_exact(4).flat_map(|p| [p[2], p[1], p[0], p[3]]).collect()
+        self.pixels_rgba.as_chunks::<4>().0.iter().flat_map(|p| [p[2], p[1], p[0], p[3]]).collect()
     }
 }
 

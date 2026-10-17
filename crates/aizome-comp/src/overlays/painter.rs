@@ -141,11 +141,10 @@ where
     pub fn icon(&mut self, az: &mut Aizome, renderer: &mut R, app_id: &str, tint: crate::icons::Tint, x: f64, y: f64, size: i32, alpha: f32) {
         let scale = self.scale;
         let origin = self.origin;
-        if let Some(tex) = az.icons.texture(app_id, size, scale.ceil().max(1.0) as u32, tint) {
-            if let Some(e) = crate::icons::icon_element(renderer, tex, (x, y), origin, scale, alpha * self.alpha) {
+        if let Some(tex) = az.icons.texture(app_id, size, scale.ceil().max(1.0) as u32, tint)
+            && let Some(e) = crate::icons::icon_element(renderer, tex, (x, y), origin, scale, alpha * self.alpha) {
                 self.items.push(Item::Elems(vec![e]));
             }
-        }
     }
 
     /// A window's live content scaled into a box.
@@ -177,9 +176,6 @@ where
 }
 
 /// Text styles the overlays use.
-pub fn ui(size: f64, color: Rgba) -> Style {
-    Style::new(Face::Ui, size, color)
-}
 pub fn semibold(size: f64, color: Rgba) -> Style {
     Style::new(Face::UiSemibold, size, color)
 }
