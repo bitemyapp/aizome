@@ -32,6 +32,7 @@
 //! The modules are listed in each module's own documentation, with what
 //! the system must provide (daemons, NixOS options) for them to work.
 
+pub mod audio;
 pub mod bluetooth;
 pub mod bus;
 pub mod error;

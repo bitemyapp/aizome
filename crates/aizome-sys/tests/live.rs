@@ -54,3 +54,26 @@ fn bluetooth_reads_bluez() {
     }
     assert!(!state.adapters.is_empty());
 }
+
+#[test]
+#[ignore = "reads the real sound server"]
+fn audio_reads_the_sound_server() {
+    let audio = aizome_sys::audio::Audio::new(Wake::none());
+    assert!(eventually(|| audio.available() && !audio.snapshot().sinks.is_empty()), "no sound server");
+    let state = audio.snapshot();
+    println!("server: {}", state.server);
+    for sink in &state.sinks {
+        println!(
+            "  output {} {:?} {:.0}% muted={} default={} icon={} ports={:?}",
+            sink.index, sink.description, sink.volume * 100.0, sink.muted, sink.is_default, sink.icon_name,
+            sink.ports.iter().map(|p| (&p.name, p.available)).collect::<Vec<_>>()
+        );
+    }
+    for source in &state.sources {
+        println!("  input {} {:?} {:.0}% muted={} default={}", source.index, source.description, source.volume * 100.0, source.muted, source.is_default);
+    }
+    for stream in state.playback.iter().chain(&state.recording) {
+        println!("  stream {} {:?} ({}) {:.0}% on {}", stream.index, stream.application, stream.app_id, stream.volume * 100.0, stream.device);
+    }
+    assert!(state.default_output().is_some());
+}

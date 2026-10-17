@@ -45,6 +45,8 @@
           freetype
           dbus
           pam
+          # aizome-sys talks to PipeWire through pipewire-pulse.
+          libpulseaudio
         ];
       # Only what the build reads: the workspace and the files the package
       # installs.
