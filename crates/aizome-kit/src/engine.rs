@@ -368,6 +368,16 @@ impl Core {
                 o.dirty = true;
             }
         }
+        // Whoever showed the menu hears that it's gone.
+        if let WinKind::Popup { kind: PopupKind::Menu { look, .. }, .. } = &w.kind
+            && let Some(m) = &look.closed
+        {
+            let msg = m.make();
+            self.queue.push_back(match &w.mapper {
+                Some(map) => map(msg),
+                None => msg,
+            });
+        }
         for a in w.alerts {
             self.alerts.remove(&a);
         }

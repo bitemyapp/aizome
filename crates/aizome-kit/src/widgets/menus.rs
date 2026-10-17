@@ -122,6 +122,16 @@ impl<Msg: Clone + Send + 'static> MenuStyle<Msg> {
         self.look.tear_off = Some(MsgFn::new(msg));
         self
     }
+
+    /// Sent once when the menu closes, however it closes: an item chosen,
+    /// Escape, a press outside it, the compositor dismissing it, another
+    /// menu shown in its place, [`Cx::close_menus`](crate::Cx::close_menus)
+    /// or its window closing. A menu bar keeps its title highlighted until
+    /// then.
+    pub fn on_closed(mut self, msg: Msg) -> Self {
+        self.look.closed = Some(MsgFn::new(msg));
+        self
+    }
 }
 
 /// What a menu looks like and does besides its items (type-erased).
@@ -134,6 +144,8 @@ pub(crate) struct MenuLook {
     pub pin: Option<(bool, MsgMap<bool>)>,
     /// Aizome's mark before the title (the Toolchest's).
     pub mark: bool,
+    /// Sent when the menu closes (the menu's own, not its submenus').
+    pub closed: Option<MsgFn>,
 }
 
 impl MenuLook {
