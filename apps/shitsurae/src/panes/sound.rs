@@ -528,7 +528,7 @@ fn device_row(d: &AudioDevice, io: Io, all: &[&AudioDevice]) -> Row<Msg> {
         }
         if let Some(p) = d.active_port.as_ref().and_then(|p| d.ports.iter().find(|x| x.name == *p))
             && p.description != name
-            && !(d.ports.len() == 1 && name.contains(p.description.trim_end_matches(" Output").trim_end_matches(" Input")))
+            && !name.contains(p.description.trim_end_matches(" Output").trim_end_matches(" Input"))
         {
             parts.push(p.description.trim_end_matches(" Output").trim_end_matches(" Input").to_owned());
         }
