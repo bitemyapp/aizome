@@ -212,10 +212,30 @@ history that can be copied or saved; keyboard first.
 
 ### Tenki (Weather)
 
-Current conditions, hourly for 24 hours and ten days ahead from Open-Meteo
+Current conditions, hourly for 48 hours and ten days ahead from Open-Meteo
 (no key needed), cities found with Open-Meteo's geocoding and the current
 place through geoclue; saved places; units (metric, imperial); icons drawn
 from Lucide's weather set; a gentle failure state offline.
+
+As built: a sidebar of places (search on top, rows dragged to reorder, the
+current location pinned first) and the place showing: the temperature
+large in Archivo light, the condition, high and low, an hourly strip with
+rain bars, ten days with ranges in the dye ramp (kamenozoki to kohaku) on
+one scale, and tiles for feels-like, UV, wind (with a compass), humidity,
+the sun and precipitation. The first launch keeps the city of the
+machine's time zone and asks once whether to use the location; GeoClue is
+asked at city accuracy as `org.aizome.Tenki`, and positions go to
+Open-Meteo rounded to 0.01°. Forecasts are cached per place in
+`$XDG_CACHE_HOME/aizome/tenki/` (the window opens on the cache and says
+"Updated 12 min ago", or "Offline"), places are kept in
+`$XDG_DATA_HOME/aizome/tenki/places.json`, and units and the location
+choice in `$XDG_CONFIG_HOME/aizome/tenki.toml`. Tests run on answers
+recorded once from Open-Meteo (`apps/tenki/tests/fixtures`, re-recorded
+with `aizome-tenki --record-fixtures DIR`). NixOS needs
+`services.geoclue2.enable = true` and
+`services.geoclue2.appConfig."org.aizome.Tenki" = { isAllowed = true; isSystem = false; }`
+for the current location (and a working location source, such as
+`services.geoclue2.geoProviderUrl` pointed at BeaconDB).
 
 ### Tansu (Disks)
 

@@ -204,3 +204,39 @@ less than the page that's new.
 `YUKIMI_STALLS=50` prints, on standard error, every update or view that
 takes longer than that many milliseconds (as the GTK Yukimi does for its
 interface thread).
+
+## Tenki (Weather)
+
+Headlessly, `apps/tenki/tests/tenki.rs` (`cargo test --release -p
+aizome-tenki --test tenki interactions -- --nocapture`), on the recorded
+forecasts for Tokyo, Chicago and Reykjavík, from the event to the damage
+rasterised at 2× (the damage's bounding box: upper bounds). Release build,
+with Aizome's fonts, the machine busy with other builds (load 13–20):
+
+| Interaction | p50 | p95 | max | drawn |
+|---|---|---|---|---|
+| Choosing another place | 2.22 ms | 3.86 ms | 9.9 ms | 91% |
+| Hovering the places | 0.08 ms | 0.09 ms | 0.15 ms | 5% |
+| Dragging a place along the list | 0.12 ms | 0.12 ms | 0.16 ms | 5% |
+| Scrolling the hours sideways | 0.27 ms | 0.32 ms | 0.83 ms | 14% |
+| The minute's tick ("Updated 13 min ago") | 0.10 ms | 0.13 ms | 0.19 ms | 0–1% |
+
+Fetching, searching and asking GeoClue run on background threads, and
+files (the cache, the places, the state) are written by a thread of their
+own: replacing a file waited half a second on the busy disk when it was
+done on the window's thread, which the first measurements caught.
+
+Live, a debug build (the kit unoptimised) under Aizome's headless
+compositor (GLES) at 2×, with `SIDESTEP_FRAME_STATS=1`, driven with
+`aizomectl input` (❖N, typing "tokyo", Return, then ❖[ and ❖] every
+0.3 s): switching places, total p50 4.2 ms and p95 6.5 ms per frame
+(rasterising p50 3.0 ms; 52% of the window drawn on average over those
+frames); otherwise p50 0.12–0.15 ms, p95 0.16–0.4 ms. The compositor's
+own frames meanwhile: p50 0.5–1.1 ms, p95 1.2–1.9 ms.
+
+Choosing a place is the one interaction that comes near the budget: it
+replaces the whole main view (another place's every number), so it
+redraws nine tenths of the window, and its worst frames are the first
+time a place's strings are shaped. The release build keeps its p95 under
+4 ms; the test holds it under 8 ms (as it runs beside other builds) and
+everything else under 4 ms.

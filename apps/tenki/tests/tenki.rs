@@ -456,6 +456,6 @@ fn interactions_fit_the_frame_budget() {
             assert!(p < Duration::from_millis(4), "{name} p95 {p:?}");
         }
         // Choosing a place redraws the whole main view: see docs/performance.md.
-        assert!(p_select < Duration::from_millis(16), "choose p95 {p_select:?}");
+        assert!(p_select < Duration::from_millis(8), "choose p95 {p_select:?}");
     }
 }
