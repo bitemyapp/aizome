@@ -237,6 +237,50 @@ impl<P: Program> Harness<P> {
         Harness { rt, platform }
     }
 
+    /// Launch `program` talking to a shell listening at `socket` (as
+    /// `$AIZOME_SHELL_SOCKET` would name it): it says hello and publishes
+    /// its menus there, and there's no in-window menu bar.
+    pub fn with_shell(program: P, socket: &Path) -> Harness<P> {
+        crate::fonts::install();
+        let mut rt = Runtime::new(program, Appearance::default());
+        rt.shell = crate::shell::ShellLink::connect_to(socket, &rt.core.info, Arc::new(|| {}));
+        rt.core.in_window_menus = rt.shell.is_none();
+        let mut platform = TestPlatform::new();
+        rt.launch(&mut platform, Vec::new());
+        Harness { rt, platform }
+    }
+
+    /// Handle what the shell has sent, waiting up to `wait` for something.
+    pub fn pump_shell(&mut self, wait: Duration) -> usize {
+        let deadline = std::time::Instant::now() + wait;
+        loop {
+            let incoming = self.rt.shell.as_mut().map(|s| s.incoming()).unwrap_or_default();
+            if !incoming.is_empty() {
+                let n = incoming.len();
+                for m in incoming {
+                    crate::shell::handle(&mut self.rt, m, &mut self.platform);
+                }
+                self.rt.flush(&mut self.platform);
+                return n;
+            }
+            if std::time::Instant::now() >= deadline {
+                return 0;
+            }
+            std::thread::sleep(Duration::from_millis(2));
+        }
+    }
+
+    /// Files (as `file://` URLs) or text dropped at `at`: whether
+    /// something there took them.
+    pub fn drop(&mut self, key: WindowKey, at: Point, urls: Vec<String>, text: Option<String>) -> bool {
+        let win = self.win(key);
+        let has_text = text.is_some();
+        let took = self.rt.core.drag_over(win, at, &urls, has_text, &mut self.platform)
+            && self.rt.core.drop(win, at, urls, text, &mut self.platform);
+        self.rt.flush(&mut self.platform);
+        took
+    }
+
     pub fn program(&self) -> &P {
         &self.rt.program
     }

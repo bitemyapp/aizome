@@ -23,7 +23,12 @@ pub(crate) struct ShellLink {
 impl ShellLink {
     /// Connect and say hello, if there's a shell to talk to.
     pub fn connect(info: &AppInfo, wake: Waker) -> Option<ShellLink> {
-        let path = proto::socket_path()?;
+        ShellLink::connect_to(&proto::socket_path()?, info, wake)
+    }
+
+    /// Connect to the shell at `path` and say hello.
+    pub fn connect_to(path: &std::path::Path, info: &AppInfo, wake: Waker) -> Option<ShellLink> {
+        let path = path.to_path_buf();
         let mut client = match proto::Client::hello(&path, &info.app_id, &info.name) {
             Ok(c) => c,
             Err(e) => {

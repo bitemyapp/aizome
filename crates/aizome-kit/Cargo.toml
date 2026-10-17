@@ -21,3 +21,6 @@ aizome-config.workspace = true
 aizome-shell-proto = { path = "../aizome-shell-proto" }
 libc = "0.2"
 png = "0.18"
+
+[dev-dependencies]
+aizome-shell-proto = { path = "../aizome-shell-proto" }

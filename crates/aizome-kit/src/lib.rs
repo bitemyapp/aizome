@@ -47,7 +47,7 @@ pub mod layout;
 pub mod menu;
 pub mod platform;
 pub mod program;
-mod shell;
+pub(crate) mod shell;
 pub mod stats;
 pub mod text;
 pub mod theme;
