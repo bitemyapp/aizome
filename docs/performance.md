@@ -72,24 +72,29 @@ GLES:
 | Scenario | Frames | p50 | p95 | p99 | max | GPU p50 / p99 |
 |---|---|---|---|---|---|---|
 | Idle, 2 s | 0 | – | – | – | – | – |
-| Moving a 320 × 200 window, 240 steps | 225 | 0.40 | 0.53 | 1.13 | 16.4 | 0.74 / 3.07 |
-| A client drawing every frame (800 × 500) | 152 | 0.87 | 2.18 | 3.71 | 4.57 | 0.65 / 3.65 |
-| Switching Desks (slides), 12 | 24 | 0.37 | 0.47 | 0.64 | 0.64 | 0.47 / 3.64 |
-| Overview open and close, 8 | 32 | 0.72 | 2.68 | 12.9 | 12.9 | 1.73 / 5.76 |
-| 10 windows, one moving | 110 | 0.70 | 0.99 | 1.56 | 2.32 | 0.54 / 6.54 |
-| A full-screen client drawing every frame | 145 | 1.87 | 2.93 | 5.04 | 5.54 | 1.43 / 3.40 |
+| Moving a 320 × 200 window, 240 steps | 229 | 0.39 | 0.70 | 1.38 | 1.85 | 0.45 / 4.31 |
+| A client drawing every frame (800 × 500) | 145 | 0.83 | 1.89 | 3.32 | 3.51 | 1.39 / 17.4 |
+| Switching Desks (slides), 12 | 25 | 0.38 | 0.97 | 3.28 | 3.28 | 0.46 / 13.3 |
+| Overview open and close, 8 | 32 | 1.36 | 4.70 | 13.2 | 13.2 | 1.40 / 4.57 |
+| 10 windows, one moving | 110 | 0.70 | 1.39 | 3.17 | 3.76 | 0.42 / 3.51 |
+| A full-screen client drawing every frame | 143 | 1.84 | 3.27 | 5.03 | 7.71 | 1.52 / 4.83 |
 
 pixman:
 
 | Scenario | Frames | p50 | p95 | p99 | max |
 |---|---|---|---|---|---|
 | Idle, 2 s | 0 | – | – | – | – |
-| Moving a 320 × 200 window, 240 steps | 226 | 0.49 | 0.69 | 0.99 | 1.10 |
-| A client drawing every frame (800 × 500) | 166 | 1.31 | 1.46 | 1.82 | 2.15 |
-| Switching Desks (slides), 12 | 26 | 0.53 | 0.89 | 2.29 | 2.29 |
-| Overview open and close, 8 | 32 | 7.13 | 28.7 | 57.3 | 57.3 |
-| 10 windows, one moving | 114 | 0.80 | 0.89 | 1.16 | 1.44 |
-| A full-screen client drawing every frame | 88 | 4.41 | 11.6 | 18.1 | 18.1 |
+| Moving a 320 × 200 window, 240 steps | 230 | 0.57 | 0.68 | 0.78 | 0.97 |
+| A client drawing every frame (800 × 500) | 163 | 1.49 | 2.10 | 3.99 | 6.34 |
+| Switching Desks (slides), 12 | 25 | 0.65 | 1.49 | 1.50 | 1.50 |
+| Overview open and close, 8 | 31 | 3.15 | 12.8 | 18.5 | 18.5 |
+| 10 windows, one moving | 113 | 0.73 | 1.04 | 1.22 | 1.58 |
+| A full-screen client drawing every frame | 149 | 3.51 | 4.45 | 5.08 | 5.64 |
+
+(With Archivo and IBM Plex Mono installed through `AIZOME_FONT_DIR`, as in
+a session. An earlier run without them, before fonts were loaded at
+start-up, had a 16 ms first frame when a window first moved: loading the
+font.)
 
 What these show:
 
@@ -108,25 +113,27 @@ What these show:
 ### Exceptions
 
 1. **Full-output damage under pixman at 2880 × 1800** (a full-screen
-   client redrawing every frame: p50 4.4 ms, p95 11.6 ms). Each frame
-   composites 5.2 million pixels on the CPU; the cost is memory traffic,
-   not the scene. GLES does the same frame in 1.9 ms. Full-screen video or
-   games without a usable GPU miss the budget; ordinary windows (partial
-   damage) don't.
-2. **The Desks overview under pixman** (p50 7 ms, p99 57 ms). Opening and
-   closing it damages the whole output, and its thumbnails are window
-   buffers scaled down at composition, which pixman filters on the CPU. It
-   redraws only when opened, closed, filtered or dragged in, never
-   continuously, so the cost is a handful of frames per use.
-3. **First frames.** A frame that first shows a label (a new title, the
-   overview's captions, the first cursor image) rasterizes it with
-   Sidestep's offscreen canvas and uploads it; the first use of a font
-   also loads it. The 12.9 ms overview p99 and the 16 ms move maximum
-   under GLES are such frames. Labels are cached per text, style and
-   scale, so these are one-off costs.
+   client redrawing every frame: p50 3.5 ms, p95 4.4 ms, max 5.6 ms; an
+   earlier run on a busier machine had p95 11.6 ms). Each frame composites
+   5.2 million pixels on the CPU; the cost is memory traffic, not the
+   scene. GLES does the same frame in 1.8 ms. Full-screen video or games
+   without a usable GPU sit at or over the budget; ordinary windows
+   (partial damage) don't.
+2. **The Desks overview under pixman** (p50 3.1 ms, p95 12.8 ms, max
+   18.5 ms; up to 57 ms in the earlier run). Opening and closing it
+   damages the whole output, and its thumbnails are window buffers scaled
+   down at composition, which pixman filters on the CPU. It redraws only
+   when opened, closed, filtered or dragged in, never continuously, so the
+   cost is a handful of frames per use.
+3. **First frames of new labels.** A frame that first shows a label (a new
+   title, the overview's captions) rasterizes it with Sidestep's offscreen
+   canvas and uploads it: the 13.2 ms overview maximum under GLES is its
+   first opening, setting a dozen captions. Labels are cached per text,
+   style and scale (and dropped half a minute after they were last
+   drawn), so these are one-off costs; fonts load at start-up.
 4. **GPU time** under headless GLES is the wait for the frame's fence,
-   which includes queueing behind other GPU work; its p99 spikes (3–6 ms)
-   don't hold the compositor's CPU.
+   which includes queueing behind other GPU work; its p99 spikes don't
+   hold the compositor's CPU.
 
 On the udev backend frames are paced by vblank: a frame waits for the
 previous one's scan-out rather than being dropped, and the CPU cost per
