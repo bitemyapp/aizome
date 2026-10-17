@@ -257,7 +257,7 @@ impl Display {
     /// The key the settings file keeps it under: make, model and serial
     /// when it has them, else its connector.
     pub fn config_key(&self) -> ConfigKey {
-        ConfigKey { name: self.name.clone(), make: self.make.clone(), model: self.model.clone(), serial: self.serial.clone() }
+        ConfigKey { name: self.name.clone(), make: self.make.clone(), model: self.model.clone(), serial: self.serial.clone(), by_connector: false }
     }
 }
 
@@ -268,6 +268,9 @@ pub struct ConfigKey {
     pub make: String,
     pub model: String,
     pub serial: String,
+    /// Another display has the same make, model and serial (two of one
+    /// monitor, or virtual outputs): its connector tells them apart.
+    pub by_connector: bool,
 }
 
 impl ConfigKey {
@@ -275,7 +278,13 @@ impl ConfigKey {
     /// connector does).
     pub fn identified(&self) -> bool {
         let known = |s: &str| !s.is_empty() && !s.eq_ignore_ascii_case("unknown");
-        known(&self.make) && known(&self.model)
+        !self.by_connector && known(&self.make) && known(&self.model)
+    }
+
+    /// Whether this is the same display as `other` by make, model and
+    /// serial.
+    pub fn same_kind(&self, other: &ConfigKey) -> bool {
+        self.make == other.make && self.model == other.model && self.serial == other.serial
     }
 
     /// A new `[[outputs]]` entry for it, without settings yet.
@@ -292,9 +301,36 @@ impl ConfigKey {
         }
     }
 
+    /// Whether an entry applies to this display (as the compositor
+    /// decides).
     pub fn matches(&self, entry: &OutputConfig) -> bool {
         entry.matches(&self.name, &self.make, &self.model, &self.serial)
     }
+
+    /// Whether an entry is this display's own: the one the pane writes.
+    pub fn owns(&self, entry: &OutputConfig) -> bool {
+        if self.identified() {
+            entry.name.is_none()
+                && entry.make.as_deref() == Some(self.make.as_str())
+                && entry.model.as_deref() == Some(self.model.as_str())
+                && entry.serial.as_deref().unwrap_or("") == self.serial
+        } else {
+            entry.name.as_deref() == Some(self.name.as_str()) && entry.make.is_none() && entry.model.is_none() && entry.serial.is_none()
+        }
+    }
+}
+
+/// The keys the displays are kept under: make, model and serial, or the
+/// connector for displays that share them.
+pub fn config_keys(displays: &[Display]) -> Vec<ConfigKey> {
+    let keys: Vec<ConfigKey> = displays.iter().map(Display::config_key).collect();
+    keys.iter()
+        .enumerate()
+        .map(|(i, k)| {
+            let shared = keys.iter().enumerate().any(|(j, o)| j != i && o.same_kind(k));
+            ConfigKey { by_connector: shared, ..k.clone() }
+        })
+        .collect()
 }
 
 /// The connector a settings entry says its display mirrors.
@@ -648,8 +684,14 @@ pub fn requests(after: &[Settings], names: &[String]) -> Vec<Request> {
 /// (or a new one added), keeping keys this pane doesn't set.
 pub fn write_entries(outputs: &mut Vec<OutputConfig>, displays: &[(ConfigKey, Settings)], main: Option<&str>) {
     for (key, s) in displays {
-        let index = match outputs.iter().position(|e| key.matches(e)) {
+        let index = match outputs.iter().position(|e| key.owns(e)) {
             Some(i) => i,
+            // By connector: ahead of entries by make and model, which would
+            // otherwise match it first.
+            None if !key.identified() => {
+                outputs.insert(0, key.entry());
+                0
+            }
             None => {
                 outputs.push(key.entry());
                 outputs.len() - 1
@@ -679,7 +721,7 @@ pub fn write_entries(outputs: &mut Vec<OutputConfig>, displays: &[(ConfigKey, Se
     if let Some(main) = main {
         let main_key = displays.iter().find(|(_, s)| s.name == main).map(|(k, _)| k.clone());
         for e in outputs.iter_mut() {
-            if main_key.as_ref().is_some_and(|k| k.matches(e)) {
+            if main_key.as_ref().is_some_and(|k| k.owns(e)) {
                 continue;
             }
             if is_primary(e) && main_key.is_some() {
@@ -910,6 +952,23 @@ mod tests {
         assert_eq!(outputs[1].mode.as_deref(), Some("2880x1800@120"));
         assert!(is_primary(&outputs[1]) && !is_primary(&outputs[0]));
         let _ = main;
+    }
+
+    #[test]
+    fn identical_displays_are_kept_apart_by_connector() {
+        let mut a = Display::from_output(&output("HEADLESS-1", 1920, 1080, 1.0, 0), None);
+        let mut b = Display::from_output(&output("HEADLESS-2", 2880, 1800, 2.0, 1920), None);
+        a.serial.clear();
+        b.serial.clear();
+        let keys = config_keys(&[a.clone(), b.clone()]);
+        assert!(keys.iter().all(|k| k.by_connector && !k.identified()));
+        // An old entry by make and model is shadowed by theirs.
+        let mut outputs = vec![OutputConfig { make: Some(a.make.clone()), model: Some(a.model.clone()), ..Default::default() }];
+        write_entries(&mut outputs, &[(keys[0].clone(), a.settings.clone()), (keys[1].clone(), b.settings.clone())], Some("HEADLESS-1"));
+        assert_eq!(outputs.len(), 3);
+        let first = |name: &str| outputs.iter().find(|e| e.matches(name, &a.make, &a.model, "")).unwrap().clone();
+        assert_eq!(first("HEADLESS-1").mode.as_deref(), Some("1920x1080@60"));
+        assert_eq!(first("HEADLESS-2").mode.as_deref(), Some("2880x1800@60"));
     }
 
     #[test]

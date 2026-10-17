@@ -191,8 +191,10 @@ impl Arrangement {
         }
         // The labels, as many as fit: name, connector, size.
         let body = Rect::new(r.x0 + 6.0, top, r.x1 - 6.0, r.y1 - 3.0);
-        let title = TextSpec { ..TextSpec::new(FontSpec { weight: 600.0, ..FontSpec::ui(12.0) }, ink) };
-        let mono = TextSpec::new(FontSpec::mono(10.0), ink.with_alpha(0.85));
+        // Narrow tiles (a display turned on its side) take smaller type.
+        let narrow = body.width() < 110.0;
+        let title = TextSpec::new(FontSpec { weight: 600.0, ..FontSpec::ui(if narrow { 10.5 } else { 12.0 }) }, ink);
+        let mono = TextSpec::new(FontSpec::mono(if narrow { 9.0 } else { 10.0 }), ink.with_alpha(0.85));
         let mut lines: Vec<(&str, &TextSpec, f64)> = Vec::new();
         let room = body.height();
         if room >= 44.0 {

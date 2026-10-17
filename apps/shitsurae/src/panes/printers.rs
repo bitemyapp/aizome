@@ -558,9 +558,11 @@ impl Pane for Printers {
         if !state.printers.is_empty() {
             let labels: Vec<&str> = state.printers.iter().map(|p| p.display_name()).collect();
             let at = state.default_printer().and_then(|d| state.printers.iter().position(|p| p.name == d.name)).unwrap_or(0);
+            let shown = |n: &str| state.printer(n).map(|p| p.display_name().to_owned()).unwrap_or_else(|| n.to_owned());
             let help = match (&state.user_default, &state.system_default) {
-                (None, Some(s)) => format!("Everyone's default is {s}"),
-                (Some(_), Some(s)) => format!("Yours; everyone's is {s}"),
+                (None, Some(s)) => format!("Everyone's default is {}", shown(s)),
+                (Some(u), Some(s)) if u == s => "Yours, and everyone's on this computer".to_owned(),
+                (Some(_), Some(s)) => format!("Yours; everyone's is {}", shown(s)),
                 _ => "Where documents print unless you choose another".to_owned(),
             };
             sections.push(vcx.section("", vec![form::row("Default printer", form::choice(&labels, at, Msg::Default)).help(help).entry("default-printer")]));
@@ -624,7 +626,7 @@ fn printer_row(p: &Printers, printer: &Printer, jobs: &[&Job]) -> Row<Msg> {
     .align(Align::Center)
     .width(Fill);
     if printer.is_user_default || (printer.is_system_default && !printer.is_user_default) {
-        line = line.push(badge("Default"));
+        line = line.push(badge("Default").role(Role::Success));
     }
     if !jobs.is_empty() {
         line = line.push(badge(format!("{} job{}", jobs.len(), if jobs.len() == 1 { "" } else { "s" })).role(Role::Accent));
@@ -660,7 +662,13 @@ fn printer_details(p: &Printers, printer: &Printer, jobs: &[&Job]) -> Vec<Row<Ms
     let paused = printer.is_paused();
     let n1 = name.clone();
     rows.push(form::row(
-        if paused { "Paused: jobs wait until it resumes" } else { "Printing" },
+        if !paused {
+            "Printing"
+        } else if printer.state_reasons.iter().any(|r| r == "paused") {
+            "Paused: jobs wait until it resumes"
+        } else {
+            "Stopped by a problem: jobs wait until it resumes"
+        },
         row![
             button(if paused { "Resume" } else { "Pause" }).compact().on_press(Msg::Pause(n1.clone(), !paused)).enabled(!busy),
             button("Print Test Page").compact().on_press(Msg::TestPage(n1.clone())).enabled(!busy && !paused),

@@ -270,10 +270,11 @@ impl Pane for Sound {
             self.snd = if cx.sample() { Snd::Sample(Cell::new(sample(), wake)) } else { Snd::Live(Audio::new(wake)) };
         }
         if self.sounds.is_empty() {
-            self.sounds = alert_sounds();
+            // The sample's are the same everywhere (for golden images).
+            self.sounds = if cx.sample() { Vec::new() } else { alert_sounds() };
             if self.sounds.is_empty() {
                 // The names the shell plays even without files of its own.
-                self.sounds = ["bell", "message", "complete"].iter().map(|n| ((*n).to_owned(), String::new())).collect();
+                self.sounds = ["bell", "message", "complete", "dialog-information", "dialog-warning"].iter().map(|n| ((*n).to_owned(), String::new())).collect();
             }
         }
         self.follow_input(cx);
@@ -588,7 +589,12 @@ fn app_row(state: &AudioState, s: &AudioStream, rec: bool) -> Row<Msg> {
         tile(glyph, if s.corked { Tile::Slate } else { Tile::Violet }, 26.0),
         column![
             text(s.application.clone()).weight(500.0),
-            text(if s.media_name.is_empty() || s.media_name == s.application { if s.corked { "Paused".to_owned() } else { String::new() } } else { s.media_name.clone() })
+            text(match (s.corked, s.media_name.is_empty() || s.media_name == s.application) {
+                (true, true) => "Paused".to_owned(),
+                (true, false) => format!("Paused · {}", s.media_name),
+                (false, true) => String::new(),
+                (false, false) => s.media_name.clone(),
+            })
                 .size(11.0)
                 .role(Role::Text3),
         ]

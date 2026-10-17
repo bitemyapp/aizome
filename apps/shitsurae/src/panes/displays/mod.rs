@@ -257,11 +257,13 @@ impl Displays {
 
     /// Write the displays named (and the main display) to `[[outputs]]`.
     fn persist(&mut self, names: &[String], cx: &mut PaneCx<Msg>) {
+        let keys = model::config_keys(&self.displays);
         let entries: Vec<(model::ConfigKey, Settings)> = self
             .displays
             .iter()
-            .filter(|d| names.contains(&d.name) || self.main.as_deref() == Some(d.name.as_str()))
-            .map(|d| (d.config_key(), d.settings.clone()))
+            .zip(keys)
+            .filter(|(d, _)| names.contains(&d.name) || self.main.as_deref() == Some(d.name.as_str()))
+            .map(|(d, k)| (k, d.settings.clone()))
             .collect();
         let main = self.main.clone();
         cx.change(move |s| model::write_entries(&mut s.outputs, &entries, main.as_deref()));

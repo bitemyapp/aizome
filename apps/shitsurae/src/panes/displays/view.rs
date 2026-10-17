@@ -29,6 +29,12 @@ pub fn page(p: &Displays, vcx: &ViewCx) -> Element<Msg> {
     form::page(sections)
 }
 
+/// A display's name, with its connector when another has the same name.
+pub fn label(d: &Display, ds: &[Display]) -> String {
+    let t = d.title();
+    if ds.iter().any(|o| o.name != d.name && o.title() == t) { format!("{t} ({})", d.name) } else { t }
+}
+
 fn tiles(p: &Displays, ds: &[Display]) -> Vec<ArrTile> {
     let mut names: Vec<&str> = ds.iter().map(|d| d.name.as_str()).collect();
     names.sort();
@@ -64,9 +70,9 @@ fn arrangement_section(p: &Displays, vcx: &ViewCx, ds: &[Display]) -> Element<Ms
             .iter()
             .map(|d| {
                 if d.settings.enabled {
-                    d.title()
+                    label(d, ds)
                 } else {
-                    format!("{} (Off)", d.title())
+                    format!("{} (Off)", label(d, ds))
                 }
             })
             .collect();
@@ -97,7 +103,7 @@ fn display_sections(p: &Displays, vcx: &ViewCx, d: &Display) -> Vec<Element<Msg>
     let ds = p.displays_now();
     let name = d.name.clone();
     let s = &d.settings;
-    let mut out: Vec<Element<Msg>> = vec![form::heading(d.title(), describe(d))];
+    let mut out: Vec<Element<Msg>> = vec![form::heading(label(d, ds), describe(d))];
 
     // What it's used as.
     let mut uses: Vec<(String, Use)> = vec![("Main display".into(), Use::Main)];
@@ -105,7 +111,7 @@ fn display_sections(p: &Displays, vcx: &ViewCx, d: &Display) -> Vec<Element<Msg>
         uses.push(("Extended display".into(), Use::Extended));
     }
     for src in ds.iter().filter(|o| o.name != name && model::arranged(&o.settings)) {
-        uses.push((format!("Mirror for {}", src.title()), Use::Mirror(src.name.clone())));
+        uses.push((format!("Mirror for {}", label(src, ds)), Use::Mirror(src.name.clone())));
     }
     let others_on = ds.iter().any(|o| o.name != name && o.settings.enabled);
     if others_on || !s.enabled {
