@@ -70,6 +70,11 @@ pub trait Platform {
     fn request_size(&mut self, id: WinId, size: Size);
     fn minimize(&mut self, id: WinId);
     fn set_maximized(&mut self, id: WinId, on: bool);
+    /// Ask for the window full screen, or not (the compositor decides,
+    /// and says so with the window's state).
+    fn set_fullscreen(&mut self, id: WinId, on: bool) {
+        let _ = (id, on);
+    }
     fn activate(&mut self, id: WinId);
     fn begin_move(&mut self, id: WinId);
     fn clipboard_text(&mut self) -> Option<String>;

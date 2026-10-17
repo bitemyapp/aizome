@@ -35,6 +35,9 @@ pub enum Event {
     /// Scrolling over the widget, in points (wheel lines already turned
     /// into points), positive toward the content's end.
     Scroll { pos: Point, delta: Vec2, phase: ScrollPhase, momentum: ScrollPhase, mods: Modifiers },
+    /// A two-finger pinch over the widget: `scale` is the change since
+    /// the last one, as a factor (1.1 is ten per cent larger).
+    Pinch { pos: Point, scale: f64, phase: ScrollPhase, mods: Modifiers },
     Key(KeyEvent),
     Ime(Ime),
     /// The widget got (true) or lost the keyboard focus.

@@ -84,7 +84,7 @@ What `launched` and `update` act with:
 | | |
 |---|---|
 | `open_window(WindowSpec) -> WindowKey` | `WindowSpec::new(title).size(w, h).min_size(..).max_size(..).resizable(b)`, `.dialog(parent)`, `.utility()`, `WindowSpec::layer(LayerOptions, w, h)`, `WindowSpec::lock(output)`. Sizes are the content's: where the kit draws the menu bar in the window (no Aizome shell), the bar comes on top. |
-| `close_window(key)`, `set_title(key, t)`, `request_size`, `minimise`, `activate(key)`, `windows()`, `key_window()` | `activate` brings a window forward (a one-instance app hearing its second launch); `key_window` is the window with the keyboard (or the last that had it), the one a document app's menu commands are for. |
+| `close_window(key)`, `set_title(key, t)`, `request_size`, `minimise`, `set_fullscreen(key, on)`, `activate(key)`, `windows()`, `key_window()` | `activate` brings a window forward (a one-instance app hearing its second launch); `key_window` is the window with the keyboard (or the last that had it), the one a document app's menu commands are for. |
 | `spawn(\|\| msg)` | Work on the kit's thread pool; its result comes back as a message. |
 | `stream() -> MsgSender<Msg>` | A `Clone + Send` sender for threads that keep sending (D-Bus, IPC event streams, file watchers): `sender.send(msg)` wakes the loop. |
 | `after(d, msg)`, `every(d, msg) -> TimerHandle`, `cancel(h)`, `send(msg)` | Timers; a message to the next update. |
@@ -100,7 +100,9 @@ What `launched` and `update` act with:
 | `outputs()`, `set_layer_size/margins/anchors/exclusive_zone/keyboard`, `set_input_region`, `set_opaque_region`, `lock_session()`, `unlock_session()`, `request_activation_token(app_id)` | The desktop's surfaces, for the shell. |
 
 `Program` also has `menus()` (see Menus), `close_requested(window) -> bool`,
-`open(paths)` (files from the command line), and, for the shell,
+`open(paths)` (files from the command line), `window_state(window, state)`
+(the window went full screen or back, by `set_fullscreen` or the desktop's
+⌃❖F; maximised; told once per change, then viewed again), and, for the shell,
 `outputs_changed`, `session_locked`, `session_lock_finished` and
 `activation_token`.
 
@@ -265,7 +267,7 @@ a `bevel_lo` bottom): compact pop-ups, `button(..).toolbar()`,
 | `context_menu(el, Menu)` | The menu on a right click (or ⌃-click). |
 | `tooltip(el, "text")` (or `.tooltip(..)`) | After the pointer rests 650 ms. |
 | `mouse_area(el)` | `.on_press`, `.on_release`, `.on_double_click`, `.on_right_click(\|at\| ..)`, `.on_hover(\|in\| ..)`, `.on_move`, `.on_drag(\|DragEvent\| ..)`, `.on_drop(\|Dropped { urls, text, .. }\| ..)` (files and text from other programs), `.cursor(c)`. |
-| `canvas(state, \|canvas, bounds, &state, theme\| …)` | Drawing of one's own (charts, calendars, disk maps) with Sidestep's `Canvas`; it's drawn again when `state`'s hash changes. `.on_event(\|event, size, &state\| Option<Msg>)`, `.focusable()`, `.parts(\|&state, size\| vec![(rect, hash)])`: parts that change by themselves (a hovered bar, a cursor), left out of `state`'s `Hash`, so that only the rectangles of parts that came, went or changed are drawn again. |
+| `canvas(state, \|canvas, bounds, &state, theme\| …)` | Drawing of one's own (charts, calendars, disk maps) with Sidestep's `Canvas`; it's drawn again when `state`'s hash changes. `.on_event(\|event, size, &state\| Option<Msg>)` (pointer, scroll, `Event::Pinch { scale, .. }` from a touchpad, keys), `.focusable()`, `.parts(\|&state, size\| vec![(rect, hash)])`: parts that change by themselves (a hovered bar, a cursor), left out of `state`'s `Hash`, so that only the rectangles of parts that came, went or changed are drawn again. |
 
 ### Sheets, alerts and panels
 
@@ -448,8 +450,9 @@ fn adds() {
 
 `Harness::with(program, appearance, menu_bar)` picks the theme and the
 in-window menu bar. Input: `click`, `click_text`, `press`/`release`,
-`drag`, `move_to`, `scroll`, `key`, `named`, `command`, `type_text`, `ime`,
-`focus_window`, `send(msg)`, `resize`. Looking: `find(text)`,
+`drag`, `move_to`, `scroll`, `pinch`, `key`, `named`, `command`, `type_text`, `ime`,
+`focus_window`, `send(msg)`, `resize`, `window_state` (the compositor's
+answer; `fullscreen_asked` says what was asked). Looking: `find(text)`,
 `find_id(name)`, `texts()`, `semantics()`, `selection()`,
 `focused_name()`, `popups()`, `take_damage()`, `title()`, `stats()`.
 Pictures: `render(window, scale)`, `render_rect`, `render_popup`,

@@ -56,6 +56,8 @@ pub(crate) struct Runtime<P: Program> {
     /// Watches the settings file while the app runs.
     pub watcher: Option<aizome_config::Watcher>,
     menus_published: u64,
+    /// What each window's state was last, to tell the program of changes.
+    pub window_states: HashMap<WinId, crate::program::WindowState>,
 }
 
 impl<P: Program> Runtime<P> {
@@ -70,6 +72,7 @@ impl<P: Program> Runtime<P> {
             settings_changed: Arc::new(AtomicBool::new(false)),
             watcher: None,
             menus_published: 0,
+            window_states: HashMap::new(),
         }
     }
 
@@ -209,6 +212,20 @@ impl<P: Program> Runtime<P> {
         for m in incoming {
             crate::shell::handle(self, m, platform);
         }
+        self.flush(platform);
+    }
+
+    /// A window's state changed (full screen, maximised): tell the
+    /// program, once per change.
+    pub fn window_state(&mut self, win: WinId, state: crate::program::WindowState, platform: &mut dyn Platform) {
+        if self.window_states.insert(win, state) == Some(state) {
+            return;
+        }
+        let Some(key) = self.core.wins.get(&win).and_then(|w| w.key()) else { return };
+        let mut cx = Cx { core: &mut self.core, platform, pool: &mut self.pool, _m: PhantomData };
+        self.program.window_state(key, state, &mut cx);
+        self.core.mark_all_dirty();
+        self.refresh_menus(platform);
         self.flush(platform);
     }
 
@@ -376,6 +393,12 @@ impl Platform for SidestepPlatform<'_> {
         }
     }
 
+    fn set_fullscreen(&mut self, id: WinId, on: bool) {
+        if let Some(mut w) = self.maps.to_side.get(&id).and_then(|s| self.sx.window(*s)) {
+            w.set_fullscreen(on);
+        }
+    }
+
     fn activate(&mut self, id: WinId) {
         if let Some(mut w) = self.maps.to_side.get(&id).and_then(|s| self.sx.window(*s)) {
             w.activate();
@@ -525,6 +548,15 @@ impl<P: Program> sidestep_ui::Handler for Glue<P> {
                     ScrollDelta::Lines(v) => Vec2::new(v.x * LINE, v.y * LINE),
                 };
                 core.scroll(win, position, d, phase, momentum, &mut p);
+            }
+            WindowEvent::Pinch { position, phase, magnification, modifiers, .. } => {
+                core.mods = modifiers;
+                core.pinch(win, position, 1.0 + magnification, phase, &mut p);
+            }
+            WindowEvent::StateChanged(s) => {
+                let state = crate::program::WindowState { fullscreen: s.fullscreen, maximized: s.maximized };
+                rt.window_state(win, state, &mut p);
+                return;
             }
             WindowEvent::Ime(ime) => core.ime(win, ime, &mut p),
             WindowEvent::CloseRequested => {

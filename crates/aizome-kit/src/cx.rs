@@ -127,6 +127,14 @@ impl<Msg: Clone + Send + 'static> Cx<'_, Msg> {
         }
     }
 
+    /// Ask for `window` full screen, or not: the program hears what the
+    /// compositor did in [`Program::window_state`](crate::Program::window_state).
+    pub fn set_fullscreen(&mut self, window: WindowKey, on: bool) {
+        if let Some(win) = self.core.window_of(window) {
+            self.platform.set_fullscreen(win, on);
+        }
+    }
+
     pub fn minimise(&mut self, window: WindowKey) {
         if let Some(win) = self.core.window_of(window) {
             self.platform.minimize(win);

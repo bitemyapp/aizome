@@ -63,7 +63,7 @@ pub use element::{Element, Layoutable, children};
 pub use icons::{Icon, icon};
 pub use layout::{Align, Constraints, Length, Padding, Point, Rect, Size, Vec2};
 pub use menu::{Menu, MenuBar, MenuItem, MenuRole, Shortcut, ShortcutKey};
-pub use program::{AppInfo, Program, WindowKey, WindowKind, WindowSpec};
+pub use program::{AppInfo, Program, WindowKey, WindowKind, WindowSpec, WindowState};
 pub use sidestep_ui;
 pub use sidestep_ui::{Color, Image};
 pub use text::{Span, rich_text, text};

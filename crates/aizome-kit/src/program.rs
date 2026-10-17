@@ -105,11 +105,24 @@ pub trait Program: Sized + 'static {
         let _ = (request, token, cx);
     }
 
+    /// A window's state changed: full screen (the program's asking, or the
+    /// desktop's ⌃❖F), maximised. The kit views the window again after.
+    fn window_state(&mut self, window: WindowKey, state: WindowState, cx: &mut Cx<Self::Msg>) {
+        let _ = (window, state, cx);
+    }
+
     /// Whether the app stops when its last window closes: apps do; a
     /// shell, whose surfaces come and go with the outputs, doesn't.
     fn quit_when_last_window_closes(&self) -> bool {
         true
     }
+}
+
+/// What the desktop has done with a window.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub struct WindowState {
+    pub fullscreen: bool,
+    pub maximized: bool,
 }
 
 /// Who an app is.

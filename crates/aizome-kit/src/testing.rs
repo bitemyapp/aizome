@@ -66,6 +66,8 @@ pub struct TestPlatform {
     pub locked: bool,
     pub lock_asked: bool,
     pub activation_requests: Vec<(u64, Option<String>)>,
+    /// Full screen as last asked, by window.
+    pub fullscreen: HashMap<WinId, bool>,
 }
 
 impl TestPlatform {
@@ -89,6 +91,7 @@ impl TestPlatform {
             locked: false,
             lock_asked: false,
             activation_requests: Vec::new(),
+            fullscreen: HashMap::new(),
         }
     }
 
@@ -140,6 +143,10 @@ impl Platform for TestPlatform {
     }
 
     fn set_maximized(&mut self, _id: WinId, _on: bool) {}
+
+    fn set_fullscreen(&mut self, id: WinId, on: bool) {
+        self.fullscreen.insert(id, on);
+    }
 
     fn activate(&mut self, _id: WinId) {}
 
@@ -440,6 +447,27 @@ impl<P: Program> Harness<P> {
         self.rt.core.pointer_move(win, at, &mut self.platform);
         self.rt.core.scroll(win, at, delta, ScrollPhase::None, ScrollPhase::None, &mut self.platform);
         self.rt.flush(&mut self.platform);
+    }
+
+    /// A pinch at `at` growing by `scale` (1.25: a quarter larger).
+    pub fn pinch(&mut self, key: WindowKey, at: Point, scale: f64) {
+        let win = self.win(key);
+        self.rt.core.pointer_move(win, at, &mut self.platform);
+        self.rt.core.pinch(win, at, scale, ScrollPhase::Changed, &mut self.platform);
+        self.rt.flush(&mut self.platform);
+    }
+
+    /// The compositor put window `key` in `state` (as it answers
+    /// [`Cx::set_fullscreen`](crate::Cx::set_fullscreen), or ⌃❖F).
+    pub fn window_state(&mut self, key: WindowKey, state: crate::program::WindowState) {
+        let win = self.win(key);
+        self.rt.window_state(win, state, &mut self.platform);
+    }
+
+    /// Whether window `key` was last asked to be full screen.
+    pub fn fullscreen_asked(&self, key: WindowKey) -> Option<bool> {
+        let win = self.rt.core.window_of(key)?;
+        self.platform.fullscreen.get(&win).copied()
     }
 
     /// A key press (and release) in the window with the keyboard.

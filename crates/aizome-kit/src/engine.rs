@@ -1424,6 +1424,21 @@ impl Core {
         self.stats.event(started.elapsed());
     }
 
+    /// A pinch at `p`, to the widget under it (and its parents).
+    pub fn pinch(&mut self, win: WinId, p: Point, scale: f64, phase: ScrollPhase, platform: &mut dyn Platform) {
+        let started = Instant::now();
+        let Some(w) = self.wins.get(&win) else { return };
+        if w.tree.root.is_none() {
+            return;
+        }
+        let path = w.tree.path_at(p, w.modal());
+        if let Some(&last) = path.last() {
+            let ev = Event::Pinch { pos: p, scale, phase, mods: self.mods };
+            self.bubble(win, last, &ev, platform);
+        }
+        self.stats.event(started.elapsed());
+    }
+
     pub fn window_focus(&mut self, win: WinId, on: bool, platform: &mut dyn Platform) {
         let Some(w) = self.wins.get_mut(&win) else { return };
         w.has_keyboard = on;
