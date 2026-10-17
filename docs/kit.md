@@ -1,0 +1,399 @@
+# aizome-kit
+
+The widget kit every Aizome app and the shell are written with. It sits on
+Sidestep's native toolkit (`sidestep-ui`), which gives windows, input, a
+canvas and text layout, and adds everything an app needs on top: layout,
+controls, lists, text editing, menus (published to the global menu bar),
+sheets and panels, all in Aizome's look.
+
+This is the guide for app authors. The rustdoc of each item has the
+details.
+
+## The model
+
+An app is a [`Program`]: state, an `update` that changes it with messages,
+and a `view` of each window, Elm's way.
+
+```rust
+use aizome_kit::prelude::*;
+use aizome_kit::column; // std has a `column!` macro too: name the kit's
+
+#[derive(Default)]
+struct Soroban { value: f64 }
+
+#[derive(Clone, Debug)]
+enum Msg { Digit(u8), Clear }
+
+impl Program for Soroban {
+    type Msg = Msg;
+
+    fn info(&self) -> AppInfo {
+        AppInfo::new("org.aizome.Soroban", "Soroban", "Calculator").icon(Icon::Calculator)
+    }
+
+    fn launched(&mut self, cx: &mut Cx<Msg>) {
+        cx.open_window(WindowSpec::new("Soroban").size(320.0, 480.0).resizable(false));
+    }
+
+    fn update(&mut self, msg: Msg, _cx: &mut Cx<Msg>) {
+        match msg {
+            Msg::Digit(d) => self.value = self.value * 10.0 + f64::from(d),
+            Msg::Clear => self.value = 0.0,
+        }
+    }
+
+    fn view(&self, _window: WindowKey) -> Element<Msg> {
+        column![
+            text(format!("{}", self.value)).size(28.0).mono().tabular(),
+            row![button("7").on_press(Msg::Digit(7)), button("C").on_press(Msg::Clear)].spacing(8.0),
+        ]
+        .spacing(12.0)
+        .padding(16.0)
+        .into()
+    }
+}
+
+fn main() {
+    aizome_kit::run(Soroban::default())
+}
+```
+
+- **Messages** are `Clone + Send`. Widgets send them (`on_press`,
+  `on_change`); timers, background work and other threads send them through
+  `Cx`. `update` gets one at a time; after a batch the kit views every
+  window again.
+- **Views are cheap to make and are made often.** An element is a
+  description; the kit mounts it, lays it out, and diffs the result against
+  the window's last tree by **key path**: each node's identity is its
+  ancestors' keys and its own (`.key(k)`, else its place and kind among its
+  siblings). A node whose rectangle and drawing hash are the same as last
+  time isn't redrawn; the window's damage is the union of what changed.
+- **Widget state** the program needn't keep — a caret, a selection, a scroll
+  offset, what's hovered or pressed, a menu that's open — lives in the
+  window's state map under the widget's key path, and outlives views. Give
+  elements in lists and conditional places a `.key()` so their state
+  follows them.
+- **Elements own their data** (`text(format!(…))`, `Rc`/`Arc` for big
+  shared data): a view borrows nothing from the program, so the kit can keep
+  the last tree to route input to.
+
+### `Cx`
+
+What `launched` and `update` act with:
+
+| | |
+|---|---|
+| `open_window(WindowSpec) -> WindowKey` | `WindowSpec::new(title).size(w, h).min_size(..).max_size(..).resizable(b)`, `.dialog(parent)`, `.utility()`, `WindowSpec::layer(LayerOptions, w, h)`, `WindowSpec::lock(output)` |
+| `close_window(key)`, `set_title(key, t)`, `request_size`, `minimise`, `windows()` | |
+| `spawn(\|\| msg)` | Work on the kit's thread pool; its result comes back as a message. |
+| `stream() -> MsgSender<Msg>` | A `Clone + Send` sender for threads that keep sending (D-Bus, IPC event streams, file watchers): `sender.send(msg)` wakes the loop. |
+| `after(d, msg)`, `every(d, msg) -> TimerHandle`, `cancel(h)`, `send(msg)` | Timers; a message to the next update. |
+| `clipboard_text()`, `set_clipboard_text(s)` | |
+| `open_url(url)`, `notify(summary, body)` | xdg-open; a desktop notification. |
+| `focus(name)` | Focus the element given `.id(name)` (now, or once it shows). |
+| `theme() -> &Theme`, `quit()` | |
+| `show_context_menu(window, at, Menu)` | A menu at a point. |
+| `show_menu(window, anchor_rect, Menu, MenuStyle)` | A menu anchored to any rectangle of any window (the shell's bar menus). |
+| `show_sheet(parent) -> WindowKey` | A sheet over a window: its content is `view(key)`; close it with `close_window`. |
+| `alert(window, Alert)` | Title, message, buttons; Return and Escape press the default and cancel ones. |
+| `open_panel(window, FileDialog, \|paths\| msg)`, `save_panel(…)` | File panels. |
+| `outputs()`, `set_layer_size/margins/anchors/exclusive_zone/keyboard`, `set_input_region`, `set_opaque_region`, `lock_session()`, `unlock_session()`, `request_activation_token(app_id)` | The desktop's surfaces, for the shell. |
+
+`Program` also has `menus()` (see Menus), `close_requested(window) -> bool`,
+`open(paths)` (files from the command line), and, for the shell,
+`outputs_changed`, `session_locked`, `session_lock_finished` and
+`activation_token`.
+
+## Elements
+
+Every builder takes the common settings in any order with its own
+(`Layoutable`, in the prelude): `.key(k)`, `.id(name)`,
+`.width(len)`, `.height(len)`, `.min_width/.max_width/.min_height/.max_height`,
+`.tooltip(text)`, `.label(text)` (for assistive technology).
+
+Lengths: `Shrink` (the content's size, the default), `Fill` (all the room
+there is; in a row or column, an equal share of what the others leave),
+`Length::FillPortion(n)`, and points (`.width(200.0)`).
+
+### Layout
+
+| | |
+|---|---|
+| `column![a, b, c]`, `row![…]` | `.spacing(p)`, `.padding(p)` (a number, `[v, h]` or `[t, r, b, l]`), `.align(Align::Center)` across. Rows centre across by default. `aizome_kit::widgets::layout::column(vec)` for a built `Vec`. |
+| `stack![base, over]` | Over one another, the last on top; `.align_x/.align_y`. |
+| `container(el)` | `.padding`, `.fill(Tone::Chrome)`, `.border(Edge::Line)`, `.edges(Edge::BevelLo, Sides::BOTTOM)`, `.bevel()` (the top highlight), `.floating()` (raised, `bevel_lo` edge and the hard shadow), `.center()`, `.align_x/.align_y`, `.clip()`. |
+| `scroll(el)` | `.horizontal()`, `.both()`. Momentum from touchpads, thin overlay bars that show while it moves and drag, Page Up/Down, Home/End, the arrows (when it has the focus, or nothing does). A control focused out of sight is scrolled into view. |
+| `split(a, b)` | A divider to drag; `.vertical()`, `.ratio(r)`, `.first_size(p)`, `.min_sizes(a, b)`, `.on_resize(f)`. |
+| `sidebar_layout(sidebar, content)` | Settings' and Files' layout: a 200pt `sunk` sidebar (draggable) beside the content. Fill it with `caption("System")` and `sidebar_item(Icon::Wifi, "Network", selected).on_press(msg).detail("3")`. |
+| `spacer()`, `space(p)`, `divider()` | A stretch along a row or column; a fixed gap; a 1pt rule (`.vertical()`, `.engraved()`). |
+
+### Text and pictures
+
+| | |
+|---|---|
+| `text("…")` | `.role(Role::Text2)` (`Text`, `Text2`, `Text3`, `Faint`, `Accent`, `Danger`, `Success`, `Warning`, `Violet`, `Cyan`), `.size(p)`, `.weight(w)`, `.semibold()`, `.bold()`, `.mono()`, `.italic()`, `.tabular()`, `.condensed()` (Archivo at 87.5%), `.wrap()`, `.max_lines(n)` (an ellipsis ends it), `.center()`, `.caps()`, `.letter_spacing(p)`, `.underline()`, `.selectable()`. One line ends in an ellipsis where it doesn't fit. |
+| `rich_text([Span::new("Ln ").role(Role::Text3), Span::new("48").mono()])` | Runs with their own look: `role`, `color`, `weight`, `italic`, `mono`, `underline`, `strikethrough`, `background`, `size`. |
+| `icon(Icon::Wifi)` | `.size(16.0)`, `.role(Role::Text2)`. A curated set of ~290 Lucide icons (ISC), stroked at 1.5pt at 16pt. `Icon::from_name("wifi-off")`. |
+| `image(Image)` | `.fit(Fit::Contain / Cover / Fill / None)`, `.revision(n)` when the picture changes at the same size. |
+| `badge("3")`, `keycap("❖")` | A count on `red` (`.role(..)` for another); a key as a keycap. |
+
+❖ ⇧ ⌥ ⌃ ⌘ ⎋ ⌫ ⇥ ↩ in any text are set in Noto Sans Symbols 2.
+
+### Controls
+
+All at least 24pt tall to the pointer, square, edged in 1pt; Tab reaches
+them, Space and Return work them, arrows move within them.
+
+| | |
+|---|---|
+| `button("Save")` | `.on_press(msg)`, `.primary()` (the selection fill), `.destructive()`, `.default()` (primary, answers Return in its sheet), `.cancel()` (answers Escape), `.icon(Icon)`, `.enabled(b)`, `.plain()`, `.compact()`, `.toolbar()` (both: a toolbar's B, I, </>), `.selected(b)` (pressed in), `.mono()`, `.weight(w)`, `.italic()`. `icon_button(Icon::Settings)`. |
+| `toggle(on).on_toggle(Msg::Wifi)` | A switch. |
+| `checkbox("Show hidden files", on).on_toggle(f)`, `radio("Night", value, Some(selected)).on_select(f)` | |
+| `slider(v, 0.0..=1.0)` | `.step(s)`, `.ticks(n)`, `.on_change(f)`, `.on_release(msg)`. Arrows, Page Up/Down, Home/End. |
+| `stepper(v).range(a..=b).step(s).suffix("pt").on_change(f)` | − value +. |
+| `segmented(["Night", "Day", "Auto"], i).on_select(f)`, `segmented_icons([...], i)` | ← → change it. |
+| `dropdown(options, selected).on_select(f)` | A pop-up button opening a menu of choices (the board's "Markdown ⌄"); `.placeholder(t)`, `.compact()` for toolbars. |
+| `progress(f)`, `progress_indeterminate()`, `meter(values)` | The indeterminate bar ticks every 50 ms redrawing only itself, and stands still under reduced motion; meters are the menu bar's CPU bars (`.role(..)`, `.bar_width(..)`). |
+
+### Text entry
+
+`text_field(&self.name)` — `.placeholder(t)`, `.on_change(Msg::Name)`,
+`.on_submit(msg)`, `.password()`, `.search()` (or `search_field(&q)`: a
+magnifier, a clear button, Escape clears), `.error(Some("…"))` (a red edge
+and the message under it), `.enabled(b)`, `.mono()`.
+
+The program owns the text; the field keeps the caret, selection, input
+method composition, scroll and undo history. Keys are macOS's with ❖ as
+command: ←/→ by character, ⌥←/→ by word, ❖←/→ to the ends, ⇧ extends; ⌫
+and ⌦, ⌥ by word, ❖⌫ to the start; ❖A ❖C ❖X ❖V ❖Z ⇧❖Z; double and triple
+clicks select a word and everything. Typing undoes in bursts.
+
+`text_editor` (multi-line, for Sumi and Fusen) is described below.
+
+### Collections
+
+`virtual_list(count, row_height, |i| row(i))` builds only the rows that
+show, from a closure that owns its data (an `Rc<Vec<…>>` clone):
+
+```rust
+let files = self.files.clone(); // Rc<Vec<File>>
+virtual_list(files.len(), 24.0, move |i| row![icon(Icon::File), text(files[i].name.clone())].spacing(8.0))
+    .selected(self.selected.iter().copied())
+    .on_select(Msg::Select)        // Vec<usize>
+    .on_activate(Msg::Open)        // double click, Return
+    .multiple()                     // ⇧ and ❖ clicks
+    .type_select(move |i| names[i].clone())
+    .context_menu(|i| Menu::new("").item(MenuItem::new("Open", Msg::Open(i))))
+```
+
+`list(vec![...])` holds fixed rows. Selection belongs to the program; the
+list draws it (`selection` when it has the focus, `line2` when it hasn't),
+and text and icons in selected rows take `on_selection`. Arrows, Home/End,
+Page Up/Down and type-select move it; the list scrolls to show it.
+
+### Forms
+
+```rust
+form_section("Network", vec![
+    form_row("Wi-Fi", toggle(self.wifi).on_toggle(Msg::Wifi)).icon(Icon::Wifi).into(),
+    form_row("Size", dropdown(["Small", "Medium", "Large"], i).on_select(Msg::Size))
+        .description("Scales type and controls, not pixels.").into(),
+])
+```
+
+A mono caption, then a `chrome` box with a `line` edge and inset rules
+between rows; labels left in `text2` (descriptions under them in `text3`),
+controls right.
+
+### Chrome
+
+`toolbar(vec![...])` is the bar under a window's top edge (`chrome`, 30pt,
+a `bevel_lo` bottom): compact pop-ups, `button(..).toolbar()`,
+`toolbar_separator()`, `spacer()`, `status_text("Ln 48, Col 12")`.
+`status_bar(vec![...])` runs along the bottom.
+
+### Overlays and interaction
+
+| | |
+|---|---|
+| `popover(anchor, content, open).on_dismiss(msg)` | Content in a floating popup under the anchor (raised, the hard shadow) while `open`; a click elsewhere or Escape sends `on_dismiss`. It takes the keyboard (Tab moves within it). |
+| `context_menu(el, Menu)` | The menu on a right click (or ⌃-click). |
+| `tooltip(el, "text")` (or `.tooltip(..)`) | After the pointer rests 650 ms. |
+| `mouse_area(el)` | `.on_press`, `.on_release`, `.on_double_click`, `.on_right_click(\|at\| ..)`, `.on_hover(\|in\| ..)`, `.on_move`, `.on_drag(\|DragEvent\| ..)`, `.on_drop(\|Dropped { urls, text, .. }\| ..)` (files and text from other programs), `.cursor(c)`. |
+| `canvas(state, \|canvas, bounds, &state, theme\| …)` | Drawing of one's own (charts, calendars, disk maps) with Sidestep's `Canvas`; it's drawn again when `state`'s hash changes. `.on_event(\|event, size, &state\| Option<Msg>)`, `.focusable()`. |
+
+### Writing a widget
+
+Implement `aizome_kit::widget::Widget` and wrap it with
+`Element::new(widget, children)`. `layout` sizes it within constraints and
+places children (`cx.layout_child`, `cx.place_child`); `paint` draws in its
+own coordinates; `hash` feeds what its drawing depends on (the diff); `event`
+answers input (`cx.emit(..)`, `cx.invalidate()`, `cx.relayout()`,
+`cx.request_focus()`, `cx.request_tick(..)`, `cx.open_menu(..)`); its
+persistent state is `cx.state::<T>()`. `aizome_kit::draw` has the look's
+pieces: `raised`, `sunken`, `floating`, `border`, `separator`,
+`focus_ring`.
+
+## Keyboard
+
+- Tab and ⇧Tab walk the focus chain (what can be used: disabled controls are
+  skipped). A click focuses fields, lists and sliders; buttons take the
+  focus only from the keyboard. The 2pt `focus` ring is drawn outside the
+  focused control (always for text fields, when the focus came from the
+  keyboard for others).
+- Space or Return work the focused control. In a sheet, Return presses the
+  default button and Escape the cancel one; Escape closes popovers and
+  menus.
+- Menus' shortcuts come before the focused widget: ❖ (Super) is the command
+  key. With nothing focused, keys go to what's under the pointer (a scroll
+  view pages).
+
+## Menus
+
+`Program::menus()` returns a `MenuBar`; the default is
+`MenuBar::standard(&info)`:
+
+- the app menu: About ‹Name›, Settings… ❖,, Services ▸, Hide ‹Name› ❖H,
+  Hide Others ⌥❖H, Quit ‹Name› ❖Q;
+- Edit: Undo ❖Z, Redo ⇧❖Z, Cut ❖X, Copy ❖C, Paste ❖V, Paste as Plain Text
+  ⌥⇧❖V, Select All ❖A, Find ▸ (Find… ❖F, Find Next ❖G, Find Previous ⇧❖G,
+  Use Selection for Find ❖E, Replace… ⌥❖F);
+- Window: Minimise ❖M, Fill, Stack with…, Bring All to Front, and the
+  windows;
+- Help: Search, ‹Name› Help.
+
+Extend it:
+
+```rust
+fn menus(&self) -> MenuBar<Msg> {
+    MenuBar::standard(&self.info())
+        .with_file_menu(Menu::new("File")
+            .item(MenuItem::new("New", Msg::New).shortcut(Shortcut::cmd('N')))
+            .item(MenuItem::new("Save", Msg::Save).shortcut(Shortcut::cmd('S')).enabled(self.dirty))
+            .separator()
+            .item(MenuItem::new("Export…", Msg::Export).shortcut(Shortcut::cmd('E').shift())))
+        .with_menu(Menu::new("Format").item(MenuItem::new("Bold", Msg::Bold).checked(self.bold)))
+}
+```
+
+`.replace(title, menu)`, `.remove(title)`, `.extend(title, items)`,
+`.insert(i, menu)` change the standard ones. Items: `MenuItem::new(label,
+msg)`, `.shortcut(Shortcut::cmd('N').shift().alt().ctrl())`, `.enabled`,
+`.checked`, `.icon`, `.id(n)` (a stable id for the shell), `.role(MenuRole::..)`;
+`MenuItem::role_item(label, role)` for an item the kit carries out itself;
+`Menu::separator()`, `.submenu(menu)`, `.header(text)`.
+
+Roles: the Edit roles go to the focused text widget (an item with a message
+too gets it only when no widget takes the command); Quit asks each window's
+`close_requested`; About shows the About panel; Minimise asks the window's
+compositor; Hide, Hide Others, Fill, Stack with… and Bring All to Front go
+through `Cx::set_window_manager` (the compositor's IPC).
+
+Where `$AIZOME_SHELL_SOCKET` is set, the menus are published to the shell
+(`docs/shell-protocol.md`) whenever they change; elsewhere the kit draws a
+menu bar along each normal window's top.
+
+Menus behave the same everywhere (in-window, the shell's, pop-up buttons,
+context menus): ↑↓ move, → opens a submenu, ← closes it, Return or Space
+chooses, typing filters the rows and their submenus' (flattened, with their
+paths), Escape clears what's typed and then closes, and the pointer may
+cross other rows on its way into an open submenu. `MenuStyle::at_point()
+.titled("Edit").on_tear_off(msg)` gives NeXT's menus at the pointer their
+`menu_title` strip, close box and pin; `menu_view(menu).title(..).pin(..)
+.on_close(..)` draws a menu in a window, as a torn-off palette.
+
+## Theming
+
+The theme comes from `~/.config/aizome/settings.toml`'s `[appearance]`
+(through `aizome-config`): `theme` (night, day, high-contrast, auto by the
+clock), `focus` (amber, cyan, rose, lime), `effects` (full, lean,
+austere: shadows and motion), `size` (small, medium, large: it scales type
+and metrics, not pixels; targets never under 24pt), `reduced_motion`. The
+kit watches the file and re-themes every window live. Night is the
+default.
+
+Widgets draw only with the theme: `cx.theme()` gives the palette as
+Sidestep colours (`surface()`, `chrome()`, `raised()`, `sunk()`, `line()`,
+`line2()`, `bevel_hi()`, `bevel_lo()`, `slab()`, `selection()`, `focus()`,
+…), `role(Role)` for text, `metrics` (`body`, `small`, `control`, `row`,
+`menu_row`, `toolbar`, `icon`, `gap`, `pad`, …) and `font(FontSpec)`:
+Archivo for the interface, IBM Plex Mono for code, shortcuts and numbers
+(tabular), Noto Sans Symbols 2 for the modifier glyphs.
+
+Fonts: at start the kit installs, for the process, the families fontconfig
+doesn't have from `$AIZOME_FONT_DIR`, else `../share/aizome/fonts` beside
+the executable; without them the system's sans and mono stand in.
+
+## Performance
+
+The budget is 4 ms from an event to its frame drawn, at 2880 × 1800 (scale 2).
+
+- An event is handled by the widget under the pointer (or the focused one)
+  and its parents; hover, press and focus changes invalidate only the
+  widget's own rectangle and call no view.
+- A message runs `update`, then `view` for each window, then layout, then
+  the diff: only rectangles of nodes that moved, resized or draw
+  differently are invalidated, and painting skips every node outside the
+  damage (`canvas.needs`).
+- Scrolling, splits and lists re-lay-out without a view: the widget asks
+  (`cx.relayout()`), the kit lays out it and its ancestors again (siblings
+  keep their cached layout) and diffs.
+- Text layouts are cached by text, style and width (an LRU of 4096), so
+  views rebuilt every frame shape nothing new.
+- Virtual lists build the rows that show; a 10,000-row list costs ~15
+  rows.
+
+Rules for apps: keep `view` cheap (no I/O, no sorting of big data: sort in
+`update`), share big data with `Rc`/`Arc`, key elements that move, use
+`virtual_list` for anything long, and `spawn` slow work.
+
+The numbers measured on this laptop are at the end of this document.
+
+## Testing an app headlessly
+
+`aizome_kit::testing::Harness` runs a program on a stand-in platform: windows
+open at the size asked for, timers run on a clock the test moves, the
+clipboard is kept, and pictures come from Sidestep's offscreen renderer (the
+same rasterizer and text engine windows use).
+
+```rust
+use aizome_kit::testing::{Harness, assert_golden};
+
+#[test]
+fn adds() {
+    let mut h = Harness::new(Soroban::default());
+    let w = h.window();
+    h.click_text(w, "7");
+    h.type_text(w, "+2\n");
+    h.command(w, 'c');                         // ❖C
+    h.named(w, NamedKey::Tab, Modifiers::NONE);
+    assert!(h.texts(w).contains(&"9".to_owned()));
+    assert_eq!(h.platform.clipboard.as_deref(), Some("9"));
+    h.advance(Duration::from_secs(1));         // timers
+    assert_golden(&mut h, w, "tests/snapshots/soroban.png", 1.0);
+}
+```
+
+`Harness::with(program, appearance, menu_bar)` picks the theme and the
+in-window menu bar. Input: `click`, `click_text`, `press`/`release`,
+`drag`, `move_to`, `scroll`, `key`, `named`, `command`, `type_text`, `ime`,
+`focus_window`, `send(msg)`, `resize`. Looking: `find(text)`,
+`find_id(name)`, `texts()`, `semantics()`, `selection()`,
+`focused_name()`, `popups()`, `take_damage()`, `title()`, `stats()`.
+Pictures: `render(window, scale)`, `render_rect`, `save_png`, and
+`assert_golden` (`AIZOME_UPDATE_GOLDENS=1` rewrites them). For the shell:
+`set_outputs`, `confirm_lock`, `finish_lock`, `activation_token`.
+
+Set `AIZOME_FONT_DIR` to the fonts (`~/work/.aizome-fonts` here) so
+pictures use Aizome's type.
+
+To run an app's real windows without touching a live session, run it under
+the headless sway (`sidestep-aizome/scripts/headless-wayland`) with
+`WAYLAND_DISPLAY` and `DISPLAY` unset first.
+
+## Accessibility
+
+Every widget describes itself (`Widget::semantics`: role, label, value,
+checked, selected, range, actions) and the kit builds a semantic tree per
+window (`aizome_kit::a11y`; `Harness::semantics` in tests). Wiring it to
+AccessKit (and AT-SPI) is to come.
