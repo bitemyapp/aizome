@@ -7,6 +7,8 @@ fn main() {
         std::process::exit(kura::cli::run(&args));
     }
     #[cfg(feature = "gui")]
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn")).init();
+    #[cfg(feature = "gui")]
     kura::ui::run(args.into_iter().map(std::path::PathBuf::from).collect());
     #[cfg(not(feature = "gui"))]
     {

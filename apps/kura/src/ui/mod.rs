@@ -393,6 +393,9 @@ impl Program for Kura {
     }
 
     fn update(&mut self, msg: Msg, cx: &mut Cx<Msg>) {
+        if log::log_enabled!(log::Level::Debug) && !matches!(msg, Msg::Scanned(_) | Msg::Disks(_) | Msg::Poll) {
+            log::debug!("{msg:?}");
+        }
         match msg {
             Msg::ShowDisks => {
                 self.page = Page::Disks;

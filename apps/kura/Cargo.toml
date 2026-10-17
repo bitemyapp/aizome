@@ -19,7 +19,7 @@ path = "src/main.rs"
 default = ["gui"]
 # The window. Without it, the library and the command line (scan, report,
 # hints, trash) build with no toolkit at all.
-gui = ["dep:aizome-kit", "dep:aizome-theme"]
+gui = ["dep:aizome-kit", "dep:aizome-theme", "dep:env_logger"]
 
 [dependencies]
 aizome-kit = { workspace = true, optional = true }
@@ -27,6 +27,7 @@ aizome-theme = { workspace = true, optional = true }
 serde.workspace = true
 serde_json.workspace = true
 log.workspace = true
+env_logger = { workspace = true, optional = true }
 libc = "0.2"
 # Hashes for duplicate detection: xxh3-128, pure Rust.
 xxhash-rust = { version = "0.8", features = ["xxh3"] }
