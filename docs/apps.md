@@ -19,6 +19,8 @@ the Toolchest, the palette and the Deskbar show beside it and search by.
 | Tansu 箪笥 | Disks | `apps/tansu` | `aizome-tansu` | `org.aizome.Tansu` | chest of drawers (partitions as drawers) |
 | Kura 蔵 | Disk Usage | `apps/kura` | `aizome-kura` | `org.aizome.Kura` | storehouse |
 | Myaku 脈 | Activity | `apps/myaku` | `aizome-myaku` | `org.aizome.Myaku` | pulse |
+| Shashin 写真 | Images | `apps/shashin` | `aizome-shashin` | `org.aizome.Shashin` | photograph |
+| Annai 案内 | Welcome | `apps/annai` | `aizome-annai` | `org.aizome.Annai` | guidance |
 
 Also part of the session, not separate apps: the Toolchest, the command
 palette, notifications, the lock screen and the polkit dialog (all in
@@ -309,3 +311,57 @@ Port Tatami's Activity (`desktop/tatami/activity` on Sekka's main): apps
 and processes with CPU, memory, energy, disk and GPU use; sorting, search,
 quit and force quit; graphs of CPU, memory, disk and network over time; the
 inspector for a process. Through `aizome-sys::sysinfo`.
+
+### Shashin (Images)
+
+The image viewer the desktop opens pictures with: PNG, JPEG, GIF
+(animated), WebP, BMP, TIFF and ICO through the `image` codecs Sidestep
+reads with, and SVG through resvg, rendered at the zoom.
+
+- **The window**: the picture on `sunk`, fitted (never enlarged past
+  100%); zoom with ❖+/❖−, ❖-scroll and pinches about the pointer, ❖0 for
+  100% (a picture pixel to a device pixel, so crisp; nearest pixel above
+  200%), ❖9 to fit, double-click between the two; pan by dragging or
+  scrolling. The toolbar has ‹ ›, the zoom, the turns, the filmstrip, the
+  slideshow and Get Info, with `4032 × 3024 · 37% · 12 of 48` at its right.
+- **The folder**: ←/→ (Space, Home, End) step through the folder's
+  pictures in Hako's natural order; several files opened together are
+  stepped through on their own. F shows a filmstrip of thumbnails kept in
+  the freedesktop cache (`$XDG_CACHE_HOME/thumbnails/normal`, shared with
+  Hako).
+- **Edit**: Rotate Left/Right (❖L/❖R) turn the view until Save (❖S): a
+  JPEG's EXIF orientation is rewritten (or added) and not a pixel is
+  re-encoded; other kinds are decoded, turned and written again in their
+  format (not SVG, nor animated WebP and PNG). Closing with turns unsaved
+  asks. Copy (❖C) offers the picture as `image/png`; Set as Wallpaper ▸
+  Night, Day or Both writes `appearance.wallpaper_night`/`_day` and asks
+  the compositor to `reload-config`; Show in Hako (⌥❖R) runs
+  `aizome-hako --select`; Move to Trash (❖⌫) follows the freedesktop
+  Trash, and Undo (❖Z) puts the picture back. Get Info (❖I): kind,
+  dimensions, size, dates, where, and the camera, lens and settings from
+  the EXIF (`kamadak-exif`).
+- **Viewing**: full screen (⌃❖F, or the desktop's), and a slideshow
+  (⇧❖F, five seconds a picture, Esc ends it).
+- **Speed**: pictures decode on the kit's workers; a camera's EXIF
+  thumbnail shows first; the next and previous pictures are read ahead;
+  every frame at rest is a drawing made for exactly that zoom, drawn one
+  to one (see `docs/performance.md` for what that costs).
+- One instance: a second launch hands its files over
+  (`aizome-app.shashin.sock`).
+
+### Annai (Welcome)
+
+A welcome window shown once at first login and from Help ▸ Aizome Tour:
+short pages that make Aizome's ideas plain, each with a small live
+illustration drawn with the kit's canvas in Aizome's look (no
+screenshots): Welcome (the mark, the name and 藍染), Tabs, the menu bar and
+the menu at the pointer, the palette, the Toolchest, Desks and the
+Deskbar, Super as the command key, and Make it yours (buttons that open
+Shitsurae's Appearance, Displays, Network and Keyboard). ←/→ and Return
+step; a "Show at login" checkbox.
+
+`aizome-annai --first-run` shows it only if it has never been shown (or
+"Show at login" is on) and exits at once otherwise; what it remembers is
+`$XDG_STATE_HOME/aizome/annai/state.json`. The session starts it through
+`apps/annai/data/org.aizome.Annai.Welcome.desktop`, an XDG autostart entry
+(`OnlyShowIn=Aizome`) installed into `/etc/xdg/autostart`.

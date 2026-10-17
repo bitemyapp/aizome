@@ -177,6 +177,33 @@ def yukimi():
     return g
 
 
+@icon("org.aizome.Shashin", "Shashin (Images)")
+def shashin():
+    # A print in its white border, a deeper margin below: a stepped
+    # mountain under a pale sky, and the amber sun.
+    g = R(10, 10, 40, 40, PAPER)
+    g += R(13, 13, 34, 28, PALE)
+    g += R(34, 16, 8, 8, AMBER)
+    for x, y, w in ((13, 35, 34), (17, 31, 22), (21, 27, 12), (25, 23, 4)):
+        g += R(x, y, w, 41 - y, AI)
+    g += R(33, 33, 14, 8, DEEP) + R(37, 30, 6, 3, DEEP)
+    g += R(13, 44, 12, 2, LINE2)
+    return g
+
+
+@icon("org.aizome.Annai", "Annai (Welcome)")
+def annai():
+    # A signpost made of the mark: the amber tab, then boards in the dye
+    # ramp pointing on, on a post.
+    g = R(28, 10, 4, 42, LINE2)
+    g += R(14, 12, 14, 7, AMBER)
+    g += f'<path d="M14 21 H44 L48 25 L44 29 H14 Z" fill="{PALE}"/>'
+    g += f'<path d="M16 31 H46 V39 H16 L12 35 Z" fill="{MID}"/>'
+    g += f'<path d="M14 41 H40 L44 45 L40 49 H14 Z" fill="{DEEP}"/>'
+    g += R(22, 50, 16, 2, DEEP)
+    return g
+
+
 @icon("org.aizome.Toolchest", "Toolchest")
 def toolchest():
     return R(10, 10, 20, 10, AMBER) + R(10, 20, 40, 10, PALE) + R(10, 30, 40, 10, MID) + R(10, 40, 40, 10, DEEP)
