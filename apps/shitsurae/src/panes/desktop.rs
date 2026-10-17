@@ -271,7 +271,7 @@ impl Pane for Desktop {
                 let id2 = id.clone();
                 col = col.push(
                     row![
-                        icon(Icon::Pin).size(14.0).role(Role::Text3),
+                        icon(crate::widgets::app_glyph(id)).size(14.0).role(Role::Text2),
                         text(name_of(id)).width(Fill),
                         icon_button(Icon::Minus).toolbar().on_press(Msg::Unpin(id2)).tooltip("Unpin"),
                     ]

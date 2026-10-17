@@ -225,7 +225,7 @@ impl Pane for Notifications {
                     } else {
                         "In the menu bar, then the Deskbar"
                     };
-                    form::row(name.clone(), controls).leading(icon(Icon::AppWindow).size(16.0).role(Role::Text3)).detail(detail).compact()
+                    form::row(name.clone(), controls).leading(icon(crate::widgets::app_glyph(id)).size(16.0).role(Role::Text2)).detail(detail).compact()
                 })
                 .collect(),
         };

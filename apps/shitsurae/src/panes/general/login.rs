@@ -257,7 +257,7 @@ impl State {
                         controls = controls.push(icon_button(Icon::Trash).toolbar().on_press(Msg::Remove(id.clone())).tooltip("Remove"));
                     }
                     controls = controls.push(toggle(it.enabled).on_toggle(move |on| Msg::Toggle(id.clone(), on)));
-                    let mut r = form::row(it.name.clone(), controls).leading(icon(Icon::AppWindow).size(16.0).role(Role::Text3));
+                    let mut r = form::row(it.name.clone(), controls).leading(icon(crate::widgets::app_glyph(&it.id)).size(16.0).role(Role::Text2));
                     if !it.comment.is_empty() {
                         r = r.detail(it.comment.clone());
                     }

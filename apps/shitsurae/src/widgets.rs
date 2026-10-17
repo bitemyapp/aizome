@@ -785,3 +785,33 @@ impl Widget for FlowWidget {
         bc.constrain(Size::new(width, y + line_h))
     }
 }
+
+/// A glyph for an app by its id: Aizome's own by what they are, a few
+/// others people have, else a window.
+pub fn app_glyph(id: &str) -> Icon {
+    let id = id.trim_end_matches(".desktop").to_lowercase();
+    let last = id.rsplit('.').next().unwrap_or(&id).to_owned();
+    match last.as_str() {
+        "shitsurae" => Icon::Settings2,
+        "yukimi" => Icon::Snowflake,
+        "hako" => Icon::Folder,
+        "sumi" => Icon::FileText,
+        "fusen" => Icon::StickyNote,
+        "koyomi" => Icon::Calendar,
+        "tokei" => Icon::Clock,
+        "soroban" => Icon::Calculator,
+        "tenki" => Icon::CloudSun,
+        "tansu" => Icon::HardDrive,
+        "kura" => Icon::ChartPie,
+        "myaku" => Icon::Activity,
+        "firefox" | "chromium" | "chromium-browser" | "google-chrome" | "brave-browser" => Icon::Globe,
+        "thunderbird" | "evolution" | "geary" => Icon::Mail,
+        "signal" | "telegram" | "element" | "discord" | "slack" => Icon::MessageSquare,
+        "foot" | "kitty" | "alacritty" | "wezterm" | "ghostty" | "footclient" => Icon::SquareTerminal,
+        "mpv" | "vlc" => Icon::Film,
+        "syncthing-start" | "syncthing" => Icon::RefreshCw,
+        "1password" | "keepassxc" | "bitwarden" => Icon::KeyRound,
+        "nm-applet" => Icon::Wifi,
+        _ => Icon::AppWindow,
+    }
+}

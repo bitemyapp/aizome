@@ -111,8 +111,12 @@ impl Pane for Accessibility {
         let k = &s.input.keyboard.extra;
         let slow = extra::get_bool(k, "slow_keys", false);
         let slow_ms = extra::get_int(k, "slow_keys_ms", 300) as f64;
+        let now = match aizome_kit::theme::Appearance::from(a).theme_name() {
+            ThemeName::HighContrast => ThemeName::Night,
+            t => t,
+        };
         let contrast = aizome_kit::row![
-            preview::desktop(Look::Theme(ThemeName::Night), a.focus, a.effects, 120.0, 76.0),
+            preview::desktop(Look::Theme(now), a.focus, a.effects, 120.0, 76.0),
             icon(Icon::ArrowRight).size(16.0).role(Role::Text3),
             preview::desktop(Look::Theme(ThemeName::HighContrast), FocusColor::Amber, a.effects, 120.0, 76.0),
         ]

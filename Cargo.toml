@@ -2,7 +2,7 @@
 resolver = "3"
 # Apps join by name once they have a manifest: an app directory without
 # Cargo.toml would break an "apps/*" glob, and every build, for everyone.
-members = ["crates/*", "apps/yukimi", "apps/kura", "apps/soroban", "apps/shitsurae", "apps/koyomi", "apps/tenki", "apps/tokei", "apps/hako", "apps/tansu", "apps/sumi"]
+members = ["crates/*", "apps/yukimi", "apps/kura", "apps/soroban", "apps/shitsurae", "apps/koyomi", "apps/tenki", "apps/tokei", "apps/hako", "apps/tansu", "apps/sumi", "apps/shashin"]
 
 [workspace.package]
 version = "0.1.0"

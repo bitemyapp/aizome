@@ -15,7 +15,7 @@ use crate::pane::{Confirm, Group, Pane, PaneCx, SettingEntry, Tile, ViewCx};
 
 /// The palette's scopes, as the shell names them, and what they find.
 pub const SCOPES: [(&str, &str, &str, Icon); 6] = [
-    ("commands", "Commands", "Every menu item of the app in front", Icon::Command),
+    ("commands", "Commands", "Every menu item of the app in front", Icon::Menu),
     ("windows", "Windows", "Open windows, on any Desk", Icon::AppWindow),
     ("files", "Files", "Files and folders in the folders below", Icon::File),
     ("apps", "Apps", "Installed apps", Icon::LayoutGrid),
@@ -211,7 +211,7 @@ impl Pane for Search {
                 .iter()
                 .map(|p| {
                     let p2 = p.clone();
-                    form::row(p.clone(), icon_button(Icon::Minus).toolbar().on_press(Msg::RemoveFolder(skip, p2)).tooltip("Remove"))
+                    form::row(if p == "~" { "Home (~)".to_owned() } else { p.clone() }, icon_button(Icon::Minus).toolbar().on_press(Msg::RemoveFolder(skip, p2)).tooltip("Remove"))
                         .leading(icon(if skip { Icon::EyeOff } else { Icon::Folder }).size(16.0).role(Role::Text3))
                         .compact()
                 })
