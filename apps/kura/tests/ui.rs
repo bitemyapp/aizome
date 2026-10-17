@@ -654,3 +654,78 @@ fn pictures_of_the_rings_moving() {
         h.save_png(w, dir.join(format!("moving-{i}.png")), 1.0);
     }
 }
+
+#[test]
+fn the_keyboard_reaches_everything_in_the_list() {
+    use aizome_kit::sidestep_ui::{Modifiers, NamedKey};
+    let out = scratch("keys");
+    let mut h = kura(&out, night());
+    with_results(&mut h);
+    let w = h.window();
+    assert_eq!(h.focused_name(w).as_deref(), Some("folder-list"), "the list has the keyboard after a scan");
+    h.named(w, NamedKey::ArrowDown, Modifiers::NONE);
+    let name = |h: &Harness<Kura>, n: Option<NodeId>| n.map(|n| h.program().tree().unwrap().name(n).into_owned());
+    assert_eq!(name(&h, h.program().selected).as_deref(), Some("work"));
+    h.named(w, NamedKey::ArrowDown, Modifiers::NONE);
+    assert_eq!(name(&h, h.program().selected).as_deref(), Some("Videos"));
+    if let Some(d) = std::env::var_os("KURA_PICTURES") {
+        h.save_png(w, PathBuf::from(d).join("selected.png"), 1.0);
+    }
+    // ❖K collects it; the list keeps the keyboard.
+    h.command(w, 'k');
+    assert_eq!(h.program().collector.len(), 1);
+    h.named(w, NamedKey::ArrowDown, Modifiers::NONE);
+    assert_eq!(name(&h, h.program().selected).as_deref(), Some("Pictures"));
+    // Return goes in; ❖↑ comes back out, with the folder selected.
+    h.named(w, NamedKey::Enter, Modifiers::NONE);
+    assert_eq!(name(&h, Some(h.program().center)).as_deref(), Some("Pictures"));
+    h.named(w, NamedKey::ArrowUp, Modifiers::SUPER);
+    assert_eq!(h.program().center, NodeId::ROOT);
+    assert_eq!(name(&h, h.program().selected).as_deref(), Some("Pictures"));
+}
+
+#[test]
+fn a_row_collects_by_its_menu_or_by_dragging() {
+    use aizome_kit::sidestep_ui::{Key, Modifiers, NamedKey};
+    let out = scratch("rows");
+    let mut h = kura(&out, night());
+    with_results(&mut h);
+    let w = h.window();
+    let _ = h.render(w, 1.0);
+
+    // Right click on a row: its menu, whose second item is Collect.
+    let row = h.find(w, "Downloads").unwrap();
+    h.press(w, row.center(), PointerButton::Right, 1);
+    h.release(w, row.center(), PointerButton::Right);
+    let popups = h.popups(w);
+    assert_eq!(popups.len(), 1, "the row's menu");
+    if let Some(d) = std::env::var_os("KURA_PICTURES") {
+        h.save_png(w, PathBuf::from(d).join("row-menu.png"), 1.0);
+    }
+    let p = popups[0].0;
+    for k in [NamedKey::ArrowDown, NamedKey::ArrowDown, NamedKey::Enter] {
+        h.popup_keyboard(p, Key::Named(k), Modifiers::NONE);
+    }
+    let k = h.program();
+    assert_eq!(k.collector.iter().map(|&n| k.tree().unwrap().name(n).into_owned()).collect::<Vec<_>>(), ["Downloads"]);
+
+    // A row dragged onto the Collector.
+    let zone = h.find_id(w, "collector").unwrap();
+    let row = h.find(w, "Music").unwrap();
+    h.press(w, row.center(), PointerButton::Left, 1);
+    h.move_to(w, Point::new(row.center().x, row.center().y + 12.0));
+    assert!(h.program().dragging.is_some());
+    h.move_to(w, zone.center());
+    assert!(h.program().drag_over);
+    h.release(w, zone.center(), PointerButton::Left);
+    let k = h.program();
+    assert_eq!(k.collector.len(), 2);
+    assert!(k.dragging.is_none());
+
+    // Let go elsewhere: nothing collected.
+    let row = h.find(w, "Documents").unwrap();
+    h.press(w, row.center(), PointerButton::Left, 1);
+    h.move_to(w, Point::new(row.center().x - 200.0, row.center().y));
+    h.release(w, Point::new(row.center().x - 200.0, row.center().y), PointerButton::Left);
+    assert_eq!(h.program().collector.len(), 2);
+}

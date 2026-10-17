@@ -288,12 +288,14 @@ impl Burst {
             }
             canvas.fill(&sector(geo.center, ri, ro, seg.x0, seg.x1), fill);
         }
-        // The selected item, ringed in the focus colour.
+        // The selected item, ringed in the focus colour over a band of the
+        // surface, so the ring shows on a segment of any colour (amber too).
         if let Some(sel) = self.selected
             && let Some(seg) = self.segs.iter().find(|s| s.node == Some(sel))
         {
             let (ri, ro) = geo.radii(f64::from(seg.depth));
             let shape = CircleSegment::new(geo.center, ro - 1.0, ri + 1.0, Geometry::angle(seg.x0), seg.span() * TAU);
+            canvas.stroke(&shape, &StrokeStyle::new(4.0), aizome_kit::theme::color(theme.palette.surface));
             canvas.stroke(&shape, &StrokeStyle::new(2.0), theme.focus());
         }
         let mut labels = self.labels.borrow_mut();

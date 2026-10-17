@@ -443,6 +443,8 @@ impl Program for Kura {
                         self.refresh_rows();
                         self.page = Page::Results;
                         cx.set_title(self.window, format!("Kura — {}", format::path(&root)));
+                        // The keyboard goes to the list: arrows, Return to go in, ❖↑ out.
+                        cx.focus("folder-list");
                         self.write_index(cx);
                     }
                     Err(e) => {
