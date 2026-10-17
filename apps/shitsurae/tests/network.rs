@@ -103,3 +103,33 @@ fn has(h: &Harness<Shitsurae>, s: &str) -> bool {
     let w = h.window();
     h.texts(w).iter().any(|t| t == s)
 }
+
+#[test]
+fn a_vpn_switches_on_and_a_network_is_forgotten() {
+    let mut h = open("network-vpn");
+    let w = h.window();
+    // Office's switch: the first switch in the VPN section.
+    let office = h.find(w, "Office").expect("the VPN");
+    let switches: Vec<_> = h
+        .semantics(w)
+        .into_iter()
+        .filter(|(s, r)| s.role == aizome_kit::widget::SemanticRole::Switch && (r.center().y - office.center().y).abs() < 20.0)
+        .map(|(_, r)| r)
+        .collect();
+    h.click(w, switches[0].center());
+    settle(&mut h, |h| has(h, "WireGuard · Connected"));
+    assert!(has(&h, "WireGuard · Connected"), "{:?}", h.texts(w));
+
+    // Forget Aizome Studio from its page, confirming.
+    assert!(h.click_text(w, "Saved Networks"));
+    settle(&mut h, |h| has(h, "Hotel Sakura"));
+    assert!(h.click_text(w, "Aizome Studio"));
+    settle(&mut h, |h| has(h, "Forget This Network…"));
+    assert!(h.click_text(w, "Forget This Network…"));
+    settle(&mut h, |h| has(h, "Forget “Aizome Studio”?"));
+    assert!(h.click_text(w, "Forget"));
+    settle(&mut h, |h| h.texts(h.window()).iter().any(|t| t == "Forgot Aizome Studio"));
+    // Back on the saved list, without it.
+    assert!(has(&h, "Hotel Sakura"), "{:?}", h.texts(w));
+    assert!(!has(&h, "Aizome Studio"), "{:?}", h.texts(w));
+}

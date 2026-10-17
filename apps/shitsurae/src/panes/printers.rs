@@ -271,6 +271,14 @@ impl Pane for Printers {
         }
     }
 
+    fn hidden(&mut self, _cx: &mut PaneCx<Msg>) {
+        // CUPS is polled (it says nothing by itself): only while the pane
+        // shows.
+        if matches!(self.spool, Spool::Live(_)) && self.add.is_none() {
+            self.spool = Spool::None;
+        }
+    }
+
     fn update(&mut self, msg: Msg, cx: &mut PaneCx<Msg>) {
         match msg {
             Msg::Default(i) => {

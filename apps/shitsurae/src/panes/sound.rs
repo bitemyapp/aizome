@@ -421,6 +421,13 @@ impl Pane for Sound {
                 s.sound.insert("volume_feedback".into(), toml::Value::Boolean(on));
             }),
             Msg::Meter => {
+                // The default input changed elsewhere (a headset plugged in):
+                // follow the new one.
+                if let (Snd::Live(a), Some((name, _))) = (&self.snd, &self.meter)
+                    && a.snapshot().default_input().is_some_and(|d| d.name != *name)
+                {
+                    self.follow_input(cx);
+                }
                 let raw = match (&self.meter, &self.snd) {
                     (Some((_, m)), _) => loudness(m.level()),
                     (None, Snd::Sample(c)) => {

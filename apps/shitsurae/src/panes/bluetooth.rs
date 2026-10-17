@@ -205,6 +205,7 @@ pub struct Prompt {
 #[derive(Clone, Debug)]
 pub enum Msg {
     Power(bool),
+    Powered(bool, Result<(), Error>),
     NameText(String),
     Rename,
     Connect(String),
@@ -268,10 +269,11 @@ impl Bluetooth {
     }
 
     /// Discoverable and looking for devices while the pane shows.
-    fn look(&mut self, cx: &mut PaneCx<Msg>) {
+    fn look(&mut self, cx: &mut PaneCx<Msg>, just_on: bool) {
         let Bt::Live(b) = &self.bt else { return };
         let Some(a) = b.snapshot().default_adapter().cloned() else { return };
-        if !a.powered {
+        // Just turned on: the snapshot may not say so yet.
+        if !a.powered && !just_on {
             return;
         }
         if !a.discoverable {
@@ -376,7 +378,7 @@ impl Pane for Bluetooth {
                 Err(e) => log::info!("no Bluetooth pairing agent: {e}"),
             }
         }
-        self.look(cx);
+        self.look(cx, false);
     }
 
     fn hidden(&mut self, cx: &mut PaneCx<Msg>) {
@@ -400,11 +402,14 @@ impl Pane for Bluetooth {
             Msg::Power(on) => {
                 let Some(a) = self.adapter() else { return };
                 let t = self.bt.set_powered(&a.path, on);
-                self.act(cx, if on { "Couldn't turn Bluetooth on" } else { "Couldn't turn Bluetooth off" }, "", t);
-                if on {
-                    self.look(cx);
-                }
+                cx.wait(t, move |r| Msg::Powered(on, r));
             }
+            Msg::Powered(on, result) => match result {
+                // On now: look for devices, and be found.
+                Ok(()) if on => self.look(cx, true),
+                Ok(()) => {}
+                Err(e) => cx.failed(if on { "Couldn't turn Bluetooth on" } else { "Couldn't turn Bluetooth off" }, reason(&e)),
+            },
             Msg::NameText(t) => self.name = Some(t),
             Msg::Rename => {
                 let (Some(a), Some(name)) = (self.adapter(), self.name.take()) else { return };

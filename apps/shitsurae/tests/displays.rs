@@ -58,3 +58,25 @@ fn has(h: &aizome_kit::testing::Harness<shitsurae::Shitsurae>, s: &str) -> bool 
     let w = h.window();
     h.texts(w).iter().any(|t| t == s)
 }
+
+#[test]
+fn turning_a_display_off_asks_to_keep_it() {
+    use aizome_kit::sidestep_ui::{Key, Modifiers, NamedKey};
+    let (mut h, _) = common::open("displays-off", "displays");
+    let w = h.window();
+    h.resize(w, aizome_kit::layout::Size::new(940.0, 1180.0));
+    settle(&mut h, |h| has(h, "Use as"));
+    // Use as: Main display → Off (the last choice).
+    assert!(h.click_text(w, "Main display"));
+    let popup = h.popups(w).last().map(|(p, _)| *p).expect("the menu");
+    h.popup_keyboard(popup, Key::Named(NamedKey::End), Modifiers::default());
+    h.popup_keyboard(popup, Key::Named(NamedKey::Enter), Modifiers::default());
+    settle(&mut h, |h| has(h, "Keep these display settings?"));
+    assert!(has(&h, "Keep these display settings?"), "{:?}", h.texts(w));
+    assert!(h.click_text(w, "Keep Changes"));
+    settle(&mut h, |h| !has(h, "Keep these display settings?"));
+    assert!(has(&h, "14-inch display · eDP-1 · off"), "{:?}", h.texts(w));
+    // The other display is the main one now, alone in the arrangement.
+    let value = h.semantics(w).into_iter().find(|(s, _)| s.label.as_deref() == Some("Display arrangement")).and_then(|(s, _)| s.value).unwrap();
+    assert_eq!(value, "ASUSTek PG27UCDM at 0, 0 (main)");
+}

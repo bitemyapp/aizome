@@ -97,3 +97,14 @@ fn has(h: &Harness<Shitsurae>, s: &str) -> bool {
     let w = h.window();
     h.texts(w).iter().any(|t| t == s)
 }
+
+#[test]
+fn sound_switches_the_output() {
+    let mut h = open("sound-switch", "sound", "Built-in Speakers");
+    let w = h.window();
+    assert!(h.click_text(w, "WH-1000XM5"));
+    // The headphones are the output now: their row is bold and checked,
+    // and the volume shown is theirs.
+    settle(&mut h, |h| has(h, "40%"));
+    assert!(has(&h, "40%"), "{:?}", h.texts(w));
+}
