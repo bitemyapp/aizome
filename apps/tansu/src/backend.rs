@@ -31,6 +31,9 @@ pub trait Backend {
     fn smart_attributes(&self, drive: &str) -> Task<Vec<SmartAttribute>>;
     fn smart_selftest(&self, drive: &str, test: SelfTest) -> Task<()>;
     fn cancel_job(&self, job: &str) -> Task<()>;
+    /// Whether this system can make `fs` filesystems: `(true, "")`, or
+    /// `(false, "the missing program")`.
+    fn can_format(&self, fs: &str) -> Task<(bool, String)>;
 
     // Queued, and run after the Apply sheet.
     fn create_partition_table(&self, confirm: Confirm<NewPartitionTable>, kind: TableKind) -> Task<()>;
@@ -98,6 +101,9 @@ impl Backend for Disks {
     }
     fn cancel_job(&self, job: &str) -> Task<()> {
         Disks::cancel_job(self, job)
+    }
+    fn can_format(&self, fs: &str) -> Task<(bool, String)> {
+        Disks::can_format(self, fs)
     }
     fn create_partition_table(&self, confirm: Confirm<NewPartitionTable>, kind: TableKind) -> Task<()> {
         Disks::create_partition_table(self, confirm, kind)

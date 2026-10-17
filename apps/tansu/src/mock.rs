@@ -344,6 +344,11 @@ impl Backend for Mock {
         ready(r)
     }
 
+    fn can_format(&self, fs: &str) -> Task<(bool, String)> {
+        let ok = self.state.borrow().supported_filesystems.iter().any(|s| s == fs);
+        ready(Ok(if ok { (true, String::new()) } else { (false, format!("mkfs.{fs}")) }))
+    }
+
     fn create_partition_table(&self, confirm: Confirm<NewPartitionTable>, kind: TableKind) -> Task<()> {
         let path = confirm.block().to_owned();
         let r = self.call(format!("Format({}) on {}", if kind == TableKind::Gpt { "gpt" } else { "dos" }, self.device(&path))).and_then(|()| {

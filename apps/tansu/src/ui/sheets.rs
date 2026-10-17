@@ -83,7 +83,11 @@ fn seg_words(seg: &Seg) -> String {
 fn fs_choices(t: &Tansu, unformatted: bool) -> Vec<String> {
     let mut v: Vec<String> = fs::FORMATS
         .iter()
-        .map(|f| if t.state.supported_filesystems.iter().any(|s| s == f) { fs::name(f) } else { format!("{} (not installed)", fs::name(f)) })
+        .map(|f| match t.missing.get(*f) {
+            Some(program) => format!("{} (needs {program})", fs::name(f)),
+            None if t.state.supported_filesystems.iter().any(|s| s == f) => fs::name(f),
+            None => format!("{} (not installed)", fs::name(f)),
+        })
         .collect();
     if unformatted {
         v.push("Unformatted".into());

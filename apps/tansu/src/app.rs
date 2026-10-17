@@ -189,6 +189,11 @@ pub struct Tansu {
     start_paths: Vec<PathBuf>,
     /// Follow UDisks on the system bus once the window opens.
     live: bool,
+    /// Filesystems this system lacks the tools to make: the missing
+    /// program, by filesystem (asked of UDisks once it's there).
+    pub missing: std::collections::HashMap<String, String>,
+    tools: Vec<(String, Task<(bool, String)>)>,
+    asked_tools: bool,
     /// Where the selection was (its offset, and whether logical), for
     /// when it goes.
     sel_at: Option<(u64, bool)>,
@@ -221,6 +226,9 @@ impl Tansu {
             start_paths: Vec::new(),
             live: false,
             sel_at: None,
+            missing: Default::default(),
+            tools: Vec::new(),
+            asked_tools: false,
             seen_used: Default::default(),
         };
         t.refresh();
@@ -259,6 +267,12 @@ impl Tansu {
                 let dropped = self.plan.prune(&self.state);
                 if !dropped.is_empty() {
                     self.notice = Some((format!("Dropped, as the disk is gone: {}.", dropped.join("; ")), true));
+                }
+            }
+            if self.state.available && !self.asked_tools && !self.state.supported_filesystems.is_empty() {
+                self.asked_tools = true;
+                for fs in crate::fs::FORMATS {
+                    self.tools.push((fs.to_owned(), self.backend.can_format(fs)));
                 }
             }
             if self.drive.as_ref().is_none_or(|d| !self.drives.iter().any(|e| &e.key == d)) {
@@ -603,8 +617,10 @@ impl Tansu {
                     sheet.error = Some(e);
                     return;
                 }
-                if !state.supported_filesystems.contains(&fs) {
-                    sheet.error = Some(format!("This system can't make {} filesystems: add their tools to the system configuration.", fs::name(&fs)));
+                if let Some(why) = self.cannot_make(&fs) {
+                    if let Some(s) = &mut self.sheet {
+                        s.error = Some(why);
+                    }
                     return;
                 }
                 let spec = NewFs {
@@ -644,8 +660,10 @@ impl Tansu {
                     return;
                 }
                 let fs = fs::FORMATS.get(f.fs).map(|s| (*s).to_owned()).unwrap_or_default();
-                if !fs.is_empty() && !state.supported_filesystems.contains(&fs) {
-                    sheet.error = Some(format!("This system can't make {} filesystems.", fs::name(&fs)));
+                if let Some(why) = self.cannot_make(&fs) {
+                    if let Some(s) = &mut self.sheet {
+                        s.error = Some(why);
+                    }
                     return;
                 }
                 let p = NewPartition {
@@ -1062,6 +1080,7 @@ impl Program for Tansu {
         self.poll_busy(Some(cx));
         self.poll_smart();
         self.refresh();
+        self.poll_tools();
         if self.run.is_some() {
             self.advance_run(cx);
         }
@@ -1126,6 +1145,32 @@ impl Tansu {
             let b = self.state.block(seg.block()?)?;
             self.seen_used.get(&b.id_uuid).copied()
         })
+    }
+}
+
+impl Tansu {
+    /// Note which filesystems' tools UDisks found missing.
+    fn poll_tools(&mut self) {
+        let mut i = 0;
+        while i < self.tools.len() {
+            if !self.tools[i].1.is_done() {
+                i += 1;
+                continue;
+            }
+            let (fs, task) = self.tools.remove(i);
+            if let Some(Ok((false, program))) = task.take() {
+                self.missing.insert(fs, if program.is_empty() { "its tools".into() } else { program });
+            }
+        }
+    }
+
+    /// Why this system can't make `fs`, if it can't.
+    pub fn cannot_make(&self, fs: &str) -> Option<String> {
+        if let Some(program) = self.missing.get(fs) {
+            return Some(format!("This system can't make {} filesystems: {program} is missing (add its package to the system).", crate::fs::name(fs)));
+        }
+        (!fs.is_empty() && !self.state.supported_filesystems.iter().any(|s| s == fs))
+            .then(|| format!("This system can't make {} filesystems.", crate::fs::name(fs)))
     }
 }
 
