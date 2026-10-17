@@ -40,6 +40,10 @@ pub struct PaletteState {
     pub app_name: Option<String>,
     pub app_id: String,
     pub search: u64,
+    /// Recently used files (and whether each is a folder), read on a thread
+    /// when it opened, and their frecency boosts.
+    pub recent: Arc<Vec<(PathBuf, bool)>>,
+    pub boosts: Arc<std::collections::HashMap<String, i64>>,
 }
 
 /// The file index, read or built on a thread.
@@ -65,6 +69,8 @@ pub enum PaletteEvent {
     Index(Index),
     /// Time to see whether the index is stale.
     Refresh,
+    /// Recently used files, read on a thread.
+    Recent(Vec<(PathBuf, bool)>),
     Settings(Vec<SettingEntry>),
 }
 
@@ -165,7 +171,22 @@ impl Shell {
             app_name,
             app_id,
             search: 0,
+            recent: Arc::default(),
+            boosts: Arc::default(),
         });
+        if self.opts.live {
+            cx.spawn(|| {
+                let list = aizome_search::recent::load(aizome_search::recent::default_path())
+                    .into_iter()
+                    .take(200)
+                    .map(|r| {
+                        let d = r.path.is_dir();
+                        (r.path, d)
+                    })
+                    .collect();
+                Msg::Palette(PaletteEvent::Recent(list))
+            });
+        }
         if self.file_index.is_none() && self.opts.live {
             self.index_soon(true, cx);
         }
@@ -277,7 +298,7 @@ impl Shell {
     pub fn rank_palette(&mut self, cx: &mut Cx<Msg>) {
         let per_section = self.palette_cfg.per_section as usize;
         let home = aizome_config::home_dir();
-        let boosts = self.palette.as_ref().map(|_| self.file_boosts()).unwrap_or_default();
+        let boosts = self.palette.as_ref().map(|p| p.boosts.clone()).unwrap_or_default();
         let index = self.file_index.clone();
         let Some(p) = &mut self.palette else { return };
         let wants_files = p.scope.is_none() || p.scope == Some(Scope::File);
@@ -285,14 +306,7 @@ impl Shell {
         if wants_files && p.files_for != q {
             if q.is_empty() {
                 // Recent files first when nothing's typed.
-                p.files = aizome_search::recent::load(aizome_search::recent::default_path())
-                    .into_iter()
-                    .take(20)
-                    .map(|r| {
-                        let folder = r.path.is_dir();
-                        Item::file(&r.path, folder, &home)
-                    })
-                    .collect();
+                p.files = p.recent.iter().take(20).map(|(path, folder)| Item::file(path, *folder, &home)).collect();
                 p.files_for = q.clone();
             } else if let Some(index) = index {
                 p.search += 1;
@@ -316,14 +330,14 @@ impl Shell {
         p.scroll = view::scroll_for(&p.sections, p.selected, p.scroll);
     }
 
-    /// Frecency boosts of recently used files, for a search on a thread
+    /// Frecency boosts of recently used files, for searches on a thread
     /// (the store stays here).
-    fn file_boosts(&self) -> std::collections::HashMap<String, i64> {
-        aizome_search::recent::load(aizome_search::recent::default_path())
-            .into_iter()
+    fn file_boosts(&self, recent: &[(PathBuf, bool)]) -> std::collections::HashMap<String, i64> {
+        recent
+            .iter()
             .take(200)
-            .map(|r| {
-                let k = format!("file:{}", r.path.display());
+            .map(|(path, _)| {
+                let k = format!("file:{}", path.display());
                 let b = self.frecency.boost(&k).max(8);
                 (k, b)
             })
@@ -380,6 +394,15 @@ impl Shell {
                     if let Some(p) = &mut self.palette {
                         p.files_for = "\u{0}".into();
                     }
+                    self.rank_palette(cx);
+                }
+            }
+            PaletteEvent::Recent(list) => {
+                let boosts = self.file_boosts(&list);
+                if let Some(p) = &mut self.palette {
+                    p.recent = Arc::new(list);
+                    p.boosts = Arc::new(boosts);
+                    p.files_for = "\u{0}".into();
                     self.rank_palette(cx);
                 }
             }

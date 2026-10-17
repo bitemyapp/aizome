@@ -837,8 +837,35 @@ impl Shell {
                 self.lock(cx);
                 (true, String::new())
             }
+            proto::ShellRequest::Open { what } => {
+                let Some(screen) = self.primary().cloned() else { return (false, "no output".into()) };
+                let Some(bar) = screen.bar else { return (false, "no bar".into()) };
+                if let Some(w) = TrayWidget::named(&what) {
+                    let x = screen.output.frame.width() - 60.0;
+                    self.toggle_panel(bar, w, Rect::new(x, 0.0, x + 16.0, crate::menubar::HEIGHT), cx);
+                    (true, String::new())
+                } else if what.eq_ignore_ascii_case("toolchest") {
+                    self.open_toolchest(None, cx);
+                    (true, String::new())
+                } else {
+                    let (_, menus) = self.focused_menus();
+                    match menus.iter().position(|m| m.title.eq_ignore_ascii_case(&what)) {
+                        Some(_) => {
+                            self.show_in_menu(&what, cx);
+                            (true, String::new())
+                        }
+                        None => (false, format!("nothing called {what}")),
+                    }
+                }
+            }
             proto::ShellRequest::Dismiss => {
                 self.close_palette(cx);
+                self.close_panel(cx);
+                for s in self.screens.clone() {
+                    if let Some(b) = s.bar {
+                        cx.close_menus(b);
+                    }
+                }
                 (true, String::new())
             }
             other => (false, format!("not yet: {other:?}")),
@@ -1102,7 +1129,7 @@ impl Shell {
 
     /// Open the focused app's menu a command is in (its trail's first
     /// part), under the bar.
-    fn show_in_menu(&mut self, trail: &str, cx: &mut Cx<Msg>) {
+    pub fn show_in_menu(&mut self, trail: &str, cx: &mut Cx<Msg>) {
         let first = trail.split(" › ").next().unwrap_or("");
         let (_, menus) = self.focused_menus();
         let Some(i) = menus.iter().position(|m| m.title == first) else { return };
