@@ -83,6 +83,15 @@ fn system_chords_stay_with_the_system_and_shell_ones_go_to_subscribers() {
         _ => None,
     });
     assert_eq!(got.as_deref(), Some("palette"));
+    // F10 and ⌥❖M: the menu bar.
+    for keys in ["f10", "super+alt+m"] {
+        chord(&c, keys);
+        let got = events.by_ref().find_map(|e| match e {
+            Ok(Event::Binding { action, .. }) => Some(action),
+            _ => None,
+        });
+        assert_eq!(got.as_deref(), Some("menubar"), "{keys}");
+    }
     // ⌥❖↑ fills: the compositor's, and the app sees no key.
     chord(&c, "alt+super+up");
     c.wait_windows("filled", |ws| ws[0].fill);
@@ -91,6 +100,6 @@ fn system_chords_stay_with_the_system_and_shell_ones_go_to_subscribers() {
     let aizome_ipc::Response::Desks { current, .. } = c.request(Request::Desks) else { panic!() };
     assert_eq!(current, 2);
     let s = a.seen();
-    assert!(!s.keys.iter().any(|(k, _)| *k == 57 || *k == 103 || *k == 3), "no system chord reached the app: {:?}", s.keys);
+    assert!(!s.keys.iter().any(|(k, _)| *k == 57 || *k == 103 || *k == 3 || *k == 68 || *k == 50), "no system chord reached the app: {:?}", s.keys);
     let _ = w;
 }

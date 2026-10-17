@@ -143,3 +143,23 @@ impl TouchTarget<State> for Focus {
         TouchTarget::orientation(&self.0, seat, data, event, seq)
     }
 }
+
+/// The popup grab in force (an xdg_popup.grab): its root surface (the
+/// toplevel or layer surface the popups hang from), and whether Aizome has
+/// dismissed its popups already (it waits for the client to destroy them).
+pub struct PopupGrabbed {
+    pub grab: smithay::desktop::PopupGrab<State>,
+    pub root: WlSurface,
+    pub dismissed: bool,
+}
+
+impl PopupGrabbed {
+    /// The grab holds the keyboard: its popups are open and not dismissed.
+    pub fn live(&self) -> bool {
+        !self.dismissed && !self.grab.has_ended()
+    }
+
+    pub fn owns_serial(&self, has: impl Fn(Serial) -> bool) -> bool {
+        has(self.grab.serial()) || self.grab.previous_serial().is_some_and(&has)
+    }
+}

@@ -19,6 +19,7 @@ mod ipc;
 mod memory;
 mod outputs;
 mod overlays;
+mod popups;
 mod protocols;
 mod render;
 mod requests;

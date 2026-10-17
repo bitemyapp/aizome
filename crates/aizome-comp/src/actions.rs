@@ -1,11 +1,12 @@
 //! Window-management actions: the model changes, then the windows behind
 //! it hear about it (configures, focus, redraws, IPC events).
 
-
 use aizome_ipc::{DeskInfo, Event, Rect as IpcRect, WindowInfo};
-use smithay::desktop::{WindowSurfaceType, layer_map_for_output};
+use smithay::desktop::{LayerSurface, PopupUngrabStrategy, WindowSurfaceType, layer_map_for_output};
+use smithay::backend::renderer::utils::with_renderer_surface_state;
 use smithay::reexports::wayland_protocols::xdg::decoration::zv1::server::zxdg_toplevel_decoration_v1::Mode as DecorationMode;
 use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel;
+use smithay::reexports::wayland_server::Resource;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::utils::SERIAL_COUNTER;
 use smithay::wayland::shell::wlr_layer::{KeyboardInteractivity, Layer};
@@ -33,6 +34,11 @@ impl State {
                 }
             }
             self.az.ipc.emit(&Event::WindowFocused { id: now });
+            // Focus moving to another window closes the open menus.
+            let surface = now.and_then(|w| self.az.windows.get(&w)).map(|m| m.surface().clone());
+            if self.az.popup_grab.as_ref().is_some_and(|g| g.live() && surface.as_ref() != Some(&g.root)) {
+                self.dismiss_popup_grab();
+            }
         }
         if let Some(w) = now {
             // Raising changes what overlaps what.
@@ -71,9 +77,65 @@ impl State {
     pub fn update_keyboard_focus(&mut self) {
         let target = self.az.keyboard_target().map(crate::focus::Focus);
         let Some(keyboard) = self.az.seat.get_keyboard() else { return };
+        // A popup grab gives way to whatever else must have the keyboard
+        // (the lock, an exclusive layer surface, the switcher): its popups
+        // close.
+        if self.az.popup_grab.as_ref().is_some_and(|g| g.live() && target.as_ref().map(|f| &f.0) != Some(&g.root)) {
+            self.dismiss_popup_grab();
+        }
         if keyboard.current_focus() != target {
+            tracing::debug!(
+                target: "aizome::focus",
+                from = ?keyboard.current_focus().map(|f| f.0.id()),
+                to = ?target.as_ref().map(|f| f.0.id()),
+                grabbed = keyboard.is_grabbed(),
+                "keyboard focus"
+            );
             keyboard.set_focus(self, target, SERIAL_COUNTER.next_serial());
         }
+    }
+
+    /// Closes the popups of the grab in force (popup_done to each) and
+    /// lets go of the keyboard; the pointer grab ends once the client has
+    /// destroyed them (`check_popup_grab`).
+    pub fn dismiss_popup_grab(&mut self) {
+        let Some(g) = self.az.popup_grab.as_mut() else { return };
+        if g.dismissed {
+            return;
+        }
+        g.dismissed = true;
+        let _ = g.grab.ungrab(PopupUngrabStrategy::All);
+        tracing::debug!(target: "aizome::focus", "popup grab dismissed");
+        let Some(keyboard) = self.az.seat.get_keyboard() else { return };
+        if keyboard.is_grabbed() && self.az.popup_grab.as_ref().is_some_and(|g| g.owns_serial(|s| keyboard.has_grab(s))) {
+            keyboard.unset_grab(self);
+        }
+    }
+
+    /// Once a popup grab has ended (its popups destroyed), its keyboard and
+    /// pointer grabs go and the keyboard returns to what should have it
+    /// (not necessarily the grab's root: a menu of the menu bar opened by a
+    /// shortcut gives the keys back to the window that had them).
+    pub fn check_popup_grab(&mut self) {
+        if !self.az.popup_grab.as_ref().is_some_and(|g| g.grab.has_ended()) {
+            return;
+        }
+        let Some(g) = self.az.popup_grab.take() else { return };
+        tracing::debug!(target: "aizome::focus", "popup grab ended");
+        if let Some(keyboard) = self.az.seat.get_keyboard()
+            && keyboard.is_grabbed()
+            && g.owns_serial(|s| keyboard.has_grab(s))
+        {
+            keyboard.unset_grab(self);
+        }
+        if let Some(pointer) = self.az.seat.get_pointer()
+            && pointer.is_grabbed()
+            && g.owns_serial(|s| pointer.has_grab(s))
+        {
+            let time = self.az.start.elapsed().as_millis() as u32;
+            pointer.unset_grab(self, SERIAL_COUNTER.next_serial(), time);
+        }
+        self.update_keyboard_focus();
     }
 
     pub fn close_window(&mut self, id: WinId) {
@@ -389,8 +451,10 @@ fn rect_owner(az: &Aizome, id: WinId, rect: Rect) -> WinId {
 }
 
 impl Aizome {
-    /// The surface that should have the keyboard.
-    pub fn keyboard_target(&self) -> Option<WlSurface> {
+    /// What takes the keyboard from everything else: the lock surface while
+    /// locked, else the topmost mapped layer surface on the overlay or top
+    /// layer with exclusive keyboard interactivity.
+    pub fn exclusive_keyboard_target(&self) -> Option<Option<WlSurface>> {
         if self.lock.is_locked() {
             let out = self.active_output();
             let lock = out
@@ -398,17 +462,37 @@ impl Aizome {
                 .and_then(|o| self.out.get(o))
                 .and_then(|o| o.lock_surface.clone())
                 .or_else(|| self.out.values().find_map(|o| o.lock_surface.clone()));
-            return lock.map(|l| l.wl_surface().clone());
+            return Some(lock.map(|l| l.wl_surface().clone()));
         }
-        for o in &self.outputs {
+        // The active output's first, then the others.
+        let active = self.active_output();
+        let outputs = active.iter().chain(self.outputs.iter().filter(|o| Some(*o) != active.as_ref()));
+        for o in outputs {
             let map = layer_map_for_output(o);
             for layer in [Layer::Overlay, Layer::Top] {
-                for l in map.layers_on(layer) {
-                    if l.cached_state().keyboard_interactivity == KeyboardInteractivity::Exclusive {
-                        return Some(l.wl_surface().clone());
+                for l in map.layers_on(layer).rev() {
+                    if l.cached_state().keyboard_interactivity == KeyboardInteractivity::Exclusive && layer_mapped(l) {
+                        return Some(Some(l.wl_surface().clone()));
                     }
                 }
             }
+        }
+        None
+    }
+
+    /// The surface that should have the keyboard: the lock surface, an
+    /// exclusive layer surface, the root of a popup grab (the grab hands
+    /// the keys on to its topmost popup), a layer surface clicked on, or
+    /// the focused window.
+    pub fn keyboard_target(&self) -> Option<WlSurface> {
+        if let Some(t) = self.exclusive_keyboard_target() {
+            return t;
+        }
+        if let Some(g) = &self.popup_grab
+            && g.live()
+            && !self.overlays.grabs_keyboard()
+        {
+            return Some(g.root.clone());
         }
         if let Some(l) = &self.layer_focus {
             let still = self.outputs.iter().any(|o| {
@@ -607,4 +691,9 @@ pub fn place_new_window(state: &mut State, id: WinId, size: (i32, i32), parent: 
     };
     az.wm.set_rect(id, rect);
     info!(id, app_id, ?rect, "placed");
+}
+
+/// A layer surface is mapped once it has a buffer (a null one unmaps it).
+pub fn layer_mapped(l: &LayerSurface) -> bool {
+    with_renderer_surface_state(l.wl_surface(), |s| s.buffer().is_some()).unwrap_or(false)
 }

@@ -279,6 +279,10 @@ pub struct Aizome {
     pub dnd_icon: Option<WlSurface>,
     /// A layer surface that took keyboard focus on demand (by a click).
     pub layer_focus: Option<WlSurface>,
+    /// The popup grab in force, if any.
+    pub popup_grab: Option<crate::focus::PopupGrabbed>,
+    /// Open popups in the order they opened (the popup layer's stacking).
+    pub popup_order: Vec<smithay::desktop::PopupKind>,
     pub lock: LockState,
     /// Keys whose presses a binding swallowed, so their releases are
     /// swallowed too.
@@ -480,6 +484,8 @@ impl State {
             cursor_theme,
             dnd_icon: None,
             layer_focus: None,
+            popup_grab: None,
+            popup_order: Vec::new(),
             lock: LockState::Unlocked,
             suppressed_keys: HashSet::new(),
             translated_keys: HashSet::new(),
@@ -496,6 +502,8 @@ impl State {
     /// and sends everything queued to clients.
     pub fn on_loop_iteration(&mut self) {
         self.az.popups.cleanup();
+        self.check_popup_grab();
+        self.az.prune_popups();
         self.refresh_windows();
         self.az.refresh_window_outputs();
         self.az.flush_ipc_events();

@@ -62,7 +62,10 @@ session
 
 input (through the compositor's own paths, for tests and scripts)
   input motion X Y | click [BUTTON] | button BUTTON [down|up]
-  input scroll DX DY | key NAME [down|up] | chord super+shift+3
+  input scroll DX DY | key NAME [down|up] | chord super+shift+3 | type TEXT
+                                a key or button without down or up is pressed
+                                and released; type taps keys for letters,
+                                digits, space and plain punctuation
 ";
 
 fn main() -> ExitCode {
@@ -353,32 +356,60 @@ fn parse(command: &str, mut args: Vec<String>) -> Result<Request, String> {
         "input" => {
             need(&args, 1, "an input event")?;
             let f = |s: &str| s.parse::<f64>().map_err(|_| format!("not a number: {s}"));
-            let pressed = |s: Option<&String>| !matches!(s.map(|s| s.as_str()), Some("up" | "release" | "released"));
-            let event = match args[0].as_str() {
+            // down, up, or (with neither) a press and its release.
+            let presses = |s: Option<&String>| -> Result<Vec<bool>, String> {
+                match s.map(|s| s.as_str()) {
+                    None => Ok(vec![true, false]),
+                    Some("down" | "press" | "pressed") => Ok(vec![true]),
+                    Some("up" | "release" | "released") => Ok(vec![false]),
+                    Some(o) => Err(format!("{o}: say down or up, or neither for both")),
+                }
+            };
+            let events = match args[0].as_str() {
                 "motion" | "move" => {
                     need(&args, 3, "X Y")?;
-                    Synthetic::PointerMotion { x: f(&args[1])?, y: f(&args[2])? }
+                    vec![Synthetic::PointerMotion { x: f(&args[1])?, y: f(&args[2])? }]
                 }
-                "click" => Synthetic::Click { button: args.get(1).cloned().unwrap_or_else(|| "left".into()) },
+                "click" => vec![Synthetic::Click { button: args.get(1).cloned().unwrap_or_else(|| "left".into()) }],
                 "button" => {
                     need(&args, 2, "a button")?;
-                    Synthetic::PointerButton { button: args[1].clone(), pressed: pressed(args.get(2)) }
+                    presses(args.get(2))?.into_iter().map(|pressed| Synthetic::PointerButton { button: args[1].clone(), pressed }).collect()
                 }
                 "scroll" => {
                     need(&args, 3, "DX DY")?;
-                    Synthetic::PointerScroll { dx: f(&args[1])?, dy: f(&args[2])? }
+                    vec![Synthetic::PointerScroll { dx: f(&args[1])?, dy: f(&args[2])? }]
                 }
                 "key" => {
                     need(&args, 2, "a key")?;
-                    Synthetic::Key { key: args[1].clone(), pressed: pressed(args.get(2)) }
+                    presses(args.get(2))?.into_iter().map(|pressed| Synthetic::Key { key: args[1].clone(), pressed }).collect()
                 }
                 "chord" => {
                     need(&args, 2, "keys like super+tab")?;
-                    Synthetic::Chord { keys: args[1].clone() }
+                    vec![Synthetic::Chord { keys: args[1].clone() }]
+                }
+                "type" => {
+                    need(&args, 2, "text")?;
+                    let mut v = Vec::new();
+                    for c in args[1..].join(" ").chars() {
+                        let key = match c {
+                            ' ' => "space".to_string(),
+                            '\n' => "enter".to_string(),
+                            c => c.to_string(),
+                        };
+                        let shifted = c.is_ascii_uppercase();
+                        let key = if shifted { key.to_lowercase() } else { key };
+                        if shifted {
+                            v.push(Synthetic::Chord { keys: format!("shift+{key}") });
+                        } else {
+                            v.push(Synthetic::Key { key: key.clone(), pressed: true });
+                            v.push(Synthetic::Key { key, pressed: false });
+                        }
+                    }
+                    v
                 }
                 e => return Err(format!("unknown input {e}")),
             };
-            Request::Synthesize { events: vec![event] }
+            Request::Synthesize { events }
         }
         other => return Err(format!("unknown command {other}")),
     })
@@ -597,5 +628,28 @@ mod tests {
                 enabled: Some(false)
             }
         );
+    }
+
+    #[test]
+    fn keys_tap_unless_told_down_or_up() {
+        let key = |k: &str, pressed| Synthetic::Key { key: k.into(), pressed };
+        assert_eq!(p("input", &["key", "escape"]), Request::Synthesize { events: vec![key("escape", true), key("escape", false)] });
+        assert_eq!(p("input", &["key", "super", "down"]), Request::Synthesize { events: vec![key("super", true)] });
+        assert_eq!(p("input", &["key", "super", "up"]), Request::Synthesize { events: vec![key("super", false)] });
+        assert_eq!(
+            p("input", &["type", "Hi", "x"]),
+            Request::Synthesize {
+                events: vec![
+                    Synthetic::Chord { keys: "shift+h".into() },
+                    key("i", true),
+                    key("i", false),
+                    key("space", true),
+                    key("space", false),
+                    key("x", true),
+                    key("x", false),
+                ]
+            }
+        );
+        assert!(parse("input", vec!["key".into(), "a".into(), "sideways".into()]).is_err());
     }
 }

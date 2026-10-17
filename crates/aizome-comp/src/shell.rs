@@ -108,6 +108,9 @@ impl CompositorHandler for State {
                 && !p.is_initial_configure_sent() {
                     let _ = p.send_configure();
                 }
+            if let Some(r) = self.az.popup_bbox(&popup) {
+                self.az.queue_redraw_rect(crate::state::to_rect(r));
+            }
             if let Ok(root) = find_popup_root_surface(&popup) {
                 self.redraw_for_surface(&root);
             }
@@ -397,30 +400,16 @@ impl State {
         }
     }
 
-    /// Fits a popup on its output.
+    /// Fits a popup on its root's output, by its positioner's constraint
+    /// adjustments: popups may go anywhere on the output, not only over
+    /// their parent.
     fn unconstrain_popup(&self, popup: &PopupSurface) {
-        let Ok(root) = find_popup_root_surface(&PopupKind::Xdg(popup.clone())) else { return };
-        let (origin, output) = if let Some(id) = self.az.window_for_surface(&root) {
-            let (Some(w), Some(m)) = (self.az.wm.get(id), self.az.windows.get(&id)) else { return };
-            let geo = m.window.geometry();
-            let origin = Point::<i32, Logical>::from((w.rect.x - geo.loc.x, w.rect.y - geo.loc.y));
-            (origin, self.az.output_for_rect(w.rect))
-        } else {
-            let found = self.az.outputs.iter().find_map(|o| {
-                let map = layer_map_for_output(o);
-                let layer = map.layer_for_surface(&root, WindowSurfaceType::TOPLEVEL)?;
-                let g = map.layer_geometry(layer)?;
-                Some((g.loc + o.current_location(), o.clone()))
-            });
-            match found {
-                Some((origin, o)) => (origin, Some(o)),
-                None => return,
-            }
-        };
-        let Some(output) = output else { return };
+        let kind = PopupKind::Xdg(popup.clone());
+        let Ok(root) = find_popup_root_surface(&kind) else { return };
+        let Some((origin, Some(output), _)) = self.az.popup_root(&root) else { return };
         let mut target: Rectangle<i32, Logical> = self.az.output_geometry(&output);
         target.loc -= origin;
-        target.loc -= get_popup_toplevel_coords(&PopupKind::Xdg(popup.clone()));
+        target.loc -= get_popup_toplevel_coords(&kind);
         popup.with_pending_state(|s| {
             s.geometry = s.positioner.get_unconstrained_geometry(target);
         });
@@ -450,6 +439,7 @@ impl XdgShellHandler for State {
 
     fn new_popup(&mut self, surface: PopupSurface, _positioner: PositionerState) {
         self.unconstrain_popup(&surface);
+        self.az.popup_order.push(PopupKind::from(surface.clone()));
         if let Err(e) = self.az.popups.track_popup(PopupKind::from(surface)) {
             warn!("tracking a popup: {e}");
         }
@@ -478,9 +468,36 @@ impl XdgShellHandler for State {
 
     fn grab(&mut self, surface: PopupSurface, seat: WlSeat, serial: Serial) {
         let Some(seat) = Seat::<State>::from_resource(&seat) else { return };
-        let kind = PopupKind::Xdg(surface);
-        let Ok(root) = find_popup_root_surface(&kind) else { return };
-        let Ok(mut grab) = self.az.popups.grab_popup(Focus(root), kind, &seat, serial) else { return };
+        let kind = PopupKind::Xdg(surface.clone());
+        let Ok(root) = find_popup_root_surface(&kind) else {
+            debug!(target: "aizome::focus", "popup grab without a parent");
+            surface.send_popup_done();
+            return;
+        };
+        // The lock and exclusive layer surfaces keep the keyboard: other
+        // menus don't open over them.
+        if let Some(t) = self.az.exclusive_keyboard_target()
+            && t.as_ref() != Some(&root)
+        {
+            debug!(target: "aizome::focus", "popup grab refused: another surface has the keyboard exclusively");
+            surface.send_popup_done();
+            return;
+        }
+        // A grabbing popup of a toplevel or layer surface starts a new
+        // chain of menus: one already open closes (rather than the client
+        // getting an error for not nesting it).
+        let parent_is_root = surface.get_parent_surface().as_ref() == Some(&root);
+        if parent_is_root && self.az.popup_grab.as_ref().is_some_and(|g| g.live()) {
+            self.dismiss_popup_grab();
+        }
+        let mut grab = match self.az.popups.grab_popup(Focus(root.clone()), kind, &seat, serial) {
+            Ok(g) => g,
+            Err(e) => {
+                debug!(target: "aizome::focus", "popup grab refused: {e:?}");
+                return;
+            }
+        };
+        debug!(target: "aizome::focus", root = ?root.id(), "popup grab");
         if let Some(keyboard) = seat.get_keyboard() {
             if keyboard.is_grabbed() && !(keyboard.has_grab(serial) || keyboard.has_grab(grab.previous_serial().unwrap_or(serial))) {
                 grab.ungrab(PopupUngrabStrategy::All);
@@ -498,6 +515,7 @@ impl XdgShellHandler for State {
             }
             pointer.set_grab(self, PopupPointerGrab::new(&grab), serial, PointerFocusMode::Keep);
         }
+        self.az.popup_grab = Some(crate::focus::PopupGrabbed { grab, root, dismissed: false });
     }
 
     fn maximize_request(&mut self, surface: ToplevelSurface) {
@@ -556,10 +574,9 @@ impl XdgShellHandler for State {
         self.az.unmapped.retain(|u| u.window.toplevel().is_some_and(|t| t != &surface));
     }
 
-    fn popup_destroyed(&mut self, surface: PopupSurface) {
-        if let Ok(root) = find_popup_root_surface(&PopupKind::Xdg(surface)) {
-            self.redraw_for_surface(&root);
-        }
+    fn popup_destroyed(&mut self, _surface: PopupSurface) {
+        // Popups show anywhere on their output.
+        self.az.queue_redraw_all();
     }
 
     fn app_id_changed(&mut self, surface: ToplevelSurface) {

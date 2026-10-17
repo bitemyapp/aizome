@@ -81,7 +81,11 @@ Notes for client authors:
   (`org.aizome.…` apps) or as Ctrl.
 - Layer surfaces: `aizome-deskbar` is placed around (new windows open clear
   of it). Exclusive keyboard interactivity on the top and overlay layers
-  takes the keyboard while mapped; on-demand takes it on a click.
+  takes the keyboard while mapped; on-demand takes it on a click; a
+  grabbing popup has it until it closes, then it goes back (the order is
+  in `docs/ipc.md`).
+- Popups (menus) of windows and layer surfaces show above every window
+  and layer surface, newest on top, anywhere on their parent's output.
 - xdg-activation: a token made from an input event of the client with the
   keyboard or pointer focus moves focus; any other request marks the
   window urgent (IPC `urgent`) instead.
@@ -146,6 +150,10 @@ nix develop --command cargo test -p aizome-comp
 - `tests/overlays.rs`: the switcher, the overview and the marking menu.
 - `tests/keys.rs`: ❖ as Ctrl, Ctrl+Shift in terminals, ❖ for kit apps,
   system and shell chords.
+- `tests/focus.rs`: a shell-like wayland-client (layer surfaces and their
+  popups): exclusive and on-demand keyboard interactivity, grabbing menus
+  getting the keys and giving them back, menus closing for an exclusive
+  surface or a click elsewhere, and the popup layer's stacking.
 - `tests/sidestep.rs`: a sidestep-ui client (`examples/sidestep_client`):
   server-side decorations, frame callbacks on the content subsurface, a
   layer-shell panel's exclusive zone, the session lock.

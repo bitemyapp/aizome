@@ -4,6 +4,8 @@
 
 #![allow(dead_code)]
 
+pub mod layer;
+
 use std::io::Write;
 use std::os::fd::{AsFd, FromRawFd, OwnedFd};
 use std::os::unix::net::UnixStream;

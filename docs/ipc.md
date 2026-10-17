@@ -88,8 +88,14 @@ Protocol version: **1** (`version` reports it).
 - `pointer-scroll {dx, dy}`;
 - `key {key, pressed}`: a name (`super`, `shift`, `ctrl`, `alt`, `tab`,
   `return`, `escape`, `space`, `grave`, `up`/`down`/`left`/`right`, letters,
-  digits, `f1`…`f12`, `print`) or an evdev code;
+  digits, punctuation (`,` `.` `/` `;` `'` `[` `]` `\` `-` `=`), `f1`…`f12`,
+  `print`) or an evdev code;
 - `chord {keys}`: `"super+shift+3"` presses in order, releases in reverse.
+
+`aizomectl input key NAME` and `input button NAME` press and release
+(a tap); add `down` or `up` for one half. `aizomectl input type TEXT` taps
+the keys for letters (Shift for capitals), digits, spaces and plain
+punctuation.
 
 ## Responses
 
@@ -181,6 +187,7 @@ Sent to subscribers as `binding` events, for the shell:
 |---|---|
 | ❖Space | `palette` |
 | ❖⌥Space | `toolchest` |
+| F10, ❖⌥M | `menubar` (focus the menu bar) |
 | ⌃❖Q | `lock` |
 | ❖⇧5 | `screenshot-tool` |
 | volume, mute, mic mute keys | `volume-up`, `volume-down`, `mute`, `mic-mute` |
@@ -198,6 +205,29 @@ The compositor treats these namespaces specially:
 - `aizome-deskbar`: new windows are placed beside it (it isn't an exclusive
   zone, but windows open clear of it).
 
-Every layer surface gets keyboard focus as layer-shell says: Exclusive
-surfaces on the top and overlay layers take it while mapped; OnDemand ones
-when clicked.
+Keyboard focus, highest first:
+
+1. the lock surface, while locked;
+2. a mapped layer surface on the overlay or top layer with Exclusive
+   keyboard interactivity (the topmost, on the active output first): it
+   keeps the keys while it shows, whatever gets focused meanwhile, and
+   closes menus (grabbing popups) of other surfaces as it maps; a menu of
+   another surface asked for while it shows is dismissed at once;
+3. a grabbing popup (an `xdg_popup.grab`, of a window or a layer surface,
+   including a layer surface's popup made with a null parent and
+   `get_popup`): the topmost of the chain has the keys until it closes,
+   then they go back to what had them before (the focused window, say,
+   not the bar the menu came from). Any serial is accepted for the grab,
+   so a menu opened for a `binding` event (which carries no Wayland
+   serial) can grab with the client's last serial, or 0. A press outside
+   the client, or focus moving to another window, closes the menus (and
+   the press then does what it does there);
+4. an OnDemand layer surface, once clicked, until a window is clicked or
+   it unmaps;
+5. the focused window.
+
+Popups of every window and layer surface are drawn above all windows and
+layer surfaces (a menu of the menu bar shows over the Deskbar and over
+overlay surfaces), newest on top, and take the pointer there first. They
+are constrained to their parent's output by the positioner's constraint
+adjustments, not to the parent's area.

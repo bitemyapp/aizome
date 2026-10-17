@@ -375,6 +375,9 @@ impl State {
         let Some(pointer) = self.az.seat.get_pointer() else { return };
         let serial = SERIAL_COUNTER.next_serial();
         let state = if pressed { ButtonState::Pressed } else { ButtonState::Released };
+        if pressed {
+            self.press_outside_menus(&pointer, serial, time);
+        }
         if pressed && !pointer.is_grabbed() {
             let pos = pointer.current_location();
             if crate::overlays::pointer_button(self, button, true, pos) {
@@ -418,6 +421,27 @@ impl State {
         }
         pointer.button(self, &ButtonEvent { button, state, serial, time });
         pointer.frame(self);
+    }
+
+    /// A press outside the client whose menus are open (a grabbing popup)
+    /// closes them and then does what a press there does (focusing a
+    /// window, say), rather than only closing them.
+    fn press_outside_menus(&mut self, pointer: &smithay::input::pointer::PointerHandle<State>, serial: Serial, time: u32) {
+        let Some(root) = self.az.popup_grab.as_ref().filter(|g| g.live()).map(|g| g.root.clone()) else { return };
+        let pos = pointer.current_location();
+        let same_client = match self.under(pos) {
+            Under::Surface(f, _, _) => smithay::reexports::wayland_server::Resource::id(&f.0).same_client_as(&smithay::reexports::wayland_server::Resource::id(&root)),
+            _ => false,
+        };
+        if same_client {
+            return;
+        }
+        self.dismiss_popup_grab();
+        if pointer.is_grabbed()
+            && self.az.popup_grab.as_ref().is_some_and(|g| g.owns_serial(|s| pointer.has_grab(s)))
+        {
+            pointer.unset_grab(self, serial, time);
+        }
     }
 
     /// Pointer bindings: ⌃❖-drag moves, ⌃❖-right-drag resizes,
@@ -511,6 +535,10 @@ impl State {
                 }
             return Under::Nothing;
         }
+        // Popups (menus) are above everything.
+        if let Some(u) = self.az.popup_under(pos) {
+            return u;
+        }
         if let Some(u) = layer_under(&output, &[Layer::Overlay], pos, out_loc) {
             return u;
         }
@@ -542,18 +570,13 @@ impl State {
         let m = self.az.windows.get(&id)?;
         let geo = m.window.geometry();
         let origin = Point::<f64, Logical>::from(((rect.x - geo.loc.x) as f64, (rect.y - geo.loc.y) as f64));
-        // Popups first: they reach beyond the window.
-        if let Some((s, loc)) = m.window.surface_under(pos - origin, WindowSurfaceType::POPUP | WindowSurfaceType::SUBSURFACE)
-            && (!rect.contains(pos.x, pos.y) || s != *m.surface()) {
-                return Some(Under::Surface(Focus(s), loc.to_f64() + origin, Owner::Window(id)));
-            }
         if !fullscreen
             && let Some(layout) = self.az.decor_layout(id)
                 && let Some(hit) = crate::decor::hit(&layout, pos.x, pos.y) {
                     return Some(Under::Decor(id, hit));
                 }
         let m = self.az.windows.get(&id)?;
-        if let Some((s, loc)) = m.window.surface_under(pos - origin, WindowSurfaceType::ALL) {
+        if let Some((s, loc)) = m.window.surface_under(pos - origin, WindowSurfaceType::TOPLEVEL | WindowSurfaceType::SUBSURFACE) {
             return Some(Under::Surface(Focus(s), loc.to_f64() + origin, Owner::Window(id)));
         }
         None
@@ -831,13 +854,15 @@ impl crate::state::Aizome {
     }
 }
 
+/// The layer surface (or a subsurface of one) under a point; their popups
+/// are in the popup layer.
 fn layer_under(output: &Output, layers: &[Layer], pos: Point<f64, Logical>, out_loc: Point<f64, Logical>) -> Option<Under> {
     let map = layer_map_for_output(output);
     for layer in layers {
-        if let Some(l) = map.layer_under(*layer, pos - out_loc) {
-            let geo = map.layer_geometry(l)?;
+        for l in map.layers_on(*layer).rev() {
+            let Some(geo) = map.layer_geometry(l) else { continue };
             let local = pos - out_loc - geo.loc.to_f64();
-            if let Some((s, loc)) = l.surface_under(local, WindowSurfaceType::ALL) {
+            if let Some((s, loc)) = l.surface_under(local, WindowSurfaceType::TOPLEVEL | WindowSurfaceType::SUBSURFACE) {
                 return Some(Under::Surface(Focus(s), loc.to_f64() + geo.loc.to_f64() + out_loc, Owner::Layer));
             }
         }

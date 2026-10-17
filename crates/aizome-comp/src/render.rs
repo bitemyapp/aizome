@@ -14,12 +14,13 @@ use smithay::backend::renderer::element::memory::MemoryRenderBufferRenderElement
 use smithay::backend::renderer::element::solid::SolidColorRenderElement;
 use smithay::backend::renderer::element::surface::{WaylandSurfaceRenderElement, render_elements_from_surface_tree};
 use smithay::backend::renderer::element::utils::{CropRenderElement, RelocateRenderElement, RescaleRenderElement};
-use smithay::backend::renderer::element::{AsRenderElements, Kind};
+use smithay::backend::renderer::element::Kind;
 use smithay::backend::renderer::{ImportAll, ImportMem, Renderer};
 use smithay::desktop::layer_map_for_output;
+use smithay::desktop::utils::bbox_from_surface_tree;
 use smithay::input::pointer::{CursorImageStatus, CursorImageSurfaceData};
 use smithay::output::Output;
-use smithay::utils::{Logical, Physical, Point, Rectangle, Scale, Size};
+use smithay::utils::{Logical, Physical, Point, Rectangle, Size};
 use smithay::wayland::compositor::with_states;
 use smithay::wayland::shell::wlr_layer::Layer;
 
@@ -86,6 +87,7 @@ where
         return out;
     }
 
+    popup_elements(az, renderer, output, scale, &mut out);
     layer_elements(renderer, output, Layer::Overlay, scale, &mut out);
 
     let shown = az.wm.shown_stacking();
@@ -140,6 +142,7 @@ where
     out
 }
 
+/// Layer surfaces (their popups are in the popup layer).
 fn layer_elements<R>(renderer: &mut R, output: &Output, layer: Layer, scale: f64, out: &mut Vec<OutputElement<R>>)
 where
     R: Renderer + ImportAll + ImportMem,
@@ -150,7 +153,33 @@ where
         let Some(geo) = map.layer_geometry(surface) else { continue };
         let loc = geo.loc.to_physical_precise_round(scale);
         out.extend(
-            AsRenderElements::<R>::render_elements::<WaylandSurfaceRenderElement<R>>(surface, renderer, loc, Scale::from(scale), 1.0)
+            render_elements_from_surface_tree(renderer, surface.wl_surface(), loc, scale, 1.0, Kind::Unspecified)
+                .into_iter()
+                .map(OutputElement::Surface),
+        );
+    }
+}
+
+/// The popup layer: every window's and layer surface's popups, above them
+/// all, newest in front.
+fn popup_elements<R>(az: &Aizome, renderer: &mut R, output: &Output, scale: f64, out: &mut Vec<OutputElement<R>>)
+where
+    R: Renderer + ImportAll + ImportMem,
+    R::TextureId: Clone + Send + 'static,
+{
+    let geo = az.output_geometry(output);
+    // Windows' popups would be in the wrong place while Desks slide.
+    let sliding = az.anims.desk.is_some();
+    for p in az.placed_popups().into_iter().rev() {
+        if sliding && matches!(p.owner, crate::input::Owner::Window(_)) {
+            continue;
+        }
+        if !bbox_from_surface_tree(p.popup.wl_surface(), p.loc).overlaps(geo) {
+            continue;
+        }
+        let loc = (p.loc - geo.loc).to_physical_precise_round(scale);
+        out.extend(
+            render_elements_from_surface_tree(renderer, p.popup.wl_surface(), loc, scale, 1.0, Kind::Unspecified)
                 .into_iter()
                 .map(OutputElement::Surface),
         );
@@ -184,7 +213,7 @@ pub fn window_elements<R>(
     ));
     let loc: Point<i32, Physical> = loc.to_physical_precise_round(scale);
     out.extend(
-        AsRenderElements::<R>::render_elements::<WaylandSurfaceRenderElement<R>>(&m.window, renderer, loc, Scale::from(scale), alpha)
+        render_elements_from_surface_tree(renderer, m.surface(), loc, scale, alpha, Kind::Unspecified)
             .into_iter()
             .map(OutputElement::Surface),
     );
@@ -370,7 +399,7 @@ where
     // to the box (centred), cropped to it.
     let surface_loc: Point<i32, Physical> = Point::<f64, Logical>::from((-geo.loc.x as f64, -geo.loc.y as f64)).to_physical_precise_round(scale);
     let elems: Vec<WaylandSurfaceRenderElement<R>> =
-        AsRenderElements::<R>::render_elements(&m.window, renderer, surface_loc, Scale::from(scale), alpha);
+        render_elements_from_surface_tree(renderer, m.surface(), surface_loc, scale, alpha, Kind::Unspecified);
     let w = geo.size.w as f64 * k;
     let h = geo.size.h as f64 * k;
     let x = dst.0 + (dst.2 - w) / 2.0;

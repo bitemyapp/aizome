@@ -104,6 +104,7 @@ impl Action {
 pub const SHELL_ACTIONS: &[&str] = &[
     "palette",
     "toolchest",
+    "menubar",
     "lock",
     "screenshot-tool",
     "volume-up",
@@ -186,6 +187,8 @@ pub fn defaults() -> Vec<(&'static str, String)> {
     let mut v: Vec<(&'static str, String)> = vec![
         ("Super+Space", "palette".into()),
         ("Super+Alt+Space", "toolchest".into()),
+        ("F10", "menubar".into()),
+        ("Super+Alt+M", "menubar".into()),
         ("Super+Tab", "switcher".into()),
         ("Super+Shift+Tab", "switcher-reverse".into()),
         ("Super+Grave", "next-window-of-app".into()),
