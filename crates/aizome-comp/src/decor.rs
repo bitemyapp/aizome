@@ -375,6 +375,26 @@ pub struct DecorCache {
 }
 
 impl DecorCache {
+    /// One piece's element in slot `index` (overlays number their pieces
+    /// in drawing order, so unchanged pieces keep their identity).
+    pub fn element(&mut self, index: usize, piece: &Piece, origin: (f64, f64), scale: f64, alpha: f32) -> Option<SolidColorRenderElement> {
+        while self.slots.len() <= index {
+            self.slots.push((Id::new(), CommitCounter::default(), Rgba::hex(0)));
+        }
+        let slot = &mut self.slots[index];
+        if slot.2 != piece.color {
+            slot.2 = piece.color;
+            slot.1.increment();
+        }
+        let geo = to_physical(piece.x, piece.y, piece.w, piece.h, origin, scale);
+        if geo.size.w <= 0 || geo.size.h <= 0 {
+            return None;
+        }
+        let c = piece.color.to_premultiplied_f32();
+        let color = [c[0] * alpha, c[1] * alpha, c[2] * alpha, c[3] * alpha];
+        Some(SolidColorRenderElement::new(slot.0.clone(), geo, slot.1, color, Kind::Unspecified))
+    }
+
     /// Render elements for pieces (given back to front), front first as
     /// smithay wants them.
     pub fn elements(&mut self, pieces: &[Piece], origin: (f64, f64), scale: f64, alpha: f32) -> Vec<SolidColorRenderElement> {

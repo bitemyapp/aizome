@@ -1,46 +1,60 @@
 //! What the compositor draws above windows: the stack-drop feedback, the
 //! marking menu, the switcher, the Desks overview and the screenshot area
-//! picker.
+//! picker. Each draws in Aizome's look (square corners, 1pt bevels, hard
+//! 3pt shadows, Archivo and IBM Plex Mono, the Night/Day palette).
 
+pub mod area;
 pub mod marking;
-
-use smithay::backend::renderer::{ImportAll, ImportMem, Renderer};
-use smithay::output::Output;
+pub mod overview;
+pub mod painter;
+pub mod switcher;
 
 use smithay::backend::renderer::element::Kind;
 use smithay::backend::renderer::element::memory::MemoryRenderBufferRenderElement;
+use smithay::backend::renderer::{ImportAll, ImportMem, Renderer};
+use smithay::input::keyboard::Keysym;
+use smithay::output::Output;
 use smithay::utils::{Logical, Physical, Point};
 
+use crate::bindings::Mods;
 use crate::decor::Piece;
+use crate::input::KeyDecision;
 use crate::render::OutputElement;
+use crate::state::{Aizome, State};
 use crate::text::{Face, Style};
-use crate::state::Aizome;
 use crate::wm::WinId;
 
 #[derive(Default)]
 pub struct Overlays {
     pub marking: Option<marking::Marking>,
+    pub switcher: Option<switcher::Switcher>,
+    pub overview: Option<overview::Overview>,
+    pub area: Option<area::AreaPick>,
     pub drag_cache: crate::decor::DecorCache,
 }
 
 impl Overlays {
-    /// The overview covers everything else on its outputs.
-    pub fn covers_desktop(&self, _output: &Output) -> bool {
-        false
+    /// The overview covers everything else on its output.
+    pub fn covers_desktop(&self, output: &Output) -> bool {
+        self.overview.as_ref().is_some_and(|o| &o.output == output)
     }
 
     /// While a modal overlay is up, the focused tab doesn't show focus.
     pub fn steals_focus_look(&self) -> bool {
-        false
+        self.overview.is_some()
     }
 
     /// Keys go to the compositor, not the focused client.
     pub fn grabs_keyboard(&self) -> bool {
-        false
+        self.switcher.is_some() || self.overview.is_some() || self.area.is_some()
     }
 
     pub fn animating(&self) -> bool {
         false
+    }
+
+    pub fn overview_open(&self) -> bool {
+        self.overview.is_some()
     }
 }
 
@@ -50,8 +64,110 @@ where
     R: Renderer + ImportAll + ImportMem,
     R::TextureId: Clone + Send + 'static,
 {
-    let _ = (az, renderer, output, scale);
-    Vec::new()
+    let mut out = Vec::new();
+    out.extend(area::elements(az, renderer, output, scale));
+    out.extend(marking::elements(az, renderer, output, scale));
+    out.extend(switcher::elements(az, renderer, output, scale));
+    out.extend(overview::elements(az, renderer, output, scale));
+    out
+}
+
+/// A key while an overlay is up; `None` lets it through.
+pub fn key(state: &mut State, syms: &[Keysym], mods: Mods, pressed: bool, utf8: Option<char>) -> Option<KeyDecision> {
+    if state.az.overlays.area.is_some() {
+        return area::key(state, syms, pressed);
+    }
+    if state.az.overlays.switcher.is_some() {
+        return switcher::key(state, syms, mods, pressed);
+    }
+    if state.az.overlays.overview.is_some() {
+        return overview::key(state, syms, mods, pressed, utf8);
+    }
+    if state.az.overlays.marking.as_ref().is_some_and(|m| m.shown) {
+        return marking::key(state, syms, pressed);
+    }
+    None
+}
+
+/// Scrolling over an overlay; true if it took it.
+pub fn scroll(state: &mut State, _h: f64, _v: f64) -> bool {
+    state.az.overlays.overview.is_some() || state.az.overlays.switcher.is_some()
+}
+
+pub fn pointer_moved(state: &mut State, pos: Point<f64, Logical>) {
+    area::pointer_moved(state, pos.x, pos.y);
+    let grabbed = state.az.seat.get_pointer().is_some_and(|p| p.is_grabbed());
+    if !grabbed && state.az.overlays.marking.as_ref().is_some_and(|m| m.sticky && m.shown) {
+        marking::moved(state, pos.x, pos.y);
+    }
+    overview::pointer_moved(state, pos.x, pos.y);
+}
+
+/// A button over an overlay; true if it took it.
+pub fn pointer_button(state: &mut State, button: u32, pressed: bool, pos: Point<f64, Logical>) -> bool {
+    let _ = button;
+    if state.az.overlays.area.is_some() {
+        return area::pointer_button(state, pressed, pos.x, pos.y);
+    }
+    if state.az.overlays.overview.is_some() {
+        return overview::pointer_button(state, pressed, pos.x, pos.y);
+    }
+    if state.az.overlays.switcher.is_some() {
+        if pressed {
+            return switcher::click(state, pos.x, pos.y);
+        }
+        return true;
+    }
+    if state.az.overlays.marking.as_ref().is_some_and(|m| m.sticky && m.shown) {
+        if pressed {
+            marking::click(state, pos.x, pos.y);
+        }
+        return true;
+    }
+    false
+}
+
+pub fn toggle_overview(state: &mut State) {
+    overview::toggle(state);
+}
+
+pub fn open_switcher(state: &mut State, reverse: bool, held: bool) {
+    if state.az.overlays.overview.is_some() {
+        return;
+    }
+    switcher::open(state, reverse, held);
+}
+
+pub fn close_switcher(state: &mut State, activate: bool) {
+    switcher::close(state, activate);
+}
+
+pub fn start_area_pick(state: &mut State) {
+    area::start(state);
+}
+
+/// A window closed: overlays forget it.
+pub fn window_gone(az: &mut Aizome, id: WinId) {
+    if let Some(sw) = &mut az.overlays.switcher {
+        for app in &mut sw.apps {
+            app.windows.retain(|w| *w != id);
+        }
+        sw.apps.retain(|a| !a.windows.is_empty());
+        if sw.apps.is_empty() {
+            az.overlays.switcher = None;
+        } else {
+            sw.app = sw.app.min(sw.apps.len() - 1);
+            sw.win = sw.win.min(sw.apps[sw.app].windows.len().saturating_sub(1));
+        }
+    }
+    if az.overlays.marking.as_ref().is_some_and(|m| m.win == id) {
+        az.overlays.marking = None;
+    }
+    if let Some(ov) = &mut az.overlays.overview {
+        if ov.drag.is_some_and(|d| d.0 == id) {
+            ov.drag = None;
+        }
+    }
 }
 
 /// Feedback for a tab being dragged: drawn under the top layer.
@@ -128,61 +244,3 @@ pub fn dashed(out: &mut Vec<Piece>, r: crate::wm::Rect, t: f64, dash: f64, gap: 
     }
 }
 
-/// A window closed: overlays forget it.
-pub fn window_gone(az: &mut Aizome, id: WinId) {
-    let _ = (az, id);
-}
-
-/// Scrolling over an overlay; true if it took it.
-pub fn scroll(state: &mut crate::state::State, h: f64, v: f64) -> bool {
-    let _ = (state, h, v);
-    false
-}
-
-pub fn pointer_moved(state: &mut crate::state::State, pos: smithay::utils::Point<f64, smithay::utils::Logical>) {
-    let _ = (state, pos);
-}
-
-/// A button over an overlay; true if it took it.
-pub fn pointer_button(
-    state: &mut crate::state::State,
-    button: u32,
-    pressed: bool,
-    pos: smithay::utils::Point<f64, smithay::utils::Logical>,
-) -> bool {
-    let _ = (state, button, pressed, pos);
-    false
-}
-
-/// A key while an overlay is up; `None` lets it through.
-pub fn key(
-    state: &mut crate::state::State,
-    syms: &[smithay::input::keyboard::Keysym],
-    mods: crate::bindings::Mods,
-    pressed: bool,
-) -> Option<crate::input::KeyDecision> {
-    let _ = (state, syms, mods, pressed);
-    None
-}
-
-pub fn toggle_overview(state: &mut crate::state::State) {
-    let _ = state;
-}
-
-pub fn open_switcher(state: &mut crate::state::State, reverse: bool, held: bool) {
-    let _ = (state, reverse, held);
-}
-
-pub fn start_area_pick(state: &mut crate::state::State) {
-    let _ = state;
-}
-
-pub fn close_switcher(state: &mut crate::state::State, activate: bool) {
-    let _ = (state, activate);
-}
-
-impl Overlays {
-    pub fn overview_open(&self) -> bool {
-        false
-    }
-}

@@ -629,7 +629,7 @@ impl State {
 
         // Overlays (switcher, overview, marking menu, area picker) take
         // keys first, releases of ❖ included.
-        if let Some(d) = crate::overlays::key(self, &syms, m, pressed) {
+        if let Some(d) = crate::overlays::key(self, &syms, m, pressed, handle.modified_sym().key_char()) {
             if pressed {
                 if let KeyDecision::Swallow | KeyDecision::Act(_) = d {
                     self.az.suppressed_keys.insert(keycode);
