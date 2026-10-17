@@ -17,7 +17,7 @@
 //!
 //! ```text
 //! systemd-run --user --scope --unit=… --description=<Name> --collect \
-//!     [--expand-environment=no] -- /bin/sh -c 'exec "$@" 2>/dev/null' aizome-launch argv…
+//!     [--expand-environment=no] -- /bin/sh -c 'exec "$@" 2>&1' aizome-launch argv…
 //! ```
 //!
 //! With `--scope`, systemd-run asks the manager for a scope holding its own
@@ -25,11 +25,13 @@
 //! command, so the launched program is our child and `systemd-run` never
 //! "returns". [`launch`] therefore only waits for that line (milliseconds),
 //! then hands the child to a small thread that reaps it when it exits. The
-//! `sh` wrapper sends the program's stderr to `/dev/null`, closing the pipe
-//! the line came through; without it the app would hold a pipe to the
-//! launcher and die of `SIGPIPE` when the launcher went away. systemd 254+
-//! expands `$VAR` in scope command lines unless told not to, hence
-//! `--expand-environment=no` (when the version has it).
+//! program's output goes to the journal (a journald stream tagged with the
+//! app's ID, as systemd gives services; `/dev/null` without journald):
+//! that is its stdout, and the `sh` wrapper points its stderr there too,
+//! closing the pipe the line came through; without that the app would hold
+//! a pipe to the launcher and die of `SIGPIPE` when the launcher went away.
+//! systemd 254+ expands `$VAR` in scope command lines unless told not to,
+//! hence `--expand-environment=no` (when the version has it).
 //!
 //! **Fallback**: a plain spawn when `systemd-run` isn't in `PATH`, the user
 //! manager isn't reachable (`$XDG_RUNTIME_DIR/systemd/private` missing), or
@@ -219,10 +221,32 @@ fn working_dir(entry: &DesktopEntry, options: &LaunchOptions) -> Result<PathBuf>
     Ok(home.unwrap_or_else(|| PathBuf::from("/")))
 }
 
+/// A stream into the journal for an app's output (as systemd gives
+/// services), tagged with `identifier`; `None` without journald.
+fn journal_stream(identifier: &str) -> Option<std::os::unix::net::UnixStream> {
+    use std::io::Write;
+    let mut stream = std::os::unix::net::UnixStream::connect("/run/systemd/journal/stdout").ok()?;
+    stream.shutdown(std::net::Shutdown::Read).ok()?;
+    let identifier: String = identifier.chars().filter(|c| !c.is_control()).collect();
+    // Identifier, unit, priority (info), level prefix, and no forwarding
+    // to syslog, the kernel log or the console.
+    stream.write_all(format!("{identifier}\n\n6\n0\n0\n0\n0\n").as_bytes()).ok()?;
+    Some(stream)
+}
+
+/// Where an app's output goes: the journal, else nowhere.
+fn output(identifier: &str) -> (Stdio, Stdio) {
+    match journal_stream(identifier).and_then(|s| Some((s.try_clone().ok()?, s))) {
+        Some((out, err)) => (Stdio::from(std::os::fd::OwnedFd::from(out)), Stdio::from(std::os::fd::OwnedFd::from(err))),
+        None => (Stdio::null(), Stdio::null()),
+    }
+}
+
 /// Settings common to both ways of starting: directory, environment,
-/// standard streams, a new session.
-fn prepare(command: &mut Command, dir: &Path, options: &LaunchOptions) {
-    command.current_dir(dir).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+/// standard streams (output to the journal), a new session.
+fn prepare(command: &mut Command, dir: &Path, options: &LaunchOptions, identifier: &str) {
+    let (stdout, stderr) = output(identifier);
+    command.current_dir(dir).stdin(Stdio::null()).stdout(stdout).stderr(stderr);
     set_activation_env(command, options.activation_token.as_deref());
     // SAFETY: setsid is async-signal-safe and touches no memory; it is
     // the only thing done between fork and exec.
@@ -249,7 +273,8 @@ fn spawn_plain(argv: &[String], dir: &Path, options: &LaunchOptions) -> Result<L
     };
     let mut command = Command::new(program);
     command.args(args);
-    prepare(&mut command, dir, options);
+    let identifier = Path::new(program).file_name().map_or(program.clone(), |n| n.to_string_lossy().into_owned());
+    prepare(&mut command, dir, options, &identifier);
     let child =
         command.spawn().map_err(|error| Error::Command { program: program.clone(), message: error.to_string() })?;
     let pid = child.id();
@@ -280,8 +305,8 @@ fn spawn_scope(
         command.arg("--expand-environment=no");
     }
     let shell = if Path::new("/bin/sh").exists() { "/bin/sh" } else { "sh" };
-    command.args(["--", shell, "-c", "exec \"$@\" 2>/dev/null", "aizome-launch"]).args(argv);
-    prepare(&mut command, dir, options);
+    command.args(["--", shell, "-c", "exec \"$@\" 2>&1", "aizome-launch"]).args(argv);
+    prepare(&mut command, dir, options, entry.app_id());
     command.stderr(Stdio::piped());
     let mut child = command.spawn().map_err(|error| Fallback(format!("{program}: {error}")))?;
     let pid = child.id();
