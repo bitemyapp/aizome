@@ -131,7 +131,7 @@ there is; in a row or column, an equal share of what the others leave),
 
 | | |
 |---|---|
-| `text("…")` | `.role(Role::Text2)` (`Text`, `Text2`, `Text3`, `Faint`, `Accent`, `Danger`, `Success`, `Warning`, `Violet`, `Cyan`), `.size(p)`, `.weight(w)`, `.semibold()`, `.bold()`, `.mono()`, `.italic()`, `.tabular()`, `.condensed()` (Archivo at 87.5%), `.wrap()`, `.max_lines(n)` (an ellipsis ends it), `.center()`, `.caps()`, `.letter_spacing(p)`, `.underline()`, `.selectable()`. One line ends in an ellipsis where it doesn't fit. |
+| `text("…")` | `.role(Role::Text2)` (`Text`, `Text2`, `Text3`, `Faint`, `Accent`, `Danger`, `Success`, `Warning`, `Violet`, `Cyan`), `.size(p)`, `.weight(w)`, `.semibold()`, `.bold()`, `.mono()`, `.italic()`, `.tabular()`, `.condensed()` (Archivo at 87.5%), `.wrap()`, `.max_lines(n)` (wraps for up to `n` lines), `.center()`, `.caps()`, `.letter_spacing(p)`, `.underline()`, `.selectable()`. One line ends in an ellipsis where it doesn't fit. |
 | `rich_text([Span::new("Ln ").role(Role::Text3), Span::new("48").mono()])` | Runs with their own look: `role`, `color`, `weight`, `italic`, `mono`, `underline`, `strikethrough`, `background`, `size`. |
 | `icon(Icon::Wifi)` | `.size(16.0)`, `.role(Role::Text2)`. A curated set of ~290 Lucide icons (ISC), stroked at 1.5pt at 16pt. `Icon::from_name("wifi-off")`. |
 | `image(Image)` | `.fit(Fit::Contain / Cover / Fill / None)`, `.revision(n)` when the picture changes at the same size. |
@@ -202,9 +202,39 @@ virtual_list(files.len(), 24.0, move |i| row![icon(Icon::File), text(files[i].na
 ```
 
 `list(vec![...])` holds fixed rows. Selection belongs to the program; the
-list draws it (`selection` when it has the focus, `line2` when it hasn't),
-and text and icons in selected rows take `on_selection`. Arrows, Home/End,
-Page Up/Down and type-select move it; the list scrolls to show it.
+list draws it: on `selection`, with text and icons in `on_selection`, while
+the list has the focus in the window with the keyboard; on `line2` in the
+ordinary text colours otherwise. Arrows, Home/End, Page Up/Down and
+type-select move it; the list scrolls to show it. `.reveal(row)` scrolls to
+a row the program names (a search's match, a file just made) whenever the
+row named changes, and leaves the user's scrolling alone otherwise.
+
+`table(columns, rows, |r, c| cell(r, c))` is a list in columns:
+
+```rust
+let files = self.files.clone();
+table(vec![Column::new("Name").width(240.0).sortable(), Column::new("Size").width(90.0).align_end()],
+      files.len(), move |r, c| match c {
+          0 => text(files[r].name.clone()).into(),
+          _ => text(files[r].size_text()).mono().tabular().into(),
+      })
+    .selected(..).on_select(..).on_activate(..).multiple().type_select(..).context_menu(..)
+    .sorted(0, true).on_sort(Msg::Sort) // a header clicked: (column, ascending)
+```
+
+The header stays at the top while rows scroll under it, and moves sideways
+with them; its edges drag to resize columns (`.min_width(p)`; the last
+column takes what's left), which the table remembers. Only the rows that
+show are built.
+
+`tree(Arc<Vec<TreeItem>>)` is an outline: `TreeItem::branch(id, label,
+children)` and `TreeItem::leaf(id, label)`, each with `.icon(i)` and
+`.detail(text)` (right-aligned, mono). `.expanded(Arc<HashSet<id>>)` and
+`.on_toggle(Msg::Toggle)` let the program keep what's open (else the tree
+keeps it); `.selected(ids)`, `.on_select`, `.on_activate`, `.multiple()`,
+`.context_menu(|id| ..)`, `.reveal(id)`. → opens a branch, ← closes it or
+moves to its parent, and its triangle opens and closes it. Rows are built
+only while they show.
 
 ### Forms
 
@@ -236,6 +266,33 @@ a `bevel_lo` bottom): compact pop-ups, `button(..).toolbar()`,
 | `tooltip(el, "text")` (or `.tooltip(..)`) | After the pointer rests 650 ms. |
 | `mouse_area(el)` | `.on_press`, `.on_release`, `.on_double_click`, `.on_right_click(\|at\| ..)`, `.on_hover(\|in\| ..)`, `.on_move`, `.on_drag(\|DragEvent\| ..)`, `.on_drop(\|Dropped { urls, text, .. }\| ..)` (files and text from other programs), `.cursor(c)`. |
 | `canvas(state, \|canvas, bounds, &state, theme\| …)` | Drawing of one's own (charts, calendars, disk maps) with Sidestep's `Canvas`; it's drawn again when `state`'s hash changes. `.on_event(\|event, size, &state\| Option<Msg>)`, `.focusable()`, `.parts(\|&state, size\| vec![(rect, hash)])`: parts that change by themselves (a hovered bar, a cursor), left out of `state`'s `Hash`, so that only the rectangles of parts that came, went or changed are drawn again. |
+
+### Sheets, alerts and panels
+
+A sheet is a modal window of the program's own drawn over its parent's
+content, under a dimming veil and at the top under the in-window menu bar:
+`let s = cx.show_sheet(parent)`, then `view(s)` draws it and
+`cx.close_window(s)` takes it away. While it's up the parent takes no
+pointer or keys; Tab stays in the sheet, Return presses its `.default()`
+button and Escape its `.cancel()` one.
+
+```rust
+cx.alert(window, Alert::new("Delete “notes.md”?", "It goes to the Trash.")
+    .destructive_button("Delete", Msg::Delete)
+    .cancel_button("Cancel"));          // or .default_button(..), .button(..), .cancel_with(.., msg)
+
+cx.open_panel(window, FileDialog::new().title("Open").filter("Markdown", &["md"]).multiple(),
+              Msg::Opened);             // Option<Vec<PathBuf>>: None when cancelled
+cx.save_panel(window, FileDialog::new().file_name("Untitled.md"), Msg::SaveTo);
+```
+
+The file panel is the kit's own, as a sheet: a path bar of the folders up
+to here, Places (Home, and Desktop, Documents, Downloads, Pictures, Music
+and Videos where they exist, then Computer), the folder as a virtual list
+(folders first, files by the filters; Return or a double click opens a
+folder or chooses), a name field when saving, a "Show hidden files" box,
+and `.directories()` to choose folders. The About role shows an alert with
+the app's name, kind and version.
 
 ### Writing a widget
 
@@ -395,9 +452,21 @@ in-window menu bar. Input: `click`, `click_text`, `press`/`release`,
 `focus_window`, `send(msg)`, `resize`. Looking: `find(text)`,
 `find_id(name)`, `texts()`, `semantics()`, `selection()`,
 `focused_name()`, `popups()`, `take_damage()`, `title()`, `stats()`.
-Pictures: `render(window, scale)`, `render_rect`, `save_png`, and
-`assert_golden` (`AIZOME_UPDATE_GOLDENS=1` rewrites them). For the shell:
-`set_outputs`, `confirm_lock`, `finish_lock`, `activation_token`.
+Pictures: `render(window, scale)`, `render_rect`, `render_popup`,
+`render_rgba` (the window with its popups where they'd show), `save_png`,
+and `assert_golden` (`AIZOME_UPDATE_GOLDENS=1` rewrites them). Popups:
+`popups(window)`, `click_popup`, `popup_keyboard`, `texts_in`. Drops:
+`drop(window, at, urls, text)`. The theme: `set_appearance`. For the shell:
+`set_outputs`, `confirm_lock`, `finish_lock`, `activation_token`, and
+`Harness::with_shell(program, socket)` with `pump_shell(wait)` to talk to a
+stand-in shell over a real socket.
+
+`crates/aizome-kit/examples/gallery` shows every element on five pages
+(Controls, Text & Fields, Lists & Tables, a Settings pane, the Editor) with
+the theme switchable; the kit's goldens in `tests/snapshots` are its pages.
+`GALLERY_DEMO=menu|popover|alert` opens one at start, and
+`GALLERY_DEMO=bench-toggle|bench-select|bench-type` keeps changing
+something (for `SIDESTEP_FRAME_STATS=1`).
 
 Set `AIZOME_FONT_DIR` to the fonts (`~/work/.aizome-fonts` here) so
 pictures use Aizome's type.
@@ -412,3 +481,43 @@ Every widget describes itself (`Widget::semantics`: role, label, value,
 checked, selected, range, actions) and the kit builds a semantic tree per
 window (`aizome_kit::a11y`; `Harness::semantics` in tests). Wiring it to
 AccessKit (and AT-SPI) is to come.
+
+## Measured
+
+On this laptop (release build, the machine shared with a dozen busy
+builds: load average 10–15, so the maxima are the scheduler's), at 1440 ×
+900 points rendered at scale 2 (2880 × 1800 pixels).
+
+From the input to the frame drawn, in the headless harness
+(`cargo test --release -p aizome-kit --test perf -- --ignored --nocapture`;
+the time includes handling, `update`, `view`, layout, the diff, and
+rasterizing the damage into an offscreen buffer):
+
+| Interaction | p50 ms | p95 ms |
+|---|---|---|
+| Hover a button (a settings pane, ~200 widgets) | 0.01 | 0.01 |
+| Toggle a switch (update, view, layout, diff) | 0.04 | 0.14 |
+| Type a character in a text field | 0.08 | 0.12 |
+| Type a character in a 2,000-line editor | 0.35 | 0.71 |
+| Move a 10,000-row list's selection by a row | 0.12 | 0.16 |
+| Scroll a 10,000-row list one notch, the list filling the window | 3.8 | 28 |
+| (The offscreen buffer for a whole 2880 × 1800 frame alone) | 1.2 | 2.2 |
+
+The live render thread, under headless sway at scale 2
+(`SIDESTEP_FRAME_STATS=1`, the gallery's `GALLERY_DEMO=bench-…` modes,
+one change every 20 ms; record, rasterize and present, from Sidestep's
+frame statistics):
+
+| Change | Damage | p50 µs | p95 µs |
+|---|---|---|---|
+| A switch | 1% | 47 | 64 |
+| A 10,000-row table's and a list's selection | 4–5% | 220–350 | 370–440 |
+| Typing in the editor | 2–3% | 130–200 | 220–240 |
+
+Everything but scrolling is far inside 4 ms because only what changed is
+drawn. A notch of scrolling redraws the whole list, so its cost is the
+area's: a list filling a 2880 × 1800 window misses 4 ms at the 95th
+percentile while the machine is busy. Sidestep is making full-window
+repaints at 2× faster; moving the drawn rows (a blit) and drawing only the
+newly shown strip would make scrolling proportional to the rows that come
+into view.
