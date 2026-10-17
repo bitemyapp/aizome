@@ -400,6 +400,10 @@ impl Tree {
         let focused = env.focused == Some(n.id);
         let make = |canvas: &mut Canvas, env: &mut PaintEnv, over: bool| {
             canvas.save();
+            // A widget that clips its children clips its own drawing too.
+            if n.widget.clips() {
+                canvas.clip_rect(n.rect);
+            }
             canvas.translate(n.rect.origin().to_vec2());
             let mut cx = PaintCx {
                 canvas,

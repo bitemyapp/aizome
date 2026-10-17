@@ -294,6 +294,7 @@ impl FieldWidget {
         }
         st.blink_off = false;
         st.last_edit = None;
+        cx.relayout();
         cx.invalidate();
         self.follow_caret(cx);
     }
@@ -455,7 +456,7 @@ impl Widget for FieldWidget {
         }
         let empty = shown.is_empty();
         let text = if empty { self.placeholder.as_deref().unwrap_or("").to_owned() } else { shown.clone() };
-        let color = if empty { t.text3() } else { t.text() };
+        let color = if empty { t.text3() } else if self.enabled { t.text() } else { t.faint() };
         let laid = cx.env.text.layout(t, &text, &self.spec(t, color), None);
         let width = if bc.max.width.is_finite() { bc.max.width } else { 160.0 };
         let visible = (width - self.left() - self.right()).max(1.0);
@@ -599,6 +600,7 @@ impl Widget for FieldWidget {
                     }
                 }
                 st.blink_off = false;
+                cx.relayout();
                 cx.invalidate();
                 Status::Handled
             }
@@ -666,6 +668,7 @@ impl Widget for FieldWidget {
                 let st = cx.state::<FieldState>();
                 st.anchor = 0;
                 st.caret = n;
+                cx.relayout();
                 cx.invalidate();
                 true
             }
