@@ -8,12 +8,16 @@ pub mod clock;
 pub mod ipc;
 pub mod launch;
 pub mod look;
+pub mod menubar;
 pub mod menus;
 pub mod notifications;
 pub mod palette;
 pub mod pam;
 pub mod shelf;
+pub mod shell;
+pub mod sys;
 pub mod systray;
+pub mod widgets;
 pub mod wm;
 
 /// `aizome-shell --help`.
@@ -31,5 +35,12 @@ Environment:
 
 /// Run the shell until the session ends: the process's exit code.
 pub fn run() -> i32 {
-    0
+    let opts = shell::Options { live: true, ..shell::Options::default() };
+    match aizome_kit::try_run(shell::Shell::new(opts)) {
+        Ok(_) => 0,
+        Err(e) => {
+            log::error!("{e}");
+            1
+        }
+    }
 }
