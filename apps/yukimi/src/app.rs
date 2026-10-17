@@ -1182,8 +1182,8 @@ impl Program for Yukimi {
                     "Yukimi is changing the system",
                     "Wait for it to finish, or stop it first. Stopping puts your configuration back as it was.",
                 )
-                .default_button("Keep Going", Msg::Note(String::new()))
-                .button("Stop", Msg::StopJob),
+                .cancel_button("Keep Going")
+                .destructive_button("Stop", Msg::StopJob),
             );
             return false;
         }

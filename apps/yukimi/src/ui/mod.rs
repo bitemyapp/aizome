@@ -103,8 +103,13 @@ fn place(app: &Yukimi, page: Page) -> Element<Msg> {
             let newer = app.movements().map_or(0, |m| crate::checks::newer_count(&m));
             if app.checking {
                 Some("…".to_owned())
-            } else if app.model.completion.action != yukimi_system::completion::Action::None {
-                Some("restart".to_owned())
+            } else if let Some(word) = match app.model.completion.action {
+                yukimi_system::completion::Action::Reboot => Some("restart"),
+                yukimi_system::completion::Action::Logout => Some("sign out"),
+                yukimi_system::completion::Action::Unknown => Some("see why"),
+                yukimi_system::completion::Action::None => None,
+            } {
+                Some(word.to_owned())
             } else {
                 (newer > 0).then(|| format!("{newer} new"))
             }
