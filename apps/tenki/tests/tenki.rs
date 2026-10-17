@@ -219,6 +219,14 @@ fn units_switch_without_fetching() {
     let units = h.find_id(w, "units").expect("the toolbar's switch");
     h.click(w, Point::new(units.x0 + units.width() * 0.25, units.center().y));
     assert_eq!(h.program().units(), Units::Metric);
+    // Settings (❖,): the locale's units again, then Done.
+    h.command(w, ',');
+    let sheet = h.program().settings_sheet.expect("the Settings sheet");
+    assert!(h.texts(sheet).iter().any(|t| t == "Tenki Settings"));
+    h.send(Msg::UnitsChoice(0));
+    assert_eq!(h.program().settings.units, None);
+    h.named(w, NamedKey::Enter, Modifiers::NONE);
+    assert!(h.program().settings_sheet.is_none(), "Return is Done");
 }
 
 #[test]
@@ -343,6 +351,10 @@ fn goldens() {
         h.type_text(w, "Chicago");
         h.advance(Duration::from_millis(300));
         pictures(&mut h, &format!("search-{tname}"));
+        // Settings, over the window.
+        h.named(w, NamedKey::Escape, Modifiers::NONE);
+        h.command(w, ',');
+        pictures(&mut h, &format!("settings-{tname}"));
     }
     // The first launch: the time zone's city, and the question.
     for (theme, tname) in [(ThemeChoice::Night, "night"), (ThemeChoice::Day, "day")] {

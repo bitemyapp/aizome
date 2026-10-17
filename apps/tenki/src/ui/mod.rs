@@ -617,3 +617,46 @@ fn compass_name(point: &str) -> &str {
         other => other,
     }
 }
+
+// Settings.
+
+/// The Settings sheet (❖,): units, and whether to use the location.
+pub fn settings(app: &Tenki) -> Element<Msg> {
+    let chosen = match app.settings.units {
+        None => 0,
+        Some(Units::Metric) => 1,
+        Some(Units::Imperial) => 2,
+    };
+    let locale = match Units::from_locale() {
+        Units::Metric => "metric",
+        Units::Imperial => "imperial",
+    };
+    let units = dropdown(
+        [format!("As the locale ({locale})"), Units::Metric.label().to_owned(), Units::Imperial.label().to_owned()],
+        Some(chosen),
+    )
+    .on_select(Msg::UnitsChoice);
+    let allowed = app.settings.location == Consent::Allowed;
+    let location = toggle(allowed).on_toggle(|on| if on { Msg::AllowLocation } else { Msg::DeclineLocation });
+    column![
+        text("Tenki Settings").size(15.0).semibold(),
+        form_section(
+            "Units",
+            vec![form_row("Temperature, wind and rain", units).description("Switching needs no new forecast.").into()]
+        ),
+        form_section(
+            "Location",
+            vec![
+                form_row("Show my location", location)
+                    .description("GeoClue finds the nearest town; Open-Meteo gets the position rounded to 0.01°.")
+                    .icon(Icon::LocateFixed)
+                    .into()
+            ]
+        ),
+        row![spacer(), button("Done").primary().default().cancel().on_press(Msg::CloseSettings)].width(Fill),
+    ]
+    .spacing(14.0)
+    .padding(20.0)
+    .width(460.0)
+    .into()
+}

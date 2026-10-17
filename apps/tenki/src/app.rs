@@ -97,6 +97,10 @@ pub enum Msg {
     TimezoneFound(String, Result<Vec<Found>, String>),
     /// Another launch asked for the window.
     Activate,
+    ShowSettings,
+    CloseSettings,
+    /// Units in Settings: 0 the locale's, 1 metric, 2 imperial.
+    UnitsChoice(usize),
     /// Background work that ended with nothing to say.
     Idle,
 }
@@ -120,6 +124,8 @@ pub struct Tenki {
     pub window: WindowKey,
     /// The one-instance socket, served once the app runs.
     pub instance: Option<UnixListener>,
+    /// The Settings sheet, while it shows.
+    pub settings_sheet: Option<WindowKey>,
     /// The time zone's city is being looked for.
     timezone_busy: bool,
     timezone_tried: i64,
@@ -146,6 +152,7 @@ impl Tenki {
             clock: Clock::H24,
             window: WindowKey::NONE,
             instance: None,
+            settings_sheet: None,
             timezone_busy: false,
             timezone_tried: 0,
         };
@@ -650,11 +657,33 @@ impl Program for Tenki {
                 }
             }
             Msg::Activate => cx.activate(self.window),
+            Msg::ShowSettings => {
+                if self.settings_sheet.is_none() {
+                    let sheet = cx.show_sheet(self.window);
+                    self.settings_sheet = (sheet != WindowKey::NONE).then_some(sheet);
+                }
+            }
+            Msg::CloseSettings => {
+                if let Some(s) = self.settings_sheet.take() {
+                    cx.close_window(s);
+                }
+            }
+            Msg::UnitsChoice(i) => {
+                self.settings.units = match i {
+                    1 => Some(Units::Metric),
+                    2 => Some(Units::Imperial),
+                    _ => None,
+                };
+                self.save_settings();
+            }
             Msg::Idle => {}
         }
     }
 
-    fn view(&self, _window: WindowKey) -> Element<Msg> {
+    fn view(&self, window: WindowKey) -> Element<Msg> {
+        if Some(window) == self.settings_sheet {
+            return crate::ui::settings(self);
+        }
         crate::ui::window(self)
     }
 
@@ -682,6 +711,19 @@ impl Program for Tenki {
             .header("Units")
             .item(MenuItem::new(Units::Metric.label(), Msg::SetUnits(Units::Metric)).checked(units == Units::Metric))
             .item(MenuItem::new(Units::Imperial.label(), Msg::SetUnits(Units::Imperial)).checked(units == Units::Imperial));
-        MenuBar::standard(&self.info()).insert(1, places).with_menu(view)
+        // The app menu as standard, its Settings… opening Tenki's.
+        let role = |label: &str, role: MenuRole| MenuItem::role_item(label, role);
+        let app = Menu::new("Tenki")
+            .item(role("About Tenki", MenuRole::About))
+            .separator()
+            .item(MenuItem::new("Settings…", Msg::ShowSettings).shortcut(Shortcut::cmd(',')))
+            .separator()
+            .submenu(Menu::new("Services").item(role("No Services Apply", MenuRole::Services).enabled(false)))
+            .separator()
+            .item(role("Hide Tenki", MenuRole::Hide).shortcut(Shortcut::cmd('H')))
+            .item(role("Hide Others", MenuRole::HideOthers).shortcut(Shortcut::cmd('H').alt()))
+            .separator()
+            .item(role("Quit Tenki", MenuRole::Quit).shortcut(Shortcut::cmd('Q')));
+        MenuBar::standard(&self.info()).replace("Tenki", app).insert(1, places).with_menu(view)
     }
 }
