@@ -321,6 +321,7 @@ pub struct Bluetooth {
     model: Arc<Model<BluetoothState>>,
     stop: Stop,
     agent: std::sync::Mutex<Option<agent::Registration>>,
+    rfkill: std::path::PathBuf,
 }
 
 service_handle!(Bluetooth, BluetoothState);
@@ -337,6 +338,7 @@ impl Bluetooth {
                     model: Arc::new(Model::new(BluetoothState::default(), wake)),
                     stop: Stop::default(),
                     agent: std::sync::Mutex::new(None),
+                    rfkill: crate::network::rfkill::DEVICE.into(),
                 }
             }
         }
@@ -380,7 +382,19 @@ impl Bluetooth {
                 }
             }
         });
-        Bluetooth { bus: Some(bus), model, stop, agent: std::sync::Mutex::new(None) }
+        Bluetooth {
+            bus: Some(bus),
+            model,
+            stop,
+            agent: std::sync::Mutex::new(None),
+            rfkill: crate::network::rfkill::DEVICE.into(),
+        }
+    }
+
+    /// Use `device` instead of `/dev/rfkill` to unblock Bluetooth (tests).
+    pub fn with_rfkill_device(mut self, device: std::path::PathBuf) -> Bluetooth {
+        self.rfkill = device;
+        self
     }
 
     /// Whether BlueZ is running.
@@ -397,9 +411,21 @@ impl Bluetooth {
         self.task(move |bus| bus.set(BLUEZ, &path, iface, name, value))
     }
 
-    /// Switch an adapter on or off.
+    /// Switch an adapter on or off. An adapter a radio switch keeps off
+    /// (`PowerState` `off-blocked`) is unblocked through `/dev/rfkill`
+    /// first, as a Bluetooth switch in the UI means.
     pub fn set_powered(&self, adapter: &str, on: bool) -> Task<()> {
-        self.set(adapter, IFACE_ADAPTER, "Powered", on)
+        let blocked = on && self.snapshot().adapter(adapter).is_some_and(Adapter::blocked);
+        let adapter = adapter.to_owned();
+        let device = self.rfkill.clone();
+        self.task(move |bus| {
+            if blocked {
+                crate::network::rfkill::block_type(&device, crate::network::rfkill::TYPE_BLUETOOTH, false)?;
+                // BlueZ notices the unblock and the adapter comes back first.
+                std::thread::sleep(Duration::from_millis(300));
+            }
+            bus.set(BLUEZ, &adapter, IFACE_ADAPTER, "Powered", on)
+        })
     }
 
     /// Let other devices find this one (for `DiscoverableTimeout`

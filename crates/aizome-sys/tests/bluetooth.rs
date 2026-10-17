@@ -68,7 +68,7 @@ impl Adapter {
     }
     #[zbus(property)]
     fn power_state(&self) -> String {
-        if self.powered { "on".into() } else { "off".into() }
+        if self.powered { "on".into() } else if self.alias == "blocked" { "off-blocked".into() } else { "off".into() }
     }
     #[zbus(property)]
     fn alias(&self) -> String {
@@ -332,4 +332,32 @@ fn without_bluez_nothing_is_there() {
     assert!(!bt.available());
     assert!(bt.snapshot().adapters.is_empty());
     assert!(bt.register_agent(|_| {}).is_err());
+}
+
+#[test]
+fn a_blocked_adapter_is_unblocked_before_powering_on() {
+    let bus = test_bus!();
+    let shared = Arc::new(Mutex::new(Shared::default()));
+    let _fake = bus
+        .builder()
+        .name("org.bluez")
+        .unwrap()
+        .serve_at("/", zbus::fdo::ObjectManager)
+        .unwrap()
+        .serve_at("/org/bluez", AgentManager { shared })
+        .unwrap()
+        .serve_at(ADAPTER, Adapter { powered: false, alias: "blocked".into(), discovering: false })
+        .unwrap()
+        .build()
+        .unwrap();
+    let rfkill = std::env::temp_dir().join(format!("aizome-sys-bt-rfkill-{}", std::process::id()));
+    std::fs::write(&rfkill, b"").unwrap();
+    let bt = Bluetooth::with_bus(bus.bus(), Wake::none()).with_rfkill_device(rfkill.clone());
+    assert!(eventually(|| bt.snapshot().default_adapter().is_some_and(|a| a.blocked())));
+    bt.set_powered(ADAPTER, true).wait().unwrap();
+    let written = std::fs::read(&rfkill).unwrap();
+    std::fs::remove_file(&rfkill).unwrap();
+    // struct rfkill_event { idx 0, type BLUETOOTH, op CHANGE_ALL, soft 0, hard 0 }
+    assert_eq!(written, [0, 0, 0, 0, 2, 3, 0, 0]);
+    assert!(eventually(|| bt.snapshot().powered()));
 }

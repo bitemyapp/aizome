@@ -82,6 +82,18 @@ pub(crate) fn block_all(device: &Path, blocked: bool) -> Result<()> {
     Ok(())
 }
 
+/// The rfkill type of Bluetooth radios.
+pub(crate) const TYPE_BLUETOOTH: u8 = 2;
+
+/// Block or unblock every radio of one type (`TYPE_BLUETOOTH`).
+pub(crate) fn block_type(device: &Path, kind: u8, blocked: bool) -> Result<()> {
+    let mut event = block_all_event(blocked);
+    event[4] = kind;
+    let mut file = std::fs::OpenOptions::new().write(true).open(device)?;
+    file.write_all(&event)?;
+    Ok(())
+}
+
 /// The radios, from sysfs (`rfkillN/{index,type,soft,hard}`).
 pub(crate) fn read_sysfs(root: &Path) -> Vec<Radio> {
     let Ok(entries) = std::fs::read_dir(root) else { return Vec::new() };

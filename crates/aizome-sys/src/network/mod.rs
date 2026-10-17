@@ -30,7 +30,7 @@
 //! polkit's `org.freedesktop.NetworkManager.*` actions).
 
 mod model;
-mod rfkill;
+pub(crate) mod rfkill;
 
 pub use model::{
     AccessPoint, ActiveConnection, ActiveState, Band, ConnectionKind, ConnectionSettings, Connectivity,
