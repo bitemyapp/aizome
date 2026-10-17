@@ -13,16 +13,22 @@ use crate::pane::{AnyPane, pane};
 
 mod accessibility;
 mod appearance;
+mod bluetooth;
 mod battery;
 mod desktop;
+mod displays;
 mod general;
+pub(crate) mod hw;
 mod keyboard;
 mod lock;
 mod menubar;
 mod mouse;
+mod network;
 mod notifications;
 mod performance;
+mod printers;
 mod search;
+mod sound;
 mod trackpad;
 mod users;
 
@@ -30,14 +36,18 @@ mod users;
 pub fn all() -> Vec<Box<dyn AnyPane>> {
     vec![
         // Connections.
+        pane(network::Network::default()),
+        pane(bluetooth::Bluetooth::default()),
         // Alerts.
         pane(notifications::Notifications::default()),
+        pane(sound::Sound::default()),
         // System.
         pane(general::General::default()),
         pane(appearance::Appearance::default()),
         pane(accessibility::Accessibility::default()),
         pane(desktop::Desktop::default()),
         pane(menubar::MenuBar::default()),
+        pane(displays::Displays::default()),
         pane(battery::Battery::default()),
         pane(performance::Performance::default()),
         pane(search::Search::default()),
@@ -48,6 +58,7 @@ pub fn all() -> Vec<Box<dyn AnyPane>> {
         pane(keyboard::Keyboard::default()),
         pane(mouse::Mouse::default()),
         pane(trackpad::Trackpad::default()),
+        pane(printers::Printers::default()),
     ]
 }
 

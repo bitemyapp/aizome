@@ -25,10 +25,6 @@ impl Mode {
         Mode { width, height, refresh }
     }
 
-    pub fn same_size(&self, other: &Mode) -> bool {
-        self.width == other.width && self.height == other.height
-    }
-
     /// The mode as the compositor and the settings file take it:
     /// `"2880x1800@120"` (`"2880x1800@59.94"` for fractional rates).
     pub fn setting(&self) -> String {
@@ -41,10 +37,6 @@ impl Mode {
         } else {
             format!("{}x{}@{:.3}", self.width, self.height, hz)
         }
-    }
-
-    pub fn hz(&self) -> f64 {
-        self.refresh as f64 / 1000.0
     }
 }
 
@@ -119,6 +111,7 @@ pub struct Rect {
 }
 
 impl Rect {
+    #[cfg_attr(not(test), allow(dead_code))]
     pub fn new(x: i32, y: i32, w: i32, h: i32) -> Rect {
         Rect { x, y, w, h }
     }
@@ -259,14 +252,6 @@ impl Display {
         }
         sizes.sort_by_key(|(w, h)| std::cmp::Reverse(w * h));
         sizes
-    }
-
-    /// The preferred (native) resolution, else the largest.
-    pub fn native(&self) -> (i32, i32) {
-        self.preferred.map(|m| (m.width, m.height)).or_else(|| self.resolutions().first().copied()).unwrap_or((
-            self.settings.mode.width,
-            self.settings.mode.height,
-        ))
     }
 
     /// The key the settings file keeps it under: make, model and serial
@@ -494,17 +479,6 @@ pub fn place(settings: &mut [Settings], name: &str, x: i32, y: i32) {
     let tolerance = dropped.w.max(dropped.h) / 16;
     (settings[i].x, settings[i].y) = snap(dropped, &others, tolerance);
     normalize(settings);
-}
-
-/// Where a display would land if dropped at `x`,`y` (for the outline
-/// drawn while dragging), in the arrangement as it is (not normalized).
-pub fn landing(settings: &[Settings], name: &str, x: i32, y: i32) -> Option<Rect> {
-    let s = settings.iter().find(|s| s.name == name)?;
-    let dropped = Rect { x, y, ..rect(s) };
-    let others: Vec<Rect> = settings.iter().filter(|s| s.name != name && arranged(s)).map(rect).collect();
-    let tolerance = dropped.w.max(dropped.h) / 16;
-    let (x, y) = snap(dropped, &others, tolerance);
-    Some(Rect { x, y, ..dropped })
 }
 
 /// A display changed size (scale, resolution or rotation), from `old`: the

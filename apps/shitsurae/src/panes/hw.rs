@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 use aizome_kit::element::Element;
 use aizome_kit::hash::PaintHasher;
 use aizome_kit::layout::{Constraints, Point, Rect, Size};
-use aizome_kit::sidestep_ui::kurbo::{Arc as KArc, Circle, Line};
+use aizome_kit::sidestep_ui::kurbo::{Arc as KArc, Circle, Line, Shape};
 use aizome_kit::sidestep_ui::{LineCap, StrokeStyle};
 use aizome_kit::widget::{Event, EventCx, LayoutCx, PaintCx, SemanticRole, Semantics, Status, Widget};
 use aizome_kit::{Color, Layoutable};
