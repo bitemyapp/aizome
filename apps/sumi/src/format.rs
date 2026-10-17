@@ -542,7 +542,7 @@ pub fn paste_style(rope: &Rope, sel: Selection, style: &Style) -> Option<Edit> {
         let s = start + a + chars(&open);
         select = Selection { anchor: s, head: s + chars(&inner) };
     }
-    if text == rope.slice(start..end).to_string() {
+    if rope.slice(start..end) == text.as_str() {
         return None;
     }
     Some(Edit { range: start..end, text, select })

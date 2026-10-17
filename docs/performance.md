@@ -429,3 +429,34 @@ of this window in a debug build: view and layout p95 1.3 ms, recording the
 drawing p95 1.8 ms.
 
 No exceptions.
+
+## Sumi (Text Editor)
+
+Measured headlessly through the kit's `Harness` at 2× (`tests/sumi.rs`,
+`typing_and_scrolling_fit_the_frame_budget` and
+`a_large_file_opens_quickly_and_stays_quick`): update, view, layout, diff
+and rasterising the damage. The editor lays out only the lines that show
+and redraws only the lines that changed; colouring re-tokenizes only the
+lines an edit touched (and those after it whose state it carried over),
+within 3 ms a frame.
+
+| | p50 | p95 | max | |
+|---|---|---|---|---|
+| Typing in the board's document (Markdown) | 0.79 ms | 0.96 ms | 3.3 ms | release, n=185 |
+| Scrolling it (30pt wheel steps) | 0.85 ms | 0.94 ms | 1.2 ms | release, n=60 |
+| Typing at the end of a 10 MB file (151,809 lines of Rust) | 1.2 ms | | 6.2 ms | release, n=25 |
+| Typing in the board's document | 1.8 ms | 5.6 ms | 15 ms | debug |
+| Scrolling it | 1.8 ms | 7.2 ms | 8.0 ms | debug |
+
+A 10 MB file opens in 23 ms (release; 112 ms debug): read, decoded and
+made a rope on a thread of its own, so the window never waits. Live,
+under headless sway (pixman, 1×, release, typing with `wtype`), Sidestep's
+frame stats: total p50 0.11 ms, p95 0.96 ms, max 2.1 ms, average damage
+24%.
+
+Exception: ❖↓ to the end of a 10 MB file costs 8.9 ms once (release):
+3 ms working out line colours (the rest are guessed, as if nothing were
+open, and worked out over the next 16 frames, 47 ms in all), the rest
+shaping a screen of lines nothing has shown yet. Debug builds of typing
+and scrolling exceed the budget at p95; release builds keep well inside
+it.

@@ -132,7 +132,7 @@ mod tests {
         let re = Query { word: true, ..q("damage") }.compile().unwrap();
         assert_eq!(search(t, &re, LIMIT), [0..6, 21..27]);
         let re = Query { regex: true, ..q(r"d\w+ed") }.compile().unwrap();
-        assert_eq!(search(t, &re, LIMIT), [37..44]);
+        assert_eq!(search(t, &re, LIMIT), vec![37..44]);
         assert!(Query { regex: true, ..q("(") }.compile().is_err());
         assert_eq!(search("é a é", &q("é").compile().unwrap(), LIMIT), [0..1, 4..5], "in characters");
         assert_eq!(search("aaa", &q("a").compile().unwrap(), 2).len(), 2);

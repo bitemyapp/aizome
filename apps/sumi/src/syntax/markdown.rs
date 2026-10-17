@@ -333,11 +333,11 @@ fn inline(line: &str, from: usize, table: bool, out: &mut Out) -> bool {
             }
             b'!' | b'[' => {
                 let s = if c == b'!' { i + 1 } else { i };
-                if s < n && b[s] == b'[' {
-                    if let Some(end) = link(line, i, s, out) {
-                        i = end;
-                        continue;
-                    }
+                if s < n && b[s] == b'['
+                    && let Some(end) = link(line, i, s, out)
+                {
+                    i = end;
+                    continue;
                 }
             }
             b'h' | b'w' if i == 0 || !b[i - 1].is_ascii_alphanumeric() => {

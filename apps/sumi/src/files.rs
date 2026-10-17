@@ -121,7 +121,7 @@ pub fn detect(bytes: &[u8]) -> Encoding {
         let even = sample.iter().step_by(2).filter(|b| **b == 0).count();
         let odd = sample.iter().skip(1).step_by(2).filter(|b| **b == 0).count();
         let utf16 = |zeros: usize, other: usize| zeros * 10 >= pairs * 3 && other * 20 < pairs;
-        if bytes.len() % 2 == 0 {
+        if bytes.len().is_multiple_of(2) {
             if utf16(odd, even) && decode_utf16(bytes, false).is_some() {
                 return Encoding::Utf16Le;
             }
@@ -134,7 +134,7 @@ pub fn detect(bytes: &[u8]) -> Encoding {
 }
 
 fn decode_utf16(bytes: &[u8], big_endian: bool) -> Option<String> {
-    let units = bytes.chunks_exact(2).map(|c| if big_endian { u16::from_be_bytes([c[0], c[1]]) } else { u16::from_le_bytes([c[0], c[1]]) });
+    let units = bytes.as_chunks::<2>().0.iter().map(|c| if big_endian { u16::from_be_bytes(*c) } else { u16::from_le_bytes(*c) });
     char::decode_utf16(units).collect::<Result<String, _>>().ok()
 }
 
@@ -195,9 +195,7 @@ pub fn decode(bytes: &[u8], encoding: Option<Encoding>) -> Decoded {
         Encoding::Utf16Le | Encoding::Utf16Be => {
             let be = encoding == Encoding::Utf16Be;
             let body = if bytes.starts_with(if be { &[0xfe, 0xff] } else { &[0xff, 0xfe] }) { &bytes[2..] } else { bytes };
-            let units = body
-                .chunks_exact(2)
-                .map(|c| if be { u16::from_be_bytes([c[0], c[1]]) } else { u16::from_le_bytes([c[0], c[1]]) });
+            let units = body.as_chunks::<2>().0.iter().map(|c| if be { u16::from_be_bytes(*c) } else { u16::from_le_bytes(*c) });
             char::decode_utf16(units).map(|r| r.unwrap_or(char::REPLACEMENT_CHARACTER)).collect()
         }
         Encoding::Latin1 => bytes.iter().map(|b| char::from(*b)).collect(),

@@ -330,7 +330,7 @@ fn encodings_and_line_endings_survive_open_and_save() {
 #[test]
 fn autosave_brings_everything_back_after_a_crash() {
     let dir = scratch("autosave");
-    let places = Places { state: Some(dir.join("state")), recent: Some(dir.join("recently-used.xbel")), settings: Some(dir.join("sumi.toml")) };
+    let places = Places { state: Some(dir.join("state")), recent: Some(dir.join("recently-used.xbel")), settings: Some(dir.join("sumi.toml")), documents: None };
     let file = dir.join("notes.md");
     std::fs::write(&file, "# Notes\n").unwrap();
     {
@@ -367,7 +367,7 @@ fn autosave_brings_everything_back_after_a_crash() {
 #[test]
 fn quit_keeps_unsaved_work_and_close_asks() {
     let dir = scratch("quit");
-    let places = Places { state: Some(dir.join("state")), recent: None, settings: None };
+    let places = Places { state: Some(dir.join("state")), recent: None, settings: None, documents: None };
     let mut h = Harness::new(app(places.clone()));
     let w = h.window();
     focus_editor(&mut h, w);
@@ -473,6 +473,28 @@ fn a_large_file_opens_quickly_and_stays_quick() {
         frames.last().unwrap()
     );
     assert!(text(&h, w).ends_with("xfn main() { let a = 1; }"));
+
+    // With the real budget: a jump to the end costs a frame's worth of
+    // colouring, the rest coming in the frames after (guessed meanwhile).
+    let mut a = Sumi::new(Places::default());
+    a.highlight_budget = Duration::from_millis(3);
+    let mut h = Harness::new(a);
+    let w = h.window();
+    h.send(Msg::Opened(Some(vec![file])));
+    settle(&mut h, |h| h.program().docs.values().next().is_some_and(|d| d.loading.is_none() && d.path.is_some()));
+    focus_editor(&mut h, w);
+    let t = Instant::now();
+    h.key(w, Key::Named(NamedKey::ArrowDown), Modifiers::SUPER);
+    let jump = t.elapsed();
+    let valid = |h: &Harness<Sumi>| doc(h, w).highlight.lock().unwrap().valid();
+    let t = Instant::now();
+    let mut passes = 0;
+    while valid(&h) + 30 < lines {
+        h.send(Msg::Nothing);
+        passes += 1;
+        assert!(passes < 100_000);
+    }
+    eprintln!("sumi: jump to the end of 10 MB in {jump:?}; its colours exact after {passes} more frames ({:?})", t.elapsed());
 }
 
 /// Typing and scrolling in the board's document, measured as Soroban's
@@ -539,4 +561,32 @@ fn markdown_is_styled() {
         h.save_png(w, Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("sumi-{name}@2x.png")), 2.0);
         assert_golden(&mut h, w, golden(name), 1.0);
     }
+}
+
+#[test]
+fn save_and_open_through_the_panels() {
+    let dir = scratch("panels");
+    let places = Places { documents: Some(dir.clone()), ..Places::default() };
+    let mut h = Harness::new(app(places));
+    let w = h.window();
+    focus_editor(&mut h, w);
+    h.type_text(w, "# A draft");
+    // ❖S on an untitled document asks where, in the documents folder.
+    h.command(w, 's');
+    h.command(w, 'a');
+    h.type_text(w, "draft.md");
+    h.named(w, NamedKey::Enter, NONE);
+    assert_eq!(std::fs::read_to_string(dir.join("draft.md")).unwrap(), "# A draft");
+    assert_eq!(h.title(w), "draft.md");
+    assert_eq!(doc(&h, w).language, Language::Markdown);
+    // ❖O lists the folder; choosing a file opens it in a window of its own.
+    std::fs::write(dir.join("other.txt"), "other text\n").unwrap();
+    h.command(w, 'o');
+    assert!(h.texts(w).iter().any(|t| t == "other.txt"), "{:?}", h.texts(w));
+    assert!(h.click_text(w, "other.txt"));
+    h.named(w, NamedKey::Enter, NONE);
+    assert_eq!(h.windows().len(), 2);
+    let other = h.program().docs.values().find(|d| d.path.as_deref() == Some(dir.join("other.txt").as_path())).expect("other.txt open");
+    assert_eq!(other.content.text(), "other text\n");
+    assert_eq!(other.language, Language::Plain);
 }

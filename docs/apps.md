@@ -172,7 +172,7 @@ sorting. Tabs are Aizome's own tab groups, so no tabs inside.
 
 The board's editor: a toolbar with the language pop-up ("Markdown ⌄"), B,
 I and </> buttons, and the status "Ln 48, Col 12 · UTF-8 · LF"; line numbers
-in `faint`; the current line on `sunk`; Markdown styled as you type
+in `faint`; the current line on the board's 10% `focus` band; Markdown styled as you type
 (headings in `blue` 600, code in `green`, emphasis); syntax colouring for
 common languages (Rust, Python, JS/TS, C, Nix, shell, TOML, JSON, YAML)
 with a small built-in highlighter; Format menu as on the board (Font ▸,
@@ -180,6 +180,21 @@ Paragraph ▸, Bold ❖B, Italic ❖I, Code ❖E, Link… ❖K, Heading ▸, Quo
 Copy Style ⌥❖C, Paste Style ⌥❖V); Find and Replace with regex; encodings
 and line endings; autosave to a sidecar and restore after a crash; recent
 files; open large files quickly.
+
+As built (`apps/sumi`): a window per document. Code keeps the board's ❖E,
+so Use Selection for Find (❖E on a Mac) is ⌥❖E, beside Find and Replace's
+⌥❖F; Quote is ⇧❖' (heard as ⇧❖" too, which the key types on most
+layouts). Unsaved text is kept in `$XDG_STATE_HOME/aizome/sumi/<id>.txt`
+and the open documents in `session.json` there, written 0.8 s after the
+last change: after a crash or a logout, and after Quit (which keeps
+everything rather than asking), the documents come back as they were,
+Untitled ones included; closing a window with unsaved changes asks.
+Files are read as UTF-8, UTF-16 (by its byte order mark or its zeros) or
+Latin-1, with LF, CRLF or CR line endings kept (File ▸ Encoding and Line
+Endings switch them; Reopen with Encoding reads again), and saved
+atomically, through symbolic links and with the file's permissions.
+Files it opens and saves go to `recently-used.xbel` (and Open Recent).
+View settings are in `$XDG_CONFIG_HOME/aizome/sumi.toml`.
 
 ### Fusen (Notes)
 

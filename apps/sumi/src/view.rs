@@ -49,7 +49,7 @@ fn doc_toolbar(doc: &Doc) -> Element<Msg> {
             .label("Language")
             .id("language")
             .into(),
-        toolbar_separator().into(),
+        toolbar_separator(),
         format("B", Command::Inline(Inline::Bold), "Bold (❖B)", "Bold").weight(800.0).into(),
         format("I", Command::Inline(Inline::Italic), "Italic (❖I)", "Italic").italic().weight(600.0).into(),
         format("</>", Command::Inline(Inline::Code), "Code (❖E)", "Code").mono().into(),
@@ -210,8 +210,10 @@ pub fn keys<Msg: Clone + Send + 'static>(child: impl Into<Element<Msg>>, on_key:
     Element::new(Catcher { on_key: Rc::new(on_key) }, vec![child.into()]).width(Length::Fill).height(Length::Fill)
 }
 
+type OnKey<Msg> = Rc<dyn Fn(&KeyEvent) -> Option<Msg>>;
+
 struct Catcher<Msg> {
-    on_key: Rc<dyn Fn(&KeyEvent) -> Option<Msg>>,
+    on_key: OnKey<Msg>,
 }
 
 impl<Msg: Clone + Send + 'static> Widget for Catcher<Msg> {

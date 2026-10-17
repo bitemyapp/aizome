@@ -38,13 +38,16 @@ pub struct Places {
     /// The shared recently-used.xbel.
     pub recent: Option<PathBuf>,
     pub settings: Option<PathBuf>,
+    /// Where the panels start for a document without a file (else
+    /// ~/Documents, else home).
+    pub documents: Option<PathBuf>,
 }
 
 impl Places {
     /// The user's: `$XDG_STATE_HOME/aizome/sumi`, `$XDG_DATA_HOME/recently-used.xbel`,
     /// `$XDG_CONFIG_HOME/aizome/sumi.toml`.
     pub fn user() -> Places {
-        Places { state: Some(autosave::default_dir()), recent: Some(recent::default_path()), settings: Some(settings::default_path()) }
+        Places { state: Some(autosave::default_dir()), recent: Some(recent::default_path()), settings: Some(settings::default_path()), documents: None }
     }
 }
 
@@ -480,7 +483,7 @@ impl Sumi {
             (None, Language::Markdown) => format!("{}.md", d.name()),
             (None, _) => format!("{}.txt", d.name()),
         };
-        let dir = d.path.as_ref().and_then(|p| p.parent().map(Path::to_path_buf)).or_else(|| {
+        let dir = d.path.as_ref().and_then(|p| p.parent().map(Path::to_path_buf)).or_else(|| self.places.documents.clone()).or_else(|| {
             let home = std::env::var_os("HOME").map(PathBuf::from)?;
             let docs = home.join("Documents");
             Some(if docs.is_dir() { docs } else { home })
@@ -750,7 +753,7 @@ impl Sumi {
                 let clip = cx.clipboard_text().map(|c| c.trim().to_owned()).filter(|c| looks_like_url(c) && !c.contains(char::is_whitespace));
                 let (text, url) = if looks_like_url(selected.trim()) { (String::new(), selected.trim().to_owned()) } else { (selected, clip.unwrap_or_default()) };
                 let key = cx.show_sheet(w);
-                let focus = if text.is_empty() && !url.is_empty() { "link-text" } else if text.is_empty() { "link-text" } else { "link-url" };
+                let focus = if text.is_empty() { "link-text" } else { "link-url" };
                 self.sheets.insert(key, Sheet::Link { parent: w, text, url, range: r });
                 cx.focus(focus);
             }
@@ -944,7 +947,7 @@ impl Program for Sumi {
                 self.new_doc(cx);
             }
             Msg::Open => {
-                let dir = self.focused_doc().and_then(|d| d.path.as_ref()).and_then(|p| p.parent()).map(Path::to_path_buf);
+                let dir = self.focused_doc().and_then(|d| d.path.as_ref()).and_then(|p| p.parent()).map(Path::to_path_buf).or_else(|| self.places.documents.clone());
                 let mut dialog = FileDialog::new().title("Open").multiple();
                 if let Some(d) = dir {
                     dialog = dialog.directory(d);
