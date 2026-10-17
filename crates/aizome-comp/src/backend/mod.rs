@@ -187,6 +187,9 @@ pub fn post_frame(az: &mut Aizome, output: &Output, frame: &Frame, presented: bo
             o.stats.skip();
         }
         o.frame_seq += 1;
+        if frame.damaged {
+            o.damaged_frames += 1;
+        }
         o.last_frame = Some(Instant::now());
     }
     update_primary_outputs(az, output, &frame.states);

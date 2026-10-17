@@ -143,6 +143,8 @@ pub struct OutputState {
     pub powered: bool,
     /// Frames rendered, for presentation sequence numbers.
     pub frame_seq: u64,
+    /// Frames that drew something (screencopy waits on these).
+    pub damaged_frames: u64,
     pub last_frame: Option<Instant>,
     pub refresh: Duration,
 }
@@ -160,6 +162,7 @@ impl OutputState {
             lock_surface: None,
             powered: true,
             frame_seq: 0,
+            damaged_frames: 0,
             last_frame: None,
             refresh,
         }
@@ -494,6 +497,7 @@ impl State {
         crate::protocols::foreign_toplevel::refresh(self);
         self.redraw_due();
         self.check_lock();
+        crate::protocols::screencopy::flush_pending(self);
         if let Err(e) = self.az.dh.flush_clients() {
             warn!("flushing clients: {e}");
         }

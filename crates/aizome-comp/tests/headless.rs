@@ -340,3 +340,47 @@ fn dragging_a_tab_onto_another_stacks_them() {
     let b = ws.iter().find(|w| w.id == wb.id).unwrap();
     assert_eq!((b.geometry.x, b.geometry.y), (300, 500));
 }
+
+/// Runs a tool against the compositor if it's installed.
+fn tool(c: &Compositor, cmd: &str, args: &[&str]) -> Option<std::process::Output> {
+    let found = std::process::Command::new("sh").arg("-c").arg(format!("command -v {cmd}")).output().ok()?.status.success();
+    if !found {
+        eprintln!("{cmd} isn't installed; skipping");
+        return None;
+    }
+    std::process::Command::new(cmd)
+        .args(args)
+        .env("WAYLAND_DISPLAY", &c.socket)
+        .env("XDG_RUNTIME_DIR", &c.dir)
+        .output()
+        .ok()
+}
+
+#[test]
+fn grim_wlr_randr_and_lswt_work() {
+    let c = Compositor::start(Options { outputs: &["1280x800@1", "1024x768@1"], ..Default::default() });
+    let _a = c.client(Spec::new("test.a", 0xcc2222).title("Screencopy"));
+    let w = c.wait_window("test.a");
+    c.settle();
+    // wlr-screencopy.
+    let shot = c.dir.join("grim.png");
+    if let Some(out) = tool(&c, "grim", &["-o", "HEADLESS-1", shot.to_str().unwrap()]) {
+        assert!(out.status.success(), "grim: {}", String::from_utf8_lossy(&out.stderr));
+        let img = Image::load(&shot);
+        assert_eq!((img.width, img.height), (1280, 800));
+        assert_px(&img, w.geometry.x + 50, w.geometry.y + 50, rgb(0xcc2222), "grim sees the window");
+    }
+    // wlr-output-management.
+    if let Some(out) = tool(&c, "wlr-randr", &["--output", "HEADLESS-2", "--pos", "1280,100", "--scale", "2"]) {
+        assert!(out.status.success(), "wlr-randr: {}", String::from_utf8_lossy(&out.stderr));
+        let aizome_ipc::Response::Outputs { outputs } = c.request(Request::Outputs) else { panic!() };
+        let o = outputs.iter().find(|o| o.name == "HEADLESS-2").unwrap();
+        assert_eq!((o.logical.x, o.logical.y, o.scale), (1280, 100, 2.0));
+        assert_eq!((o.logical.w, o.logical.h), (512, 384));
+    }
+    // wlr-foreign-toplevel-management.
+    if let Some(out) = tool(&c, "lswt", &[]) {
+        let text = String::from_utf8_lossy(&out.stdout);
+        assert!(text.contains("test.a") && text.contains("Screencopy"), "lswt: {text}");
+    }
+}

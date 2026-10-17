@@ -180,12 +180,20 @@ pub struct Image {
 
 impl Image {
     pub fn load(path: &Path) -> Image {
-        let decoder = png::Decoder::new(std::io::BufReader::new(std::fs::File::open(path).unwrap()));
+        let mut decoder = png::Decoder::new(std::io::BufReader::new(std::fs::File::open(path).unwrap()));
+        decoder.set_transformations(png::Transformations::EXPAND | png::Transformations::STRIP_16);
         let mut reader = decoder.read_info().unwrap();
         let mut buf = vec![0; reader.output_buffer_size().unwrap()];
         let info = reader.next_frame(&mut buf).unwrap();
         buf.truncate(info.buffer_size());
-        Image { width: info.width, height: info.height, rgba: buf }
+        let rgba = match info.color_type {
+            png::ColorType::Rgba => buf,
+            png::ColorType::Rgb => buf.chunks_exact(3).flat_map(|p| [p[0], p[1], p[2], 255]).collect(),
+            png::ColorType::GrayscaleAlpha => buf.chunks_exact(2).flat_map(|p| [p[0], p[0], p[0], p[1]]).collect(),
+            png::ColorType::Grayscale => buf.iter().flat_map(|g| [*g, *g, *g, 255]).collect(),
+            png::ColorType::Indexed => unreachable!("expanded"),
+        };
+        Image { width: info.width, height: info.height, rgba }
     }
 
     pub fn px(&self, x: i32, y: i32) -> [u8; 3] {
