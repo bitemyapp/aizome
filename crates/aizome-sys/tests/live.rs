@@ -75,6 +75,13 @@ fn audio_reads_the_sound_server() {
     for stream in state.playback.iter().chain(&state.recording) {
         println!("  stream {} {:?} ({}) {:.0}% on {}", stream.index, stream.application, stream.app_id, stream.volume * 100.0, stream.device);
     }
+    for card in &state.cards {
+        println!(
+            "  card {} {:?} active {:?} profiles {:?}",
+            card.index, card.description, card.active_profile,
+            card.profiles.iter().filter(|p| p.available).map(|p| &p.name).collect::<Vec<_>>()
+        );
+    }
     assert!(state.default_output().is_some());
 }
 

@@ -46,7 +46,7 @@ use crate::error::{Error, Result};
 use crate::service::{Done, Model, Stop, Task, Wake, lock, service_handle};
 use libpulse_binding as pulse;
 use pulse::callbacks::ListResult;
-use pulse::context::introspect::{SinkInfo, SinkInputInfo, SourceInfo, SourceOutputInfo};
+use pulse::context::introspect::{CardInfo, SinkInfo, SinkInputInfo, SourceInfo, SourceOutputInfo};
 use pulse::context::subscribe::{Facility, InterestMaskSet, Operation};
 use pulse::context::{Context, FlagSet, State};
 use pulse::mainloop::api::Mainloop as _;
@@ -82,6 +82,36 @@ pub struct AudioState {
     pub playback: Vec<AudioStream>,
     /// Applications recording (source outputs), without level meters.
     pub recording: Vec<AudioStream>,
+    /// Sound cards with their profiles (a Bluetooth headset's high-quality
+    /// playback or headset mode, HDMI and analog output).
+    pub cards: Vec<Card>,
+}
+
+/// A sound card.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Card {
+    pub index: u32,
+    pub name: String,
+    /// Its name for people.
+    pub description: String,
+    pub icon_name: String,
+    /// `pci`, `usb`, `bluetooth`…
+    pub bus: String,
+    pub active_profile: Option<String>,
+    pub profiles: Vec<CardProfile>,
+}
+
+/// A way a card can be used.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct CardProfile {
+    pub name: String,
+    pub description: String,
+    pub priority: u32,
+    /// Usable now (a jack plugged in, the headset connected).
+    pub available: bool,
+    /// How many outputs and inputs it gives.
+    pub sinks: u32,
+    pub sources: u32,
 }
 
 impl AudioState {
@@ -215,6 +245,8 @@ enum Command {
     /// Change the default output's volume by a step (unmuting when
     /// raising); the result is the new volume.
     Step(f32, Done<f32>),
+    /// Switch a card to a profile.
+    CardProfile(u32, String, Done<()>),
     /// Toggle the default output's (Sink) or input's (Source) mute.
     ToggleDefault(Kind, Done<bool>),
 }
@@ -357,6 +389,13 @@ impl Audio {
     /// Move an application's recording to another input.
     pub fn move_recording(&self, index: u32, source: u32) -> Task<()> {
         self.send(|done| Command::Move(Kind::Recording, index, source, done))
+    }
+
+    /// Switch a card to one of its profiles (a Bluetooth headset between
+    /// high-quality playback and headset mode).
+    pub fn set_card_profile(&self, card: u32, profile: &str) -> Task<()> {
+        let profile = profile.to_owned();
+        self.send(|done| Command::CardProfile(card, profile, done))
     }
 
     /// The volume keys: change the default output's volume by `step`
@@ -548,6 +587,7 @@ struct Live {
     sources: Entries<AudioDevice>,
     playback: Entries<AudioStream>,
     recording: Entries<AudioStream>,
+    cards: BTreeMap<u32, Card>,
     expects: Expects,
     dirty: bool,
 }
@@ -574,6 +614,7 @@ impl Live {
             sources,
             playback: self.playback.values().map(|(s, _)| s.clone()).collect(),
             recording: self.recording.values().map(|(s, _)| s.clone()).collect(),
+            cards: self.cards.values().cloned().collect(),
         }
     }
 
@@ -773,6 +814,26 @@ fn stream(
     (stream, *volume)
 }
 
+fn card(info: &CardInfo<'_>) -> Card {
+    let profile = |p: &pulse::context::introspect::CardProfileInfo<'_>| CardProfile {
+        name: text(&p.name),
+        description: text(&p.description),
+        priority: p.priority,
+        available: p.available,
+        sinks: p.n_sinks,
+        sources: p.n_sources,
+    };
+    Card {
+        index: info.index,
+        name: text(&info.name),
+        description: Some(prop(&info.proplist, "device.description")).filter(|d| !d.is_empty()).unwrap_or_else(|| text(&info.name)),
+        icon_name: prop(&info.proplist, "device.icon_name"),
+        bus: prop(&info.proplist, "device.bus"),
+        active_profile: info.active_profile.as_ref().and_then(|p| p.name.as_deref().map(str::to_owned)),
+        profiles: info.profiles.iter().map(profile).collect(),
+    }
+}
+
 fn playback_stream(info: &SinkInputInfo<'_>) -> (AudioStream, ChannelVolumes) {
     stream(info.index, &info.name, &info.proplist, &info.volume, info.mute, info.sink, info.corked, info.volume_writable)
 }
@@ -939,6 +1000,14 @@ fn load_all(context: &Ctx, live: &Rc<RefCell<Live>>) {
         }
     });
     let l = live.clone();
+    introspect.get_card_info_list(move |result| {
+        if let ListResult::Item(info) = result {
+            let mut live = l.borrow_mut();
+            live.cards.insert(info.index, card(info));
+            live.dirty = true;
+        }
+    });
+    let l = live.clone();
     introspect.get_source_output_info_list(move |result| {
         if let ListResult::Item(info) = result
             && let Some(stream) = recording_stream(info)
@@ -960,6 +1029,23 @@ fn subscribe(context: &Ctx, live: &Rc<RefCell<Live>>) {
             Some(Facility::Source) => Kind::Source,
             Some(Facility::SinkInput) => Kind::Playback,
             Some(Facility::SourceOutput) => Kind::Recording,
+            Some(Facility::Card) => {
+                if operation == Some(Operation::Removed) {
+                    let mut live = l.borrow_mut();
+                    live.cards.remove(&index);
+                    live.dirty = true;
+                } else {
+                    let l = l.clone();
+                    introspect.get_card_info_by_index(index, move |result| {
+                        if let ListResult::Item(info) = result {
+                            let mut live = l.borrow_mut();
+                            live.cards.insert(info.index, card(info));
+                            live.dirty = true;
+                        }
+                    });
+                }
+                return;
+            }
             Some(Facility::Server) => {
                 let l = l.clone();
                 introspect.get_server_info(move |info| {
@@ -1014,7 +1100,8 @@ fn subscribe(context: &Ctx, live: &Rc<RefCell<Live>>) {
         | InterestMaskSet::SOURCE
         | InterestMaskSet::SINK_INPUT
         | InterestMaskSet::SOURCE_OUTPUT
-        | InterestMaskSet::SERVER;
+        | InterestMaskSet::SERVER
+        | InterestMaskSet::CARD;
     context.borrow_mut().subscribe(mask, |_| {});
 }
 
@@ -1124,6 +1211,12 @@ fn execute(weak: &Weak<RefCell<Context>>, live: &Rc<RefCell<Live>>, command: Com
                 Kind::Recording => drop(introspect.move_source_output_by_index(index, device, callback)),
                 _ => drop(introspect.move_sink_input_by_index(index, device, callback)),
             }
+        }
+        Command::CardProfile(index, profile, done) => {
+            if !live.borrow().cards.get(&index).is_some_and(|c| c.profiles.iter().any(|p| p.name == profile)) {
+                return done.finish(Err(Error::NotFound(format!("card {index} profile {profile}"))));
+            }
+            drop(introspect.set_card_profile_by_index(index, &profile, Some(finish(weak, done, ()))));
         }
         Command::Step(step, done) => {
             let mut l = live.borrow_mut();
