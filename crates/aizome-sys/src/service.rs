@@ -37,10 +37,8 @@ impl Wake {
         Wake(Arc::new(wake))
     }
 
-    /// A wake that does nothing, for callers that poll [`generation`]
-    /// counters or wait on [`Task`]s instead.
-    ///
-    /// [`generation`]: Model::generation
+    /// A wake that does nothing, for callers that poll the services'
+    /// `generation()` counters or wait on [`Task`]s instead.
     pub fn none() -> Wake {
         Wake(Arc::new(|| {}))
     }

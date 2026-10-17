@@ -2,13 +2,13 @@
 //! property access that never panics on odd data, an `ObjectManager` cache,
 //! and the thread that follows one daemon's signals.
 //!
-//! Every call goes through [`Bus::call`] or [`Bus::call_with`], which race
-//! the reply against a timer: 2 seconds for queries ([`Opts::QUERY`]), longer
-//! for actions that may wait on a polkit dialog ([`Opts::ACTION`]) or on the
-//! hardware (formatting a disk). Actions set D-Bus's
-//! `ALLOW_INTERACTIVE_AUTHORIZATION` flag, which systemd's daemons
-//! (timedated, localed, hostnamed, logind) require before they ask polkit to
-//! prompt.
+//! Every call races the reply against a timer: 2 seconds for queries
+//! ([`TIMEOUT`]), two minutes for actions that may wait on a polkit dialog, or
+//! as long as the hardware takes for long operations (formatting a disk).
+//! The services use only these calls, so none can hang on a stuck daemon.
+//! For actions they set D-Bus's `ALLOW_INTERACTIVE_AUTHORIZATION` flag,
+//! which systemd's daemons (timedated, localed, hostnamed, logind) require
+//! before they ask polkit to prompt.
 
 use crate::error::{Error, Result};
 use crate::service::{Stop, lock};
@@ -37,12 +37,12 @@ static SESSION: Mutex<Option<zbus::Connection>> = Mutex::new(None);
 impl Bus {
     /// The system bus, connected once per process and shared.
     pub fn system() -> Result<Bus> {
-        Bus::shared(&SYSTEM, || zbus::connection::Builder::system())
+        Bus::shared(&SYSTEM, zbus::connection::Builder::system)
     }
 
     /// The session bus, connected once per process and shared.
     pub fn session() -> Result<Bus> {
-        Bus::shared(&SESSION, || zbus::connection::Builder::session())
+        Bus::shared(&SESSION, zbus::connection::Builder::session)
     }
 
     /// A new connection to the bus at `address` (`unix:path=…`).

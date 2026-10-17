@@ -29,8 +29,23 @@
 //!
 //! # Modules
 //!
-//! The modules are listed in each module's own documentation, with what
-//! the system must provide (daemons, NixOS options) for them to work.
+//! | Module | What | Through | NixOS needs |
+//! |---|---|---|---|
+//! | [`network`] | devices, Wi-Fi, VPNs, airplane mode, hotspot | NetworkManager; `/dev/rfkill` | `networking.networkmanager.enable` |
+//! | [`bluetooth`] | adapters, devices, pairing agent | BlueZ | `hardware.bluetooth.enable` |
+//! | [`audio`] | outputs, inputs, streams, volume keys | PipeWire through pipewire-pulse | `services.pipewire.pulse.enable` |
+//! | [`power`] | batteries, profiles, suspend and power off, lock before sleep, brightness | UPower, power-profiles-daemon, logind, sysfs | `services.upower.enable`, `services.power-profiles-daemon.enable` |
+//! | [`datetime`] | time zone, network time, locale, hostname; the time zone list | timedated, localed, hostnamed; tzdata | `time.timeZone = null` to let Settings change it |
+//! | [`users`] | accounts, names, pictures, passwords | AccountsService | `services.accounts-daemon.enable`, `users.mutableUsers = true` |
+//! | [`printers`] | printers, jobs, discovery | CUPS's tools | `services.printing.enable` |
+//! | [`disks`] | drives, partitions, filesystems, LUKS, images, jobs | UDisks2 | `services.udisks2.enable` |
+//! | [`polkit`] | the authentication agent | polkit's helper | `security.polkit.enable` |
+//! | [`sysinfo`] | CPU, memory, processes, I/O, sensors, hardware | `/proc`, `/sys` | `pkgs.hwdata` for GPU names |
+//! | [`apps`] | desktop entries, launching, icons, default apps | XDG files, `systemd-run` | — |
+//! | [`keyboard`] | layouts, variants, XKB options | xkeyboard-config's `evdev.xml` | — |
+//!
+//! Each module's documentation says more about what it needs and how it
+//! degrades without it.
 
 pub mod apps;
 pub mod audio;

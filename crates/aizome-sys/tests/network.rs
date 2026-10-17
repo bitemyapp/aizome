@@ -509,7 +509,7 @@ fn saved_networks_join_and_change() {
         let (settings, flags) = log.updated.last().unwrap();
         assert_eq!(*flags, 1, "saved to disk");
         let autoconnect = settings["connection"]["autoconnect"].try_clone().unwrap();
-        assert_eq!(bool::try_from(autoconnect).unwrap(), false);
+        assert!(!bool::try_from(autoconnect).unwrap());
         // Everything else is kept.
         assert_eq!(setting_str(settings, "connection", "id").as_deref(), Some("Home"));
     }

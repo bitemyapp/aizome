@@ -732,6 +732,7 @@ fn source_device(info: &SourceInfo<'_>) -> (AudioDevice, ChannelVolumes) {
     (device, info.volume)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn stream(
     index: u32,
     name: &Option<std::borrow::Cow<'_, str>>,
@@ -1103,11 +1104,11 @@ fn execute(weak: &Weak<RefCell<Context>>, live: &Rc<RefCell<Live>>, command: Com
                 }
                 l.dirty = true;
             }
-            let mut callback = finish(weak, done, ());
+            let callback = finish(weak, done, ());
             let mut context = context.borrow_mut();
             match kind {
-                Kind::Source => drop(context.set_default_source(&name, move |ok| callback(ok))),
-                _ => drop(context.set_default_sink(&name, move |ok| callback(ok))),
+                Kind::Source => drop(context.set_default_source(&name, callback)),
+                _ => drop(context.set_default_sink(&name, callback)),
             }
         }
         Command::Port(kind, index, port, done) => {

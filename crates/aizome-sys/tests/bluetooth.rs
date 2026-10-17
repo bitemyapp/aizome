@@ -318,7 +318,7 @@ fn a_rejected_code_fails_pairing() {
     let bt = Bluetooth::with_bus(bus.bus(), Wake::none());
     assert!(eventually(|| bt.available()));
     // Dropping the responder rejects.
-    bt.register_agent(|prompt| drop(prompt)).unwrap();
+    bt.register_agent(drop).unwrap();
     let result = bt.pair(SPEAKER).wait();
     assert!(matches!(result, Err(Error::Rejected(_))), "{result:?}");
     assert!(!bt.snapshot().device(SPEAKER).unwrap().paired);

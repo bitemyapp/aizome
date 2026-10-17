@@ -13,7 +13,7 @@ use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use zbus::fdo;
-use zbus::object_server::{ObjectServer, SignalEmitter};
+use zbus::object_server::SignalEmitter;
 use zbus::zvariant::{OwnedObjectPath, OwnedValue, Value};
 
 // --- UPower ---------------------------------------------------------------

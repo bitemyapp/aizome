@@ -234,7 +234,7 @@ impl Network {
         let saved = network.connection.as_ref().and_then(|uuid| self.snapshot().connection(uuid).cloned());
         self.task(move |bus| {
             if let Some(saved) = &saved {
-                forget_paths(bus, &[saved.path.clone()])?;
+                forget_paths(bus, std::slice::from_ref(&saved.path))?;
             }
             let settings =
                 wifi_settings(&network.ssid_bytes, Security::Enterprise, None, Some(&credentials), false);

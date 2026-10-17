@@ -292,6 +292,7 @@ impl FakeTable {
     fn partitions(&self) -> Vec<OwnedObjectPath> {
         self.partitions.clone()
     }
+    #[allow(clippy::too_many_arguments)]
     async fn create_partition(
         &mut self,
         offset: u64,

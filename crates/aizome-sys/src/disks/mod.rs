@@ -130,7 +130,7 @@ impl FormatSpec {
     }
 
     fn check(&self, supported: &[String]) -> Result<()> {
-        if self.fs_type != "empty" && !supported.iter().any(|s| *s == self.fs_type) {
+        if self.fs_type != "empty" && !supported.contains(&self.fs_type) {
             return Err(Error::InvalidArgument(format!(
                 "This system can't make {} filesystems (it can make {})",
                 self.fs_type,

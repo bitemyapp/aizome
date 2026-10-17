@@ -1,5 +1,5 @@
 //! Date, time, locale and the machine's names, through systemd's
-//! timedated, localed and hostnamed, plus the time zone list ([`zones`]).
+//! timedated, localed and hostnamed, plus the time zone list ([`zones()`]).
 //!
 //! - [`TimeDate`]: the time zone (set it), network time on or off, the
 //!   clock (set it), and whether the hardware clock keeps local time.
@@ -20,7 +20,7 @@
 //! daemons' unit environment through systemd, so the UI can show "managed
 //! by the system configuration" instead of offering a change that would
 //! fail; a change that fails anyway for the same reason returns
-//! [`Error::ManagedBySystem`](crate::Error::ManagedBySystem).
+//! [`crate::Error::ManagedBySystem`].
 //!
 //! For Settings to change them, the NixOS configuration leaves them unset:
 //! `time.timeZone = null` (the time zone), no `i18n.defaultLocale` override

@@ -825,7 +825,7 @@ impl RadioKind {
 /// What a device-state reason means, for the person (`NMDeviceStateReason`).
 pub fn describe_reason(reason: u32) -> &'static str {
     match reason {
-        7 | 8 | 9 | 10 | 11 => "The password was not accepted",
+        7..=11 => "The password was not accepted",
         5 => "Could not get an address",
         16 | 17 => "The network did not answer",
         40 => "The cable is unplugged",
