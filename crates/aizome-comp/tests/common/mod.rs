@@ -17,7 +17,7 @@ use std::time::{Duration, Instant};
 
 use aizome_ipc::{Client, Request, Response, WindowInfo};
 use wayland_client::globals::{GlobalListContents, registry_queue_init};
-use wayland_client::protocol::{wl_buffer, wl_compositor, wl_registry, wl_shm, wl_shm_pool, wl_surface};
+use wayland_client::protocol::{wl_buffer, wl_compositor, wl_keyboard, wl_registry, wl_seat, wl_shm, wl_shm_pool, wl_surface};
 use wayland_client::{Connection, Dispatch, EventQueue, QueueHandle, WEnum};
 use wayland_protocols::xdg::decoration::zv1::client::{zxdg_decoration_manager_v1, zxdg_toplevel_decoration_v1};
 use wayland_protocols::xdg::shell::client::{xdg_surface, xdg_toplevel, xdg_wm_base};
@@ -267,6 +267,10 @@ pub struct Seen {
     pub fullscreen: bool,
     pub close_requested: bool,
     pub decoration_server_side: Option<bool>,
+    /// Keys pressed (evdev codes) with the modifiers held then.
+    pub keys: Vec<(u32, u32)>,
+    pub mods: u32,
+    pub keyboard_focus: bool,
 }
 
 pub enum Cmd {
@@ -343,6 +347,8 @@ fn run_client(stream: UnixStream, spec: Spec, rx: Receiver<Cmd>, seen: Arc<Mutex
     let compositor: wl_compositor::WlCompositor = globals.bind(&qh, 4..=6, ()).expect("wl_compositor");
     let shm: wl_shm::WlShm = globals.bind(&qh, 1..=1, ()).expect("wl_shm");
     let wm: xdg_wm_base::XdgWmBase = globals.bind(&qh, 1..=6, ()).expect("xdg_wm_base");
+    let seat: Option<wl_seat::WlSeat> = globals.bind(&qh, 5..=9, ()).ok();
+    let _keyboard = seat.as_ref().map(|s| s.get_keyboard(&qh, ()));
     let deco: Option<zxdg_decoration_manager_v1::ZxdgDecorationManagerV1> =
         if spec.ssd { globals.bind(&qh, 1..=1, ()).ok() } else { None };
     let mut app = App {
@@ -459,7 +465,23 @@ macro_rules! ignore {
         }
     )*};
 }
-ignore!(wl_compositor::WlCompositor, wl_shm::WlShm, wl_shm_pool::WlShmPool, wl_surface::WlSurface, zxdg_decoration_manager_v1::ZxdgDecorationManagerV1);
+ignore!(wl_compositor::WlCompositor, wl_shm::WlShm, wl_shm_pool::WlShmPool, wl_surface::WlSurface, zxdg_decoration_manager_v1::ZxdgDecorationManagerV1, wl_seat::WlSeat);
+
+impl Dispatch<wl_keyboard::WlKeyboard, ()> for App {
+    fn event(app: &mut Self, _: &wl_keyboard::WlKeyboard, event: wl_keyboard::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
+        let mut seen = app.seen.lock().unwrap();
+        match event {
+            wl_keyboard::Event::Enter { .. } => seen.keyboard_focus = true,
+            wl_keyboard::Event::Leave { .. } => seen.keyboard_focus = false,
+            wl_keyboard::Event::Modifiers { mods_depressed, .. } => seen.mods = mods_depressed,
+            wl_keyboard::Event::Key { key, state: WEnum::Value(wl_keyboard::KeyState::Pressed), .. } => {
+                let m = seen.mods;
+                seen.keys.push((key, m));
+            }
+            _ => {}
+        }
+    }
+}
 
 impl Dispatch<wl_buffer::WlBuffer, ()> for App {
     fn event(_: &mut Self, buffer: &wl_buffer::WlBuffer, event: wl_buffer::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
