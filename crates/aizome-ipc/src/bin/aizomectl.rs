@@ -567,6 +567,7 @@ fn describe_event(e: &Event) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use aizome_ipc::DeskSel;
 
     fn p(cmd: &str, args: &[&str]) -> Request {
         parse(cmd, args.iter().map(|s| s.to_string()).collect()).unwrap()
