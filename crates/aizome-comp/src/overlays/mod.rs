@@ -7,13 +7,20 @@ pub mod marking;
 use smithay::backend::renderer::{ImportAll, ImportMem, Renderer};
 use smithay::output::Output;
 
+use smithay::backend::renderer::element::Kind;
+use smithay::backend::renderer::element::memory::MemoryRenderBufferRenderElement;
+use smithay::utils::{Logical, Physical, Point};
+
+use crate::decor::Piece;
 use crate::render::OutputElement;
+use crate::text::{Face, Style};
 use crate::state::Aizome;
 use crate::wm::WinId;
 
 #[derive(Default)]
 pub struct Overlays {
     pub marking: Option<marking::Marking>,
+    pub drag_cache: crate::decor::DecorCache,
 }
 
 impl Overlays {
@@ -53,8 +60,72 @@ where
     R: Renderer + ImportAll + ImportMem,
     R::TextureId: Clone + Send + 'static,
 {
-    let _ = (az, renderer, output, scale);
-    Vec::new()
+    let mut out = Vec::new();
+    let Some(drag) = az.interactive.drag.clone() else { return out };
+    let (Some(slot), Some(target)) = (drag.slot, drag.target) else { return out };
+    let geo = az.output_geometry(output);
+    let origin = (geo.loc.x as f64, geo.loc.y as f64);
+    if !az.output_rect(output).intersects(slot.grow(60)) {
+        return out;
+    }
+    let p = az.palette;
+    // The label above the slot: "Release to stack with ‹title›".
+    let title = az.wm.get(target).map(|w| w.title.clone()).unwrap_or_default();
+    let text = format!("Release to stack with {title}");
+    let text = az.labels.fit(&text, Face::UiSemibold, 12.0, 420.0);
+    let style = Style::new(Face::UiSemibold, 12.0, p.on_menu_title);
+    let mut pieces = Vec::new();
+    // Slot: focus at 18% with a 2pt dashed focus border.
+    pieces.push(Piece::rect(slot, p.focus.with_alpha(0.18)));
+    dashed(&mut pieces, slot, 2.0, 6.0, 4.0, p.focus);
+    let mut label_el = None;
+    if let Some(label) = az.labels.get(&text, style, scale, 440.0) {
+        let (w, h) = (label.w as f64 + 16.0, 22.0);
+        let x = slot.x as f64;
+        let y = slot.y as f64 - h - 18.0;
+        pieces.push(Piece::new(x, y, w, h, p.menu_title));
+        let loc: Point<i32, Physical> =
+            Point::<f64, Logical>::from((x + 8.0 - origin.0, y + ((h - label.h as f64) / 2.0).round() - origin.1)).to_physical_precise_round(scale);
+        label_el = MemoryRenderBufferRenderElement::from_buffer(
+            renderer,
+            loc.to_f64(),
+            &label.buffer,
+            None,
+            None,
+            Some((label.w, label.h).into()),
+            Kind::Unspecified,
+        )
+        .ok()
+        .map(OutputElement::Memory);
+    }
+    out.extend(label_el);
+    out.extend(az.overlays.drag_cache.elements(&pieces, origin, scale, 1.0).into_iter().map(OutputElement::Solid));
+    out
+}
+
+/// A dashed outline: dashes `dash` long with `gap` between, `t` thick.
+pub fn dashed(out: &mut Vec<Piece>, r: crate::wm::Rect, t: f64, dash: f64, gap: f64, color: aizome_theme::Rgba) {
+    let (x, y, w, h) = (r.x as f64, r.y as f64, r.w as f64, r.h as f64);
+    let mut along = |len: f64, mut put: Box<dyn FnMut(f64, f64) + '_>| {
+        let mut s = 0.0;
+        while s < len {
+            let l = dash.min(len - s);
+            put(s, l);
+            s += dash + gap;
+        }
+    };
+    let mut horiz = Vec::new();
+    along(w, Box::new(|s, l| horiz.push((s, l))));
+    for (s, l) in &horiz {
+        out.push(Piece::new(x + s, y, *l, t, color));
+        out.push(Piece::new(x + s, y + h - t, *l, t, color));
+    }
+    let mut vert = Vec::new();
+    along(h - 2.0 * t, Box::new(|s, l| vert.push((s, l))));
+    for (s, l) in &vert {
+        out.push(Piece::new(x, y + t + s, t, *l, color));
+        out.push(Piece::new(x + w - t, y + t + s, t, *l, color));
+    }
 }
 
 /// A window closed: overlays forget it.

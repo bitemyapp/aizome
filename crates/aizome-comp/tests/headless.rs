@@ -285,3 +285,58 @@ fn long_titles_keep_the_tab_short() {
     assert_px(&img, g.x - 1 + 359, g.y - 14, rgb(BEVEL_LO), "the tab's right border");
     assert_px(&img, g.x - 1 + 365, g.y - 14, rgb(DESKTOP), "beside the tab");
 }
+
+#[test]
+fn dragging_a_tab_onto_another_stacks_them() {
+    let c = Compositor::start(Options { settings: "", ..Default::default() });
+    let _a = c.client(Spec::new("test.a", 0x2222cc).title("cargo test"));
+    let wa = c.wait_window("test.a");
+    let _b = c.client(Spec::new("test.b", 0x22cc22).title("sidestep").size(500, 350));
+    let wb = c.wait_window("test.b");
+    // Move B well away so the windows don't overlap.
+    c.ok(Request::Move { id: Some(wb.id), x: 700, y: 400 });
+    c.ok(Request::Move { id: Some(wa.id), x: 100, y: 100 });
+    c.ok(Request::Focus { id: wa.id });
+    c.settle();
+    // Grab A's tab and carry it just past the end of B's tab.
+    let start = (130.0, 100.0 - 12.0);
+    let over = (700.0 + 140.0, 400.0 - 12.0);
+    c.ok(Request::Synthesize {
+        events: vec![
+            Synthetic::PointerMotion { x: start.0, y: start.1 },
+            Synthetic::PointerButton { button: "left".into(), pressed: true },
+            Synthetic::PointerMotion { x: start.0 + 30.0, y: start.1 + 30.0 },
+            Synthetic::PointerMotion { x: over.0, y: over.1 },
+        ],
+    });
+    c.settle();
+    let img = c.screenshot();
+    keep(&img, "drag-to-stack");
+    // The dashed amber slot after B's tab.
+    let row: Vec<[u8; 3]> = (700..1200).map(|x| img.px(x, 400 - 25)).collect();
+    assert!(row.iter().any(|p| near(*p, rgb(FOCUS))), "a dashed amber slot along the tab row");
+    c.ok(Request::Synthesize { events: vec![Synthetic::PointerButton { button: "left".into(), pressed: false }] });
+    let ws = c.wait_windows("stacked", |ws| ws.iter().all(|w| w.group.is_some()));
+    let a = ws.iter().find(|w| w.id == wa.id).unwrap();
+    let b = ws.iter().find(|w| w.id == wb.id).unwrap();
+    assert_eq!(a.group, b.group);
+    assert!(a.group_active && a.focused, "the dragged window shows");
+    assert_eq!(a.group_members, vec![wb.id, wa.id]);
+    c.wait_windows("a takes b's frame", |ws| ws.iter().all(|w| w.geometry == b.geometry));
+    c.settle();
+    keep(&c.screenshot(), "stacked");
+    // Dragging the background tab (B) away tears it out.
+    let tab_b = (701.0 + 20.0, 400.0 - 12.0);
+    c.ok(Request::Synthesize {
+        events: vec![
+            Synthetic::PointerMotion { x: tab_b.0, y: tab_b.1 },
+            Synthetic::PointerButton { button: "left".into(), pressed: true },
+            Synthetic::PointerMotion { x: tab_b.0 + 20.0, y: tab_b.1 + 60.0 },
+            Synthetic::PointerMotion { x: tab_b.0 - 400.0, y: tab_b.1 + 100.0 },
+            Synthetic::PointerButton { button: "left".into(), pressed: false },
+        ],
+    });
+    let ws = c.wait_windows("unstacked", |ws| ws.iter().all(|w| w.group.is_none()));
+    let b = ws.iter().find(|w| w.id == wb.id).unwrap();
+    assert_eq!((b.geometry.x, b.geometry.y), (300, 500));
+}

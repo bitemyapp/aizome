@@ -191,6 +191,7 @@ impl State {
             self.az.ipc.emit(&Event::WindowOpened { window: info });
         }
         crate::protocols::foreign_toplevel::window_opened(self, id);
+        self.emit_desks();
         self.az.redraw_window(id);
     }
 
@@ -276,6 +277,7 @@ impl State {
         self.az.anims.tabs.remove(&id);
         self.az.ipc.emit(&Event::WindowClosed { id });
         crate::protocols::foreign_toplevel::window_closed(self, id);
+        self.emit_desks();
         crate::input::window_gone(self, id);
         crate::overlays::window_gone(&mut self.az, id);
         info!(id, "window closed");

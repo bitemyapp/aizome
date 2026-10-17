@@ -1,0 +1,203 @@
+# The compositor's IPC
+
+The compositor (`aizome`) listens on a Unix socket,
+`$XDG_RUNTIME_DIR/aizome.$WAYLAND_DISPLAY.sock`, and exports its path to
+everything it starts (and to systemd and D-Bus activation) as
+`AIZOME_SOCKET`.
+
+- Framing: newline-delimited JSON, one message per line.
+- A client writes a **request** and reads one **response** back, in order.
+- After `subscribe` (answered `{"response":"ok"}`) the connection carries
+  only **events**, one per line, until either side closes it.
+- Enums are tagged in kebab-case: `{"request":"focus","id":7}`,
+  `{"response":"error","message":"no window 7"}`,
+  `{"event":"window-focused","id":7}`.
+- Optional fields may be left out. An optional window `id` left out means
+  the focused window; an optional `state` left out toggles.
+
+The types live in the `aizome-ipc` crate (`crates/aizome-ipc/src/lib.rs`),
+with a blocking client:
+
+```rust
+let mut c = aizome_ipc::Client::connect()?;          // $AIZOME_SOCKET
+let r = c.request(&aizome_ipc::Request::Windows)?;   // one round trip
+for event in aizome_ipc::Client::connect()?.events()? { /* … */ }
+```
+
+`aizomectl` covers every request from the command line (`aizomectl help`;
+`--json` prints raw responses).
+
+Protocol version: **1** (`version` reports it).
+
+## Requests
+
+| Request | Fields | Response |
+|---|---|---|
+| `version` | | `version {version, protocol}` |
+| `outputs` | | `outputs {outputs: [OutputInfo]}` |
+| `windows` | | `windows {windows: [WindowInfo]}`, bottom of the stack first |
+| `desks` | | `desks {desks: [DeskInfo], current}` (`current` is 1-based) |
+| `focused-window` | | `window {window: WindowInfo?}` |
+| `focus` | `id` | `ok`; shows the window wherever it is (its Desk, unminimised, its app unhidden) and focuses it |
+| `close` | `id?` | `ok`; asks the window to close |
+| `minimise` | `id?` | `ok` |
+| `unminimise` | `id` | `ok`; also focuses it |
+| `hide-app` | `app_id?` or `pid?` | `ok`; neither means the focused window's app |
+| `hide-others` | | `ok`; hides every app but the focused one's |
+| `show-app` | `app_id?` or `pid?` | `ok` |
+| `fill` | `id?`, `state?` | `ok`; the zoom box: the usable area |
+| `split` | `id?`, `side` (`left`/`right`) | `ok`; half the usable area; again on the same side restores |
+| `fullscreen` | `id?`, `state?` | `ok` |
+| `float` | `id?`, `state?` | `ok`; keep above other windows |
+| `sticky` | `id?`, `state?` | `ok`; show on every Desk |
+| `move-to-desk` | `id?`, `desk`, `follow` (bool, default false) | `ok`; moves the window's tab group too |
+| `set-desk` | `desk` | `ok`; switches Desks |
+| `add-desk` | `name`, `folder?`, `index?` (1-based; default last) | `ok` |
+| `rename-desk` | `desk`, `name` | `ok` |
+| `set-desk-folder` | `desk`, `folder?` | `ok` |
+| `remove-desk` | `desk` | `ok`; its windows move to the Desk before it; the last Desk stays |
+| `move-desk` | `desk`, `index` | `ok`; reorders |
+| `stack` | `a`, `b` | `ok`; window `b` (and its group) joins `a`'s tab group and shows |
+| `unstack` | `id?` | `ok`; out of its group, a tab's height down and right |
+| `move` | `id?`, `x`, `y` | `ok`; the content's top-left corner (the tab and frame sit outside it) |
+| `resize` | `id?`, `rect {x,y,w,h}` | `ok`; the content rectangle |
+| `overview` | `state?` | `ok`; the Desks overview |
+| `switcher` | `reverse?`, `state?` | `ok`; opens it (it stays until a pick or Esc, since no ❖ is held), `state: false` closes it |
+| `spawn` | `argv`, `cwd?`, `in_desk_folder` (default true) | `spawned {pid}`; with the session's environment, in `cwd`, else the current Desk's folder, else home |
+| `screenshot` | `output?`, `path?`, `window?`, `area? {x,y,w,h}`, `clipboard` (bool) | `screenshot {path}`; PNG of one output, a window (with its tab, frame and shadow), an area, or (none given) every output side by side; default path `~/Pictures/Screenshots/Screenshot YYYY-MM-DD at HH.MM.SS.png`; also emits `screenshot-taken` |
+| `reload-config` | | `ok`; re-reads `settings.toml`, applies it, emits `config-changed` |
+| `output-config` | `name`, `mode?` (`"WxH"` or `"WxH@Hz"`), `scale?`, `position? [x,y]`, `transform?`, `enabled?` | `ok`; for this session (Settings writes the file) |
+| `stats` | `reset` (bool) | `stats {stats}`: frame times per output |
+| `quit` | | `ok`; ends the session |
+| `power-off-monitors` / `power-on-monitors` | | `ok` |
+| `lock` | | `ok`; tells the shell (a `binding` event with action `lock`) |
+| `subscribe` | | `ok`, then events |
+| `action` | `action` (a binding action name, below) | `ok`; as if its keys were pressed |
+| `synthesize` | `events: [Synthetic]` | `ok`; input through the compositor's own paths (bindings, focus, grabs): for tests and automation |
+
+`desk` is a 1-based position (`2`) or a name (`"Mail"`). `transform` is
+`normal`, `90`, `180`, `270`, `flipped`, `flipped-90`, `flipped-180` or
+`flipped-270`.
+
+`Synthetic` events, tagged by `type`:
+
+- `pointer-motion {x, y}`: to a point in the global layout (points);
+- `pointer-button {button, pressed}`: `"left"`, `"right"`, `"middle"` or
+  an evdev code;
+- `click {button}`;
+- `pointer-scroll {dx, dy}`;
+- `key {key, pressed}`: a name (`super`, `shift`, `ctrl`, `alt`, `tab`,
+  `return`, `escape`, `space`, `grave`, `up`/`down`/`left`/`right`, letters,
+  digits, `f1`…`f12`, `print`) or an evdev code;
+- `chord {keys}`: `"super+shift+3"` presses in order, releases in reverse.
+
+## Responses
+
+`ok`, `error {message}`, and the ones named above.
+
+### WindowInfo
+
+| Field | |
+|---|---|
+| `id` | stable while the window lives; never reused |
+| `app_id`, `title`, `pid` | |
+| `desk` | 1-based; `null` when sticky |
+| `sticky` | |
+| `group` | the tab group's id when stacked, else `null` |
+| `group_members` | the group's windows in tab order (empty when not stacked) |
+| `group_active` | whether this member is the one showing |
+| `focused`, `minimised`, `hidden` (its app hidden), `urgent` (asked for attention without a valid activation token), `fullscreen`, `fill`, `float` | |
+| `geometry {x,y,w,h}` | the content rectangle in the global layout |
+| `output` | the output showing most of it |
+| `client_side_decorations` | it draws its own title bar; Aizome adds only the tab |
+| `kit_app` | app_id starts with `org.aizome.`: ❖ isn't translated for it |
+| `parent` | the window it's a dialog of |
+
+### DeskInfo
+
+`index` (1-based), `id` (stable), `name`, `folder`, `windows` (count, not
+counting sticky ones), `current`.
+
+### OutputInfo
+
+`name`, `make`, `model`, `serial`, `enabled`, `current_mode {width, height,
+refresh (mHz), preferred}`, `modes`, `scale`, `transform`, `logical {x,y,w,h}`
+(in points), `usable {x,y,w,h}` (minus layer-shell exclusive zones),
+`physical_size_mm`, `powered`.
+
+### Stats
+
+`renderer` (`gles`/`pixman`), `backend` (`headless`/`winit`/`udev`), and per
+output: `name`, `frames_rendered`, `frames_skipped` (redraws that found no
+damage), `cpu_us` and `gpu_us` (when measurable) as `{p50, p95, p99, max,
+mean}` in microseconds over the last 4096 frames, `samples`.
+
+## Events
+
+| Event | Fields | When |
+|---|---|---|
+| `window-opened` | `window` | a toplevel drew its first frame |
+| `window-closed` | `id` | |
+| `window-changed` | `window` | title, app_id, Desk, state, geometry or group changed (coalesced per loop iteration) |
+| `window-focused` | `id?` | |
+| `desk-changed` | `index`, `id`, `name` | the current Desk changed |
+| `desks-changed` | `desks` | added, removed, renamed, reordered or their window counts changed |
+| `outputs-changed` | `outputs` | plugged, unplugged, reconfigured, or their usable area changed |
+| `config-changed` | | settings were applied |
+| `binding` | `action`, `pointer? [x,y]`, `output?` | a key or pointer binding that belongs to the shell |
+| `screenshot-taken` | `path` | |
+| `idle` | `kind` (`lock` or `monitors-off`) | no input for the configured minutes |
+| `resumed` | | input after `idle` |
+| `lock-state-changed` | `locked` | an ext-session-lock client locked or unlocked |
+
+## Bindings
+
+The system takes only these chords (architecture.md, "Keys"); everything
+else goes to the focused app. ❖ is the Logo key. Overrides go in
+`settings.toml`'s `[keys.bindings]`, as `"Ctrl+Super+Up" = "overview"` (or
+`"none"` to unbind, or `"spawn prog args"`).
+
+Handled by the compositor:
+
+| Chord | Action name |
+|---|---|
+| ❖Tab, ❖⇧Tab | `switcher`, `switcher-reverse` |
+| ❖\` | `next-window-of-app` |
+| ❖H, ❖⌥H, ❖M | `hide-app`, `hide-others`, `minimise` |
+| ⌃❖1…9, ⌃⇧❖1…9 | `go-to-desk-N`, `take-to-desk-N` |
+| ⌃❖←, ⌃❖→ (with ⇧: take the window) | `previous-desk`, `next-desk`, `take-to-previous-desk`, `take-to-next-desk` |
+| ⌃❖↑ | `overview` |
+| ⌥❖↑, ⌥❖↓, ⌥❖←, ⌥❖→ | `fill`, `minimise` (park), `split-left`, `split-right` |
+| ⌥❖S | `stack-with-behind` |
+| ⌃❖F | `fullscreen` |
+| ❖Return | `terminal` (`keys.terminal`, default `foot`, in the Desk's folder) |
+| ❖⇧3, Print | `screenshot-screen` |
+| ❖⇧4 | `screenshot-area` (a rubber band; Space picks a window; Esc cancels) |
+| XF86Switch_VT_N | `vt-N` |
+
+Sent to subscribers as `binding` events, for the shell:
+
+| Chord | `action` |
+|---|---|
+| ❖Space | `palette` |
+| ❖⌥Space | `toolchest` |
+| ⌃❖Q | `lock` |
+| ❖⇧5 | `screenshot-tool` |
+| volume, mute, mic mute keys | `volume-up`, `volume-down`, `mute`, `mic-mute` |
+| brightness keys | `brightness-up`, `brightness-down` |
+| media keys | `play-pause`, `next`, `previous`, `stop` |
+| ❖-right-click | `app-menu`, with `pointer` and `output` |
+
+Pointer bindings handled by the compositor: ⌃❖-drag moves the window under
+the pointer, ⌃❖-right-drag resizes it from the nearest corner.
+
+## Layer-shell namespaces
+
+The compositor treats these namespaces specially:
+
+- `aizome-deskbar`: new windows are placed beside it (it isn't an exclusive
+  zone, but windows open clear of it).
+
+Every layer surface gets keyboard focus as layer-shell says: Exclusive
+surfaces on the top and overlay layers take it while mapped; OnDemand ones
+when clicked.

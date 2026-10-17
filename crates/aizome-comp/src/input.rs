@@ -481,9 +481,9 @@ impl State {
                     return;
                 }
                 self.az.interactive.last_tab_click = Some((now, w, (pos.x, pos.y)));
-                if !self.az.wm.is_group_active(w) {
-                    self.show_group_member(w);
-                } else {
+                // A background tab shows on release (a click), or tears out
+                // of its group when dragged (the move grab decides).
+                if self.az.wm.is_group_active(w) {
                     self.focus_window(Some(w));
                 }
                 if shift {

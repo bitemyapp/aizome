@@ -140,6 +140,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "aizome-soroban"
+version = "0.1.0"
+dependencies = [
+ "aizome-kit",
+ "aizome-search",
+ "env_logger",
+ "log",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "aizome-sys"
 version = "0.1.0"
 dependencies = [

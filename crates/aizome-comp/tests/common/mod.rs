@@ -675,3 +675,12 @@ impl Dispatch<ext_session_lock_surface_v1::ExtSessionLockSurfaceV1, ()> for Lock
         }
     }
 }
+
+/// Keeps a screenshot for people to look at, in the target's tmp dir.
+pub fn keep(img: &Image, name: &str) -> PathBuf {
+    let dir = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("aizome-shots");
+    std::fs::create_dir_all(&dir).unwrap();
+    let p = dir.join(format!("{name}.png"));
+    img.save(&p);
+    p
+}

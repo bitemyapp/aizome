@@ -6,7 +6,7 @@
 use std::process::ExitCode;
 
 use aizome_ipc::{
-    AppSel, Client, DeskSel, Event, OutputInfo, Percentiles, Rect, Request, Response, Side, Transform, WindowInfo,
+    AppSel, Client, DeskSel, Event, OutputInfo, Percentiles, Rect, Request, Response, Side, Synthetic, Transform, WindowInfo,
 };
 
 const USAGE: &str = "\
@@ -59,6 +59,10 @@ session
   lock                          ask the shell to lock
   action NAME                   run a key-binding action by name
   quit                          end the session
+
+input (through the compositor's own paths, for tests and scripts)
+  input motion X Y | click [BUTTON] | button BUTTON [down|up]
+  input scroll DX DY | key NAME [down|up] | chord super+shift+3
 ";
 
 fn main() -> ExitCode {
@@ -345,6 +349,36 @@ fn parse(command: &str, mut args: Vec<String>) -> Result<Request, String> {
         "action" => {
             need(&args, 1, "an action name")?;
             Request::Action { action: args[0].clone() }
+        }
+        "input" => {
+            need(&args, 1, "an input event")?;
+            let f = |s: &str| s.parse::<f64>().map_err(|_| format!("not a number: {s}"));
+            let pressed = |s: Option<&String>| !matches!(s.map(|s| s.as_str()), Some("up" | "release" | "released"));
+            let event = match args[0].as_str() {
+                "motion" | "move" => {
+                    need(&args, 3, "X Y")?;
+                    Synthetic::PointerMotion { x: f(&args[1])?, y: f(&args[2])? }
+                }
+                "click" => Synthetic::Click { button: args.get(1).cloned().unwrap_or_else(|| "left".into()) },
+                "button" => {
+                    need(&args, 2, "a button")?;
+                    Synthetic::PointerButton { button: args[1].clone(), pressed: pressed(args.get(2)) }
+                }
+                "scroll" => {
+                    need(&args, 3, "DX DY")?;
+                    Synthetic::PointerScroll { dx: f(&args[1])?, dy: f(&args[2])? }
+                }
+                "key" => {
+                    need(&args, 2, "a key")?;
+                    Synthetic::Key { key: args[1].clone(), pressed: pressed(args.get(2)) }
+                }
+                "chord" => {
+                    need(&args, 2, "keys like super+tab")?;
+                    Synthetic::Chord { keys: args[1].clone() }
+                }
+                e => return Err(format!("unknown input {e}")),
+            };
+            Request::Synthesize { events: vec![event] }
         }
         other => return Err(format!("unknown command {other}")),
     })
