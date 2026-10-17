@@ -115,6 +115,8 @@ pub struct Run {
     pub outcome: Option<Outcome>,
     /// Stop once the operation running now is done.
     pub stop_requested: bool,
+    /// Held where it is (for pictures of a run under way).
+    pub held: bool,
     pub started: Instant,
 }
 
@@ -157,6 +159,7 @@ impl Run {
             expect: None,
             outcome: None,
             stop_requested: false,
+            held: false,
             started: Instant::now(),
         }
     }
@@ -181,6 +184,9 @@ impl Run {
     /// changed.
     pub fn advance(&mut self, backend: &dyn Backend) -> bool {
         let mut changed = false;
+        if self.held {
+            return false;
+        }
         for _ in 0..64 {
             if self.outcome.is_some() {
                 return changed;
@@ -313,7 +319,13 @@ impl Run {
             OpKind::Format(f) => match step {
                 0 => {
                     let Some(Token::Format(c)) = item.token.take() else { return Err(no_token(&item.op)) };
-                    let spec = FormatSpec { erase: f.erase, encrypt: f.encrypt.clone(), ..FormatSpec::new(&f.fs, &f.label) };
+                    let keep = item.agreed.as_ref().and_then(|b| b.partition.as_ref()).is_some_and(|p| crate::plan::keeps_type(&p.type_id, &f.fs));
+                    let spec = FormatSpec {
+                        erase: f.erase,
+                        encrypt: f.encrypt.clone(),
+                        update_partition_type: !keep,
+                        ..FormatSpec::new(&f.fs, &f.label)
+                    };
                     let fs = if f.encrypt.is_some() { "crypto_LUKS".to_owned() } else { f.fs.clone() };
                     let old = item.agreed.as_ref().map(|b| b.id_uuid.clone()).unwrap_or_default();
                     let what = if f.erase == Erase::Quick { "Formatting…" } else { "Erasing, then formatting…" };
@@ -420,4 +432,20 @@ impl Run {
 
 fn no_token(op: &Op) -> String {
     format!("{} wasn't confirmed as it is now: review and apply again.", op.device)
+}
+
+impl Run {
+    /// Show the run as if the operation at `current` were doing `what`
+    /// (those before it done), and hold it there: for pictures.
+    pub fn picture(&mut self, current: usize, what: &str) {
+        for (i, item) in self.items.iter_mut().enumerate() {
+            item.status = match i.cmp(&current) {
+                std::cmp::Ordering::Less => Status::Done,
+                std::cmp::Ordering::Equal => Status::Running(what.to_owned()),
+                std::cmp::Ordering::Greater => Status::Waiting,
+            };
+        }
+        self.current = current;
+        self.held = true;
+    }
 }

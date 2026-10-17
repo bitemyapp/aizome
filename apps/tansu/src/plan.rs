@@ -484,13 +484,19 @@ impl Plan {
     /// The largest the partition at `i` can grow to, and the least it can
     /// shrink to (`used` is the filesystem's bytes in use, when known).
     pub fn resize_range(&self, layout: &Layout, i: usize) -> (u64, u64) {
+        self.resize_range_knowing(layout, i, None)
+    }
+
+    /// [`resize_range`](Plan::resize_range), knowing the filesystem had
+    /// `used` bytes in use when it was last seen mounted.
+    pub fn resize_range_knowing(&self, layout: &Layout, i: usize, used: Option<u64>) -> (u64, u64) {
         let Some(seg) = layout.segs.get(i) else { return (0, 0) };
         let r = fs::resizable(&seg.fs);
         let max = if r.grow { seg.size + layout.room_after(i) } else { seg.size };
         let min = if r.shrink {
             // What's in use, with a tenth more and 16 MiB of room for the
             // filesystem's own structures; whole MiB.
-            let floor = seg.used.map_or(16 * MIB, |u| u + u / 10 + 16 * MIB);
+            let floor = seg.used.or(used).map_or(16 * MIB, |u| u + u / 10 + 16 * MIB);
             floor.div_ceil(MIB) * MIB
         } else {
             seg.size
@@ -866,6 +872,9 @@ fn apply(l: &mut Layout, op: &Op) {
                 s.crypt = None;
                 s.used = None;
                 s.mount = None;
+                if s.kind() == SegKind::Partition && !keeps_type(&s.type_id, &s.fs) {
+                    s.type_id = aizome_sys::disks::types::type_for_filesystem(&l.table, &s.fs).to_owned();
+                }
                 if l.segs[i].kind() == SegKind::Blank {
                     l.segs[i].kind = Some(SegKind::Whole);
                 }
@@ -1098,4 +1107,12 @@ mod tests {
         assert_eq!(p.prune(&s), ["Label /dev/sdc1"]);
         assert!(p.is_empty());
     }
+}
+
+/// Whether formatting a partition of `type_id` as `fs` keeps its type
+/// rather than changing it to match: an EFI System Partition stays one
+/// when it's given FAT again.
+pub fn keeps_type(type_id: &str, fs: &str) -> bool {
+    let t = type_id.to_ascii_lowercase();
+    (t == layout::ESP_GPT || t == layout::ESP_DOS || t == "0xef") && fs == "vfat"
 }

@@ -217,9 +217,9 @@ fn resize(t: &Tansu, f: &ResizeForm) -> Vec<Element<Msg>> {
         can.push(if f.max > f.from { format!("It can grow by {} into the free space after it.", format_size(f.max - f.from)) } else { "There's no free space after it to grow into.".into() });
     }
     if r.shrink {
-        can.push(match seg.used {
-            Some(u) => format!("It can shrink to {} ({} is in use).", format_size(f.min), format_size(u)),
-            None => format!("It can shrink as far as its contents allow; Tansu stops at {}.", format_size(f.min)),
+        can.push(match f.last_used {
+            Some(u) => format!("It can shrink to {} ({} was in use when last mounted).", format_size(f.min), format_size(u)),
+            None => "Unmounted, how full it is isn't known: if its files don't fit the new size, the filesystem refuses to shrink and nothing changes. (Mount it once to see.)".to_owned(),
         });
     } else if let Some(why) = r.why_not {
         can.push(why.to_owned());
@@ -358,12 +358,7 @@ fn apply(t: &Tansu, f: &crate::app::ApplyForm) -> Vec<Element<Msg>> {
         );
     }
     v.push(
-        container(scroll(aizome_kit::widgets::layout::column(list).spacing(12.0).padding(10.0).width(Length::Fill)).width(Length::Fill))
-            .fill(Tone::Sunk)
-            .border(Edge::Line)
-            .width(Length::Fill)
-            .max_height(300.0)
-            .into(),
+        well(list, 12.0, 52.0, 300.0),
     );
     for p in t.plan.problems(&t.state) {
         v.push(warning(Icon::CircleX, Role::Danger, p));
@@ -434,12 +429,7 @@ fn running(t: &Tansu) -> Vec<Element<Msg>> {
         list.push(row![icon(glyph).size(16.0).role(role), aizome_kit::widgets::layout::column(lines).spacing(3.0).width(Length::Fill)].spacing(8.0).align(Align::Start).width(Length::Fill).into());
     }
     v.push(
-        container(scroll(aizome_kit::widgets::layout::column(list).spacing(12.0).padding(10.0).width(Length::Fill)).width(Length::Fill))
-            .fill(Tone::Sunk)
-            .border(Edge::Line)
-            .width(Length::Fill)
-            .max_height(340.0)
-            .into(),
+        well(list, 12.0, 52.0, 340.0),
     );
     match &run.outcome {
         None => {
@@ -508,12 +498,7 @@ fn smart(t: &Tansu, drive: &str, attrs: Option<&Result<Vec<aizome_sys::disks::Sm
                 v.push(note("Normalised value / worst / threshold: higher is better; at the threshold, an attribute fails."));
             }
             v.push(
-                container(scroll(aizome_kit::widgets::layout::column(rows).spacing(5.0).padding(10.0).width(Length::Fill)).width(Length::Fill))
-                    .fill(Tone::Sunk)
-                    .border(Edge::Line)
-                    .width(Length::Fill)
-                    .max_height(260.0)
-                    .into(),
+                well(rows, 5.0, 18.0, 260.0),
             );
         }
     }
@@ -545,4 +530,14 @@ fn smart(t: &Tansu, drive: &str, attrs: Option<&Result<Vec<aizome_sys::disks::Sm
 
 fn s_(test: SelfTest) -> Msg {
     s(SheetMsg::SelfTest(test))
+}
+
+/// A sunk, edged well holding `items`: as tall as they are, scrolling
+/// past `max` (`row` estimates an item's height: a scroll view takes all the height it's
+/// offered, so it's used only when the items need it).
+pub fn well(items: Vec<Element<Msg>>, spacing: f64, row: f64, max: f64) -> Element<Msg> {
+    let many = items.len() as f64 * (spacing + row) > max;
+    let col = aizome_kit::widgets::layout::column(items).spacing(spacing).padding(10.0).width(Length::Fill);
+    let inner: Element<Msg> = if many { scroll(col).width(Length::Fill).height(max).into() } else { col.into() };
+    container(inner).fill(Tone::Sunk).border(Edge::Line).width(Length::Fill).into()
 }

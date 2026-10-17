@@ -59,6 +59,8 @@ pub struct CreateForm {
 #[derive(Clone, Debug, PartialEq)]
 pub struct ResizeForm {
     pub seg: usize,
+    /// Bytes in use when it was last seen mounted.
+    pub last_used: Option<u64>,
     pub from: u64,
     pub min: u64,
     pub max: u64,
@@ -187,6 +189,9 @@ pub struct Tansu {
     start_paths: Vec<PathBuf>,
     /// Follow UDisks on the system bus once the window opens.
     live: bool,
+    /// Bytes in use on each filesystem (by UUID) when last seen mounted,
+    /// for how far it can shrink once unmounted.
+    seen_used: std::collections::HashMap<String, u64>,
 }
 
 impl Tansu {
@@ -212,6 +217,7 @@ impl Tansu {
             listener: None,
             start_paths: Vec::new(),
             live: false,
+            seen_used: Default::default(),
         };
         t.refresh();
         t
@@ -238,6 +244,13 @@ impl Tansu {
             self.seen = generation;
             self.state = self.backend.snapshot();
             self.drives = drives::entries(&self.state);
+            for b in &self.state.blocks {
+                if let Some(u) = b.filesystem.as_ref().and_then(|f| f.usage)
+                    && !b.id_uuid.is_empty()
+                {
+                    self.seen_used.insert(b.id_uuid.clone(), u.used);
+                }
+            }
             if self.run.is_none() {
                 let dropped = self.plan.prune(&self.state);
                 if !dropped.is_empty() {
@@ -535,9 +548,10 @@ impl Tansu {
                 self.open_sheet(SheetKind::Format(form), cx, Some("format-label"));
             }
             Action::Resize => {
-                let (min, max) = self.plan.resize_range(&self.layout, i);
+                let last = self.last_used(&seg);
+                let (min, max) = self.plan.resize_range_knowing(&self.layout, i, last);
                 let unit = if seg.size >= 10_000_000_000 { 1 } else { 0 };
-                let form = ResizeForm { seg: i, from: seg.size, min, max, size: seg.size, size_text: size_text(seg.size, unit), unit };
+                let form = ResizeForm { seg: i, from: seg.size, min, max, size: seg.size, size_text: size_text(seg.size, unit), unit, last_used: last };
                 self.open_sheet(SheetKind::Resize(form), cx, Some("resize-size"));
             }
             Action::Label => self.open_sheet(SheetKind::Label { seg: i, label: seg.label.clone() }, cx, Some("label-field")),
@@ -1097,5 +1111,15 @@ mod tests {
         assert_eq!(parse_size("lots", 1), None);
         assert_eq!(size_text(20_000_000_000, 1), "20.0");
         assert_eq!(size_text(512_000_000, 0), "512");
+    }
+}
+
+impl Tansu {
+    /// What a segment's filesystem had in use when last seen mounted.
+    fn last_used(&self, seg: &crate::layout::Seg) -> Option<u64> {
+        seg.used.or_else(|| {
+            let b = self.state.block(seg.block()?)?;
+            self.seen_used.get(&b.id_uuid).copied()
+        })
     }
 }

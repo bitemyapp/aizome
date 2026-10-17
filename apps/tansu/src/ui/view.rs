@@ -96,12 +96,14 @@ fn toolbar(t: &Tansu) -> Element<Msg> {
     let mounted = seg.is_some_and(|s| s.shown_mount().is_some());
     let swap = seg.is_some_and(|s| s.fs == "swap");
     let unlocked = seg.is_some_and(|s| s.is_unlocked());
+    // As wide whatever it says, so the buttons after it stay put.
     let mount = match (swap, seg.is_some_and(|s| s.in_use)) {
         (true, true) => action_button(t, Some("Swap Off"), Icon::ToggleLeft, Action::SwapOff, "Stop using it as swap"),
         (true, false) => action_button(t, Some("Swap On"), Icon::ToggleRight, Action::SwapOn, "Use it as swap"),
         _ if mounted => action_button(t, Some("Unmount"), Icon::LogOut, Action::Unmount, "Unmount the filesystem"),
         _ => action_button(t, Some("Mount"), Icon::HardDriveDownload, Action::Mount, "Mount the filesystem"),
     };
+    let mount: Element<Msg> = container(mount).width(98.0).into();
     let lock = if unlocked {
         action_button(t, None, Icon::Lock, Action::Lock, "Lock the encrypted volume")
     } else {
@@ -220,6 +222,7 @@ fn content(t: &Tansu) -> Element<Msg> {
     column![
         container(column![header, map, legend(l)].spacing(12.0).width(Length::Fill)).padding([16.0, 16.0, 12.0, 16.0]).width(Length::Fill),
         table_view(t),
+        details(t),
     ]
     .width(Length::Fill)
     .height(Length::Fill)
@@ -302,10 +305,10 @@ fn legend(l: &Layout) -> Element<Msg> {
 const COLUMNS: [(&str, f64, bool); 7] = [
     ("Device", 124.0, false),
     ("Filesystem", 132.0, false),
-    ("Label", 112.0, false),
-    ("Mount Point", 170.0, false),
+    ("Label", 104.0, false),
+    ("Mount Point", 150.0, false),
     ("Size", 80.0, true),
-    ("Used", 92.0, true),
+    ("Used", 116.0, true),
     ("Flags", 112.0, false),
 ];
 
@@ -480,12 +483,10 @@ fn pending_list(t: &Tansu) -> Element<Msg> {
             .into(),
         );
     }
-    container(scroll(aizome_kit::widgets::layout::column(rows).spacing(6.0).padding([8.0, 12.0]).width(Length::Fill)).width(Length::Fill))
-        .fill(Tone::Sunk)
-        .edges(Edge::BevelLo, Sides::TOP)
-        .width(Length::Fill)
-        .max_height(170.0)
-        .into()
+    let many = rows.len() > 6;
+    let col = aizome_kit::widgets::layout::column(rows).spacing(6.0).padding([8.0, 12.0]).width(Length::Fill);
+    let inner: Element<Msg> = if many { scroll(col).width(Length::Fill).height(170.0).into() } else { col.into() };
+    container(inner).fill(Tone::Sunk).edges(Edge::BevelLo, Sides::TOP).width(Length::Fill).into()
 }
 
 fn status(t: &Tansu) -> Element<Msg> {
@@ -524,4 +525,121 @@ fn selection_words(t: &Tansu) -> String {
             words
         }
     }
+}
+
+/// What the table doesn't say about the selection: types, identifiers,
+/// where it starts, and how full it is.
+const DETAILS_HEIGHT: f64 = 124.0;
+
+fn details(t: &Tansu) -> Element<Msg> {
+    let Some(i) = t.selected() else { return space(DETAILS_HEIGHT) };
+    let s = &t.layout.segs[i];
+    let block = s.block().and_then(|p| t.state.block(p));
+    let pair = |k: &str, v: String| -> Element<Msg> {
+        row![text(k.to_owned()).size(11.5).role(Role::Text3).width(96.0), text(v).size(12.0).role(Role::Text2).selectable().width(Length::Fill)]
+            .spacing(8.0)
+            .width(Length::Fill)
+            .into()
+    };
+    let exact = |b: u64| {
+        let digits = b.to_string();
+        let mut out = String::new();
+        for (k, c) in digits.chars().enumerate() {
+            if k > 0 && (digits.len() - k) % 3 == 0 {
+                out.push('\u{2009}');
+            }
+            out.push(c);
+        }
+        out
+    };
+    let mut left: Vec<Element<Msg>> = Vec::new();
+    let mut right: Vec<Element<Msg>> = Vec::new();
+    let title = match s.kind() {
+        SegKind::Free => "Unallocated space".to_owned(),
+        SegKind::Blank => "Blank disk".to_owned(),
+        _ if matches!(s.target, Some(crate::layout::Target::New(_))) => "New partition (pending)".to_owned(),
+        _ => s.short_name(),
+    };
+    left.push(pair("Starts at", format!("{} ({} bytes)", format_size(s.offset), exact(s.offset))));
+    left.push(pair("Size", format!("{} ({} bytes)", format_size(s.size), exact(s.size))));
+    if !s.type_id.is_empty() {
+        let name = aizome_sys::disks::types::partition_type_name(&s.type_id).unwrap_or("Unknown type");
+        left.push(pair("Type", format!("{name} · {}", s.type_id)));
+    }
+    if let Some(b) = block {
+        if !b.id_uuid.is_empty() {
+            right.push(pair("UUID", b.id_uuid.clone()));
+        }
+        if let Some(p) = b.partition.as_ref().filter(|p| !p.uuid.is_empty()) {
+            right.push(pair("Partition UUID", p.uuid.clone()));
+        }
+        if let Some(e) = &b.encrypted {
+            right.push(pair("Encryption", if e.hint_type.is_empty() { "LUKS".into() } else { e.hint_type.to_uppercase() }));
+        }
+        if let Some(l) = &b.loop_device {
+            right.push(pair("Image file", l.backing_file.clone()));
+        }
+    }
+    if !s.name.is_empty() {
+        left.push(pair("Name", s.name.clone()));
+    }
+    if !s.pending.is_empty() {
+        let what: Vec<&str> = s
+            .pending
+            .iter()
+            .map(|m| match m {
+                Mark::New => "made",
+                Mark::Format => "formatted",
+                Mark::Resize => "resized",
+                Mark::Label => "labelled",
+                Mark::Flags => "flagged",
+                Mark::Repair => "repaired",
+            })
+            .collect();
+        right.push(pair("Pending", format!("To be {} when you apply.", what.join(", "))));
+    }
+    match s.shown_mount() {
+        _ if !s.pending.is_empty() => {}
+        Some(m) => {
+            let total = s.crypt.as_ref().and_then(|c| c.unlocked.as_ref()).map_or(s.size, |i| i.size);
+            let used = s.shown_used().unwrap_or(0);
+            right.push(
+                row![
+                    text("In use").size(11.5).role(Role::Text3).width(96.0),
+                    progress(if total == 0 { 0.0 } else { used as f64 / total as f64 }).width(140.0),
+                    text(format!("{} of {} · at {m}", format_size(used), format_size(total))).size(12.0).role(Role::Text2).width(Length::Fill),
+                ]
+                .spacing(8.0)
+                .width(Length::Fill)
+                .into(),
+            );
+        }
+        None if matches!(s.kind(), SegKind::Partition | SegKind::Whole) && !s.shown_fs().is_empty() && s.shown_fs() != "swap" && !s.is_locked() => {
+            right.push(pair("In use", "Mount it to see how full it is.".into()));
+        }
+        _ => {}
+    }
+    container(
+        column![
+            text(title).semibold(),
+            row![
+                aizome_kit::widgets::layout::column(left).spacing(4.0).width(Length::Fill),
+                aizome_kit::widgets::layout::column(right).spacing(4.0).width(Length::Fill),
+            ]
+            .spacing(24.0)
+            .align(Align::Start)
+            .width(Length::Fill),
+        ]
+        .spacing(8.0)
+        .width(Length::Fill),
+    )
+    .padding([10.0, 16.0, 12.0, 16.0])
+    .fill(Tone::Chrome)
+    .edges(Edge::BevelLo, Sides::TOP)
+    .width(Length::Fill)
+    // Always as tall, so the table above doesn't move (and redraw) as the
+    // selection changes.
+    .height(DETAILS_HEIGHT)
+    .id("details")
+    .into()
 }
