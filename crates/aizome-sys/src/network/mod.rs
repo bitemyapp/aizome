@@ -30,7 +30,10 @@
 //! polkit's `org.freedesktop.NetworkManager.*` actions).
 
 mod model;
+mod profile;
 pub(crate) mod rfkill;
+
+pub use profile::{IPV6_METHODS, Profile, read_profile};
 
 pub use model::{
     AccessPoint, ActiveConnection, ActiveState, Band, ConnectionKind, ConnectionSettings, Connectivity,

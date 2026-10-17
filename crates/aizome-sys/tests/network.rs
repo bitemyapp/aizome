@@ -584,3 +584,30 @@ fn addresses_and_dns_are_saved_on_the_profile() {
     assert_eq!(setting_str(&log.lock().unwrap().updated.last().unwrap().0, "ipv4", "method").as_deref(), Some("manual"));
     assert!(network.set_ipv4(&uuid, Ipv4Method::Manual { addresses: vec![], gateway: None }).wait().is_err());
 }
+
+#[test]
+fn profiles_read_whole_and_change_ipv6_and_the_private_address() {
+    let bus = test_bus!();
+    let (_fake, log) = serve(&bus);
+    let network = Network::with_bus(bus.bus(), Wake::none(), no_radios());
+    assert!(eventually(|| network.snapshot().network("Home").is_some_and(|n| n.known)));
+    let uuid = network.snapshot().network("Home").unwrap().connection.clone().unwrap();
+    let profile = network.profile(&uuid).wait().unwrap();
+    assert_eq!(profile.id, "Home");
+    assert_eq!(profile.ssid.as_deref(), Some("Home"));
+    assert_eq!(profile.key_mgmt.as_deref(), Some("wpa-psk"));
+    assert_eq!(profile.ipv4_method, "auto");
+
+    network.set_ipv6_method(&uuid, "disabled").wait().unwrap();
+    network.set_private_address(&uuid, "stable").wait().unwrap();
+    {
+        let log = log.lock().unwrap();
+        let (settings, _) = log.updated.last().unwrap();
+        assert_eq!(setting_str(settings, "ipv6", "method").as_deref(), Some("disabled"));
+        assert_eq!(setting_str(settings, "802-11-wireless", "assigned-mac-address").as_deref(), Some("stable"));
+        assert_eq!(setting_str(settings, "802-11-wireless-security", "psk").as_deref(), Some("right"));
+    }
+    assert!(network.set_ipv6_method(&uuid, "sideways").wait().is_err());
+    // Not up: nothing to reapply, and no error.
+    assert!(!network.reapply(&uuid).wait().unwrap());
+}
