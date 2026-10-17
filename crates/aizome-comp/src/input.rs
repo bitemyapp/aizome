@@ -305,8 +305,9 @@ impl State {
     pub fn pointer_motion_absolute(&mut self, pos: Point<f64, Logical>, time: u32) {
         self.note_activity();
         let pos = self.clamp_to_outputs(pos);
+        let old = self.az.pointer_pos;
+        self.az.pointer_pos = pos;
         let Some(pointer) = self.az.seat.get_pointer() else { return };
-        let old = pointer.current_location();
         let under = self.under(pos);
         // The compositor's cursor over decorations; the client's over
         // surfaces.
@@ -818,8 +819,7 @@ impl State {
             Action::ChangeVt(vt) => self.backend.change_vt(vt),
             Action::Quit => self.quit(),
             Action::Shell(name) => {
-                let pos = self.az.seat.get_pointer().map(|p| p.current_location());
-                let output = pos.and_then(|p| self.az.output_at(p)).map(|o| o.name());
+                let output = self.az.output_at(self.az.pointer_pos).map(|o| o.name());
                 self.az.ipc.emit(&aizome_ipc::Event::Binding { action: name, pointer: None, output });
             }
             Action::None => {}

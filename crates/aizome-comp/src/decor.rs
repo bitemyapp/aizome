@@ -51,6 +51,31 @@ pub fn tab_width(title_w: f64) -> i32 {
     ((title_w + TAB_CHROME).ceil() as i32).max(metrics::TAB_MIN_WIDTH as i32)
 }
 
+/// The widest a lone tab gets, whatever its title.
+pub const TAB_MAX: i32 = 360;
+/// A lone tab leaves at least this much of the top edge free (for sliding
+/// and for the look).
+pub const TAB_SPARE: i32 = 32;
+
+/// The widths of a group's tabs (one or more) along a frame `frame_w`
+/// wide: each its title's natural width, at most [`TAB_MAX`] (and, alone,
+/// [`TAB_SPARE`] short of the frame); when they don't fit side by side,
+/// all shrink by the same factor, down to [`metrics::TAB_MIN_WIDTH`].
+pub fn tab_widths(frame_w: i32, titles: &[f64]) -> Vec<i32> {
+    let min = metrics::TAB_MIN_WIDTH as i32;
+    let natural: Vec<i32> = titles.iter().map(|t| tab_width(*t).min(TAB_MAX)).collect();
+    if natural.len() <= 1 {
+        let cap = (frame_w - TAB_SPARE).min(TAB_MAX).max(min);
+        return natural.into_iter().map(|w| w.min(cap)).collect();
+    }
+    let total: i32 = natural.iter().sum();
+    if total <= frame_w {
+        return natural;
+    }
+    let k = frame_w as f64 / total as f64;
+    natural.into_iter().map(|w| ((w as f64 * k).floor() as i32).max(min)).collect()
+}
+
 /// How a tab is drawn.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TabLook {
@@ -109,14 +134,7 @@ pub fn layout(
     strip_offset: i32,
 ) -> Layout {
     let frame = if ssd { content.outset(Insets::new(BORDER + RAIL, BORDER, BORDER, BORDER)) } else { content };
-    let n = members.len().max(1);
-    let widths: Vec<i32> = members
-        .iter()
-        .map(|(_, w)| {
-            let max = if n == 1 { frame.w } else { (frame.w / n as i32).max(metrics::TAB_MIN_WIDTH as i32) };
-            tab_width(*w).min(max.max(metrics::TAB_MIN_WIDTH as i32))
-        })
-        .collect();
+    let widths = tab_widths(frame.w, &members.iter().map(|(_, w)| *w).collect::<Vec<_>>());
     let total: i32 = widths.iter().sum();
     let offset = strip_offset.clamp(0, (frame.w - total).max(0));
     let mut x = frame.x + offset;
@@ -411,7 +429,22 @@ mod tests {
         assert_eq!(tab_width(0.0), 64);
         assert_eq!(tab_width(100.0), 152);
         let l = layout(Rect::new(0, 50, 120, 100), true, true, &[(1, 500.0)], 1, 0);
-        assert_eq!(l.tabs[0].rect.w, 122, "no wider than the frame");
+        assert_eq!(l.tabs[0].rect.w, 122 - TAB_SPARE, "leaves some of the top edge");
+        let l = layout(Rect::new(0, 50, 1200, 100), true, true, &[(1, 900.0)], 1, 0);
+        assert_eq!(l.tabs[0].rect.w, TAB_MAX, "never wider than the cap");
+        assert_eq!(l.tabs[0].title_max_w, TAB_MAX as f64 - TAB_CHROME);
+    }
+
+    #[test]
+    fn stacked_tabs_shrink_evenly_when_they_dont_fit() {
+        // Natural widths 152 and 252 in a 300pt frame: both scale by 300/404.
+        let w = tab_widths(300, &[100.0, 200.0]);
+        assert_eq!(w, vec![112, 187]);
+        assert!(w.iter().sum::<i32>() <= 300);
+        // They fit: natural widths.
+        assert_eq!(tab_widths(800, &[100.0, 200.0]), vec![152, 252]);
+        // Never under the minimum.
+        assert!(tab_widths(100, &[100.0, 200.0, 300.0]).iter().all(|w| *w == 64));
     }
 
     #[test]

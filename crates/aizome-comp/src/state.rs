@@ -268,6 +268,9 @@ pub struct Aizome {
 
     pub cursor_status: CursorImageStatus,
     pub cursor_theme: CursorTheme,
+    /// Where the pointer is (kept beside smithay's, which sits behind a lock
+    /// held during pointer callbacks).
+    pub pointer_pos: Point<f64, Logical>,
     /// Shown in the stack-drop feedback and the grab cursors.
     pub dnd_icon: Option<WlSurface>,
     /// A layer surface that took keyboard focus on demand (by a click).
@@ -281,6 +284,8 @@ pub struct Aizome {
     pub interactive: crate::input::Interactive,
     /// Surfaces that keep the screen awake (idle-inhibit).
     pub idle_inhibitors: HashSet<WlSurface>,
+    /// Activation tokens that may move focus.
+    pub valid_tokens: HashSet<String>,
     pub idle: crate::idle::IdleState,
     pub children: crate::session::Children,
 }
@@ -463,6 +468,7 @@ impl State {
             bindings: crate::bindings::Bindings::new(&settings.keys.bindings),
             settings,
             cursor_status: CursorImageStatus::default_named(),
+            pointer_pos: Point::from((0.0, 0.0)),
             cursor_theme,
             dnd_icon: None,
             layer_focus: None,
@@ -471,6 +477,7 @@ impl State {
             translated_keys: HashSet::new(),
             interactive: Default::default(),
             idle_inhibitors: HashSet::new(),
+            valid_tokens: HashSet::new(),
             idle: Default::default(),
             children: Default::default(),
         };
@@ -486,6 +493,7 @@ impl State {
         self.az.flush_ipc_events();
         crate::protocols::foreign_toplevel::refresh(self);
         self.redraw_due();
+        self.check_lock();
         if let Err(e) = self.az.dh.flush_clients() {
             warn!("flushing clients: {e}");
         }
@@ -586,7 +594,9 @@ impl Aizome {
 
     /// Where new windows go: the output under the pointer.
     pub fn active_output(&self) -> Option<Output> {
-        let p = self.seat.get_pointer().map(|p| p.current_location()).unwrap_or_default();
+        // Our copy of the pointer's place: asking the pointer from inside its
+        // callbacks would deadlock on its lock.
+        let p = self.pointer_pos;
         self.output_at(p)
     }
 

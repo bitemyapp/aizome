@@ -255,7 +255,8 @@ pub fn decoration_elements<R>(
                 out.push(e);
             }
         }
-        if let Some(label) = az.labels.get(&title, style, scale, t.title_max_w) {
+        let title = az.labels.fit(&title, face, typeface::TAB, t.title_max_w);
+        if let Some(label) = az.labels.get(&title, style, scale, t.title_max_w + 1.0) {
             let x = t.title_x;
             let y = t.rect.y as f64 + 1.0 + ((TAB_INNER - label.h as f64) / 2.0).round();
             let loc: Point<i32, Physical> = Point::<f64, Logical>::from((x - origin.0, y - origin.1)).to_physical_precise_round(scale);
@@ -286,9 +287,8 @@ where
     R: Renderer + ImportAll + ImportMem,
     R::TextureId: Clone + Send + 'static,
 {
-    let Some(pointer) = az.seat.get_pointer() else { return };
     let geo = az.output_geometry(output);
-    let pos = pointer.current_location();
+    let pos = az.pointer_pos;
     if !geo.to_f64().contains(pos) {
         return;
     }

@@ -140,6 +140,41 @@ impl Labels {
         m
     }
 
+    /// The text shortened with an ellipsis to fit `max_w` points: in the
+    /// middle for paths (so both ends show), at the end otherwise.
+    pub fn fit(&mut self, text: &str, face: Face, size: f64, max_w: f64) -> String {
+        if self.measure(text, face, size).0 <= max_w {
+            return text.to_string();
+        }
+        let chars: Vec<char> = text.chars().collect();
+        let middle = text.contains('/');
+        let candidate = |keep: usize| -> String {
+            if middle {
+                let tail = keep / 2;
+                let head = keep - tail;
+                let mut s: String = chars[..head].iter().collect();
+                s.push('…');
+                s.extend(chars[chars.len() - tail..].iter());
+                s
+            } else {
+                let mut s: String = chars[..keep].iter().collect::<String>().trim_end().to_string();
+                s.push('…');
+                s
+            }
+        };
+        // The most characters that fit.
+        let (mut lo, mut hi) = (0usize, chars.len());
+        while lo < hi {
+            let mid = (lo + hi).div_ceil(2);
+            if self.measure(&candidate(mid), face, size).0 <= max_w {
+                lo = mid;
+            } else {
+                hi = mid - 1;
+            }
+        }
+        candidate(lo)
+    }
+
     /// The label for a text, rasterized at `scale` and truncated with an
     /// ellipsis to `max_w` points.
     pub fn get(&mut self, text: &str, style: Style, scale: f64, max_w: f64) -> Option<&Label> {

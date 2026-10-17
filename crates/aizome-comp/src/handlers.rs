@@ -59,6 +59,7 @@ impl SeatHandler for State {
     }
 
     fn cursor_image(&mut self, _seat: &Seat<Self>, image: CursorImageStatus) {
+        // Called with the pointer's lock held: touch nothing that takes it.
         self.az.cursor_status = image;
         if let Some(o) = self.az.active_output() {
             self.az.queue_redraw(&o);
@@ -155,17 +156,29 @@ impl XdgActivationHandler for State {
         &mut self.az.xdg_activation
     }
 
-    fn token_created(&mut self, _token: XdgActivationToken, data: XdgActivationTokenData) -> bool {
-        // Valid when made from a recent input event of the focused client.
-        let Some((serial, seat)) = data.serial else { return false };
-        let Some(seat) = Seat::<State>::from_resource(&seat) else { return false };
-        let Some(keyboard) = seat.get_keyboard() else { return false };
-        keyboard.last_enter().is_some_and(|last| serial.is_no_older_than(&last))
+    fn token_created(&mut self, token: XdgActivationToken, data: XdgActivationTokenData) -> bool {
+        // Every token is kept; one may move focus only when made from an
+        // input event of a client that had the keyboard or the pointer then
+        // (a shell launching an app from a click). Others only mark the
+        // window urgent.
+        let valid = data.serial.as_ref().is_some_and(|(serial, seat)| {
+            let Some(seat) = Seat::<State>::from_resource(seat) else { return false };
+            let recent = seat.get_keyboard().is_some_and(|k| k.last_enter().is_some_and(|l| serial.is_no_older_than(&l)));
+            let client = data.client_id.clone();
+            let has = |s: Option<WlSurface>| s.and_then(|s| s.client()).map(|c| c.id()) == client && client.is_some();
+            let kb_focus = seat.get_keyboard().and_then(|k| k.current_focus()).map(|f| f.0);
+            let ptr_focus = seat.get_pointer().and_then(|p| p.current_focus()).map(|f| f.0);
+            recent || has(kb_focus) || has(ptr_focus)
+        });
+        if valid {
+            self.az.valid_tokens.insert(token.to_string());
+        }
+        true
     }
 
     fn request_activation(&mut self, token: XdgActivationToken, data: XdgActivationTokenData, surface: WlSurface) {
         let Some(id) = self.az.window_for_surface(&surface) else { return };
-        let valid = data.timestamp.elapsed().as_secs() < 10 && data.serial.is_some();
+        let valid = self.az.valid_tokens.remove(&token.to_string()) && data.timestamp.elapsed().as_secs() < 30;
         if valid {
             info!(id, "activation granted");
             self.activate_window(id);
@@ -235,6 +248,7 @@ impl PointerConstraintsHandler for State {
         }
         if let Some(origin) = self.az.surface_origin(surface) {
             pointer.set_location(origin + location);
+            self.az.pointer_pos = origin + location;
         }
     }
 }
