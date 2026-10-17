@@ -77,3 +77,46 @@ fn audio_reads_the_sound_server() {
     }
     assert!(state.default_output().is_some());
 }
+
+#[test]
+#[ignore = "reads the real system bus"]
+fn power_reads_upower_profiles_logind_and_backlight() {
+    use aizome_sys::power::*;
+    let upower = Upower::new(Wake::none());
+    assert!(eventually(|| upower.available()), "UPower is not running");
+    let state = upower.snapshot();
+    println!("on battery {} lid present {} closed {}", state.on_battery, state.lid_present, state.lid_closed);
+    if let Some(display) = &state.display {
+        println!("  display: {:.0}% {:?} {}", display.percentage, display.state, display.icon_name);
+    }
+    for device in &state.devices {
+        println!(
+            "  {:?} {} {:.0}% {:?} rate={:.1}W health={:.0}% online={} empty={:?} full={:?}",
+            device.kind, device.native_path, device.percentage, device.state, device.energy_rate, device.capacity,
+            device.online, device.time_to_empty, device.time_to_full
+        );
+    }
+    println!("  keyboard lights: {:?}", state.keyboard_backlights);
+
+    let profiles = PowerProfiles::new(Wake::none());
+    if eventually(|| profiles.available()) {
+        let p = profiles.snapshot();
+        println!("profile {} of {:?}, holds {:?}", p.active, p.profiles.iter().map(|p| &p.name).collect::<Vec<_>>(), p.holds);
+        assert!(p.has(&p.active));
+    }
+
+    let logind = Logind::new(Wake::none());
+    assert!(eventually(|| logind.available()));
+    let l = logind.snapshot();
+    println!(
+        "logind session {} ({}) active={} suspend={:?} hibernate={:?} power off={:?} lid={} idle={} delay={}",
+        l.session_id, l.session_path, l.session_active, l.can_suspend, l.can_hibernate, l.can_power_off, l.lid_closed,
+        l.idle_hint, l.delay_inhibited
+    );
+    for inhibitor in logind.inhibitors().wait().unwrap() {
+        println!("  inhibitor {} by {} ({}) {}", inhibitor.what, inhibitor.who, inhibitor.why, inhibitor.mode);
+    }
+
+    let backlight = Backlight::new(Wake::none());
+    println!("backlights {:?} primary {:?}", backlight.snapshot().devices, backlight.snapshot().primary().map(|d| d.fraction()));
+}

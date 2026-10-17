@@ -37,6 +37,7 @@ pub mod bluetooth;
 pub mod bus;
 pub mod error;
 pub mod network;
+pub mod power;
 pub mod sysinfo;
 mod oneshot;
 mod service;
