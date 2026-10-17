@@ -1,0 +1,78 @@
+//! What the engine asks of the system: windows, popups, damage, the
+//! clipboard, timers. Sidestep answers in a running app
+//! ([`crate::app`]); tests answer with a recording stand-in
+//! ([`crate::testing`]).
+
+use std::sync::Arc;
+use std::time::Duration;
+
+use sidestep_ui::{Color, Cursor};
+
+use crate::layout::{Rect, Size};
+
+/// The engine's name for a window (an app's, or a popup).
+pub type WinId = u32;
+
+/// Wakes the loop from another thread.
+pub type Waker = Arc<dyn Fn() + Send + Sync>;
+
+/// Where a popup opens against its anchor.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Placement {
+    /// Below, left edges lined up (a pop-up button's menu).
+    Below,
+    /// Its top left at a point (a context menu).
+    AtPoint,
+    /// To the right, tops lined up (a submenu).
+    Beside,
+    /// Above, centred (a tooltip, a popover over its anchor).
+    Above,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum OpenKind {
+    /// A window of its own; a dialog is kept over `parent`.
+    Toplevel { parent: Option<WinId>, utility: bool },
+    /// A popup over `parent`, at `anchor` (the parent's coordinates).
+    /// With `grab` it takes the keyboard and pointer while open.
+    Popup { parent: WinId, anchor: Rect, placement: Placement, grab: bool },
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct OpenSpec {
+    pub title: String,
+    pub size: Size,
+    pub min_size: Option<Size>,
+    pub max_size: Option<Size>,
+    pub resizable: bool,
+    pub kind: OpenKind,
+    /// What shows where nothing draws; none for see-through (popups with
+    /// their shadow).
+    pub background: Option<Color>,
+    /// The app id the compositor groups it by.
+    pub app_id: String,
+}
+
+pub trait Platform {
+    fn open_window(&mut self, id: WinId, spec: &OpenSpec);
+    fn close_window(&mut self, id: WinId);
+    fn set_title(&mut self, id: WinId, title: &str);
+    fn invalidate(&mut self, id: WinId, rect: Rect);
+    fn invalidate_all(&mut self, id: WinId);
+    fn set_cursor(&mut self, id: WinId, cursor: Cursor);
+    fn set_text_input(&mut self, id: WinId, wanted: bool, caret: Option<Rect>);
+    fn request_size(&mut self, id: WinId, size: Size);
+    fn minimize(&mut self, id: WinId);
+    fn set_maximized(&mut self, id: WinId, on: bool);
+    fn activate(&mut self, id: WinId);
+    fn begin_move(&mut self, id: WinId);
+    fn clipboard_text(&mut self) -> Option<String>;
+    fn set_clipboard_text(&mut self, text: &str);
+    /// A timer: the engine hears its token when it comes due.
+    fn set_timer(&mut self, after: Duration, repeat: bool) -> u64;
+    fn cancel_timer(&mut self, token: u64);
+    fn quit(&mut self);
+    /// Whether the desktop is dark (for the Auto theme).
+    fn desktop_dark(&self) -> bool;
+    fn waker(&self) -> Waker;
+}

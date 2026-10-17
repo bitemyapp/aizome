@@ -75,8 +75,10 @@ dependencies = [
 name = "aizome-kit"
 version = "0.1.0"
 dependencies = [
+ "aizome-config",
+ "aizome-shell-proto",
  "aizome-theme",
- "inotify",
+ "libc",
  "log",
  "png 0.18.1",
  "ropey",
@@ -94,6 +96,14 @@ dependencies = [
  "ignore",
  "log",
  "nucleo-matcher",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "aizome-shell-proto"
+version = "0.1.0"
+dependencies = [
  "serde",
  "serde_json",
 ]
@@ -1290,26 +1300,6 @@ checksum = "cc4e190f5d26ca7051642629da2c52fc03bde85a03197c99408dcd291734c855"
 dependencies = [
  "equivalent",
  "hashbrown",
-]
-
-[[package]]
-name = "inotify"
-version = "0.11.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4cc00ea907cab49550b7da656f80ebb97be1b997d931fbcd28d39734e17ce592"
-dependencies = [
- "bitflags 2.13.2",
- "inotify-sys",
- "libc",
-]
-
-[[package]]
-name = "inotify-sys"
-version = "0.1.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c033f80b2c113cdf91ab7a33faa9cbc014726dcad99880c8609af2a370edf37d"
-dependencies = [
- "libc",
 ]
 
 [[package]]

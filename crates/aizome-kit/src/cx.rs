@@ -1,0 +1,283 @@
+//! [`Cx`]: what a program acts with in `launched` and `update`.
+
+use std::marker::PhantomData;
+use std::path::PathBuf;
+use std::sync::mpsc::Sender;
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
+
+use crate::dialogs::{Alert, FileDialog};
+use crate::element::{AnyMsg, MsgFn, MsgMap};
+use crate::engine::{Core, TimerUse};
+use crate::layout::{Point, Size};
+use crate::menu::{Menu, MenuRole};
+use crate::platform::{Platform, Waker, WinId};
+use crate::program::{AppInfo, WindowKey, WindowSpec};
+use crate::theme::Theme;
+
+/// What only the compositor can do for the Window and app menus (hide,
+/// fill, stack, bring to front): `aizome-ipc` implements it. Without
+/// one, those items log and do nothing; Minimise asks the window's
+/// compositor through Wayland.
+pub trait WindowManager {
+    fn perform(&mut self, role: MenuRole, window: WinId);
+    fn minimise(&mut self, window: WinId);
+}
+
+/// A timer from [`Cx::after`] or [`Cx::every`], to cancel.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct TimerHandle(u64);
+
+/// Sends messages to the program from other threads: [`Cx::stream`].
+pub struct MsgSender<Msg> {
+    tx: Sender<AnyMsg>,
+    waker: Waker,
+    _m: PhantomData<fn(Msg)>,
+}
+
+impl<Msg> Clone for MsgSender<Msg> {
+    fn clone(&self) -> Self {
+        MsgSender { tx: self.tx.clone(), waker: self.waker.clone(), _m: PhantomData }
+    }
+}
+
+impl<Msg: Send + 'static> MsgSender<Msg> {
+    /// Send `msg`: whether the app is still there to get it.
+    pub fn send(&self, msg: Msg) -> bool {
+        let ok = self.tx.send(Box::new(msg)).is_ok();
+        (self.waker)();
+        ok
+    }
+}
+
+type Job = Box<dyn FnOnce() + Send>;
+
+/// The threads `spawn` runs work on, started on first use.
+#[derive(Default)]
+pub(crate) struct Pool {
+    tx: Option<Sender<Job>>,
+}
+
+impl Pool {
+    fn run(&mut self, job: Job) {
+        let tx = self.tx.get_or_insert_with(|| {
+            let (tx, rx) = std::sync::mpsc::channel::<Job>();
+            let rx = Arc::new(Mutex::new(rx));
+            let n = std::thread::available_parallelism().map_or(2, |n| n.get()).clamp(2, 8);
+            for i in 0..n {
+                let rx = rx.clone();
+                let _ = std::thread::Builder::new().name(format!("aizome-kit-{i}")).spawn(move || {
+                    loop {
+                        let job = { rx.lock().unwrap_or_else(|e| e.into_inner()).recv() };
+                        match job {
+                            Ok(job) => job(),
+                            Err(_) => return,
+                        }
+                    }
+                });
+            }
+            tx
+        });
+        let _ = tx.send(job);
+    }
+}
+
+/// What the program acts with: windows, background work, timers, the
+/// clipboard, the focus, menus, sheets and panels.
+pub struct Cx<'a, Msg> {
+    pub(crate) core: &'a mut Core,
+    pub(crate) platform: &'a mut dyn Platform,
+    pub(crate) pool: &'a mut Pool,
+    pub(crate) _m: PhantomData<fn(Msg)>,
+}
+
+impl<Msg: Clone + Send + 'static> Cx<'_, Msg> {
+    // Windows.
+
+    /// Open a window; its view is asked for once it's shown.
+    pub fn open_window(&mut self, spec: WindowSpec) -> WindowKey {
+        self.core.open_app_window(spec, self.platform)
+    }
+
+    /// Close a window or a sheet (without asking the program).
+    pub fn close_window(&mut self, window: WindowKey) {
+        self.core.close_key(window, self.platform);
+    }
+
+    pub fn set_title(&mut self, window: WindowKey, title: impl Into<String>) {
+        let title = title.into();
+        if let Some(win) = self.core.window_of(window)
+            && let Some(w) = self.core.wins.get_mut(&win)
+            && w.title != title
+        {
+            w.title.clone_from(&title);
+            self.platform.set_title(win, &title);
+        }
+    }
+
+    /// Ask for a new size.
+    pub fn request_size(&mut self, window: WindowKey, size: Size) {
+        if let Some(win) = self.core.window_of(window) {
+            self.platform.request_size(win, size);
+        }
+    }
+
+    pub fn minimise(&mut self, window: WindowKey) {
+        if let Some(win) = self.core.window_of(window) {
+            self.platform.minimize(win);
+        }
+    }
+
+    /// The open windows (not sheets), oldest first.
+    pub fn windows(&self) -> Vec<WindowKey> {
+        self.core.app_windows().into_iter().map(|(_, k)| k).collect()
+    }
+
+    // Work and time.
+
+    /// Run `work` on a background thread; its result comes back as a
+    /// message.
+    pub fn spawn(&mut self, work: impl FnOnce() -> Msg + Send + 'static) {
+        let tx = self.core.bg_tx.clone();
+        let wake = self.platform.waker();
+        self.pool.run(Box::new(move || {
+            let msg = work();
+            let _ = tx.send(Box::new(msg));
+            wake();
+        }));
+    }
+
+    /// A sender for a thread that keeps sending messages (a file watcher,
+    /// a D-Bus listener, a timer of its own).
+    pub fn stream(&mut self) -> MsgSender<Msg> {
+        MsgSender { tx: self.core.bg_tx.clone(), waker: self.platform.waker(), _m: PhantomData }
+    }
+
+    /// Send `msg` once, after `delay`.
+    pub fn after(&mut self, delay: Duration, msg: Msg) -> TimerHandle {
+        let token = self.platform.set_timer(delay, false);
+        self.core.timers.insert(token, TimerUse::App { msg: MsgFn::new(msg), repeat: false });
+        TimerHandle(token)
+    }
+
+    /// Send `msg` every `period`, until cancelled.
+    pub fn every(&mut self, period: Duration, msg: Msg) -> TimerHandle {
+        let token = self.platform.set_timer(period, true);
+        self.core.timers.insert(token, TimerUse::App { msg: MsgFn::new(msg), repeat: true });
+        TimerHandle(token)
+    }
+
+    pub fn cancel(&mut self, timer: TimerHandle) {
+        if self.core.timers.remove(&timer.0).is_some() {
+            self.platform.cancel_timer(timer.0);
+        }
+    }
+
+    /// Send `msg` to `update` once this one returns.
+    pub fn send(&mut self, msg: Msg) {
+        self.core.queue.push_back(Box::new(msg));
+    }
+
+    // The desktop.
+
+    pub fn clipboard_text(&mut self) -> Option<String> {
+        self.platform.clipboard_text()
+    }
+
+    pub fn set_clipboard_text(&mut self, text: &str) {
+        self.platform.set_clipboard_text(text);
+    }
+
+    /// Open a link or a file in its app (xdg-open).
+    pub fn open_url(&mut self, url: &str) {
+        if let Err(e) = std::process::Command::new("xdg-open").arg(url).spawn() {
+            log::warn!("xdg-open {url}: {e}");
+        }
+    }
+
+    /// Post a desktop notification (through `notify-send`, which speaks
+    /// org.freedesktop.Notifications; the shell is that server).
+    pub fn notify(&mut self, summary: &str, body: &str) {
+        let app = self.core.info.name.clone();
+        let spawned = std::process::Command::new("notify-send").arg("--app-name").arg(app).arg(summary).arg(body).spawn();
+        if let Err(e) = spawned {
+            log::info!("notification ({e}): {summary}: {body}");
+        }
+    }
+
+    /// Focus the element given `.id(name)`, in the window with the
+    /// keyboard (now, or once it shows).
+    pub fn focus(&mut self, name: &str) {
+        let wins: Vec<WinId> = match self.core.key_window {
+            Some(w) => vec![w],
+            None => self.core.app_windows().into_iter().map(|(w, _)| w).collect(),
+        };
+        for w in wins {
+            if self.core.focus_name(w, name, self.platform) {
+                return;
+            }
+        }
+        self.core.pending_focus.push(name.into());
+    }
+
+    pub fn theme(&self) -> &Theme {
+        &self.core.theme
+    }
+
+    pub fn info(&self) -> &AppInfo {
+        &self.core.info
+    }
+
+    /// Stop the app (without asking: see [`Program::close_requested`](crate::Program::close_requested)).
+    pub fn quit(&mut self) {
+        self.core.quit = true;
+        self.platform.quit();
+    }
+
+    /// Give the Window menu a way to the compositor.
+    pub fn set_window_manager(&mut self, wm: Box<dyn WindowManager>) {
+        self.core.wm = Some(wm);
+    }
+
+    // Menus, sheets and panels.
+
+    /// Open `menu` at `at` in `window` (its coordinates).
+    pub fn show_context_menu(&mut self, window: WindowKey, at: Point, menu: Menu<Msg>) {
+        if let Some(win) = self.core.window_of(window) {
+            self.core.open_context_menu(win, at, menu.spec, self.platform);
+        }
+    }
+
+    /// A sheet over `parent`: a modal dialog attached under its top. Its
+    /// view is the program's `view` of the key returned; close it with
+    /// [`close_window`](Cx::close_window).
+    pub fn show_sheet(&mut self, parent: WindowKey) -> WindowKey {
+        self.core.open_sheet(parent).unwrap_or(WindowKey::NONE)
+    }
+
+    /// An alert as a sheet over `window`: its buttons send their messages
+    /// and close it.
+    pub fn alert(&mut self, window: WindowKey, alert: Alert<Msg>) {
+        if let Some(win) = self.core.window_of(window) {
+            crate::dialogs::show_alert(self.core, win, alert.into_spec());
+        }
+    }
+
+    /// Ask for files to open: `on_done` gets them, or `None` if cancelled.
+    pub fn open_panel(&mut self, window: WindowKey, dialog: FileDialog, on_done: impl Fn(Option<Vec<PathBuf>>) -> Msg + 'static) {
+        let map = MsgMap::new(on_done);
+        crate::dialogs::show_panel(self.core, window, dialog, false, map, self.platform);
+    }
+
+    /// Ask where to save: `on_done` gets the path, or `None` if cancelled.
+    pub fn save_panel(&mut self, window: WindowKey, dialog: FileDialog, on_done: impl Fn(Option<PathBuf>) -> Msg + 'static) {
+        let map: MsgMap<Option<Vec<PathBuf>>> =
+            MsgMap::new(move |paths: Option<Vec<PathBuf>>| on_done(paths.and_then(|p| p.into_iter().next())));
+        crate::dialogs::show_panel(self.core, window, dialog, true, map, self.platform);
+    }
+
+    /// How long frames took, recently.
+    pub fn stats(&self) -> &crate::stats::Stats {
+        &self.core.stats
+    }
+}
