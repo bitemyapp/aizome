@@ -1,0 +1,51 @@
+[package]
+name = "aizome-comp"
+description = "Aizome's Wayland compositor: window management with Haiku tabs, tab groups, Desks, the overview and switcher, and session startup"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "aizome"
+path = "src/main.rs"
+
+[dependencies]
+aizome-theme.workspace = true
+aizome-config.workspace = true
+aizome-ipc.workspace = true
+sidestep-ui.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", default-features = false, features = ["env-filter", "fmt", "ansi", "tracing-log", "std"] }
+png = "0.18"
+# App icons in SVG (icon themes' scalable sizes); no text or raster images.
+resvg = { version = "0.46", default-features = false }
+xcursor = "0.3"
+libc = "0.2"
+bitflags = "2"
+
+[dependencies.smithay]
+version = "0.7.0"
+default-features = false
+features = [
+    "backend_drm",
+    "backend_gbm",
+    "backend_egl",
+    "backend_libinput",
+    "backend_udev",
+    "backend_session_libseat",
+    "backend_winit",
+    "desktop",
+    "renderer_gl",
+    "renderer_pixman",
+    "renderer_multi",
+    "wayland_frontend",
+]
+
+[dev-dependencies]
+wayland-client = "0.31"
+wayland-protocols = { version = "0.32", features = ["client", "staging", "unstable"] }
+wayland-protocols-wlr = { version = "0.3", features = ["client"] }

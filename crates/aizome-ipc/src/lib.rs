@@ -296,6 +296,30 @@ pub enum Request {
     /// Performs a key-binding action by name, as if its keys were pressed
     /// (e.g. `"overview"`, `"stack-with-behind"`).
     Action { action: String },
+    /// Feeds input through the compositor as if it came from a device:
+    /// bindings, focus, grabs and all (tests and automation).
+    Synthesize { events: Vec<Synthetic> },
+}
+
+/// An input event for [`Request::Synthesize`].
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "kebab-case")]
+pub enum Synthetic {
+    /// Moves the pointer to a point in the global layout (points).
+    PointerMotion { x: f64, y: f64 },
+    /// Presses or releases `"left"`, `"right"`, `"middle"` or an evdev
+    /// button code.
+    PointerButton { button: String, pressed: bool },
+    /// Presses and releases a button.
+    Click { button: String },
+    /// Scrolls by points.
+    PointerScroll { dx: f64, dy: f64 },
+    /// Presses or releases a key by name (`"super"`, `"tab"`, `"a"`,
+    /// `"up"`) or evdev code.
+    Key { key: String, pressed: bool },
+    /// Presses a chord's keys in order and releases them in reverse:
+    /// `"super+shift+3"`.
+    Chord { keys: String },
 }
 
 fn yes() -> bool {

@@ -1,0 +1,886 @@
+//! Input: pointer, keyboard, touch and gestures, from libinput, winit or
+//! IPC (synthetic events for tests), all through the same paths.
+//!
+//! The pointer belongs to the compositor over tabs, frame edges and
+//! overlays, and to clients over their surfaces; a press on a window
+//! focuses and raises it. Keys go through the binding table, then the
+//! command-key translation, then to the focused client.
+
+use std::collections::HashSet;
+use std::time::{Duration, Instant};
+
+use smithay::backend::input::{
+    AbsolutePositionEvent, Axis, AxisSource, ButtonState, Event as _, GestureBeginEvent, GestureEndEvent,
+    GesturePinchUpdateEvent as _, GestureSwipeUpdateEvent as _, InputBackend, InputEvent, KeyState, KeyboardKeyEvent,
+    PointerAxisEvent, PointerButtonEvent, PointerMotionEvent, TouchEvent,
+};
+use smithay::desktop::{WindowSurfaceType, layer_map_for_output};
+use smithay::input::keyboard::{FilterResult, Keycode, Keysym, KeysymHandle, ModifiersState, keysyms};
+use smithay::input::pointer::{AxisFrame, ButtonEvent, MotionEvent, RelativeMotionEvent};
+use smithay::input::touch::{DownEvent, UpEvent};
+use smithay::output::Output;
+use smithay::utils::{Logical, Point, SERIAL_COUNTER, Serial};
+use smithay::wayland::keyboard_shortcuts_inhibit::KeyboardShortcutsInhibitorSeat;
+use smithay::wayland::pointer_constraints::{PointerConstraint, with_pointer_constraint};
+use smithay::wayland::seat::WaylandFocus;
+use smithay::wayland::shell::wlr_layer::{KeyboardInteractivity, Layer};
+
+use crate::bindings::{Action, Mods};
+use crate::decor::{Edges, Hit};
+use crate::focus::Focus;
+use crate::state::State;
+use crate::wm::WinId;
+
+pub const BTN_LEFT: u32 = 0x110;
+pub const BTN_RIGHT: u32 = 0x111;
+pub const BTN_MIDDLE: u32 = 0x112;
+
+/// What the compositor tracks about pointer interaction.
+#[derive(Default)]
+pub struct Interactive {
+    /// A cursor the compositor shows instead of the client's (resize
+    /// arrows over edges, the arrow over tabs).
+    pub cursor_override: Option<&'static str>,
+    pub hover: Option<Hit>,
+    /// The last press on a tab, for double-clicks.
+    pub last_tab_click: Option<(Instant, WinId, (f64, f64))>,
+    /// A tab being dragged: where it would stack.
+    pub drag: Option<TabDrag>,
+}
+
+#[derive(Clone, Debug)]
+pub struct TabDrag {
+    /// The window being dragged.
+    pub win: WinId,
+    /// The window whose tab it hovers, to stack with on release.
+    pub target: Option<WinId>,
+    /// Where the dropped tab would go (the slot), in global points.
+    pub slot: Option<crate::wm::Rect>,
+}
+
+/// What lies under a point.
+pub enum Under {
+    /// A client surface, with its origin in global points.
+    Surface(Focus, Point<f64, Logical>, Owner),
+    /// A window's decorations.
+    Decor(WinId, Hit),
+    /// Nothing: the desktop colour.
+    Nothing,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Owner {
+    Window(WinId),
+    Layer,
+    Lock,
+    Other,
+}
+
+/// What a key does.
+pub enum KeyDecision {
+    Forward,
+    /// Forward with these modifiers as the client sees them (❖ → Ctrl).
+    Translate(ModifiersState),
+    Swallow,
+    Act(Action),
+}
+
+impl State {
+    /// Feeds an event from a backend.
+    pub fn process_input<B: InputBackend>(&mut self, event: InputEvent<B>) {
+        match event {
+            InputEvent::Keyboard { event } => {
+                let pressed = event.state() == KeyState::Pressed;
+                self.keyboard_key(event.key_code().raw().saturating_sub(8), pressed, event.time_msec());
+            }
+            InputEvent::PointerMotion { event } => {
+                self.pointer_motion_relative(event.delta(), event.delta_unaccel(), event.time(), event.time_msec());
+            }
+            InputEvent::PointerMotionAbsolute { event } => {
+                let Some(output) = self.az.outputs.first().cloned() else { return };
+                let geo = self.az.output_geometry(&output);
+                let pos = event.position_transformed(geo.size) + geo.loc.to_f64();
+                self.pointer_motion_absolute(pos, event.time_msec());
+            }
+            InputEvent::PointerButton { event } => {
+                let pressed = event.state() == ButtonState::Pressed;
+                self.pointer_button(event.button_code(), pressed, event.time_msec());
+            }
+            InputEvent::PointerAxis { event } => self.pointer_axis::<B>(&event),
+            InputEvent::GestureSwipeBegin { event } => {
+                let Some(pointer) = self.az.seat.get_pointer() else { return };
+                pointer.gesture_swipe_begin(
+                    self,
+                    &smithay::input::pointer::GestureSwipeBeginEvent { serial: SERIAL_COUNTER.next_serial(), time: event.time_msec(), fingers: event.fingers() },
+                );
+            }
+            InputEvent::GestureSwipeUpdate { event } => {
+                let Some(pointer) = self.az.seat.get_pointer() else { return };
+                pointer.gesture_swipe_update(self, &smithay::input::pointer::GestureSwipeUpdateEvent { time: event.time_msec(), delta: event.delta() });
+            }
+            InputEvent::GestureSwipeEnd { event } => {
+                let Some(pointer) = self.az.seat.get_pointer() else { return };
+                pointer.gesture_swipe_end(
+                    self,
+                    &smithay::input::pointer::GestureSwipeEndEvent { serial: SERIAL_COUNTER.next_serial(), time: event.time_msec(), cancelled: event.cancelled() },
+                );
+            }
+            InputEvent::GesturePinchBegin { event } => {
+                let Some(pointer) = self.az.seat.get_pointer() else { return };
+                pointer.gesture_pinch_begin(
+                    self,
+                    &smithay::input::pointer::GesturePinchBeginEvent { serial: SERIAL_COUNTER.next_serial(), time: event.time_msec(), fingers: event.fingers() },
+                );
+            }
+            InputEvent::GesturePinchUpdate { event } => {
+                let Some(pointer) = self.az.seat.get_pointer() else { return };
+                pointer.gesture_pinch_update(
+                    self,
+                    &smithay::input::pointer::GesturePinchUpdateEvent {
+                        time: event.time_msec(),
+                        delta: event.delta(),
+                        scale: event.scale(),
+                        rotation: event.rotation(),
+                    },
+                );
+            }
+            InputEvent::GesturePinchEnd { event } => {
+                let Some(pointer) = self.az.seat.get_pointer() else { return };
+                pointer.gesture_pinch_end(
+                    self,
+                    &smithay::input::pointer::GesturePinchEndEvent { serial: SERIAL_COUNTER.next_serial(), time: event.time_msec(), cancelled: event.cancelled() },
+                );
+            }
+            InputEvent::GestureHoldBegin { event } => {
+                let Some(pointer) = self.az.seat.get_pointer() else { return };
+                pointer.gesture_hold_begin(
+                    self,
+                    &smithay::input::pointer::GestureHoldBeginEvent { serial: SERIAL_COUNTER.next_serial(), time: event.time_msec(), fingers: event.fingers() },
+                );
+            }
+            InputEvent::GestureHoldEnd { event } => {
+                let Some(pointer) = self.az.seat.get_pointer() else { return };
+                pointer.gesture_hold_end(
+                    self,
+                    &smithay::input::pointer::GestureHoldEndEvent { serial: SERIAL_COUNTER.next_serial(), time: event.time_msec(), cancelled: event.cancelled() },
+                );
+            }
+            InputEvent::TouchDown { event } => self.touch_down::<B>(&event),
+            InputEvent::TouchUp { event } => {
+                let Some(touch) = self.az.seat.get_touch() else { return };
+                touch.up(self, &UpEvent { slot: event.slot(), serial: SERIAL_COUNTER.next_serial(), time: event.time_msec() });
+            }
+            InputEvent::TouchMotion { event } => {
+                let Some(touch) = self.az.seat.get_touch() else { return };
+                let Some(output) = self.az.outputs.first().cloned() else { return };
+                let geo = self.az.output_geometry(&output);
+                let pos = event.position_transformed(geo.size) + geo.loc.to_f64();
+                let under = self.surface_focus_at(pos);
+                touch.motion(
+                    self,
+                    under,
+                    &smithay::input::touch::MotionEvent { slot: event.slot(), location: pos, time: event.time_msec() },
+                );
+            }
+            InputEvent::TouchFrame { .. } => {
+                if let Some(touch) = self.az.seat.get_touch() {
+                    touch.frame(self);
+                }
+            }
+            InputEvent::TouchCancel { .. } => {
+                if let Some(touch) = self.az.seat.get_touch() {
+                    touch.cancel(self);
+                }
+            }
+            InputEvent::DeviceAdded { .. } | InputEvent::DeviceRemoved { .. } => {}
+            _ => {}
+        }
+    }
+
+    fn touch_down<B: InputBackend>(&mut self, event: &B::TouchDownEvent) {
+        self.note_activity();
+        let Some(touch) = self.az.seat.get_touch() else { return };
+        let Some(output) = self.az.outputs.first().cloned() else { return };
+        let geo = self.az.output_geometry(&output);
+        let pos = event.position_transformed(geo.size) + geo.loc.to_f64();
+        if let Under::Surface(_, _, Owner::Window(id)) = self.under(pos) {
+            if self.az.wm.focused() != Some(id) {
+                self.focus_window(Some(id));
+            }
+        }
+        let under = self.surface_focus_at(pos);
+        touch.down(
+            self,
+            under,
+            &DownEvent { slot: event.slot(), location: pos, serial: SERIAL_COUNTER.next_serial(), time: event.time_msec() },
+        );
+    }
+
+    fn pointer_axis<B: InputBackend>(&mut self, event: &B::PointerAxisEvent) {
+        self.note_activity();
+        let source = event.source();
+        let natural = match source {
+            AxisSource::Finger => self.az.settings.input.touchpad.natural_scroll,
+            _ => self.az.settings.input.pointer.natural_scroll,
+        };
+        let sign = if natural { -1.0 } else { 1.0 };
+        let h = event.amount(Axis::Horizontal).unwrap_or_else(|| event.amount_v120(Axis::Horizontal).unwrap_or(0.0) * 15.0 / 120.0);
+        let v = event.amount(Axis::Vertical).unwrap_or_else(|| event.amount_v120(Axis::Vertical).unwrap_or(0.0) * 15.0 / 120.0);
+        let mut frame = AxisFrame::new(event.time_msec()).source(source);
+        if h != 0.0 {
+            frame = frame.value(Axis::Horizontal, h * sign);
+            if let Some(d) = event.amount_v120(Axis::Horizontal) {
+                frame = frame.v120(Axis::Horizontal, (d * sign) as i32);
+            }
+        }
+        if v != 0.0 {
+            frame = frame.value(Axis::Vertical, v * sign);
+            if let Some(d) = event.amount_v120(Axis::Vertical) {
+                frame = frame.v120(Axis::Vertical, (d * sign) as i32);
+            }
+        }
+        if source == AxisSource::Finger {
+            if event.amount(Axis::Horizontal) == Some(0.0) {
+                frame = frame.stop(Axis::Horizontal);
+            }
+            if event.amount(Axis::Vertical) == Some(0.0) {
+                frame = frame.stop(Axis::Vertical);
+            }
+        }
+        if crate::overlays::scroll(self, h, v) {
+            return;
+        }
+        let Some(pointer) = self.az.seat.get_pointer() else { return };
+        pointer.axis(self, frame);
+        pointer.frame(self);
+    }
+
+    /// Scrolls by points (synthetic input).
+    pub fn pointer_scroll(&mut self, dx: f64, dy: f64, time: u32) {
+        self.note_activity();
+        let Some(pointer) = self.az.seat.get_pointer() else { return };
+        let mut frame = AxisFrame::new(time).source(AxisSource::Wheel);
+        if dx != 0.0 {
+            frame = frame.value(Axis::Horizontal, dx);
+        }
+        if dy != 0.0 {
+            frame = frame.value(Axis::Vertical, dy);
+        }
+        pointer.axis(self, frame);
+        pointer.frame(self);
+    }
+
+    // ---- pointer -------------------------------------------------------
+
+    pub fn pointer_motion_relative(&mut self, delta: Point<f64, Logical>, delta_unaccel: Point<f64, Logical>, utime: u64, time: u32) {
+        let Some(pointer) = self.az.seat.get_pointer() else { return };
+        let pos = pointer.current_location();
+        // A locked pointer stays put; relative motion still goes out.
+        let focus = pointer.current_focus();
+        let mut locked = false;
+        if let Some(f) = &focus {
+            with_pointer_constraint(&f.0, &pointer, |c| {
+                if let Some(c) = c {
+                    if c.is_active() {
+                        if let PointerConstraint::Locked(_) = &*c {
+                            locked = true;
+                        }
+                    }
+                }
+            });
+        }
+        let surface_loc = pointer.current_focus().and_then(|f| self.az.surface_origin(&f.0));
+        pointer.relative_motion(
+            self,
+            focus.zip(surface_loc),
+            &RelativeMotionEvent { delta, delta_unaccel, utime },
+        );
+        if locked {
+            pointer.frame(self);
+            return;
+        }
+        self.pointer_motion_absolute(pos + delta, time);
+    }
+
+    pub fn pointer_motion_absolute(&mut self, pos: Point<f64, Logical>, time: u32) {
+        self.note_activity();
+        let pos = self.clamp_to_outputs(pos);
+        let Some(pointer) = self.az.seat.get_pointer() else { return };
+        let old = pointer.current_location();
+        let under = self.under(pos);
+        // The compositor's cursor over decorations; the client's over
+        // surfaces.
+        let (hover, override_cursor) = match &under {
+            Under::Decor(_, hit @ Hit::Edge(_, e)) => (Some(*hit), Some(e.cursor_name())),
+            Under::Decor(_, hit) => (Some(*hit), Some("default")),
+            Under::Nothing => (None, Some("default")),
+            Under::Surface(..) => (None, None),
+        };
+        if !pointer.is_grabbed() {
+            self.az.interactive.hover = hover;
+            self.az.interactive.cursor_override = override_cursor;
+        }
+        crate::overlays::pointer_moved(self, pos);
+        let focus = match under {
+            Under::Surface(f, origin, _) => Some((f, origin)),
+            _ => None,
+        };
+        // Focus follows the mouse, when asked.
+        if self.az.settings.windows.focus_follows == aizome_config::FocusFollows::Mouse && !pointer.is_grabbed() {
+            if let Some((f, _)) = &focus {
+                if let Some(id) = self.az.window_for_root(&f.0) {
+                    if self.az.wm.focused() != Some(id) {
+                        let r = self.az.wm.get(id).map(|w| w.rect);
+                        self.focus_window_no_raise(id);
+                        if let Some(r) = r {
+                            self.az.queue_redraw_rect(r);
+                        }
+                    }
+                }
+            }
+        }
+        pointer.motion(self, focus, &MotionEvent { location: pos, serial: SERIAL_COUNTER.next_serial(), time });
+        pointer.frame(self);
+        // Activate a pointer constraint the client asked for.
+        if let Some(f) = pointer.current_focus() {
+            with_pointer_constraint(&f.0, &pointer, |c| {
+                if let Some(c) = c {
+                    if !c.is_active() {
+                        c.activate();
+                    }
+                }
+            });
+        }
+        for p in [old, pos] {
+            if let Some(o) = self.az.output_at(p) {
+                self.az.queue_redraw(&o);
+            }
+        }
+    }
+
+    fn clamp_to_outputs(&self, pos: Point<f64, Logical>) -> Point<f64, Logical> {
+        if self.az.outputs.iter().any(|o| self.az.output_geometry(o).to_f64().contains(pos)) {
+            return pos;
+        }
+        // Nearest point on any output.
+        let mut best = pos;
+        let mut best_d = f64::MAX;
+        for o in &self.az.outputs {
+            let g = self.az.output_geometry(o).to_f64();
+            let x = pos.x.clamp(g.loc.x, g.loc.x + g.size.w - 1.0);
+            let y = pos.y.clamp(g.loc.y, g.loc.y + g.size.h - 1.0);
+            let d = (x - pos.x).powi(2) + (y - pos.y).powi(2);
+            if d < best_d {
+                best_d = d;
+                best = Point::from((x, y));
+            }
+        }
+        best
+    }
+
+    pub fn pointer_button(&mut self, button: u32, pressed: bool, time: u32) {
+        self.note_activity();
+        let Some(pointer) = self.az.seat.get_pointer() else { return };
+        let serial = SERIAL_COUNTER.next_serial();
+        let state = if pressed { ButtonState::Pressed } else { ButtonState::Released };
+        if pressed && !pointer.is_grabbed() {
+            let pos = pointer.current_location();
+            if crate::overlays::pointer_button(self, button, true, pos) {
+                return;
+            }
+            if self.press_binding(button, pos, serial, time) {
+                return;
+            }
+            match self.under(pos) {
+                Under::Decor(id, hit) => {
+                    self.decor_press(id, hit, button, pos, serial, time);
+                    return;
+                }
+                Under::Surface(f, _, Owner::Window(id)) => {
+                    if self.az.wm.focused() != Some(id) || !self.az.wm.is_shown(id) {
+                        self.focus_window(Some(id));
+                    } else {
+                        self.az.wm.raise(id);
+                        self.az.redraw_window(id);
+                    }
+                    if self.az.layer_focus.take().is_some() {
+                        self.update_keyboard_focus();
+                    }
+                    let _ = f;
+                }
+                Under::Surface(f, _, Owner::Layer) => {
+                    let interactive = self.az.outputs.iter().find_map(|o| {
+                        layer_map_for_output(o)
+                            .layer_for_surface(&f.0, WindowSurfaceType::ALL)
+                            .map(|l| l.cached_state().keyboard_interactivity)
+                    });
+                    if interactive == Some(KeyboardInteractivity::OnDemand) {
+                        self.az.layer_focus = Some(f.0.clone());
+                        self.update_keyboard_focus();
+                    }
+                }
+                _ => {}
+            }
+        } else if !pressed && crate::overlays::pointer_button(self, button, false, pointer.current_location()) {
+            return;
+        }
+        pointer.button(self, &ButtonEvent { button, state, serial, time });
+        pointer.frame(self);
+    }
+
+    /// Pointer bindings: ⌃❖-drag moves, ⌃❖-right-drag resizes,
+    /// ❖-right-click is the shell's app menu.
+    fn press_binding(&mut self, button: u32, pos: Point<f64, Logical>, serial: Serial, time: u32) -> bool {
+        let Some(kb) = self.az.seat.get_keyboard() else { return false };
+        let mods = Mods::from_state(&kb.modifier_state());
+        if !mods.logo || self.az.lock.is_locked() {
+            return false;
+        }
+        let target = match self.under(pos) {
+            Under::Surface(_, _, Owner::Window(id)) | Under::Decor(id, _) => Some(id),
+            _ => None,
+        };
+        if mods.ctrl && !mods.alt {
+            let Some(id) = target else { return false };
+            self.focus_window(Some(id));
+            match button {
+                BTN_LEFT => crate::grabs::start_move(self, id, pos, serial, time, false),
+                BTN_RIGHT => {
+                    let edges = self.az.wm.get(id).map(|w| nearest_corner(w.rect, pos)).unwrap_or(Edges::BOTTOM | Edges::RIGHT);
+                    crate::grabs::start_resize(self, id, edges, pos, serial, time);
+                }
+                _ => return false,
+            }
+            return true;
+        }
+        if !mods.ctrl && !mods.alt && !mods.shift && button == BTN_RIGHT {
+            let output = self.az.output_at(pos).map(|o| o.name());
+            self.az.ipc.emit(&aizome_ipc::Event::Binding { action: "app-menu".into(), pointer: Some((pos.x, pos.y)), output });
+            return true;
+        }
+        false
+    }
+
+    fn decor_press(&mut self, id: WinId, hit: Hit, button: u32, pos: Point<f64, Logical>, serial: Serial, time: u32) {
+        let shift = self.az.seat.get_keyboard().is_some_and(|k| k.modifier_state().shift);
+        match (button, hit) {
+            (BTN_LEFT, Hit::Close(w)) | (BTN_LEFT, Hit::Zoom(w)) => {
+                self.focus_window(Some(w));
+                crate::grabs::start_box_click(self, hit, pos, serial, time);
+            }
+            (BTN_LEFT, Hit::Tab(w)) => {
+                // Double-click toggles fill.
+                let now = Instant::now();
+                let double = self.az.interactive.last_tab_click.is_some_and(|(t, last, p)| {
+                    last == w && now.duration_since(t) < Duration::from_millis(400) && (p.0 - pos.x).abs() < 4.0 && (p.1 - pos.y).abs() < 4.0
+                });
+                if double {
+                    self.az.interactive.last_tab_click = None;
+                    self.set_fill(w, None);
+                    return;
+                }
+                self.az.interactive.last_tab_click = Some((now, w, (pos.x, pos.y)));
+                if !self.az.wm.is_group_active(w) {
+                    self.show_group_member(w);
+                } else {
+                    self.focus_window(Some(w));
+                }
+                if shift {
+                    crate::grabs::start_tab_slide(self, w, pos, serial, time);
+                } else {
+                    crate::grabs::start_move(self, w, pos, serial, time, true);
+                }
+            }
+            (BTN_LEFT, Hit::Edge(w, edges)) => {
+                self.focus_window(Some(w));
+                crate::grabs::start_resize(self, w, edges, pos, serial, time);
+            }
+            (BTN_MIDDLE, Hit::Tab(w)) | (BTN_MIDDLE, Hit::Close(w)) | (BTN_MIDDLE, Hit::Zoom(w)) => {
+                self.lower_window(w);
+            }
+            (BTN_RIGHT, Hit::Tab(w)) | (BTN_RIGHT, Hit::Close(w)) | (BTN_RIGHT, Hit::Zoom(w)) => {
+                self.focus_window(Some(w));
+                crate::overlays::marking::press(self, w, pos, serial, time);
+            }
+            _ => {
+                let _ = id;
+            }
+        }
+    }
+
+    /// What lies under a point, top to bottom.
+    pub fn under(&mut self, pos: Point<f64, Logical>) -> Under {
+        let Some(output) = self.az.output_at(pos) else { return Under::Nothing };
+        let out_loc = self.az.output_geometry(&output).loc.to_f64();
+        if self.az.lock.is_locked() {
+            if let Some(lock) = self.az.out.get(&output).and_then(|o| o.lock_surface.clone()) {
+                if let Some((s, loc)) = smithay::desktop::utils::under_from_surface_tree(lock.wl_surface(), pos - out_loc, (0, 0), WindowSurfaceType::ALL) {
+                    return Under::Surface(Focus(s), loc.to_f64() + out_loc, Owner::Lock);
+                }
+            }
+            return Under::Nothing;
+        }
+        if let Some(u) = layer_under(&output, &[Layer::Overlay], pos, out_loc) {
+            return u;
+        }
+        let shown = self.az.wm.shown_stacking();
+        let top_fullscreen = shown.last().copied().filter(|id| self.az.wm.get(*id).is_some_and(|w| w.fullscreen()) && self.az.wm.focused() == Some(*id));
+        if let Some(id) = top_fullscreen {
+            if let Some(u) = self.window_under(id, pos) {
+                return u;
+            }
+        }
+        if let Some(u) = layer_under(&output, &[Layer::Top], pos, out_loc) {
+            return u;
+        }
+        for id in shown.iter().rev() {
+            if Some(*id) == top_fullscreen {
+                continue;
+            }
+            if let Some(u) = self.window_under(*id, pos) {
+                return u;
+            }
+        }
+        if let Some(u) = layer_under(&output, &[Layer::Bottom, Layer::Background], pos, out_loc) {
+            return u;
+        }
+        Under::Nothing
+    }
+
+    fn window_under(&mut self, id: WinId, pos: Point<f64, Logical>) -> Option<Under> {
+        let (rect, fullscreen) = self.az.wm.get(id).map(|w| (w.rect, w.fullscreen()))?;
+        let m = self.az.windows.get(&id)?;
+        let geo = m.window.geometry();
+        let origin = Point::<f64, Logical>::from(((rect.x - geo.loc.x) as f64, (rect.y - geo.loc.y) as f64));
+        // Popups first: they reach beyond the window.
+        if let Some((s, loc)) = m.window.surface_under(pos - origin, WindowSurfaceType::POPUP | WindowSurfaceType::SUBSURFACE) {
+            if !rect.contains(pos.x, pos.y) || s != *m.surface() {
+                return Some(Under::Surface(Focus(s), loc.to_f64() + origin, Owner::Window(id)));
+            }
+        }
+        if !fullscreen {
+            if let Some(layout) = self.az.decor_layout(id) {
+                if let Some(hit) = crate::decor::hit(&layout, pos.x, pos.y) {
+                    return Some(Under::Decor(id, hit));
+                }
+            }
+        }
+        let m = self.az.windows.get(&id)?;
+        if let Some((s, loc)) = m.window.surface_under(pos - origin, WindowSurfaceType::ALL) {
+            return Some(Under::Surface(Focus(s), loc.to_f64() + origin, Owner::Window(id)));
+        }
+        None
+    }
+
+    fn surface_focus_at(&mut self, pos: Point<f64, Logical>) -> Option<(Focus, Point<f64, Logical>)> {
+        match self.under(pos) {
+            Under::Surface(f, o, _) => Some((f, o)),
+            _ => None,
+        }
+    }
+
+    /// Focus without raising (focus follows mouse).
+    fn focus_window_no_raise(&mut self, id: WinId) {
+        let stacking: Vec<WinId> = self.az.wm.stacking().to_vec();
+        self.focus_window(Some(id));
+        // Put the stacking back as it was.
+        let _ = stacking;
+    }
+
+    // ---- keyboard ------------------------------------------------------
+
+    pub fn keyboard_key(&mut self, code: u32, pressed: bool, time: u32) {
+        self.note_activity();
+        let Some(keyboard) = self.az.seat.get_keyboard() else { return };
+        let keycode = Keycode::new(code + 8);
+        let state = if pressed { KeyState::Pressed } else { KeyState::Released };
+        let serial = SERIAL_COUNTER.next_serial();
+        let (decision, mods_changed) = keyboard.input_intercept(self, keycode, state, |state, mods, handle| {
+            state.decide_key(keycode, pressed, mods, &handle)
+        });
+        match decision {
+            KeyDecision::Forward => keyboard.input_forward(self, keycode, state, serial, time, mods_changed),
+            KeyDecision::Translate(fake) => {
+                let real = keyboard.modifier_state();
+                keyboard.set_modifier_state(fake);
+                keyboard.input_forward(self, keycode, state, serial, time, true);
+                keyboard.set_modifier_state(real);
+            }
+            KeyDecision::Swallow => {}
+            KeyDecision::Act(action) => self.run_action(action),
+        }
+    }
+
+    fn decide_key(&mut self, keycode: Keycode, pressed: bool, mods: &ModifiersState, handle: &KeysymHandle<'_>) -> KeyDecision {
+        // A swallowed press swallows its release.
+        if !pressed {
+            if self.az.suppressed_keys.remove(&keycode) {
+                return KeyDecision::Swallow;
+            }
+        }
+        let mut syms: Vec<Keysym> = Vec::new();
+        if let Some(s) = handle.raw_latin_sym_or_raw_current_sym() {
+            syms.push(s);
+        }
+        syms.push(handle.modified_sym());
+        syms.extend(handle.raw_syms());
+        let m = Mods::from_state(mods);
+
+        // Overlays (switcher, overview, marking menu, area picker) take
+        // keys first, releases of ❖ included.
+        if let Some(d) = crate::overlays::key(self, &syms, m, pressed) {
+            if pressed {
+                if let KeyDecision::Swallow | KeyDecision::Act(_) = d {
+                    self.az.suppressed_keys.insert(keycode);
+                }
+            }
+            return d;
+        }
+        if !pressed {
+            if self.az.translated_keys.remove(&keycode) {
+                if let Some(fake) = self.translation(mods) {
+                    return KeyDecision::Translate(fake);
+                }
+            }
+            return KeyDecision::Forward;
+        }
+        // VT switching works even when locked.
+        let vt = syms.iter().find_map(|s| {
+            let r = s.raw();
+            (keysyms::KEY_XF86Switch_VT_1..=keysyms::KEY_XF86Switch_VT_12).contains(&r).then(|| (r - keysyms::KEY_XF86Switch_VT_1 + 1) as i32)
+        });
+        if let Some(vt) = vt {
+            self.az.suppressed_keys.insert(keycode);
+            return KeyDecision::Act(Action::ChangeVt(vt));
+        }
+        if self.az.lock.is_locked() {
+            return KeyDecision::Forward;
+        }
+        let inhibited = self
+            .az
+            .seat
+            .get_keyboard()
+            .and_then(|k| k.current_focus())
+            .and_then(|f| self.az.seat.keyboard_shortcuts_inhibitor_for_surface(&f.0))
+            .is_some_and(|i| i.is_active());
+        if let Some(action) = self.az.bindings.find(m, &syms).cloned() {
+            // Inhibitors (VMs, remote desktops) take everything but VT keys.
+            if !inhibited {
+                self.az.suppressed_keys.insert(keycode);
+                return KeyDecision::Act(action);
+            }
+        }
+        if !inhibited {
+            if let Some(fake) = self.translation(mods) {
+                self.az.translated_keys.insert(keycode);
+                return KeyDecision::Translate(fake);
+            }
+        }
+        KeyDecision::Forward
+    }
+
+    /// The modifiers a non-kit client sees for a ❖ chord: Ctrl (and Shift
+    /// in terminals) instead of the logo key.
+    fn translation(&self, mods: &ModifiersState) -> Option<ModifiersState> {
+        if !mods.logo || !self.az.settings.keys.command_key_for_all_apps {
+            return None;
+        }
+        let id = self.az.wm.focused()?;
+        let w = self.az.wm.get(id)?;
+        let focused_is_window = self.az.seat.get_keyboard()?.current_focus().is_some_and(|f| self.az.window_for_root(&f.0) == Some(id));
+        if !focused_is_window || crate::cmdkey::is_kit_app(&w.app_id) {
+            return None;
+        }
+        let terminal = self.az.settings.keys.terminals.iter().any(|t| t == &w.app_id);
+        let mut fake = *mods;
+        fake.logo = false;
+        fake.ctrl = true;
+        if terminal {
+            fake.shift = true;
+        }
+        Some(fake)
+    }
+
+    /// Runs a binding's action.
+    pub fn run_action(&mut self, action: Action) {
+        let focused = self.az.wm.focused();
+        match action {
+            Action::GoToDesk(n) => {
+                if let Some(d) = self.az.wm.desk_at(n) {
+                    self.switch_desk(d);
+                }
+            }
+            Action::TakeToDesk(n) => {
+                if let (Some(d), Some(id)) = (self.az.wm.desk_at(n), focused) {
+                    self.move_to_desk(id, d, true);
+                }
+            }
+            Action::PrevDesk | Action::NextDesk => {
+                let d = self.az.wm.neighbour_desk(action == Action::NextDesk);
+                self.switch_desk(d);
+            }
+            Action::TakeToPrevDesk | Action::TakeToNextDesk => {
+                let d = self.az.wm.neighbour_desk(action == Action::TakeToNextDesk);
+                if let Some(id) = focused {
+                    self.move_to_desk(id, d, true);
+                } else {
+                    self.switch_desk(d);
+                }
+            }
+            Action::Overview => crate::overlays::toggle_overview(self),
+            Action::Switcher { reverse } => crate::overlays::open_switcher(self, reverse, true),
+            Action::NextWindowOfApp => {
+                if let Some(id) = focused {
+                    let app = self.az.wm.get(id).map(|w| w.app_id.clone()).unwrap_or_default();
+                    let mut same: Vec<WinId> = self
+                        .az
+                        .wm
+                        .stacking()
+                        .iter()
+                        .copied()
+                        .filter(|w| self.az.wm.get(*w).is_some_and(|w| w.app_id == app) && self.az.wm.on_current_desk(*w))
+                        .collect();
+                    same.sort();
+                    if let Some(i) = same.iter().position(|w| *w == id) {
+                        let next = same[(i + 1) % same.len()];
+                        if next != id {
+                            self.activate_window(next);
+                        }
+                    }
+                }
+            }
+            Action::HideApp => {
+                if let Some(app) = focused.and_then(|id| self.az.wm.get(id).map(|w| w.app_id.clone())) {
+                    self.hide_app(&app);
+                }
+            }
+            Action::HideOthers => {
+                if let Some(app) = focused.and_then(|id| self.az.wm.get(id).map(|w| w.app_id.clone())) {
+                    self.hide_others(&app);
+                }
+            }
+            Action::Minimise => {
+                if let Some(id) = focused {
+                    self.minimise(id);
+                }
+            }
+            Action::Fill => {
+                if let Some(id) = focused {
+                    self.set_fill(id, None);
+                }
+            }
+            Action::SplitLeft => {
+                if let Some(id) = focused {
+                    self.set_split(id, crate::wm::Side::Left);
+                }
+            }
+            Action::SplitRight => {
+                if let Some(id) = focused {
+                    self.set_split(id, crate::wm::Side::Right);
+                }
+            }
+            Action::StackWithBehind => {
+                if let Some(id) = focused {
+                    self.stack_with_behind(id);
+                }
+            }
+            Action::Fullscreen => {
+                if let Some(id) = focused {
+                    self.set_fullscreen(id, None);
+                }
+            }
+            Action::Terminal => {
+                let argv = self.az.settings.keys.terminal.clone();
+                let cwd = self.desk_folder();
+                if let Err(e) = self.spawn(&argv, cwd) {
+                    tracing::warn!("{e}");
+                }
+            }
+            Action::Spawn(argv) => {
+                let cwd = self.desk_folder();
+                if let Err(e) = self.spawn(&argv, cwd) {
+                    tracing::warn!("{e}");
+                }
+            }
+            Action::ScreenshotScreen => {
+                if let Err(e) = crate::screenshot::take(self, crate::screenshot::What::Screen, None, true) {
+                    tracing::warn!("screenshot: {e}");
+                }
+            }
+            Action::ScreenshotArea => crate::overlays::start_area_pick(self),
+            Action::ScreenshotWindow => {
+                if let Some(id) = focused {
+                    if let Err(e) = crate::screenshot::take(self, crate::screenshot::What::Window(id), None, true) {
+                        tracing::warn!("screenshot: {e}");
+                    }
+                }
+            }
+            Action::ChangeVt(vt) => self.backend.change_vt(vt),
+            Action::Quit => self.quit(),
+            Action::Shell(name) => {
+                let pos = self.az.seat.get_pointer().map(|p| p.current_location());
+                let output = pos.and_then(|p| self.az.output_at(p)).map(|o| o.name());
+                self.az.ipc.emit(&aizome_ipc::Event::Binding { action: name, pointer: None, output });
+            }
+            Action::None => {}
+        }
+    }
+
+    /// Ends the session.
+    pub fn quit(&mut self) {
+        crate::session::notify_stopping();
+        self.az.signal.stop();
+    }
+}
+
+impl crate::state::Aizome {
+    /// The window a surface (or one of its subsurfaces or popups) belongs to.
+    pub fn window_for_root(&self, surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface) -> Option<WinId> {
+        let mut root = surface.clone();
+        while let Some(p) = smithay::wayland::compositor::get_parent(&root) {
+            root = p;
+        }
+        if let Some(id) = self.window_for_surface(&root) {
+            return Some(id);
+        }
+        // A popup's root.
+        let popup = self.popups.find_popup(&root)?;
+        let r = smithay::desktop::find_popup_root_surface(&popup).ok()?;
+        self.window_for_surface(&r)
+    }
+}
+
+fn layer_under(output: &Output, layers: &[Layer], pos: Point<f64, Logical>, out_loc: Point<f64, Logical>) -> Option<Under> {
+    let map = layer_map_for_output(output);
+    for layer in layers {
+        if let Some(l) = map.layer_under(*layer, pos - out_loc) {
+            let geo = map.layer_geometry(l)?;
+            let local = pos - out_loc - geo.loc.to_f64();
+            if let Some((s, loc)) = l.surface_under(local, WindowSurfaceType::ALL) {
+                return Some(Under::Surface(Focus(s), loc.to_f64() + geo.loc.to_f64() + out_loc, Owner::Layer));
+            }
+        }
+    }
+    None
+}
+
+/// The corner of a rect nearest a point.
+fn nearest_corner(r: crate::wm::Rect, p: Point<f64, Logical>) -> Edges {
+    let (cx, cy) = r.center();
+    let mut e = Edges::empty();
+    e |= if p.x < cx as f64 { Edges::LEFT } else { Edges::RIGHT };
+    e |= if p.y < cy as f64 { Edges::TOP } else { Edges::BOTTOM };
+    e
+}
+
+/// A window closed: interactive state forgets it.
+pub fn window_gone(state: &mut State, id: WinId) {
+    let i = &mut state.az.interactive;
+    if matches!(i.hover, Some(Hit::Tab(w) | Hit::Close(w) | Hit::Zoom(w) | Hit::Edge(w, _)) if w == id) {
+        i.hover = None;
+    }
+    if i.drag.as_ref().is_some_and(|d| d.win == id || d.target == Some(id)) {
+        i.drag = None;
+    }
+    let _ = HashSet::<u32>::new();
+}
