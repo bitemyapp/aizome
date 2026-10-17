@@ -460,3 +460,64 @@ open, and worked out over the next 16 frames, 47 ms in all), the rest
 shaping a screen of lines nothing has shown yet. Debug builds of typing
 and scrolling exceed the budget at p95; release builds keep well inside
 it.
+
+## Tansu (Disks)
+
+Measured headlessly through the kit's `Harness` at 2× (`apps/tansu/tests/perf.rs`,
+`typical_interactions_fit_the_frame_budget`, on the sample disks): the
+update, view, layout and diff, and rasterising each damaged rectangle
+(a selection changes strips at the top, middle and bottom of the window;
+rasterising their union would mean the whole window). Release build, on
+this laptop while other builds ran (load average about 10):
+
+| | p50 | p95 | max | |
+|---|---|---|---|---|
+| A click on the partition map (selection moves) | 1.45 ms | 1.55 ms | 1.6 ms | n=50 |
+| ← → along the map | 0.68 ms | 0.71 ms | 0.71 ms | n=20 |
+| Queueing a deletion, and undoing it | 2.0 ms | 3.6 ms | 4.1 ms | n=40 |
+| Switching drives | 1.8 ms | 5.2 ms | 5.4 ms | n=30 |
+
+Debug builds: about twice as long. Two choices keep these down: the
+details panel under the table has a fixed height and the pending strip
+is always there (saying nothing is pending), so a new selection or the
+first queued operation doesn't move the table and redraw it whole.
+
+Exception: switching drives redraws the whole content area (the map,
+legend, table and details all change), 1744 × 1300 pixels at 2×: under
+2 ms at the median, up to 5.4 ms at the tail while the machine was busy.
+It happens on a click in the sidebar, not while typing or dragging.
+
+## Myaku (Activity)
+
+The sampler reads the system on a thread of its own, once a second: a
+reading of ~520 processes costs 7 ms in a release build (15 ms in a debug
+one), about 0.7% of one core. It reads `stat` for every process, but
+`status`, `io` and DRM's `fdinfo` only for processes that ran since the
+last reading (one that didn't can't have woken, read or written; the rest
+every fifth reading), memory maps (`smaps_rollup`, which walks page
+tables) only when a process's resident size moved and at most 48 a
+reading, the CPU sensor's one file rather than every sensor (reading an
+NVMe drive's sensor takes milliseconds), and launcher entries only when
+a group is new.
+
+The window, with 600 processes (`apps/myaku/tests/perf.rs`, made-up
+readings, 2×, rasterising each damaged rectangle), release:
+
+| | p50 | p95 | max | |
+|---|---|---|---|---|
+| A new reading (most visible figures and the four graphs change) | 2.96 ms | 3.5 ms | 3.8 ms | n=60 |
+| A click on a row | 0.21 ms | 0.29 ms | 11 ms | n=30 |
+| Scrolling the table (48pt steps) | 2.7 ms | 3.0 ms | 3.1 ms | n=30 |
+
+Of a reading, the update (re-sorting the groups and processes) takes
+0.06 ms and the view and layout 0.9 ms; the table builds only the rows
+that show. Two hundred readings later the process's memory is where it
+was: a reading replaces the last, and the graphs keep two minutes in
+fixed rings.
+
+Live, under headless sway (pixman, 1×, release, this laptop's 520
+processes), Sidestep's frame stats over 25 s: a frame a second, total
+p50 0.9–2.0 ms, p95 1.2–2.8 ms; damage 87% (the figures of every visible
+row change each second). Resident memory 36.6 MB.
+
+No exceptions.

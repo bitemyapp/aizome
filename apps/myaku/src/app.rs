@@ -70,6 +70,9 @@ pub enum Msg {
 /// made-up pids must never reach a real process).
 pub type Signaller = Box<dyn FnMut(u32, u64, Signal) -> Result<(), String>>;
 
+/// What a test's recorder was sent: pids and signals, in order.
+pub type Sent = Rc<std::cell::RefCell<Vec<(u32, Signal)>>>;
+
 /// What a launch asks for (`--pid`, `--lens`, `--search`).
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Request {
@@ -155,8 +158,8 @@ impl Myaku {
     }
 
     /// A recorder of signals, for tests: what was sent, in order.
-    pub fn recorder() -> (Signaller, Rc<std::cell::RefCell<Vec<(u32, Signal)>>>) {
-        let sent: Rc<std::cell::RefCell<Vec<(u32, Signal)>>> = Rc::default();
+    pub fn recorder() -> (Signaller, Sent) {
+        let sent: Sent = Rc::default();
         let s = sent.clone();
         (Box::new(move |pid, _, signal| {
             s.borrow_mut().push((pid, signal));

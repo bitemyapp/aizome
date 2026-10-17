@@ -24,10 +24,12 @@ pub fn window(t: &Tansu) -> Element<Msg> {
         sidebar_layout(sidebar(t), content(t)).first_size(248.0).into()
     };
     let mut parts = vec![toolbar(t), body];
-    if !t.plan.is_empty() {
-        if t.show_pending {
+    if t.state.available {
+        if t.show_pending && !t.plan.is_empty() {
             parts.push(pending_list(t));
         }
+        // Always there, so queueing the first operation (or undoing the
+        // last) doesn't move everything above it.
         parts.push(pending_strip(t));
     }
     parts.push(status(t));
@@ -441,15 +443,26 @@ fn pending_strip(t: &Tansu) -> Element<Msg> {
     let last = t.plan.ops.last().map(|o| t.plan.words(o, &t.state).title).unwrap_or_default();
     let destroys = t.plan.ops.iter().any(|o| matches!(t.plan.words(o, &t.state).loss, Loss::Destroys(_)));
     let idle = t.run.is_none();
-    container(
+    let some = n > 0;
+    let summary: Element<Msg> = if some {
         row![
             badge(n.to_string()).role(if destroys { Role::Danger } else { Role::Accent }),
             text(if n == 1 { "pending operation" } else { "pending operations" }).semibold(),
             text(format!("Last: {last}")).size(12.0).role(Role::Text3).width(Length::Fill),
-            button(if t.show_pending { "Hide List" } else { "Show List" }).compact().on_press(Msg::TogglePending),
-            button("Undo").compact().icon(Icon::Undo2).on_press_maybe(idle.then_some(Msg::Undo)).tooltip("Undo the last change to the plan (❖Z)"),
-            button("Clear").compact().on_press_maybe(idle.then_some(Msg::ClearPlan)),
-            button("Apply…").compact().primary().on_press_maybe(idle.then_some(Msg::Apply)).tooltip("Review and run the operations (❖↩)"),
+        ]
+        .spacing(8.0)
+        .width(Length::Fill)
+        .into()
+    } else {
+        text("No pending operations: changes wait here until you apply them.").size(12.0).role(Role::Text3).width(Length::Fill).into()
+    };
+    container(
+        row![
+            summary,
+            button(if t.show_pending { "Hide List" } else { "Show List" }).compact().on_press_maybe(some.then_some(Msg::TogglePending)),
+            button("Undo").compact().icon(Icon::Undo2).on_press_maybe((idle && some).then_some(Msg::Undo)).tooltip("Undo the last change to the plan (❖Z)"),
+            button("Clear").compact().on_press_maybe((idle && some).then_some(Msg::ClearPlan)),
+            button("Apply…").compact().primary().on_press_maybe((idle && some).then_some(Msg::Apply)).tooltip("Review and run the operations (❖↩)"),
         ]
         .spacing(8.0)
         .width(Length::Fill),
@@ -545,7 +558,7 @@ fn details(t: &Tansu) -> Element<Msg> {
         let digits = b.to_string();
         let mut out = String::new();
         for (k, c) in digits.chars().enumerate() {
-            if k > 0 && (digits.len() - k) % 3 == 0 {
+            if k > 0 && (digits.len() - k).is_multiple_of(3) {
                 out.push('\u{2009}');
             }
             out.push(c);

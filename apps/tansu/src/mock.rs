@@ -609,6 +609,7 @@ fn disk(name: &str, size: u64, drive: &str, table: &str) -> BlockDevice {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn drive(id: &str, vendor: &str, model: &str, size: u64, rotation: Rotation, bus: &str, removable: bool, smart: Option<Smart>) -> Drive {
     Drive {
         path: format!("{D}{id}"),
@@ -729,13 +730,12 @@ pub fn sample() -> DisksState {
         loop_device: Some(LoopDevice { backing_file: "/home/callen/Downloads/sekka-nightly.iso".into(), autoclear: true, setup_by_uid: 1000 }),
         ..Default::default()
     });
-    for b in &mut s.blocks.clone() {
-        if let Some(t) = &b.partition_table {
-            let _ = t;
-            let parts: Vec<String> = s.partitions(&b.path).iter().map(|p| p.path.clone()).collect();
-            if let Some(d) = s.blocks.iter_mut().find(|d| d.path == b.path) {
-                d.partition_table.as_mut().map(|t| t.partitions = parts);
-            }
+    // Each table lists its partitions.
+    let tables: Vec<String> = s.blocks.iter().filter(|b| b.partition_table.is_some()).map(|b| b.path.clone()).collect();
+    for table in tables {
+        let parts: Vec<String> = s.partitions(&table).iter().map(|p| p.path.clone()).collect();
+        if let Some(t) = s.blocks.iter_mut().find(|d| d.path == table).and_then(|d| d.partition_table.as_mut()) {
+            t.partitions = parts;
         }
     }
     s

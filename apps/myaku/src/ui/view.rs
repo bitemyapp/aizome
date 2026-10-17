@@ -113,7 +113,7 @@ fn table_view(m: &Myaku) -> Element<Msg> {
     let selected: Vec<usize> = m.selected_row().into_iter().collect();
     let body = table(columns, count, move |r, c| cell(&frame, rows[r], cols[c], &expanded))
         .sorted(sorted, asc)
-        .on_sort(|c, asc| Msg::Sort(c, asc))
+        .on_sort(Msg::Sort)
         .selected(selected)
         .on_select(Msg::SelectRows)
         .on_activate(Msg::Activate)

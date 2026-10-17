@@ -189,6 +189,9 @@ pub struct Tansu {
     start_paths: Vec<PathBuf>,
     /// Follow UDisks on the system bus once the window opens.
     live: bool,
+    /// Where the selection was (its offset, and whether logical), for
+    /// when it goes.
+    sel_at: Option<(u64, bool)>,
     /// Bytes in use on each filesystem (by UUID) when last seen mounted,
     /// for how far it can shrink once unmounted.
     seen_used: std::collections::HashMap<String, u64>,
@@ -217,6 +220,7 @@ impl Tansu {
             listener: None,
             start_paths: Vec::new(),
             live: false,
+            sel_at: None,
             seen_used: Default::default(),
         };
         t.refresh();
@@ -282,10 +286,23 @@ impl Tansu {
         if *self.rows != rows {
             self.rows = Rc::new(rows);
         }
+        if self.selected().is_none()
+            && let Some((offset, logical)) = self.sel_at.filter(|_| self.sel.is_some())
+        {
+            // What was selected is gone from the preview (deleted): what
+            // took its place.
+            self.sel = Some(Sel::Free { offset, logical });
+        }
         if self.selected().is_none() {
             // Something a click would pick: the first partition.
             self.sel = self.layout.segs.iter().position(|s| !s.is_free()).or(if self.layout.segs.is_empty() { None } else { Some(0) }).map(|i| self.sel_of(i));
         }
+        if let (Some(Sel::Free { .. }), Some(i)) = (&self.sel, self.selected())
+            && !self.layout.segs[i].is_free()
+        {
+            self.sel = Some(self.sel_of(i));
+        }
+        self.sel_at = self.selected().map(|i| (self.layout.segs[i].offset, self.layout.segs[i].logical));
     }
 
     pub fn entry(&self) -> Option<&Entry> {
@@ -309,10 +326,13 @@ impl Tansu {
                 // Free space moves as partitions change: the stretch that
                 // holds the old start, else the nearest.
                 let free = |s: &&crate::layout::Seg| s.is_free() && s.logical == *logical;
+                let holds = |s: &crate::layout::Seg| s.logical == *logical && s.offset <= *offset && *offset < s.end();
                 self.layout
                     .segs
                     .iter()
-                    .position(|s| free(&s) && s.offset <= *offset && *offset < s.end())
+                    .position(|s| free(&s) && holds(s))
+                    // A partition back where it was (an undone deletion).
+                    .or_else(|| self.layout.segs.iter().position(|s| holds(s) && s.kind() != crate::layout::SegKind::Extended))
                     .or_else(|| self.layout.segs.iter().enumerate().filter(|(_, s)| free(s)).min_by_key(|(_, s)| s.offset.abs_diff(*offset)).map(|(i, _)| i))
             }
         }
@@ -1099,6 +1119,16 @@ impl Program for Tansu {
     }
 }
 
+impl Tansu {
+    /// What a segment's filesystem had in use when last seen mounted.
+    fn last_used(&self, seg: &crate::layout::Seg) -> Option<u64> {
+        seg.used.or_else(|| {
+            let b = self.state.block(seg.block()?)?;
+            self.seen_used.get(&b.id_uuid).copied()
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1111,15 +1141,5 @@ mod tests {
         assert_eq!(parse_size("lots", 1), None);
         assert_eq!(size_text(20_000_000_000, 1), "20.0");
         assert_eq!(size_text(512_000_000, 0), "512");
-    }
-}
-
-impl Tansu {
-    /// What a segment's filesystem had in use when last seen mounted.
-    fn last_used(&self, seg: &crate::layout::Seg) -> Option<u64> {
-        seg.used.or_else(|| {
-            let b = self.state.block(seg.block()?)?;
-            self.seen_used.get(&b.id_uuid).copied()
-        })
     }
 }

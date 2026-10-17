@@ -277,6 +277,12 @@ impl Widget for Map {
     }
 }
 
+/// Send what `map` makes of `value`.
+pub fn emit<T: Clone + 'static>(cx: &mut EventCx, map: &MsgMap<T>, value: T) {
+    let m = map.clone();
+    cx.emit(&MsgFn::from_fn(move || m.make(value.clone())));
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -288,10 +294,4 @@ mod tests {
         assert_eq!(w[0], MIN_WIDTH);
         assert!(w[1] > w[2] * 10.0);
     }
-}
-
-/// Send what `map` makes of `value`.
-pub fn emit<T: Clone + 'static>(cx: &mut EventCx, map: &MsgMap<T>, value: T) {
-    let m = map.clone();
-    cx.emit(&MsgFn::from_fn(move || m.make(value.clone())));
 }

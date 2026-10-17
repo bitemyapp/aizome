@@ -182,7 +182,7 @@ impl Sampler {
         let tick = self.tick;
         let seconds = self.last.map_or(0.0, |l| started.duration_since(l).as_secs_f64());
         self.last = Some(started);
-        if tick % 30 == 0
+        if tick.is_multiple_of(30)
             && let Some(a) = &mut self.apps
         {
             a.refresh_if_changed();
@@ -473,7 +473,7 @@ impl Sampler {
             .collect();
         let windows = group::windows();
         let mut groups: Vec<Group> = Vec::new();
-        if tick % 30 == 0 {
+        if tick.is_multiple_of(30) {
             self.identities.clear();
         }
         let mut used: HashSet<(Key, usize, u64)> = HashSet::new();
@@ -531,6 +531,18 @@ pub fn tidy_cpu_name(name: &str) -> String {
     name.split_whitespace().filter(|w| !w.ends_with("-Core") && *w != "Processor" && *w != "CPU").collect::<Vec<_>>().join(" ")
 }
 
+impl Sampler {
+    /// The processor's temperature, from the sensor found the first time.
+    fn temperature(&mut self) -> Option<f64> {
+        let path = self.sensor.get_or_insert_with(|| {
+            let all = sysinfo::temperatures();
+            sysinfo::pick_cpu_temperature(&all).map(|t| PathBuf::from(format!("/sys/class/hwmon/{}/temp{}_input", t.hwmon, t.index)))
+        });
+        let text = std::fs::read_to_string(path.as_ref()?).ok()?;
+        text.trim().parse::<f64>().ok().map(|mc| mc / 1000.0)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -559,17 +571,5 @@ mod tests {
         let members: usize = f.groups.iter().map(|g| g.members.len()).sum();
         assert_eq!(members, f.processes.len(), "every process in one group");
         eprintln!("{} processes in {} groups, read in {:?}", f.processes.len(), f.groups.len(), f.cost);
-    }
-}
-
-impl Sampler {
-    /// The processor's temperature, from the sensor found the first time.
-    fn temperature(&mut self) -> Option<f64> {
-        let path = self.sensor.get_or_insert_with(|| {
-            let all = sysinfo::temperatures();
-            sysinfo::pick_cpu_temperature(&all).map(|t| PathBuf::from(format!("/sys/class/hwmon/{}/temp{}_input", t.hwmon, t.index)))
-        });
-        let text = std::fs::read_to_string(path.as_ref()?).ok()?;
-        text.trim().parse::<f64>().ok().map(|mc| mc / 1000.0)
     }
 }

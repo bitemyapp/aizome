@@ -912,6 +912,14 @@ fn apply(l: &mut Layout, op: &Op) {
     }
 }
 
+/// Whether formatting a partition of `type_id` as `fs` keeps its type
+/// rather than changing it to match: an EFI System Partition stays one
+/// when it's given FAT again.
+pub fn keeps_type(type_id: &str, fs: &str) -> bool {
+    let t = type_id.to_ascii_lowercase();
+    (t == layout::ESP_GPT || t == layout::ESP_DOS || t == "0xef") && fs == "vfat"
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1107,12 +1115,4 @@ mod tests {
         assert_eq!(p.prune(&s), ["Label /dev/sdc1"]);
         assert!(p.is_empty());
     }
-}
-
-/// Whether formatting a partition of `type_id` as `fs` keeps its type
-/// rather than changing it to match: an EFI System Partition stays one
-/// when it's given FAT again.
-pub fn keeps_type(type_id: &str, fs: &str) -> bool {
-    let t = type_id.to_ascii_lowercase();
-    (t == layout::ESP_GPT || t == layout::ESP_DOS || t == "0xef") && fs == "vfat"
 }

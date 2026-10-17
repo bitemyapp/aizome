@@ -57,7 +57,7 @@ pub fn frame(processes: usize, tick: u64) -> Frame {
             private: own.then_some((mem as f64 * 0.6) as u64),
             resident: mem,
             shared: own.then_some((mem as f64 * 0.3) as u64),
-            swap: if pid % 7 == 0 { 12 << 20 } else { 0 },
+            swap: if pid.is_multiple_of(7) { 12 << 20 } else { 0 },
             virt: mem * 6,
             read_rate: own.then_some((noise.next() * 200_000.0 * (cpu / 10.0)).floor()),
             write_rate: own.then_some((noise.next() * 80_000.0 * (cpu / 10.0)).floor()),
