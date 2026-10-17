@@ -172,6 +172,18 @@ impl DisksState {
         volumes
     }
 
+    /// Volumes that appeared and disappeared since `previous` (a USB stick
+    /// plugged in, an image detached), for desktop icons and "mount when
+    /// plugged in" (a new volume whose block has `hint_auto`).
+    pub fn volume_changes(&self, previous: &DisksState) -> VolumeChanges {
+        let now = self.volumes();
+        let before = previous.volumes();
+        VolumeChanges {
+            added: now.iter().filter(|v| !before.iter().any(|b| b.block == v.block)).cloned().collect(),
+            removed: before.iter().filter(|b| !now.iter().any(|v| v.block == b.block)).cloned().collect(),
+        }
+    }
+
     /// The drive a block is on, through its encrypted backing device and
     /// partition table if need be.
     pub fn drive_of(&self, block: &BlockDevice) -> Option<&Drive> {
@@ -230,6 +242,13 @@ fn gaps(start: u64, end: u64, used: &[(u64, u64)], logical: bool) -> Vec<FreeSpa
         push(cursor, end);
     }
     free
+}
+
+/// What [`DisksState::volume_changes`] found.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct VolumeChanges {
+    pub added: Vec<Volume>,
+    pub removed: Vec<Volume>,
 }
 
 /// Room for a new partition.
@@ -938,6 +957,12 @@ mod tests {
     #[test]
     fn volumes_for_the_desktop() {
         let state = build(&fixture());
+        let mut unplugged = fixture();
+        unplugged.map.retain(|path, _| !path.contains("sdb"));
+        let changes = state.volume_changes(&build(&unplugged));
+        assert_eq!(changes.added.len(), 3);
+        assert!(changes.removed.is_empty());
+        assert_eq!(build(&unplugged).volume_changes(&state).removed.len(), 3);
         let volumes = state.volumes();
         let names: Vec<&str> = volumes.iter().map(|v| v.name.as_str()).collect();
         assert_eq!(names, ["1.1 GB Encrypted", "53.7 GB Volume", "ESP"]);
