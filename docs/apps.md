@@ -144,6 +144,17 @@ into `apps/yukimi/crates/` and keep using Sekka's installed privileged
 helper (`yukimi-helper`, with its polkit policy) for system changes, found
 where Sekka's Yukimi package installs it.
 
+As built: the helper is the program Sekka's polkit action
+`io.github.bitemyapp.Yukimi.change-system` names (its
+`org.freedesktop.policykit.exec.path`, read from the installed policy), run
+through `/run/wrappers/bin/pkexec` with the GTK Yukimi's arguments, so it
+needs `programs.yukimi.enable` (Sekka sets it on every desktop) and nothing
+of Aizome's. Its cache is `~/.cache/aizome/yukimi`, reading the GTK
+Yukimi's package index and last check from `~/.cache/yukimi` until it has
+its own. `aizome-yukimi --sample` shows a sample system;
+`AIZOME_YUKIMI_ETC=/some/etc` looks at another system's configuration
+without changing anything.
+
 ### Hako (Files)
 
 A file manager in NeXT's spirit: Miller columns as the main view (with list
