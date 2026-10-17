@@ -107,7 +107,7 @@ pub struct ScanError {
 }
 
 /// What a finished scan found.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Scan {
     pub tree: Tree,
     pub options: ScanOptions,

@@ -158,7 +158,7 @@ pub fn markdown(ix: &Index) -> String {
     let _ = writeln!(s, "- Sizes are allocated bytes: what removing a file frees. Hard links count once.");
     let _ = writeln!(s, "- Ask the person before acting on anything above `safe`; show them what goes and how much it frees.");
     let _ = writeln!(s, "- `aizome-kura trash PATH…` moves things to the Trash (reversible, by the freedesktop spec); it refuses the Nix store.");
-    let _ = writeln!(s, "- Never remove paths in `/nix/store`: open Yukimi's Storage (`aizome-yukimi --view storage`).");
+    let _ = writeln!(s, "- Never remove paths in `/nix/store`: open Yukimi's Storage (`aizome-yukimi --page storage`).");
     let _ = writeln!(s, "- `aizome-kura scan` refreshes this report; `aizome-kura hints --json` prints just the hints.");
     s
 }

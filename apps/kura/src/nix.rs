@@ -14,9 +14,9 @@ use serde::{Deserialize, Serialize};
 pub const STORE: &str = "/nix/store";
 
 /// The command that opens Yukimi's Storage view.
-pub const YUKIMI_STORAGE: [&str; 3] = ["aizome-yukimi", "--view", "storage"];
+pub const YUKIMI_STORAGE: [&str; 3] = ["aizome-yukimi", "--page", "storage"];
 
-/// The command line for people and agents: `aizome-yukimi --view storage`.
+/// The command line for people and agents: `aizome-yukimi --page storage`.
 pub fn yukimi_command_line() -> String {
     YUKIMI_STORAGE.join(" ")
 }

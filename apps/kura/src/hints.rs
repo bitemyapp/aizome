@@ -344,7 +344,8 @@ const BROWSER_CACHES: &[(&str, &str)] = &[
 
 impl<'a> Detector<'a> {
     fn new(tree: &'a Tree, cx: &'a Context) -> Detector<'a> {
-        Detector { tree, cx, claimed: vec![false; tree.len()], hints: Vec::new() }
+        // What went to the Trash since the scan counts as claimed.
+        Detector { tree, cx, claimed: tree.gone(), hints: Vec::new() }
     }
 
     /// Whether `id` or a folder above it is claimed.

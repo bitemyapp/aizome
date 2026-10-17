@@ -228,7 +228,7 @@ fn tree_node(tree: &Tree, id: NodeId, depth: u32, limits: &TreeLimits) -> TreeNo
     if n.is_dir() && n.count > 0 {
         let mut shown = 0u32;
         let (mut skipped, mut skipped_bytes) = (0u64, 0u64);
-        for c in tree.children(id) {
+        for c in tree.sorted_children(id) {
             let cn = tree.node(c);
             if depth < limits.max_depth && shown < limits.max_children && cn.alloc >= limits.min_bytes {
                 children.push(tree_node(tree, c, depth + 1, limits));
@@ -285,6 +285,7 @@ pub fn build(scan: &Scan, hints: Vec<Hint>, cx: &hints::Context, limits: Option<
     let root = tree.node(NodeId::ROOT);
     let limits = limits.unwrap_or_else(|| TreeLimits::for_total(root.alloc));
     let git = in_git(tree);
+    let gone = tree.gone();
 
     let mut totals = Totals {
         allocated_bytes: root.alloc,
@@ -295,6 +296,9 @@ pub fn build(scan: &Scan, hints: Vec<Hint>, cx: &hints::Context, limits: Option<
     };
     let mut kinds: BTreeMap<FileKind, KindTotal> = BTreeMap::new();
     for (i, n) in tree.nodes().iter().enumerate() {
+        if gone[i] {
+            continue;
+        }
         match n.kind {
             Kind::Dir => totals.directories += 1,
             Kind::Symlink => totals.symlinks += 1,
@@ -329,9 +333,9 @@ pub fn build(scan: &Scan, hints: Vec<Hint>, cx: &hints::Context, limits: Option<
             items: n.is_dir().then_some(u64::from(n.items)),
         }
     };
-    let largest_files: Vec<Item> = largest(tree, 500, |id| tree.node(id).kind == Kind::File).into_iter().map(item).collect();
+    let largest_files: Vec<Item> = largest(tree, 500, |id| tree.node(id).kind == Kind::File && !gone[id.index()]).into_iter().map(item).collect();
     let largest_directories: Vec<Item> =
-        largest(tree, 500, |id| id != NodeId::ROOT && tree.node(id).is_dir()).into_iter().map(item).collect();
+        largest(tree, 500, |id| id != NodeId::ROOT && tree.node(id).is_dir() && !gone[id.index()]).into_iter().map(item).collect();
 
     let by = hints::by_risk(&hints);
     let reclaimable = Reclaimable {

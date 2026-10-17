@@ -44,6 +44,8 @@ pub mod flags {
     pub const HARDLINK: u8 = 4;
     /// A folder the scan was told to skip.
     pub const SKIPPED: u8 = 8;
+    /// Gone since the scan (moved to the Trash): its size no longer counts.
+    pub const REMOVED: u8 = 16;
 }
 
 /// One file or folder. 48 bytes.
@@ -316,6 +318,48 @@ impl Tree {
                 None => return false,
             }
         }
+    }
+
+    /// Take `id` out of the counts (it went to the Trash): its folders
+    /// above lose its size and items, and it's marked [`flags::REMOVED`].
+    /// Nodes keep their places (and ids), so folders whose sizes changed
+    /// may no longer be in order among their siblings: sort when showing.
+    pub fn remove(&mut self, id: NodeId) {
+        if id == NodeId::ROOT || self.node(id).has(flags::REMOVED) {
+            return;
+        }
+        let n = self.nodes[id.index()];
+        let mut at = id;
+        while let Some(p) = self.parent(at) {
+            let pn = &mut self.nodes[p.index()];
+            pn.alloc = pn.alloc.saturating_sub(n.alloc);
+            pn.apparent = pn.apparent.saturating_sub(n.apparent);
+            pn.items = pn.items.saturating_sub(1 + n.items);
+            at = p;
+        }
+        let m = &mut self.nodes[id.index()];
+        m.flags |= flags::REMOVED;
+        m.alloc = 0;
+        m.apparent = 0;
+    }
+
+    /// Which nodes are gone: removed, or inside something removed.
+    pub fn gone(&self) -> Vec<bool> {
+        let mut v = vec![false; self.nodes.len()];
+        for (i, n) in self.nodes.iter().enumerate().skip(1) {
+            v[i] = v[n.parent as usize] || n.has(flags::REMOVED);
+        }
+        v
+    }
+
+    /// `dir`'s children still there, largest first (whatever removals did
+    /// to the order).
+    pub fn sorted_children(&self, dir: NodeId) -> Vec<NodeId> {
+        let mut v: Vec<NodeId> = self.children(dir).filter(|&c| !self.node(c).has(flags::REMOVED)).collect();
+        // Already sorted unless something was removed: a stable sort of a
+        // sorted list costs one pass.
+        v.sort_by(|a, b| self.node(*b).alloc.cmp(&self.node(*a).alloc));
+        v
     }
 
     /// Bytes the arena takes (for the performance notes).

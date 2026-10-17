@@ -43,7 +43,7 @@ root: check `root` before trusting it for a question about another folder.
    - `high`: only on the person's explicit request (no hint uses it yet).
 4. **Never touch `/nix/store`.** Store paths go when nothing roots them and
    the garbage collector runs. For the store, old generations and `result`
-   links, open Yukimi's Storage view: `aizome-yukimi --view storage`.
+   links, open Yukimi's Storage view: `aizome-yukimi --page storage`.
    `aizome-kura trash` refuses store paths.
 5. **Look beyond the hints when they don't cover it.** `largest_files`,
    `largest_directories`, `kinds` and `tree` show where the rest is. A
@@ -206,7 +206,7 @@ person choose which copy to keep.
 | `store_bytes`, `store_paths` | The sum of every valid path's NAR size, and how many paths (before any `auto-optimise-store` deduplication); omitted with `--no-nix` or when Nix can't be asked |
 | `store_measured_with` | How: `nix path-info --all --json (sum of narSize)` |
 | `profiles` | Each profile with generations: `name` (`system`, `profile`, `home-manager`), `path`, `generations`, `current` |
-| `cleanup_command` | `aizome-yukimi --view storage` |
+| `cleanup_command` | `aizome-yukimi --page storage` |
 | `note` | Never delete store paths directly |
 
 ## Example
@@ -262,7 +262,7 @@ Abridged, from a scan of a developer's home folder:
       "summary": "4 old generations are kept besides the current ones (4 system). …",
       "reclaimable_bytes": 0,
       "risk": "low",
-      "action": { "kind": "open-app", "command": "aizome-yukimi --view storage", "description": "Open Yukimi's Storage view and let the person choose what to remove." },
+      "action": { "kind": "open-app", "command": "aizome-yukimi --page storage", "description": "Open Yukimi's Storage view and let the person choose what to remove." },
       "paths": [ { "path": "/nix/var/nix/profiles/system", "allocated_bytes": 0, "apparent_bytes": 0, "note": "5 generations, current 28" } ],
       "count": 4,
       "count_unit": "generations"
@@ -287,7 +287,7 @@ Abridged, from a scan of a developer's home folder:
     "store": "/nix/store", "store_bytes": 54400000000, "store_paths": 37879,
     "store_measured_with": "nix path-info --all --json (sum of narSize)",
     "profiles": [ { "name": "system", "path": "/nix/var/nix/profiles/system", "generations": 5, "current": 28 } ],
-    "cleanup_command": "aizome-yukimi --view storage",
+    "cleanup_command": "aizome-yukimi --page storage",
     "note": "Never delete paths in /nix/store directly: remove old generations and collect garbage through Yukimi's Storage view."
   },
   "other_filesystems": [],
