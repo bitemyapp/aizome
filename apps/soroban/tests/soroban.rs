@@ -321,3 +321,39 @@ fn window_sizes_hold_what_they_show() {
         assert_eq!(s, Size::new(s.width.round(), s.height.round()));
     }
 }
+
+#[test]
+fn the_save_sheet_names_the_file_and_asks_before_replacing() {
+    let mut h = harness();
+    let w = h.window();
+    h.type_text(w, "2+2\n");
+    h.command(w, 's');
+    assert!(h.program().save.is_some(), "❖S opens the sheet");
+    assert_eq!(h.focused_name(w).as_deref(), Some("save-name"));
+    let dir = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("soroban-save");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    h.program_mut().save.as_mut().unwrap().folders = vec![("Here".into(), dir.clone())];
+    // Typing goes to the name, not the calculator.
+    h.send(Msg::SaveName(String::new()));
+    h.type_text(w, "sums.txt");
+    assert_eq!(h.program().save.as_ref().map(|s| s.name.as_str()), Some("sums.txt"));
+    assert_eq!(display(&h).0, "4");
+    h.named(w, NamedKey::Enter, Modifiers::NONE);
+    assert!(h.program().save.is_none());
+    assert_eq!(std::fs::read_to_string(dir.join("sums.txt")).unwrap(), "2 + 2 = 4\n");
+    // Again: the file is there, so the first Save asks.
+    h.command(w, 's');
+    h.program_mut().save.as_mut().unwrap().folders = vec![("Here".into(), dir.clone())];
+    h.send(Msg::SaveName("sums.txt".into()));
+    h.type_text(w, "\n");
+    assert!(h.program().save.as_ref().is_some_and(|s| s.replacing));
+    assert!(h.texts(w).iter().any(|t| t == "Replace"));
+    h.type_text(w, "\n");
+    assert!(h.program().save.is_none());
+    // Escape cancels.
+    h.command(w, 's');
+    h.named(w, NamedKey::Escape, Modifiers::NONE);
+    assert!(h.program().save.is_none());
+    assert_eq!(display(&h).0, "4", "Escape closed the sheet, not cleared the calculator");
+}

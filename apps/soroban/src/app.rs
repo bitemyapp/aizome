@@ -19,7 +19,7 @@ pub const APP_ID: &str = "org.aizome.Soroban";
 
 /// Space around the panel's parts.
 pub const PAD: f64 = 12.0;
-/// The toolbar's height.
+/// The toolbar's height at the medium size (the theme's `toolbar`).
 pub const TOOLBAR: f64 = 30.0;
 /// Programmer mode's radix rows and bit toggles.
 pub const PROGRAMMER_EXTRA: f64 = 4.0 * bits::ROW + PAD + bits::HEIGHT;
@@ -28,12 +28,18 @@ pub const PROGRAMMER_EXTRA: f64 = 4.0 * bits::ROW + PAD + bits::HEIGHT;
 pub const WORDS: [u32; 4] = [8, 16, 32, 64];
 const RADIXES: [(u32, &str); 4] = [(16, "HEX"), (10, "DEC"), (8, "OCT"), (2, "BIN")];
 
-/// The window's (fixed) size for a mode, with the tape or without.
+/// The window's (fixed) size for a mode, with the tape or without, at the
+/// medium size.
 pub fn window_size(mode: Mode, tape: bool) -> Size {
+    window_size_in(TOOLBAR, mode, tape)
+}
+
+/// The window's size under a toolbar `toolbar` tall.
+pub fn window_size_in(toolbar: f64, mode: Mode, tape: bool) -> Size {
     let pads = keypad::size(mode);
     let panel_w = pads.width.max(if mode == Mode::Programmer { bits::WIDTH } else { 0.0 });
     let mut w = panel_w + 2.0 * PAD;
-    let mut h = TOOLBAR + PAD + display::HEIGHT + PAD + pads.height + PAD;
+    let mut h = toolbar + PAD + display::HEIGHT + PAD + pads.height + PAD;
     if mode == Mode::Programmer {
         h += PROGRAMMER_EXTRA + PAD;
     }
@@ -108,7 +114,13 @@ pub enum Msg {
     Redo,
     CopyTape,
     ClearTape,
+    /// Ask where to save the tape.
     SaveTape,
+    SaveName(String),
+    SaveFolder(usize),
+    /// Save as the sheet says (twice to replace a file).
+    SaveConfirm,
+    SaveCancel,
     SaveTapeTo(Option<PathBuf>),
     /// Write the state file (a moment after changes).
     Persist(u64),
@@ -128,8 +140,46 @@ pub struct Soroban {
     persist_seq: u64,
     /// The listener of the one-instance socket, handed over at launch.
     pub instance: Option<std::os::unix::net::UnixListener>,
-    /// What the last tape save did, for tests and the status.
+    /// Where the tape was last saved.
     pub last_saved: Option<PathBuf>,
+    /// The Save Tape sheet, while it's open.
+    pub save: Option<SaveSheet>,
+    /// The toolbar's height in the theme.
+    toolbar: f64,
+}
+
+/// The Save Tape sheet: a name and a folder. (The kit's file panel will
+/// take its place once it has one.)
+pub struct SaveSheet {
+    pub key: WindowKey,
+    pub name: String,
+    pub folder: usize,
+    pub folders: Vec<(String, PathBuf)>,
+    /// The file is there already: the next Save replaces it.
+    pub replacing: bool,
+}
+
+impl SaveSheet {
+    pub fn path(&self) -> Option<PathBuf> {
+        let name = self.name.trim();
+        if name.is_empty() || name.contains('/') {
+            return None;
+        }
+        self.folders.get(self.folder).map(|(_, d)| d.join(name))
+    }
+}
+
+/// Folders to save in: Documents, Desktop and home, those that are there.
+fn save_folders() -> Vec<(String, PathBuf)> {
+    let Some(home) = std::env::var_os("HOME").map(PathBuf::from) else { return vec![("/tmp".into(), PathBuf::from("/tmp"))] };
+    let mut out = Vec::new();
+    for (name, dir) in [("Documents", home.join("Documents")), ("Desktop", home.join("Desktop"))] {
+        if dir.is_dir() {
+            out.push((name.to_owned(), dir));
+        }
+    }
+    out.push(("Home".to_owned(), home));
+    out
 }
 
 impl Soroban {
@@ -160,6 +210,8 @@ impl Soroban {
             persist_seq: 0,
             instance: None,
             last_saved: None,
+            save: None,
+            toolbar: TOOLBAR,
         }
     }
 
@@ -201,9 +253,13 @@ impl Soroban {
         cx.after(Duration::from_millis(700), Msg::Persist(self.persist_seq));
     }
 
+    fn size(&self) -> Size {
+        window_size_in(self.toolbar, self.calc.mode, self.show_tape)
+    }
+
     fn resize(&mut self, cx: &mut Cx<Msg>) {
-        let size = window_size(self.calc.mode, self.show_tape);
-        cx.request_size(self.window, size);
+        self.toolbar = cx.theme().metrics.toolbar;
+        cx.request_size(self.window, self.size());
     }
 
     fn flash(&mut self, key: Key, cx: &mut Cx<Msg>) {
@@ -294,23 +350,15 @@ impl Soroban {
             .on_press(Msg::ToggleTape)
             .tooltip(if self.show_tape { "Hide the paper tape (❖T)" } else { "Show the paper tape (❖T)" })
             .label("Paper tape");
-        container(
-            row![
-                dropdown(names, Some(self.calc.mode.index())).compact().on_select(|i| Msg::SetMode(Mode::ALL[i.min(2)])),
-                spacer(),
-                tape_toggle,
-            ]
-            .spacing(6.0)
-            .width(Length::Fill),
-        )
-        .padding([0.0, 8.0])
-        .fill(Tone::Chrome)
-        .edges(Edge::BevelLo, Sides::BOTTOM)
-        .bevel()
-        .align_y(Align::Center)
-        .width(Length::Fill)
-        .height(TOOLBAR)
-        .into()
+        aizome_kit::toolbar(vec![
+            dropdown(names, Some(self.calc.mode.index()))
+                .compact()
+                .on_select(|i| Msg::SetMode(Mode::ALL[i.min(2)]))
+                .label("Mode")
+                .into(),
+            spacer().into(),
+            tape_toggle.into(),
+        ])
     }
 
     fn keypads(&self) -> Element<Msg> {
@@ -342,7 +390,7 @@ impl Soroban {
             row![
                 aizome_kit::column(radix_rows).width(Length::Fill),
                 column![
-                    text("WORD").font(caption()).role(Role::Text3),
+                    caption("Word"),
                     words.width(152.0),
                     sign.width(152.0),
                 ]
@@ -368,7 +416,7 @@ impl Soroban {
         container(
             column![
                 row![
-                    text("TAPE").font(caption()).role(Role::Text3),
+                    caption("Tape"),
                     spacer(),
                     text(if n == 1 { "1 line".to_owned() } else { format!("{n} lines") }).size(11.0).role(Role::Text3),
                 ]
@@ -396,11 +444,45 @@ impl Soroban {
     }
 }
 
-/// Small capitals in IBM Plex Mono, as the boards' SHELF caption.
-fn caption() -> FontSpec {
-    let mut f = FontSpec::mono(10.5);
-    f.weight = 500.0;
-    f
+/// A caption as the kit sets one (the boards' SHELF), without its padding.
+fn caption(s: &str) -> Element<Msg> {
+    text(s.to_owned()).mono().size(10.5).letter_spacing(1.2).caps().role(Role::Text3).into()
+}
+
+impl Soroban {
+    /// The Save Tape sheet's view.
+    fn save_view(&self, sheet: &SaveSheet) -> Element<Msg> {
+        let names: Vec<String> = sheet.folders.iter().map(|(n, _)| n.clone()).collect();
+        let error = if sheet.replacing {
+            Some(format!("“{}” is there already. Save again to replace it.", sheet.name.trim()))
+        } else {
+            None
+        };
+        let width = (self.size().width - 24.0).min(320.0);
+        column![
+            text("Save Tape").semibold().size(15.0),
+            text_field(&sheet.name).id("save-name").on_change(Msg::SaveName).on_submit(Msg::SaveConfirm).error(error),
+            row![
+                text("In").role(Role::Text2),
+                dropdown(names, Some(sheet.folder)).on_select(Msg::SaveFolder).width(Length::Fill),
+            ]
+            .spacing(8.0)
+            .width(Length::Fill),
+            row![
+                spacer(),
+                button("Cancel").cancel().on_press(Msg::SaveCancel),
+                button(if sheet.replacing { "Replace" } else { "Save" })
+                    .default()
+                    .on_press_maybe(sheet.path().map(|_| Msg::SaveConfirm)),
+            ]
+            .spacing(8.0)
+            .width(Length::Fill),
+        ]
+        .spacing(12.0)
+        .padding(16.0)
+        .width(width)
+        .into()
+    }
 }
 
 /// A key press, as the calculator hears it (or not: Tab, arrows and
@@ -434,7 +516,8 @@ impl Program for Soroban {
     }
 
     fn launched(&mut self, cx: &mut Cx<Msg>) {
-        let size = window_size(self.calc.mode, self.show_tape);
+        self.toolbar = cx.theme().metrics.toolbar;
+        let size = self.size();
         self.window = cx.open_window(WindowSpec::new("Soroban").size(size.width, size.height).resizable(false));
         cx.focus("keyboard");
         if let Some(listener) = self.instance.take() {
@@ -518,8 +601,41 @@ impl Program for Soroban {
                 self.persist_soon(cx);
             }
             Msg::SaveTape => {
-                let dialog = FileDialog::new().title("Save Tape").file_name("Tape.txt").filter("Text", &["txt"]);
-                cx.save_panel(self.window, dialog, Msg::SaveTapeTo);
+                if self.save.is_none() && !self.calc.tape.is_empty() {
+                    let key = cx.show_sheet(self.window);
+                    let folders = save_folders();
+                    self.save = Some(SaveSheet { key, name: "Tape.txt".into(), folder: 0, folders, replacing: false });
+                    cx.focus("save-name");
+                }
+            }
+            Msg::SaveName(name) => {
+                if let Some(s) = &mut self.save {
+                    s.name = name;
+                    s.replacing = false;
+                }
+            }
+            Msg::SaveFolder(i) => {
+                if let Some(s) = &mut self.save {
+                    s.folder = i;
+                    s.replacing = false;
+                }
+            }
+            Msg::SaveConfirm => {
+                let Some(s) = &mut self.save else { return };
+                let Some(path) = s.path() else { return };
+                if path.exists() && !s.replacing {
+                    s.replacing = true;
+                    return;
+                }
+                let key = s.key;
+                self.save = None;
+                cx.close_window(key);
+                cx.send(Msg::SaveTapeTo(Some(path)));
+            }
+            Msg::SaveCancel => {
+                if let Some(s) = self.save.take() {
+                    cx.close_window(s.key);
+                }
             }
             Msg::SaveTapeTo(Some(path)) => match std::fs::write(&path, self.calc.tape_text()) {
                 Ok(()) => self.last_saved = Some(path),
@@ -538,7 +654,10 @@ impl Program for Soroban {
         }
     }
 
-    fn view(&self, _window: WindowKey) -> Element<Msg> {
+    fn view(&self, window: WindowKey) -> Element<Msg> {
+        if let Some(s) = self.save.as_ref().filter(|s| s.key == window) {
+            return self.save_view(s);
+        }
         let c = &self.calc;
         let mut panel: Vec<Element<Msg>> = vec![display::display(c.shown(), self.indicators())];
         if c.mode == Mode::Programmer {

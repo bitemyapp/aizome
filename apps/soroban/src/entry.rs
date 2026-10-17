@@ -1078,8 +1078,15 @@ impl Calc {
             return false;
         }
         if c.is_alphabetic() || c == ',' || c == ' ' || c == '°' || c == '_' {
-            if c == ' ' && self.pieces.last().is_none_or(|p| p.src.ends_with(' ')) {
-                return false;
+            if c == ' ' {
+                // A space parts words ("sin 30", "12 xor 10"). Between numbers
+                // it would multiply (calc reads "12 34" as 12 × 34), so outside
+                // Programmer mode it counts only after a word.
+                let last = self.pieces.last();
+                let after_word = last.is_some_and(|p| p.kind == Kind::Text && p.src.chars().all(char::is_alphabetic));
+                if self.fresh || last.is_none_or(|p| p.src.ends_with(' ')) || (!prog && !after_word) {
+                    return false;
+                }
             }
             self.remember();
             if self.fresh {
@@ -1472,6 +1479,11 @@ mod tests {
         assert_eq!(c.source(), "1234+1000-5");
         typed(&mut c, "2x3");
         assert_eq!(c.shown().main, "1234 + 1000 − 52 × 3");
+        // Spaces between numbers don't multiply; after a word they part it.
+        typed(&mut c, "=12 34 x 2 =");
+        assert_eq!(c.shown().main, "2\u{2009}468");
+        typed(&mut c, "sin 30 + cos 60=");
+        assert_eq!(c.shown().main, "1");
     }
 
     #[test]
