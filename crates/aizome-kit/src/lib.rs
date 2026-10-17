@@ -76,7 +76,7 @@ pub use widgets::layout::{Edge, Sides, Tone, column, container, divider, row, sp
 pub mod prelude {
     pub use crate::layout::{Fill, Shrink};
     pub use crate::{
-        Align, Alert, AppInfo, Color, Cx, Edge, Element, FileDialog, Fit, FontSpec, Icon, Image, Layoutable, Length,
+        Align, Alert, AppInfo, Color, Cx, Edge, Vec2, Element, FileDialog, Fit, FontSpec, Icon, Image, Layoutable, Length,
         Menu, MenuBar, MenuItem, MenuRole, Padding, Point, Program, Rect, Role, Shortcut, ShortcutKey, Sides, Size,
         Span, Theme, TimerHandle, Tone, WindowKey, WindowKind, WindowSpec, badge, button, checkbox, container,
         divider, dropdown, icon, icon_button, image, keycap, meter, progress, progress_indeterminate, radio,
