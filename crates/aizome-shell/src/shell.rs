@@ -60,6 +60,12 @@ pub enum Msg {
     Lock(crate::lock::LockMsg),
     Auth(crate::auth::AuthIn),
     AuthUi(crate::auth::AuthMsg),
+    Tear(crate::tearoff::TearMsg),
+    /// A menu's strip was dragged: keep it as a palette.
+    TearOff { app: String, path: Vec<String>, output: String, at: Point },
+    /// The selected text for Services came (from the app or the primary
+    /// selection), for a menu waiting on it.
+    Selection(u64, Option<String>),
     Note(crate::notifications::server::NoteEvent),
     /// The bar's notification line has shown long enough.
     BannerDone(u32),
@@ -88,6 +94,7 @@ pub enum Surface {
     Osd,
     Lock { output: u32 },
     Auth,
+    TearOff(usize),
 }
 
 /// An output and the shell's surfaces on it.
@@ -175,6 +182,13 @@ pub struct Shell {
     pub authenticator: Arc<dyn crate::pam::Authenticator>,
     pub user_picture: Option<aizome_kit::Image>,
     pub auth: Option<crate::auth::AuthState>,
+    pub tearoffs: Vec<crate::tearoff::TearOff>,
+    pub(crate) tear_shown: HashMap<usize, crate::tearoff::Shown>,
+    /// Recently used files, read when the Toolchest opens.
+    pub recent: Vec<PathBuf>,
+    /// A menu at the pointer waiting for the selected text: its serial and place.
+    pub(crate) services_wait: Option<(u64, f64, f64)>,
+    pub(crate) serial: u64,
     pub(crate) deskbar_size: Option<aizome_kit::Size>,
     pub(crate) icons: HashMap<String, Option<aizome_kit::Image>>,
     /// The primary bar's Desks, by where they are across it.
@@ -238,6 +252,11 @@ impl Shell {
             authenticator: Arc::new(crate::pam::Pam::new("aizome")),
             user_picture: None,
             auth: None,
+            tearoffs: Vec::new(),
+            tear_shown: HashMap::new(),
+            recent: Vec::new(),
+            services_wait: None,
+            serial: 0,
             deskbar_size: None,
             icons: HashMap::new(),
             desk_strip: Vec::new(),
@@ -398,9 +417,15 @@ impl Shell {
     fn open_slot(&mut self, win: WindowKey, slot: Slot, rect: Rect, cx: &mut Cx<Msg>) {
         match slot {
             Slot::Toolchest => {
+                if self.opts.live {
+                    self.recent = aizome_search::recent::load(aizome_search::recent::default_path()).into_iter().take(12).map(|r| r.path).collect();
+                }
                 let menu = self.toolchest_menu();
                 let anchor = Rect::new(rect.x0, rect.y0, rect.x1, crate::menubar::HEIGHT - 1.0);
-                self.show_menu(win, anchor, &menu, MenuStyle::below().titled("Toolchest").min_width(rect.width()), cx);
+                let output = self.screen_of(win).map(|s| s.name()).unwrap_or_default();
+                let tear = Msg::TearOff { app: crate::tearoff::TOOLCHEST.into(), path: vec![], output, at: Point::new(rect.x0 + 12.0, crate::menubar::HEIGHT + 12.0) };
+                let style = MenuStyle::below().titled("Toolchest").min_width(rect.width()).on_tear_off(tear);
+                self.show_menu(win, anchor, &menu, style, cx);
             }
             Slot::Menu(i) => {
                 let (_, menus) = self.focused_menus();
@@ -430,7 +455,7 @@ impl Shell {
     pub fn toolchest_menu(&self) -> ShellMenu {
         let apps: Vec<&aizome_sys::apps::App> = self.apps.as_deref().map(|i| i.apps()).unwrap_or_default();
         let desk_folder = self.wm.current_desk_info().and_then(|d| d.folder.as_deref()).map(aizome_config::expand_home);
-        let recent = aizome_search::recent::load(aizome_search::recent::default_path()).into_iter().map(|r| r.path).collect();
+        let recent = self.recent.clone();
         let disks = self.sys.disks.as_ref().map(|d| d.snapshot().volumes()).unwrap_or_default().into_iter().filter_map(|v| Some((v.name, PathBuf::from(v.mount_point?)))).collect();
         build::toolchest(&build::ToolchestInput { apps: &apps, desks: &self.wm.desks, desk_folder, disks, recent })
     }
@@ -542,7 +567,7 @@ impl Shell {
                 self.shelf.remove(index);
                 self.save_shelf();
             }
-            Action::Service(_) => {}
+            Action::Service(verb) => self.run_service(verb, cx),
             Action::NewFolderOnDesktop => {
                 let dir = crate::launch::desktop_dir();
                 let mut path = dir.join("New Folder");
@@ -592,6 +617,8 @@ impl Shell {
         self.frecency = aizome_search::frecency::Frecency::load(aizome_search::frecency::Frecency::default_path());
         self.shelf = crate::shelf::Shelf::load(&crate::shelf::Shelf::default_dir());
         self.desktop.load_positions(&crate::desktop::DesktopState::path());
+        self.tearoffs = crate::tearoff::load(&crate::tearoff::store_path());
+        self.recent = aizome_search::recent::load(aizome_search::recent::default_path()).into_iter().take(12).map(|r| r.path).collect();
         self.load_wallpapers();
         self.start_palette_threads(cx);
         {
@@ -685,7 +712,7 @@ impl Shell {
             "lock" => self.lock(cx),
             "app-menu" => {
                 if let Some((x, y)) = pointer {
-                    self.pointer_menu(x, y, cx);
+                    self.pointer_menu_soon(x, y, cx);
                 }
             }
             "play-pause" => crate::mpris::control(crate::systray::panels::MediaVerb::PlayPause),
@@ -725,6 +752,7 @@ impl Shell {
                     s.send(conn, &proto::ShellMessage::Reply { ok, message });
                 }
             }
+            ServerEvent::Message(_, proto::AppMessage::ServicesText { serial, text }) => self.selection_came(serial, text, cx),
             ServerEvent::Message(conn, m) => {
                 if let RegistryChange::Menus(_) | RegistryChange::App(_) = self.registry.take(conn, &m) {}
             }
@@ -757,7 +785,7 @@ impl Shell {
                 (true, String::new())
             }
             proto::ShellRequest::AppMenu { x, y } => {
-                self.pointer_menu(x, y, cx);
+                self.pointer_menu_soon(x, y, cx);
                 (true, String::new())
             }
             proto::ShellRequest::Notify { app, summary, body } => {
@@ -861,6 +889,9 @@ impl Program for Shell {
             Msg::Lock(m) => self.lock_msg(m, cx),
             Msg::Auth(e) => self.auth_in(e, cx),
             Msg::AuthUi(m) => self.auth_msg(m, cx),
+            Msg::Tear(m) => self.tear_msg(m, cx),
+            Msg::TearOff { app, path, output, at } => self.tear_off(app, path, output, at, cx),
+            Msg::Selection(serial, text) => self.selection_came(serial, text, cx),
             Msg::DesktopItems(items, full) => {
                 self.desktop.items = items;
                 self.trash_full = full;
@@ -893,6 +924,7 @@ impl Program for Shell {
                     matches!(k.key, aizome_kit::sidestep_ui::Key::Named(aizome_kit::sidestep_ui::NamedKey::Escape)).then_some(Msg::Lock(crate::lock::LockMsg::Escape))
                 })
             }
+            Some(Surface::TearOff(i)) => self.tear_view(*i),
             Some(Surface::Auth) => match self.auth_view() {
                 Some(v) => crate::auth::view(&v).map(Msg::AuthUi),
                 None => aizome_kit::space(0.0),
@@ -993,6 +1025,7 @@ impl Shell {
     pub fn after_update(&mut self, cx: &mut Cx<Msg>) {
         self.sync_deskbar(cx);
         self.sync_panel(cx);
+        self.sync_tearoffs(cx);
         if let Some(screen) = self.primary().cloned() {
             let model = self.bar_model(&screen);
             let theme = cx.theme().clone();
@@ -1114,7 +1147,12 @@ impl Shell {
         let text = self.selection.clone();
         let menu = build::pointer_menu(&name, &menus, build::services(text.as_deref()), hide, quit);
         let at = Point::new(x - screen.output.frame.x0, y - screen.output.frame.y0);
-        let style = MenuStyle::at_point().titled(name.clone());
+        let app = match window {
+            Some(w) => w.app_id.clone(),
+            None => crate::tearoff::DESKTOP.into(),
+        };
+        let tear = Msg::TearOff { app, path: vec![], output: screen.name(), at };
+        let style = MenuStyle::at_point().titled(name.clone()).on_tear_off(tear);
         self.show_menu(bar, at_point(at), &menu, style, cx);
     }
 }

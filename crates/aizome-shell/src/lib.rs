@@ -21,10 +21,12 @@ pub mod notifications;
 pub mod osd;
 pub mod palette;
 pub mod pam;
+pub mod services;
 pub mod shelf;
 pub mod shell;
 pub mod sys;
 pub mod systray;
+pub mod tearoff;
 pub mod widgets;
 pub mod wm;
 

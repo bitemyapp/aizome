@@ -150,7 +150,7 @@ impl Shell {
             },
             DesktopMsg::Menu(at) => {
                 let origin = self.screens.iter().find(|s| s.output.id == output).map(|s| s.output.frame.origin()).unwrap_or_default();
-                self.pointer_menu(origin.x + at.x, origin.y + at.y, cx);
+                self.pointer_menu_soon(origin.x + at.x, origin.y + at.y, cx);
             }
             DesktopMsg::DropOn(key, urls) => {
                 let Some(icon) = self.icon(&key) else { return };
