@@ -107,6 +107,12 @@ impl<Msg> MenuStyle<Msg> {
         self.look.min_width = w;
         self
     }
+
+    /// Aizome's mark in the title strip, before the title (the Toolchest).
+    pub fn mark(mut self) -> Self {
+        self.look.mark = true;
+        self
+    }
 }
 
 impl<Msg: Clone + Send + 'static> MenuStyle<Msg> {
@@ -126,6 +132,8 @@ pub(crate) struct MenuLook {
     pub tear_off: Option<MsgFn>,
     pub on_close: Option<MsgFn>,
     pub pin: Option<(bool, MsgMap<bool>)>,
+    /// Aizome's mark before the title (the Toolchest's).
+    pub mark: bool,
 }
 
 impl MenuLook {
@@ -437,7 +445,8 @@ impl Widget for MenuView {
         };
         let mut out = Vec::new();
         let mut y = self.top() + 4.0;
-        let mut widest: f64 = self.look.title.as_ref().map_or(0.0, |t| cx.measure(t, &MenuView::strip_spec(theme)).width + 56.0);
+        let mark = if self.look.mark { 18.0 } else { 0.0 };
+        let mut widest: f64 = self.look.title.as_ref().map_or(0.0, |t| cx.measure(t, &MenuView::strip_spec(theme)).width + 56.0 + mark);
         if filtered {
             widest = widest.max(cx.measure(&self.query, &label).width + 40.0);
             y += m.menu_row;
@@ -493,7 +502,19 @@ impl Widget for MenuView {
             draw::border(cx.canvas, close, fg, 1.5);
             let spec = MenuView::strip_spec(t);
             let right = if self.look.pin.is_some() || self.look.tear_off.is_some() { self.pin_box().x0 } else { strip.x1 - 6.0 };
-            cx.draw_text_in(title, &spec, Rect::new(close.x1 + 7.0, strip.y0, right, strip.y1), Align::Start);
+            let mut x = close.x1 + 7.0;
+            if self.look.mark {
+                // The mark at 12pt: its tab and three stripes, on whole points.
+                let brand = aizome_theme::Brand::for_theme(t.palette.name);
+                let m = 3.0;
+                let y = (strip.y0 + (strip.height() - 12.0) / 2.0).round();
+                for ([rx, ry, rw, rh], c) in brand.mark_rects() {
+                    let r = Rect::new(x + rx as f64 * m, y + ry as f64 * m, x + (rx + rw) as f64 * m, y + (ry + rh) as f64 * m);
+                    cx.canvas.fill_rect(r, crate::theme::color(c));
+                }
+                x += 18.0;
+            }
+            cx.draw_text_in(title, &spec, Rect::new(x, strip.y0, right, strip.y1), Align::Start);
             if self.look.pin.is_some() || self.look.tear_off.is_some() {
                 let pinned = self.look.pin.as_ref().is_some_and(|(p, _)| *p);
                 let pb = self.pin_box();
@@ -809,6 +830,12 @@ impl<Msg> MenuViewEl<Msg> {
 
     pub fn min_width(mut self, w: f64) -> Self {
         self.look.min_width = w;
+        self
+    }
+
+    /// Aizome's mark in the title strip, before the title (the Toolchest).
+    pub fn mark(mut self) -> Self {
+        self.look.mark = true;
         self
     }
 }
