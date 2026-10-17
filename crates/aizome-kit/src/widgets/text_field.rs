@@ -49,6 +49,7 @@ pub struct TextField<Msg> {
     error: Option<Arc<str>>,
     enabled: bool,
     mono: bool,
+    select_on_focus: Option<Range<usize>>,
     _m: PhantomData<fn() -> Msg>,
 }
 
@@ -66,6 +67,7 @@ pub fn text_field<Msg>(value: &str) -> TextField<Msg> {
         error: None,
         enabled: true,
         mono: false,
+        select_on_focus: None,
         _m: PhantomData,
     }
 }
@@ -120,6 +122,15 @@ impl<Msg> TextField<Msg> {
         self.mono = true;
         self
     }
+
+    /// What's selected when the field first takes the focus (byte
+    /// offsets into its text): a file name without its extension, for a
+    /// field renaming a file. Give the field a `.key` of its own per use,
+    /// so a new one starts afresh.
+    pub fn select_on_focus(mut self, range: Range<usize>) -> Self {
+        self.select_on_focus = Some(range);
+        self
+    }
 }
 
 impl<Msg> From<TextField<Msg>> for Element<Msg> {
@@ -134,6 +145,7 @@ impl<Msg> From<TextField<Msg>> for Element<Msg> {
             error: f.error,
             enabled: f.enabled,
             mono: f.mono,
+            select_on_focus: f.select_on_focus,
             laid: None,
             shown: String::new(),
             caret: 0,
@@ -166,6 +178,8 @@ pub(crate) struct FieldState {
     history: Vec<(String, usize, usize)>,
     future: Vec<(String, usize, usize)>,
     last_edit: Option<(Instant, EditKind)>,
+    /// The field has had the focus (its starting selection is used up).
+    primed: bool,
 }
 
 struct FieldWidget {
@@ -178,6 +192,7 @@ struct FieldWidget {
     error: Option<Arc<str>>,
     enabled: bool,
     mono: bool,
+    select_on_focus: Option<Range<usize>>,
     // As laid out: the text shown (dots, what's composed), its layout,
     // the caret and selection in it, the scroll.
     laid: Option<TextLayout>,
@@ -635,6 +650,14 @@ impl Widget for FieldWidget {
                 let st = cx.state::<FieldState>();
                 st.focused = *on;
                 st.blink_off = false;
+                if *on && !std::mem::replace(&mut st.primed, true)
+                    && let Some(r) = &self.select_on_focus
+                {
+                    let v = &self.value;
+                    let (a, b) = (floor(v, r.start.min(v.len())), floor(v, r.end.min(v.len())));
+                    st.anchor = a.min(b);
+                    st.caret = a.max(b);
+                }
                 if *on {
                     cx.request_tick(BLINK);
                     self.follow_caret(cx);

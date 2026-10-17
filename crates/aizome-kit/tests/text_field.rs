@@ -171,3 +171,42 @@ fn clicks_place_the_caret_and_double_clicks_select_words() {
     h.release(w, Point::new(name.x0 + 12.0, name.center().y), aizome_kit::sidestep_ui::PointerButton::Left);
     assert_eq!(h.selection(w).as_deref(), Some("alpha"));
 }
+
+/// A field renaming a file starts with the name's stem selected.
+struct Rename {
+    name: String,
+}
+
+impl Program for Rename {
+    type Msg = String;
+    fn info(&self) -> AppInfo {
+        AppInfo::new("org.aizome.Rename", "Rename", "Test")
+    }
+    fn launched(&mut self, cx: &mut Cx<String>) {
+        cx.open_window(WindowSpec::new("Rename").size(300.0, 80.0));
+        cx.focus("rename");
+    }
+    fn update(&mut self, msg: String, _cx: &mut Cx<String>) {
+        self.name = msg;
+    }
+    fn view(&self, _w: WindowKey) -> Element<String> {
+        column![text_field(&self.name).select_on_focus(0..6).on_change(|s| s).id("rename")].padding(12.0).into()
+    }
+}
+
+#[test]
+fn a_starting_selection_is_typed_over_once() {
+    let mut h = Harness::new(Rename { name: "report.pdf".into() });
+    let w = h.window();
+    h.focus_window(w, true);
+    assert_eq!(h.focused_name(w).as_deref(), Some("rename"));
+    h.type_text(w, "notes");
+    assert_eq!(h.program().name, "notes.pdf", "the stem was selected");
+    // Focus again: the caret stays where it was; nothing is selected anew.
+    h.named(w, NamedKey::Tab, Modifiers::NONE);
+    let f = h.find_id(w, "rename").unwrap();
+    h.click(w, f.center());
+    h.type_text(w, "!");
+    assert_ne!(h.program().name, "!.pdf");
+    let _ = Key::Named(NamedKey::Tab);
+}

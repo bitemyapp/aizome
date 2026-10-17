@@ -162,7 +162,9 @@ them, Space and Return work them, arrows move within them.
 `text_field(&self.name)` — `.placeholder(t)`, `.on_change(Msg::Name)`,
 `.on_submit(msg)`, `.password()`, `.search()` (or `search_field(&q)`: a
 magnifier, a clear button, Escape clears), `.error(Some("…"))` (a red edge
-and the message under it), `.enabled(b)`, `.mono()`.
+and the message under it), `.enabled(b)`, `.mono()`,
+`.select_on_focus(range)` (what's selected when it first takes the focus:
+a file name's stem, renaming it; key the field per use).
 
 The program owns the text; the field keeps the caret, selection, input
 method composition, scroll and undo history. Keys are macOS's with ❖ as
