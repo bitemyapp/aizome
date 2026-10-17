@@ -307,3 +307,66 @@ Exceptions:
   the sunburst, and they're redrawn whole. That's the p95 above.
 - **The first drawing after a scan**, and a resize: the whole window, as
   for any app.
+
+## Shell
+
+The shell's surfaces (bar, Deskbar, desktop, palette, menus, panels, OSD,
+lock) share one process and one render thread, so its budget is per
+surface frame: 4 ms from the message to the frame. Each typical frame
+redraws only what changed: the clock's tick repaints the clock's own
+rectangle (2% of the bar), a meter only its bars, a key in the palette its
+query and the rows that moved.
+
+### Headless, through the kit's `Harness`
+
+`crates/aizome-shell/tests/perf.rs` (`cargo test -p aizome-shell --release
+--test perf -- --nocapture`): the message's update, every surface's view,
+layout and diff, and rasterising the damage at 2× through the offscreen
+renderer, over the boards' scene (five apps, three unread mails, three
+Shelf items). Release build:
+
+| Frame | p50 | p95 | max |
+|---|---|---|---|
+| Clock tick (bar and Deskbar) | 0.10 ms | 0.21 ms | 0.31 ms |
+| A CPU meter bar moving | 0.05 ms | 0.07 ms | 0.11 ms |
+| A window opening or closing (the Deskbar grows or shrinks, the bar's count) | 0.56 ms | 2.73 ms | 5.07 ms |
+| A key typed in the palette (re-ranking every command, window, app, setting and action) | 0.87 ms | 3.23 ms | 3.65 ms |
+| ↑ or ↓ in the palette | 0.32 ms | 2.87 ms | 4.70 ms |
+
+### Live, under the headless compositor at scale 2
+
+`aizome --backend headless --headless-output 2880x1800@2 --no-shell`, the
+shell's release build with `SIDESTEP_FRAME_STATS=1`, driven with
+`aizome-shell msg` and `aizomectl input` (record / rasterise / present,
+total):
+
+- The bar, steady (clock and meters): total p50 0.03–0.06 ms, p95 under
+  0.25 ms, damage 2–9%.
+- The palette, typing and moving: p50 about 1 ms; its first frame on a
+  later opening 2.3 ms.
+- The Toolchest (a kit menu popup): its first frame 1.5 ms.
+- Idle: no frames but the clock's each minute and a meter's when a bar
+  visibly moves (the sampler only wakes the shell then); 2–4 clock ticks
+  of CPU (20–40 ms) over 20 s, about 0.1–0.2%.
+
+### Memory
+
+RSS with a bar, desktop and Deskbar on one 2880 × 1800 output: 77 MB with
+the desktop colour, about 120 MB with a 2880 × 1800 wallpaper (the decoded
+image, 20 MB, and the desktop's raster), up to about 150 MB after the
+palette's first use (text and glyph caches, its surface's buffers). The
+file index (20 MB for a large home folder) is read only while the palette
+is open and dropped when it closes; it's rebuilt in the background when
+older than ten minutes.
+
+### Exceptions
+
+- **A surface's first frame** draws all of it with cold text and glyph
+  caches: the palette's first opening after start 6.7–9.9 ms (record
+  2.5–5.7, rasterise 2.1–6.6, present ~2), the Deskbar's first frame 7.7 ms
+  (record 7.3 of it: every row's text shaped). Later openings reuse the
+  caches (2.3 ms for the palette).
+- **The desktop's first frame** at 2× is a full 2880 × 1800 raster: 89 ms
+  with the desktop colour, 106 ms with a wallpaper (its JPEG decoded on the
+  render thread, once per output size). It happens once, at start (or when
+  the output changes); the desktop redraws only an icon's rectangle after.
