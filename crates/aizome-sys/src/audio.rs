@@ -155,6 +155,9 @@ pub struct AudioDevice {
     pub volume: f32,
     /// Per-channel volumes, as fractions.
     pub channel_volumes: Vec<f32>,
+    /// Left–right balance: −1.0 all left, 0.0 centred, 1.0 all right (0.0
+    /// for a device without left and right channels).
+    pub balance: f32,
     pub muted: bool,
     pub is_default: bool,
     /// The device's own icon name (`audio-card-analog-pci`,
@@ -249,6 +252,8 @@ enum Command {
     CardProfile(u32, String, Done<()>),
     /// Toggle the default output's (Sink) or input's (Source) mute.
     ToggleDefault(Kind, Done<bool>),
+    /// Set an output's or input's left–right balance.
+    Balance(Kind, u32, f32, Done<()>),
 }
 
 /// The sound server.
@@ -341,6 +346,17 @@ impl Audio {
         self.send(|done| Command::Mute(Kind::Source, index, Some(muted), done))
     }
 
+    /// Set an output's left–right balance (−1.0 all left … 1.0 all right),
+    /// keeping its volume.
+    pub fn set_sink_balance(&self, index: u32, balance: f32) -> Task<()> {
+        self.send(|done| Command::Balance(Kind::Sink, index, clamp_balance(balance), done))
+    }
+
+    /// Set an input's left–right balance.
+    pub fn set_source_balance(&self, index: u32, balance: f32) -> Task<()> {
+        self.send(|done| Command::Balance(Kind::Source, index, clamp_balance(balance), done))
+    }
+
     /// Make an output the default (by its name).
     pub fn set_default_sink(&self, name: &str) -> Task<()> {
         let name = name.to_owned();
@@ -423,6 +439,15 @@ impl Drop for Audio {
         self.stop.stop();
         self.poke();
     }
+}
+
+fn clamp_balance(balance: f32) -> f32 {
+    if balance.is_finite() { balance.clamp(-1.0, 1.0) } else { 0.0 }
+}
+
+/// A device's balance, 0.0 where it has no left and right.
+fn balance_of(volumes: &ChannelVolumes, map: &pulse::channelmap::Map) -> f32 {
+    if map.can_balance() { volumes.get_balance(map) } else { 0.0 }
 }
 
 fn clamp(volume: f32) -> f32 {
@@ -671,6 +696,22 @@ impl Live {
         new
     }
 
+    /// Set a device's volumes at once (a balance change), remembering them
+    /// until the server reports them.
+    fn set_volumes(&mut self, kind: Kind, index: u32, volumes: ChannelVolumes, balance: f32) {
+        let map = match kind {
+            Kind::Source => &mut self.sources,
+            _ => &mut self.sinks,
+        };
+        if let Some((device, stored)) = map.get_mut(&index) {
+            *stored = volumes;
+            device.apply_volumes(&volumes);
+            device.balance = balance;
+            expect(&mut self.expects, (kind, index)).volumes = Some(volumes);
+            self.dirty = true;
+        }
+    }
+
     fn volume_of(&self, kind: Kind, index: u32) -> Option<f32> {
         match kind {
             Kind::Sink => self.sinks.get(&index).map(|(d, _)| d.volume),
@@ -712,6 +753,7 @@ fn sink_device(info: &SinkInfo<'_>) -> (AudioDevice, ChannelVolumes) {
         description: text(&info.description),
         volume: fraction(info.volume.max()),
         channel_volumes: info.volume.get().iter().map(|v| fraction(*v)).collect(),
+        balance: balance_of(&info.volume, &info.channel_map),
         muted: info.mute,
         is_default: false,
         icon_name: prop(&info.proplist, "device.icon_name"),
@@ -746,6 +788,7 @@ fn source_device(info: &SourceInfo<'_>) -> (AudioDevice, ChannelVolumes) {
         description: text(&info.description),
         volume: fraction(info.volume.max()),
         channel_volumes: info.volume.get().iter().map(|v| fraction(*v)).collect(),
+        balance: balance_of(&info.volume, &info.channel_map),
         muted: info.mute,
         is_default: false,
         icon_name: prop(&info.proplist, "device.icon_name"),
@@ -1235,6 +1278,36 @@ fn execute(weak: &Weak<RefCell<Context>>, live: &Rc<RefCell<Live>>, command: Com
                 send_mute(&mut introspect, Kind::Sink, index, false, None);
             }
             send_volume(&mut introspect, Kind::Sink, index, &volumes, finish(weak, done, level));
+        }
+        Command::Balance(kind, index, balance, done) => {
+            // The channel map comes with the device's info: read it, then
+            // set the volumes.
+            let (weak, live) = (weak.clone(), live.clone());
+            let mut done = Some(done);
+            let mut apply = move |volume: &ChannelVolumes, map: &pulse::channelmap::Map| {
+                let Some(done) = done.take() else { return };
+                if !map.can_balance() {
+                    return done.finish(Err(Error::InvalidArgument("it has no left and right channels".into())));
+                }
+                let mut volumes = *volume;
+                volumes.set_balance(map, balance);
+                live.borrow_mut().set_volumes(kind, index, volumes, balance);
+                let Some(context) = weak.upgrade() else { return };
+                let mut introspect = context.borrow().introspect();
+                send_volume(&mut introspect, kind, index, &volumes, finish(&weak, done, ()));
+            };
+            match kind {
+                Kind::Source => drop(introspect.get_source_info_by_index(index, move |r| {
+                    if let ListResult::Item(info) = r {
+                        apply(&info.volume, &info.channel_map);
+                    }
+                })),
+                _ => drop(introspect.get_sink_info_by_index(index, move |r| {
+                    if let ListResult::Item(info) = r {
+                        apply(&info.volume, &info.channel_map);
+                    }
+                })),
+            }
         }
         Command::ToggleDefault(kind, done) => {
             let mut l = live.borrow_mut();

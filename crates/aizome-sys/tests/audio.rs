@@ -20,7 +20,10 @@ impl PrivatePipeWire {
     /// own, or `None` (the test skips) when they aren't installed.
     fn start() -> Option<PrivatePipeWire> {
         // Unix socket paths are short: stay directly under /tmp.
-        let dir = PathBuf::from(format!("/tmp/aizome-pw-{}", std::process::id()));
+        // One directory per instance: tests run side by side.
+        static N: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+        let n = N.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let dir = PathBuf::from(format!("/tmp/aizome-pw-{}-{n}", std::process::id()));
         std::fs::create_dir_all(&dir).ok()?;
         let daemon = dir.join("daemon.conf");
         let pulse = dir.join("pulse.conf");
@@ -205,4 +208,38 @@ fn without_a_server_it_is_unavailable_then_reconnects() {
     std::thread::sleep(std::time::Duration::from_millis(300));
     assert!(!audio.available());
     assert!(matches!(audio.step_volume(0.05).wait(), Err(aizome_sys::Error::Unavailable(_))));
+}
+
+#[test]
+fn balance_and_a_level_meter() {
+    let Some(pw) = PrivatePipeWire::start() else { return };
+    let audio = Audio::with_server(Some(pw.server()), Wake::none());
+    assert!(eventually(|| audio.snapshot().sinks.len() == 2));
+    let speakers = audio.snapshot().sinks.iter().find(|s| s.name == "test-speakers").unwrap().clone();
+    assert!(close(speakers.balance, 0.0), "{}", speakers.balance);
+    audio.set_sink_volume(speakers.index, 0.8).wait().unwrap();
+    audio.set_sink_balance(speakers.index, -0.5).wait().unwrap();
+    assert!(eventually(|| close(audio.snapshot().sink(speakers.index).unwrap().balance, -0.5)), "{:?}", audio.snapshot().sink(speakers.index));
+    // The louder channel keeps the volume.
+    assert!(close(audio.snapshot().sink(speakers.index).unwrap().volume, 0.8));
+    // A mono input has no balance to set.
+    let mic = audio.snapshot().sources.iter().find(|s| s.name == "test-mic").unwrap().clone();
+    assert!(audio.set_source_balance(mic.index, 0.5).wait().is_err());
+
+    // The meter follows the speakers' monitor: silence, and it isn't
+    // listed among the applications recording. (Without a session
+    // manager nothing drives the graph, so no levels come here.)
+    let woken = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let w = woken.clone();
+    let meter = aizome_sys::meter::Meter::start_on(
+        Some(pw.server()),
+        "test-speakers.monitor",
+        Wake::new(move || {
+            w.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        }),
+    );
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    assert!(meter.level() < 0.01);
+    assert!(audio.snapshot().recording.is_empty(), "{:?}", audio.snapshot().recording);
+    drop(meter);
 }

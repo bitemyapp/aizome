@@ -57,6 +57,7 @@ pub mod datetime;
 pub mod disks;
 pub mod error;
 pub mod keyboard;
+pub mod meter;
 pub mod mpris;
 pub mod network;
 pub mod notifications;
