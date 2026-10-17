@@ -1,0 +1,14 @@
+[package]
+name = "aizome-config"
+description = "Aizome's settings file (~/.config/aizome/settings.toml): schema, defaults, load/save and change watching"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+aizome-theme.workspace = true
+serde.workspace = true
+toml.workspace = true
+log.workspace = true
