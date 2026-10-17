@@ -5,7 +5,7 @@ use std::rc::Rc;
 
 use aizome_kit::element::MsgFn;
 use aizome_kit::hash::PaintHasher;
-use aizome_kit::layout::{Constraints, Point, Rect, Size};
+use aizome_kit::layout::{Constraints, Point, Size};
 use aizome_kit::sidestep_ui::kurbo::{Arc, Circle};
 use aizome_kit::sidestep_ui::{KeyEvent, StrokeStyle};
 use aizome_kit::theme::{FontSpec, Role};
@@ -86,8 +86,12 @@ pub fn keys<Msg: Clone + Send + 'static>(child: impl Into<Element<Msg>>, on_key:
     Element::new(Keys { on_key: Rc::new(on_key) }, vec![child.into()]).id("tokei-keys").width(Length::Fill).height(Length::Fill)
 }
 
+/// What turns a key into a message, if it means one: the key, and whether
+/// the window's own focus is on the wrapper.
+type OnKey<Msg> = Rc<dyn Fn(&KeyEvent, bool) -> Option<Msg>>;
+
 struct Keys<Msg> {
-    on_key: Rc<dyn Fn(&KeyEvent, bool) -> Option<Msg>>,
+    on_key: OnKey<Msg>,
 }
 
 impl<Msg: Clone + Send + 'static> Widget for Keys<Msg> {
@@ -119,9 +123,4 @@ impl<Msg: Clone + Send + 'static> Widget for Keys<Msg> {
         }
         Status::Ignored
     }
-}
-
-/// A rectangle's centre, for tests that click things.
-pub fn center(r: Rect) -> Point {
-    r.center()
 }

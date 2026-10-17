@@ -65,7 +65,7 @@ fn world(app: &Tokei) -> Element<Msg> {
     let body: Element<Msg> = if app.places.is_empty() {
         hint("No cities yet. Add one with + or ❖N.")
     } else {
-        let rows: Vec<Element<Msg>> = app.places.iter().enumerate().map(|(_, p)| place_row(app, p)).collect();
+        let rows: Vec<Element<Msg>> = app.places.iter().map(|p| place_row(app, p)).collect();
         let n = app.places.len();
         list(rows)
             .row_height(60.0)

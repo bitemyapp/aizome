@@ -148,9 +148,11 @@ by `a_tick_redraws_only_the_digits_that_changed`).
 | World clock tick (4 cities) | 0.22 ms | 0.41 ms | 0.63 ms | `tests/tokei.rs`, `a_tick_fits_the_frame_budget`, at 2×, 117 ticks |
 | Stopwatch frame (25 a second, while it runs and shows) | 0.16 ms | 0.28 ms | 0.32 ms | ″, 97 frames |
 
-Live, under headless sway at 2× with `SIDESTEP_FRAME_STATS=1`, the world
-clock idling: a frame a second, total p50 0.14 ms (the first frame, the
-whole window, took 5.4 ms; that's opening, not a tick).
+Live, under headless sway at 2× with `SIDESTEP_FRAME_STATS=1` (driven with
+`wtype`: ❖4, Space, L): the stopwatch running, 133 frames in five seconds,
+total p50 0.08 ms, p95 0.14 ms, max 1.8 ms, redrawing 3% of the window
+per frame on average; the world clock idling, a frame a second, total p50
+0.14 ms (the first frame, the whole window, is opening, not a tick).
 
 The timer's ring is drawn in a thousand steps, so it redraws when a step
 passes rather than on every tick. No exceptions.

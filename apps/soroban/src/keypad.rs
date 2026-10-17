@@ -368,8 +368,11 @@ pub fn keyboard<Msg: Clone + Send + 'static>(
         .height(aizome_kit::Length::Fill)
 }
 
+/// What turns a key into a message, if it means one.
+type OnKey<Msg> = Rc<dyn Fn(&aizome_kit::sidestep_ui::KeyEvent) -> Option<Msg>>;
+
 struct Catcher<Msg> {
-    on_key: Rc<dyn Fn(&aizome_kit::sidestep_ui::KeyEvent) -> Option<Msg>>,
+    on_key: OnKey<Msg>,
 }
 
 impl<Msg: Clone + Send + 'static> Widget for Catcher<Msg> {

@@ -52,10 +52,15 @@ pub fn sound_file(id: &str) -> Option<PathBuf> {
     None
 }
 
-/// A program on `$PATH`.
+/// A program on `$PATH`, or in NixOS's profiles (a timer's service may
+/// run with a short `$PATH`).
 fn on_path(name: &str) -> Option<PathBuf> {
-    let path = std::env::var_os("PATH")?;
-    std::env::split_paths(&path).map(|d| d.join(name)).find(|p| p.is_file())
+    let mut dirs: Vec<PathBuf> = std::env::var_os("PATH").map(|p| std::env::split_paths(&p).collect()).unwrap_or_default();
+    if let Some(user) = std::env::var_os("USER") {
+        dirs.push(PathBuf::from("/etc/profiles/per-user").join(user).join("bin"));
+    }
+    dirs.extend(["/run/current-system/sw/bin", "/usr/bin"].map(PathBuf::from));
+    dirs.into_iter().map(|d| d.join(name)).find(|p| p.is_file())
 }
 
 /// Tokei's own tone: two short beeps at 880 Hz, a 16-bit mono WAV.
