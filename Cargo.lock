@@ -225,6 +225,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "aizome-tokei"
+version = "0.1.0"
+dependencies = [
+ "aizome-config",
+ "aizome-kit",
+ "env_logger",
+ "jiff",
+ "log",
+ "serde",
+ "serde_json",
+ "zbus",
+]
+
+[[package]]
 name = "aizome-yukimi"
 version = "0.1.0"
 dependencies = [

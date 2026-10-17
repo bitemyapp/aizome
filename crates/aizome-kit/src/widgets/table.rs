@@ -361,7 +361,6 @@ impl TableWidget {
         if let Some(f) = &self.on_select {
             cx.emit_any(f.make(rows));
         }
-        cx.invalidate();
     }
 }
 
@@ -396,6 +395,8 @@ impl Widget for TableWidget {
         let first = ((offy / rh).floor().max(0.0) as usize).min(self.count);
         let last = (((offy + body_h) / rh).ceil().max(0.0) as usize).min(self.count);
         self.shown = first..last;
+        let selected = self.selected.clone();
+        crate::widgets::scroll::selection_damage(cx, &selected, &(first..last), rh, self.header(), offy, size.width);
         cx.clear_children();
         for r in first..last {
             let sel = self.selected.binary_search(&r).is_ok();
@@ -460,7 +461,7 @@ impl Widget for TableWidget {
         for w in &self.widths {
             h.f64(*w);
         }
-        h.add(&self.selected).add(&(self.sort, self.count, self.shown.clone()));
+        h.add(&(self.sort, self.count, self.shown.start));
     }
 
     fn clips(&self) -> bool {
@@ -849,7 +850,6 @@ impl TreeWidget {
         if let Some(f) = &self.on_select {
             cx.emit_any(f.make(ids));
         }
-        cx.invalidate();
     }
 
     fn picker(&self) -> Picker<'_> {
@@ -893,6 +893,8 @@ impl Widget for TreeWidget {
         let first = ((off / rh).floor().max(0.0) as usize).min(self.rows.len());
         let last = (((off + size.height) / rh).ceil().max(0.0) as usize).min(self.rows.len());
         self.shown = first..last;
+        let selected = self.selected_rows.clone();
+        crate::widgets::scroll::selection_damage(cx, &selected, &(first..last), rh, 0.0, off, size.width);
         cx.clear_children();
         for i in first..last {
             let r = self.rows[i].clone();
@@ -934,7 +936,7 @@ impl Widget for TreeWidget {
         for r in &self.rows[self.shown.clone()] {
             h.add(&(r.id, r.open, r.depth));
         }
-        h.add(&self.selected_rows).add(&self.shown.clone());
+        h.add(&self.shown.start);
     }
 
     fn clips(&self) -> bool {

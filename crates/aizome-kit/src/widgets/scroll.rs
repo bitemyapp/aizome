@@ -591,7 +591,6 @@ impl ListWidget {
         if let Some(f) = &self.on_select {
             cx.emit_any(f.make(rows));
         }
-        cx.invalidate();
     }
 
     /// Move the cursor to `i` from the keyboard, extending with ⇧.
@@ -659,6 +658,8 @@ impl Widget for ListWidget {
         let last = (((off + size.height) / rh).ceil().max(0.0) as usize).min(n);
         self.shown = first..last;
         self.width = width;
+        let selected = self.selected.clone();
+        selection_damage(cx, &selected, &(first..last), rh, 0.0, off, width);
         let row_bc = Constraints::tight(Size::new(width, rh));
         match &self.rows {
             Rows::Virtual { build, .. } => {
@@ -703,7 +704,7 @@ impl Widget for ListWidget {
     }
 
     fn hash(&self, h: &mut PaintHasher) {
-        h.add(&self.selected).add(&(self.count(), self.shown.clone())).f64(self.row_height).f64(self.inset);
+        h.add(&(self.count(), self.shown.start)).f64(self.row_height).f64(self.inset);
     }
 
     fn clips(&self) -> bool {
@@ -852,5 +853,22 @@ impl Widget for ListWidget {
     fn selection(&self, _state: crate::widget::StateView) -> Option<String> {
         let f = self.type_select.as_ref()?;
         Some(self.selected.iter().map(|&i| f(i)).collect::<Vec<_>>().join("\n"))
+    }
+}
+
+/// The rows a row-list painted selected last, to redraw only the rows
+/// whose selection changed (the list's own hash leaves its selection out).
+#[derive(Default)]
+pub(crate) struct DrawnSelection(pub Vec<usize>);
+
+/// Redraw the rows (of height `rh`, from `top`, scrolled by `off`)
+/// whose selection changed since the list last drew.
+pub(crate) fn selection_damage(cx: &mut LayoutCx, now: &[usize], shown: &std::ops::Range<usize>, rh: f64, top: f64, off: f64, width: f64) {
+    let before = std::mem::replace(&mut cx.state::<DrawnSelection>().0, now.to_vec());
+    for &i in before.iter().filter(|i| !now.contains(i)).chain(now.iter().filter(|i| !before.contains(i))) {
+        if shown.contains(&i) {
+            let y = top + i as f64 * rh - off;
+            cx.invalidate_rect(Rect::new(0.0, y, width, y + rh));
+        }
     }
 }

@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use sidestep_ui::kurbo::{Affine, BezPath, Circle, Ellipse, Line, Rect, RoundedRect, Shape};
-use sidestep_ui::{Canvas, Color, LineCap, LineJoin, StrokeStyle};
+use sidestep_ui::{Canvas, Color, Image, ImageOptions, LineCap, LineJoin, StrokeStyle};
 
 use crate::element::{Common, Element, RawElement};
 use crate::hash::PaintHasher;
@@ -45,8 +45,27 @@ impl Icon {
         })
     }
 
-    /// Draw it `size` points square with its top left at `at`.
+    /// Draw it `size` points square with its top left at `at`. Upright,
+    /// it's drawn from a picture of it made once per size and scale and
+    /// tinted (cheaper than stroking its outline every frame); turned or
+    /// stretched, from its outline.
     pub fn draw(self, canvas: &mut Canvas, at: Point, size: f64, color: Color) {
+        let [a, b, c, d, _, _] = canvas.transform().as_coeffs();
+        if b == 0.0 && c == 0.0 && a == 1.0 && d == 1.0 {
+            let scale = canvas.scale();
+            if let Some(img) = self.picture(size, scale) {
+                // On whole device pixels, so the picture maps one to one.
+                let o = canvas.transform() * at;
+                let snap = |v: f64| (v * scale).round() / scale;
+                let dst = Rect::from_origin_size(Point::new(snap(o.x) - (o.x - at.x), snap(o.y) - (o.y - at.y)), (size, size));
+                canvas.draw_image_with(&img, None, dst, ImageOptions { alpha: 1.0, smooth: true, tint: Some(color) });
+                return;
+            }
+        }
+        self.stroke(canvas, at, size, color);
+    }
+
+    fn stroke(self, canvas: &mut Canvas, at: Point, size: f64, color: Color) {
         let path = self.path();
         let k = size / 24.0;
         let xf = Affine::translate(at.to_vec2()) * Affine::scale(k);
@@ -55,6 +74,26 @@ impl Icon {
         let width = stroke_width(size);
         let style = StrokeStyle::new(width).with_cap(LineCap::Round).with_join(LineJoin::Round);
         canvas.stroke(&shape, &style, color);
+    }
+
+    /// The icon drawn white, `size` points at `scale`, made once.
+    fn picture(self, size: f64, scale: f64) -> Option<Image> {
+        thread_local! {
+            static PICTURES: RefCell<HashMap<(Icon, u64, u64), Image>> = RefCell::new(HashMap::new());
+        }
+        if !(1.0..=256.0).contains(&size) || !(0.5..=8.0).contains(&scale) {
+            return None;
+        }
+        Some(PICTURES.with(|p| {
+            p.borrow_mut()
+                .entry((self, size.to_bits(), scale.to_bits()))
+                .or_insert_with(|| {
+                    sidestep_ui::offscreen::render(Size::new(size, size), scale, sidestep_ui::Appearance::DARK, |c| {
+                        self.stroke(c, Point::ZERO, size, Color::WHITE);
+                    })
+                })
+                .clone()
+        }))
     }
 }
 
