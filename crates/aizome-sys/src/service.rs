@@ -204,8 +204,9 @@ impl<T> Done<T> {
         if let Some(slot) = self.slot.take() {
             *lock(&slot.result) = Some(result);
             slot.finished.store(true, Ordering::Release);
-            slot.done.notify_all();
+            // Wake before notifying, so whoever waits sees the wake done.
             self.wake.wake();
+            slot.done.notify_all();
         }
     }
 }

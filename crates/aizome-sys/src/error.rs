@@ -99,6 +99,8 @@ impl Error {
             "org.bluez.Error.AuthenticationFailed" | "org.bluez.Error.AuthenticationRejected" => {
                 Error::Rejected(message)
             }
+            "System.Error.EROFS" => Error::ManagedBySystem(message),
+            "System.Error.EPERM" | "System.Error.EACCES" => Error::NotAuthorized(message),
             "org.freedesktop.DBus.Error.FileExists" | "org.freedesktop.DBus.Error.NotSupported"
                 if lower.contains("read-only") || lower.contains("read only") =>
             {

@@ -730,6 +730,63 @@ pub(crate) fn spawn<T: Send + 'static>(
     }
 }
 
+/// Follow one object's properties on one interface (systemd's timedated,
+/// localed, hostnamed; power-profiles-daemon): `changed` gets them after
+/// every change, or `None` when the daemon is gone. Daemons that exit when
+/// idle and are started on demand (`keep_on_exit`) keep their last
+/// properties while away, since they come back on the next call.
+pub(crate) fn follow_props(
+    bus: Bus,
+    name: &'static str,
+    path: &'static str,
+    iface: &'static str,
+    keep_on_exit: bool,
+    stop: Stop,
+    mut changed: impl FnMut(&Bus, Option<&Props>) + Send + 'static,
+) {
+    let mut props: Option<Props> = None;
+    let mut dirty = false;
+    follow(bus, name, vec![signals_from(name)], true, stop, move |bus, event| match event {
+        Event::Appeared => {
+            props = Some(bus.get_all(name, path, iface).unwrap_or_default());
+            dirty = true;
+        }
+        Event::Vanished => {
+            if !keep_on_exit || props.is_none() {
+                props = None;
+                dirty = true;
+            }
+        }
+        Event::Signal(msg) => {
+            if msg.header().path().is_some_and(|p| p.as_str() == path)
+                && member(&msg).1 == "PropertiesChanged"
+                && let Ok((changed_iface, changed, invalidated)) = msg.body().deserialize::<(String, Props, Vec<String>)>()
+                && changed_iface == iface
+                && let Some(props) = props.as_mut()
+            {
+                props.extend(changed);
+                for name_ in invalidated {
+                    match bus.get::<OwnedValue>(name, path, iface, &name_) {
+                        Ok(value) => {
+                            props.insert(name_, value);
+                        }
+                        Err(_) => {
+                            props.remove(&name_);
+                        }
+                    }
+                }
+                dirty = true;
+            }
+        }
+        Event::Idle => {
+            if dirty {
+                changed(bus, props.as_ref());
+                dirty = false;
+            }
+        }
+    });
+}
+
 /// The match rule for every signal `sender` emits.
 pub(crate) fn signals_from(sender: &str) -> String {
     format!("type='signal',sender='{sender}'")

@@ -120,3 +120,21 @@ fn power_reads_upower_profiles_logind_and_backlight() {
     let backlight = Backlight::new(Wake::none());
     println!("backlights {:?} primary {:?}", backlight.snapshot().devices, backlight.snapshot().primary().map(|d| d.fraction()));
 }
+
+#[test]
+#[ignore = "reads the real system bus"]
+fn datetime_reads_timedated_localed_hostnamed() {
+    use aizome_sys::datetime::*;
+    let time = TimeDate::new(Wake::none());
+    assert!(eventually(|| time.available()));
+    println!("time: {:?}", time.snapshot());
+    let locale = Locale::new(Wake::none());
+    assert!(eventually(|| locale.available()));
+    println!("locale: {:?}", locale.snapshot());
+    let host = Hostname::new(Wake::none());
+    assert!(eventually(|| host.available()));
+    println!("host: {:?}", host.snapshot());
+    let zones = zones().unwrap();
+    println!("{} zones; {} regions", zones.len(), by_region(&zones).len());
+    assert!(!time.snapshot().timezone.is_empty());
+}
