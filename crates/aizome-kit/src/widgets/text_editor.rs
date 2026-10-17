@@ -905,12 +905,14 @@ impl Widget for EditorWidget {
             cx.draw_text_in(p, &spec, Rect::new(self.text_x, y, size.width, y + self.line_h), crate::layout::Align::Start);
         }
         let blink_off = cx.state::<EditorState>().is_some_and(|s| s.blink_off);
-        if focused && !blink_off && self.snap.selection.is_empty() && !self.opts.read_only
+        if focused
+            && !blink_off
+            && self.snap.selection.is_empty()
+            && !self.opts.read_only
             && let Some(c) = self.caret
+            && c.x0 >= self.gutter
         {
-            if c.x0 >= self.gutter {
-                cx.canvas.fill_rect(c, t.focus());
-            }
+            cx.canvas.fill_rect(c, t.focus());
         }
     }
 

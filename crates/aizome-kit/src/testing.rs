@@ -738,7 +738,7 @@ pub fn read_png(path: &Path) -> std::io::Result<(u32, u32, Vec<u8>)> {
     buf.truncate(info.buffer_size());
     let px = match info.color_type {
         png::ColorType::Rgba => buf,
-        png::ColorType::Rgb => buf.chunks_exact(3).flat_map(|c| [c[0], c[1], c[2], 255]).collect(),
+        png::ColorType::Rgb => buf.as_chunks::<3>().0.iter().flat_map(|c| [c[0], c[1], c[2], 255]).collect(),
         _ => return Err(std::io::Error::other("an RGB or RGBA PNG")),
     };
     Ok((info.width, info.height, px))
@@ -750,7 +750,7 @@ pub fn difference(a: &[u8], b: &[u8], tolerance: u8) -> f64 {
     if a.len() != b.len() || a.is_empty() {
         return 1.0;
     }
-    let off = a.chunks_exact(4).zip(b.chunks_exact(4)).filter(|(p, q)| p.iter().zip(q.iter()).any(|(x, y)| x.abs_diff(*y) > tolerance)).count();
+    let off = a.as_chunks::<4>().0.iter().zip(b.as_chunks::<4>().0).filter(|(p, q)| p.iter().zip(q.iter()).any(|(x, y)| x.abs_diff(*y) > tolerance)).count();
     off as f64 / (a.len() / 4) as f64
 }
 

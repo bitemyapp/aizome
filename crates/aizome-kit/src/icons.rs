@@ -122,7 +122,7 @@ fn parse_element(el: &str) -> Option<BezPath> {
             let nums: Vec<f64> =
                 a("points")?.split(|c: char| c == ',' || c.is_whitespace()).filter_map(|s| s.parse().ok()).collect();
             let mut p = BezPath::new();
-            for (i, xy) in nums.chunks_exact(2).enumerate() {
+            for (i, xy) in nums.as_chunks::<2>().0.iter().enumerate() {
                 if i == 0 {
                     p.move_to((xy[0], xy[1]));
                 } else {

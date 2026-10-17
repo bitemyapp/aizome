@@ -346,14 +346,12 @@ impl MenuView {
                     self.open_sub(cx, i);
                 }
             }
-            Some(_) => {
-                if cx.state::<MenuState>().open_sub.take().is_some() {
-                    let window = cx.window_id();
-                    cx.emit_any(Box::new(KitMsg::MenuCloseSubs { window }));
-                    cx.invalidate();
-                }
+            Some(_) if cx.state::<MenuState>().open_sub.take().is_some() => {
+                let window = cx.window_id();
+                cx.emit_any(Box::new(KitMsg::MenuCloseSubs { window }));
+                cx.invalidate();
             }
-            None => {}
+            _ => {}
         }
     }
 

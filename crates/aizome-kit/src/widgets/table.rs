@@ -397,9 +397,10 @@ impl Widget for TableWidget {
         self.shown = first..last;
         let selected = self.selected.clone();
         crate::widgets::scroll::selection_damage(cx, &selected, &(first..last), rh, self.header(), offy, size.width);
+        let active = cx.selection_active();
         cx.clear_children();
         for r in first..last {
-            let sel = self.selected.binary_search(&r).is_ok();
+            let sel = active && self.selected.binary_search(&r).is_ok();
             for c in 0..self.columns.len() {
                 let mut el = (self.cell)(r, c);
                 el.common.key = Some((r as u64) << 16 | c as u64);
@@ -895,6 +896,7 @@ impl Widget for TreeWidget {
         self.shown = first..last;
         let selected = self.selected_rows.clone();
         crate::widgets::scroll::selection_damage(cx, &selected, &(first..last), rh, 0.0, off, size.width);
+        let active = cx.selection_active();
         cx.clear_children();
         for i in first..last {
             let r = self.rows[i].clone();
@@ -902,7 +904,7 @@ impl Widget for TreeWidget {
             let mut el = tree_row::<()>(self.item(&r.path)).into_raw();
             el.common.key = Some(r.id);
             let c = cx.add_child(el);
-            let sel = self.selected_rows.contains(&i);
+            let sel = active && self.selected_rows.contains(&i);
             cx.layout_child_selected(c, Constraints::tight(Size::new((size.width - x).max(0.0), rh)), sel);
             cx.place_child(c, Point::new(x, i as f64 * rh - off));
         }

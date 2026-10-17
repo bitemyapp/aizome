@@ -345,7 +345,8 @@ impl Widget for ScrollWidget {
         let unbounded = |v: f64| if v.is_finite() { v } else { 0.0 };
         let view = Size::new(unbounded(bc.max.width), unbounded(bc.max.height));
         let child_bc = Constraints {
-            min: Size::new(if dir.x() { view.width } else { view.width }, if dir.y() { view.height } else { view.height }),
+            // Content at least fills the view.
+            min: view,
             max: Size::new(if dir.x() { f64::INFINITY } else { view.width }, if dir.y() { f64::INFINITY } else { view.height }),
         };
         let content = if cx.child_count() > 0 { cx.layout_child(0, child_bc) } else { Size::ZERO };
@@ -660,6 +661,7 @@ impl Widget for ListWidget {
         self.width = width;
         let selected = self.selected.clone();
         selection_damage(cx, &selected, &(first..last), rh, 0.0, off, width);
+        let active = cx.selection_active();
         let row_bc = Constraints::tight(Size::new(width, rh));
         match &self.rows {
             Rows::Virtual { build, .. } => {
@@ -669,14 +671,14 @@ impl Widget for ListWidget {
                     let mut el = build(i);
                     el.common.key = Some(i as u64);
                     let c = cx.add_child(el);
-                    let sel = self.selected.binary_search(&i).is_ok();
+                    let sel = active && self.selected.binary_search(&i).is_ok();
                     cx.layout_child_selected(c, row_bc, sel);
                     cx.place_child(c, Point::new(0.0, i as f64 * rh - off));
                 }
             }
             Rows::Fixed(_) => {
                 for i in 0..cx.child_count() {
-                    let sel = self.selected.binary_search(&i).is_ok();
+                    let sel = active && self.selected.binary_search(&i).is_ok();
                     cx.layout_child_selected(i, row_bc, sel);
                     cx.place_child(i, Point::new(0.0, i as f64 * rh - off));
                 }

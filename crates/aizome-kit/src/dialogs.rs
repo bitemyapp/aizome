@@ -467,7 +467,7 @@ pub(crate) fn panel_element(core: &Core, id: u64) -> Option<RawElement> {
             std::path::Component::RootDir => "/".to_owned(),
             other => other.as_os_str().to_string_lossy().into_owned(),
         };
-        if i > 0 && i > 1 {
+        if i > 1 {
             crumbs.push(text("›").role(Role::Faint).into());
         }
         let mut b = button(label).toolbar().on_press(m(PanelMsg::Go(acc.clone()))).key(i);

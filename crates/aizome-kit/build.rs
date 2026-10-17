@@ -49,7 +49,7 @@ fn elements(svg: &str) -> Vec<String> {
     let mut rest = svg;
     while let Some(start) = rest.find('<') {
         let after = &rest[start + 1..];
-        let end = after.find('>').map_or(after.len(), |e| e);
+        let end = after.find('>').unwrap_or(after.len());
         let tag = &after[..end];
         let name: String = tag.chars().take_while(|c| c.is_ascii_alphabetic()).collect();
         if matches!(name.as_str(), "path" | "circle" | "rect" | "line" | "polyline" | "polygon" | "ellipse") {

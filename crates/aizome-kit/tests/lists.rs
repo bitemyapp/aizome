@@ -182,3 +182,32 @@ fn scroll_bars_drag() {
     h.save_png(w, &png, 2.0);
     let _: aizome_kit::widgets::layout::Flex<LongMsg> = column![text("x")];
 }
+
+/// The darkest and lightest pixels' luminance in `rect`.
+fn extremes(h: &mut Harness<Files>, w: WindowKey, rect: Rect) -> (u8, u8) {
+    let img = h.render_rect(w, rect, 1.0).to_rgba8().expect("pixels");
+    let lum = |p: &[u8]| ((p[0] as u32 * 3 + p[1] as u32 * 6 + p[2] as u32) / 10) as u8;
+    img.chunks(4).map(lum).fold((255, 0), |(lo, hi), l| (lo.min(l), hi.max(l)))
+}
+
+#[test]
+fn a_selection_without_the_focus_keeps_its_text_readable() {
+    use aizome_kit::theme::ThemeChoice;
+    let a = aizome_kit::Appearance { theme: ThemeChoice::Day, reduced_motion: true, ..aizome_kit::Appearance::default() };
+    let mut h = Harness::with(Files::new(20), a, false);
+    let w = h.window();
+    h.focus_window(w, true);
+    h.click(w, Point::new(100.0, 36.0));
+    assert_eq!(h.program().selected, [1]);
+    let row = Rect::new(0.0, 24.0, 400.0, 48.0);
+    // Focused: light marks on the selection.
+    let (_, light) = extremes(&mut h, w, row);
+    assert!(light > 235, "focused selected row has light marks ({light})");
+    // The window loses the keyboard: the row turns grey, in dark marks.
+    h.focus_window(w, false);
+    let (dark, _) = extremes(&mut h, w, row);
+    assert!(dark < 110, "unfocused selected row has dark marks ({dark})");
+    h.focus_window(w, true);
+    let (_, light) = extremes(&mut h, w, row);
+    assert!(light > 235, "focused again, the marks are light again ({light})");
+}

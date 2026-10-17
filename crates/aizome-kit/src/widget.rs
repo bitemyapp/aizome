@@ -365,9 +365,12 @@ pub(crate) struct Env<'a> {
     pub now: Instant,
     /// Laying out a selected row: text and icons take `on_selection`.
     pub on_selection: bool,
+    /// The focused widget, while its window has the keyboard: a list
+    /// with it draws its selection strong.
+    pub focus: Option<NodeId>,
 }
 
-pub(crate) fn state_of<'s, T: Default + 'static>(states: &'s mut StateMap, id: NodeId) -> &'s mut T {
+pub(crate) fn state_of<T: Default + 'static>(states: &mut StateMap, id: NodeId) -> &mut T {
     let entry = states.entry((id, TypeId::of::<T>())).or_insert_with(|| Box::new(T::default()));
     entry.downcast_mut::<T>().expect("state of its type")
 }
@@ -427,6 +430,13 @@ impl LayoutCx<'_, '_> {
         let s = self.tree.layout(child, bc, self.env);
         self.env.on_selection = before;
         s
+    }
+
+    /// Whether this widget has the focus in the window that has the
+    /// keyboard: lists then lay their selected rows out on `selection`
+    /// (and otherwise on `line2`, in the ordinary text colours).
+    pub fn selection_active(&self) -> bool {
+        self.env.focus.is_some_and(|f| f == self.tree.nodes[self.node].id)
     }
 
     /// Whether this is laid out in a selected row.

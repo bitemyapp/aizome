@@ -91,7 +91,7 @@ fn rows_share_leftover_room_by_portion() {
 
 #[test]
 fn columns_stretch_across_and_align() {
-    let mut h = Harness::new(Probe::new(|_| {
+    let h = Harness::new(Probe::new(|_| {
         column![
             container(text("wide")).width(Fill).height(30.0).id("wide"),
             container(text("narrow")).width(50.0).height(30.0).id("narrow"),
@@ -243,7 +243,7 @@ fn keys_find_their_widget_after_a_rebuild() {
 
 #[test]
 fn window_sizes_are_the_contents_under_an_in_window_menu_bar() {
-    let mut h = Harness::with(Probe::new(|_| text("hi").into()), aizome_kit::theme::Appearance::default(), true);
+    let h = Harness::with(Probe::new(|_| text("hi").into()), aizome_kit::theme::Appearance::default(), true);
     let w = h.window();
     let bar = h.theme().metrics.target;
     // Asked for 400 × 300 of content: the bar comes on top.
@@ -253,4 +253,23 @@ fn window_sizes_are_the_contents_under_an_in_window_menu_bar() {
     // Where the shell shows the menus, the size is the window's.
     let h2 = Harness::new(Probe::new(|_| text("hi").into()));
     assert_eq!(h2.size(h2.window()), Size::new(400.0, 300.0));
+}
+
+#[test]
+fn text_limited_to_lines_wraps_up_to_them() {
+    const WORDS: &str = "Operations stay in points. Each window renders at its output's scale: the integer one wherever it can.";
+    let h = Harness::new(Probe::new(|_| {
+        column![
+            container(text(WORDS)).width(120.0).id("one-line"),
+            container(text(WORDS).max_lines(2)).width(120.0).id("two-lines"),
+            container(text(WORDS).wrap()).width(120.0).id("all-lines"),
+        ]
+        .into()
+    }));
+    let w = h.window();
+    let one = h.find_id(w, "one-line").unwrap().height();
+    let two = h.find_id(w, "two-lines").unwrap().height();
+    let all = h.find_id(w, "all-lines").unwrap().height();
+    assert!(two > one * 1.6 && two < one * 2.4, "two lines: {two} (one: {one})");
+    assert!(all > two * 1.5, "unlimited, it takes more: {all}");
 }

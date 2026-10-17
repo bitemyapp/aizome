@@ -474,7 +474,7 @@ impl<S: 'static> Widget for CanvasWidget<S> {
             let st = cx.state::<CanvasParts>();
             let before = std::mem::replace(&mut st.parts, now.clone());
             // A new size redraws it all anyway.
-            if std::mem::replace(&mut st.size, Some(size)) == Some(size) {
+            if st.size.replace(size) == Some(size) {
                 let gone = before.iter().filter(|p| !now.contains(p));
                 let came = now.iter().filter(|p| !before.contains(p));
                 for (r, _) in gone.chain(came) {

@@ -55,8 +55,7 @@ pub(crate) struct SheetLayer {
 
 impl SheetLayer {
     pub fn element(content: RawElement, key: u64, top: f64) -> RawElement {
-        let mut panel_common = Common::default();
-        panel_common.key = Some(1);
+        let panel_common = Common { key: Some(1), ..Common::default() };
         let panel = RawElement::new(SheetPanel, panel_common, vec![content]);
         let mut c = Common::sized(Length::Fill, Length::Fill);
         c.key = Some(key);

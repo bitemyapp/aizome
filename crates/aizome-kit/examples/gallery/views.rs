@@ -396,6 +396,29 @@ impl Program for Gallery {
     fn update(&mut self, msg: Msg, cx: &mut Cx<Msg>) {
         if let (Msg::Demo, Some(w)) = (&msg, self.window) {
             match std::env::var("GALLERY_DEMO").as_deref() {
+                // Keep changing something, for frame statistics: a switch
+                // on Controls, a list's selection on Lists, typing on the
+                // Editor.
+                Ok("bench-toggle") => {
+                    self.toggles[1] = !self.toggles[1];
+                    cx.after(std::time::Duration::from_millis(20), Msg::Demo);
+                }
+                Ok("bench-select") => {
+                    self.page = Page::Lists;
+                    let next = self.selected.first().map_or(0, |s| (s + 1) % 30);
+                    self.selected = vec![next];
+                    cx.after(std::time::Duration::from_millis(20), Msg::Demo);
+                }
+                Ok("bench-type") => {
+                    if self.page != Page::Editor {
+                        self.page = Page::Editor;
+                        self.content.set_selection(aizome_kit::Selection::caret(120));
+                    }
+                    let a = if self.presses % 20 == 19 { EditorAction::Backspace(aizome_kit::Granularity::Word) } else { EditorAction::Insert("x".into()) };
+                    self.presses += 1;
+                    self.content.perform(a);
+                    cx.after(std::time::Duration::from_millis(20), Msg::Demo);
+                }
                 Ok("popover") => self.popover = true,
                 Ok("alert") => cx.alert(w, Alert::new("Delete “notes.md”?", "It goes to the Trash.").destructive_button("Delete", Msg::Pressed).cancel_button("Cancel").default_button("Keep", Msg::Pressed)),
                 _ => {

@@ -557,7 +557,7 @@ impl TextWidget {
     fn spec(&self, theme: &Theme, selected: bool) -> TextSpec {
         let m = &theme.metrics;
         let mut font = self.font.unwrap_or_else(|| {
-            let size = self.size.unwrap_or(if self.mono { m.body } else { m.body });
+            let size = self.size.unwrap_or(m.body);
             if self.mono { FontSpec::mono(size) } else { FontSpec::ui(size) }
         });
         if let Some(w) = self.weight {
@@ -572,11 +572,11 @@ impl TextWidget {
             None => theme.role(self.role),
         };
         let mut spec = TextSpec::new(font, color);
-        spec.wrap = if self.wrap { Wrap::Words } else { Wrap::Truncate };
+        // One line, or a paragraph, or at most `max_lines` of one. (Sidestep
+        // ends only an unwrapped line in an ellipsis so far: a paragraph
+        // cut short just stops.)
+        spec.wrap = if self.wrap && self.max_lines != 1 { Wrap::Words } else { Wrap::Truncate };
         spec.max_lines = self.max_lines;
-        if self.wrap && self.max_lines > 0 {
-            spec.wrap = Wrap::Truncate;
-        }
         spec.align = self.align;
         spec.line_height = self.line_height;
         spec.underline = self.underline;
@@ -720,7 +720,7 @@ impl Widget for RichWidget {
         let theme = cx.env.theme;
         let font = self.base.unwrap_or(FontSpec::ui(theme.metrics.body));
         let mut spec = TextSpec::new(font, theme.role(self.role));
-        spec.wrap = if self.wrap && self.max_lines == 0 { Wrap::Words } else { Wrap::Truncate };
+        spec.wrap = if self.wrap && self.max_lines != 1 { Wrap::Words } else { Wrap::Truncate };
         spec.max_lines = self.max_lines;
         let width = bc.max.width.is_finite().then_some(bc.max.width.max(1.0));
         let laid = cx.env.text.layout_spans(theme, &self.spans, &spec, width);
