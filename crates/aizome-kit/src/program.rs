@@ -188,6 +188,8 @@ pub enum WindowKind {
 #[derive(Clone, Debug, PartialEq)]
 pub struct WindowSpec {
     pub title: String,
+    /// The content's size (and its limits): where the kit draws the menu
+    /// bar in the window (no Aizome shell), the bar comes on top of it.
     pub size: Size,
     pub min_size: Option<Size>,
     pub max_size: Option<Size>,

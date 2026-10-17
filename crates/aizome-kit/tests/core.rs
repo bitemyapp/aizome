@@ -240,3 +240,17 @@ fn keys_find_their_widget_after_a_rebuild() {
     // A sibling came before it; the key keeps its focus.
     assert_eq!(h.focused_name(w).as_deref(), Some("t"));
 }
+
+#[test]
+fn window_sizes_are_the_contents_under_an_in_window_menu_bar() {
+    let mut h = Harness::with(Probe::new(|_| text("hi").into()), aizome_kit::theme::Appearance::default(), true);
+    let w = h.window();
+    let bar = h.theme().metrics.target;
+    // Asked for 400 × 300 of content: the bar comes on top.
+    assert_eq!(h.size(w), Size::new(400.0, 300.0 + bar));
+    let win = *h.platform.windows.keys().next().expect("a window");
+    assert_eq!(h.platform.windows[&win].spec.size, Size::new(400.0, 300.0 + bar));
+    // Where the shell shows the menus, the size is the window's.
+    let h2 = Harness::new(Probe::new(|_| text("hi").into()));
+    assert_eq!(h2.size(h2.window()), Size::new(400.0, 300.0));
+}

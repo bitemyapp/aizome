@@ -118,10 +118,12 @@ impl<Msg: Clone + Send + 'static> Cx<'_, Msg> {
         }
     }
 
-    /// Ask for a new size.
+    /// Ask for a new size (of the content, as [`WindowSpec::size`] is: the
+    /// in-window menu bar, where there is one, comes on top).
     pub fn request_size(&mut self, window: WindowKey, size: Size) {
         if let Some(win) = self.core.window_of(window) {
-            self.platform.request_size(win, size);
+            let strip = self.core.menu_strip_of(win);
+            self.platform.request_size(win, Size::new(size.width, size.height + strip));
         }
     }
 

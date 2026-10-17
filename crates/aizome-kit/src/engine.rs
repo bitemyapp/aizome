@@ -261,22 +261,40 @@ impl Core {
                 }
             },
         };
+        // Sizes are the content's: the in-window menu bar, where the kit
+        // draws one, comes on top.
+        let strip = self.menu_strip(&spec);
+        let grow = |s: Size| Size::new(s.width, s.height + strip);
         let open = OpenSpec {
             title: spec.title.clone(),
-            size: spec.size,
-            min_size: spec.min_size,
-            max_size: spec.max_size,
+            size: grow(spec.size),
+            min_size: spec.min_size.map(grow),
+            max_size: spec.max_size.map(grow),
             resizable: spec.resizable,
             kind,
             background,
             app_id: self.info.app_id.clone(),
         };
-        let mut w = Win::new(id, WinKind::App { key, spec: spec.clone() }, spec.size);
+        let mut w = Win::new(id, WinKind::App { key, spec: spec.clone() }, grow(spec.size));
         w.title = spec.title.clone();
         self.wins.insert(id, w);
         self.keys.insert(key, KeyTarget::Window(id));
         platform.open_window(id, &open);
         key
+    }
+
+    /// How tall the in-window menu bar is over a window of `spec` (none
+    /// where menus go to the shell, or the window has no bar).
+    pub fn menu_strip(&self, spec: &WindowSpec) -> f64 {
+        if self.in_window_menus && spec.has_menu_bar() && !self.menubar.is_empty() { self.theme.metrics.target } else { 0.0 }
+    }
+
+    /// The menu strip's height over window `win`, if it's an app's.
+    pub fn menu_strip_of(&self, win: WinId) -> f64 {
+        match self.wins.get(&win).map(|w| &w.kind) {
+            Some(WinKind::App { spec, .. }) => self.menu_strip(spec),
+            _ => 0.0,
+        }
     }
 
     /// The engine window showing `key` (a sheet's parent's).
