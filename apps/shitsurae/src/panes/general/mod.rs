@@ -270,7 +270,7 @@ impl Pane for General {
             return self.main_view(vcx);
         }
         let (glyph, t) = self.page.icon();
-        let head = row![tile(glyph, t, 28.0), text(self.page.title()).size(20.0).weight(650.0)].spacing(10.0).align(Align::Center);
+        let head = vcx.anchor(self.page.entry(), row![tile(glyph, t, 28.0), text(self.page.title()).size(20.0).weight(650.0)].spacing(10.0).align(Align::Center).width(Fill));
         let body: Element<Msg> = match self.page {
             Page::Main => unreachable!(),
             Page::About => self.about.view(vcx).map(Msg::About),

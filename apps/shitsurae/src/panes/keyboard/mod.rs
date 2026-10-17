@@ -230,13 +230,18 @@ impl Keyboard {
         let opts = options(&k.options);
         let has = |o: &str| opts.iter().any(|x| x == o);
         let switch_i = SWITCH.iter().position(|(_, o)| o.is_some_and(has)).unwrap_or(0);
-        if n > 1 {
-            rows.push(
-                form::row("Switch layouts with", form::choice(&SWITCH.map(|s| s.0), switch_i, Msg::Switch))
-                    .entry("switch-layout")
-                    .help("The menu bar always shows the layout in use, and switches it."),
-            );
-        }
+        rows.push(
+            form::row(
+                "Switch layouts with",
+                dropdown(SWITCH.map(|s| s.0.to_owned()), switch_i).on_select(Msg::Switch).enabled(n > 1).min_width(160.0),
+            )
+            .entry("switch-layout")
+            .help(if n > 1 {
+                "The menu bar shows the layout in use, and switches it too."
+            } else {
+                "With more than one layout: the keys that switch between them."
+            }),
+        );
 
         let caps_i = CAPS.iter().position(|(_, o)| o.is_some_and(has)).unwrap_or(0);
         let compose_i = COMPOSE.iter().position(|(_, o)| o.is_some_and(has)).unwrap_or(0);
@@ -281,8 +286,9 @@ impl Keyboard {
         let map = keys::effective(&s.keys.bindings);
         let defaults = keys::effective(&BTreeMap::new());
         let desks = s.desks_or_default().len();
-        let mut out = vec![form::note(
-            "Only these belong to the system; every other ❖ shortcut is the app's, as ⌘ is on a Mac. Click a shortcut to type a new one.",
+        let mut out = vec![vcx.anchor(
+            "shortcuts",
+            form::note::<Msg>("Only these belong to the system; every other ❖ shortcut is the app's, as ⌘ is on a Mac. Click a shortcut to type a new one."),
         )];
         for sec in keys::sections(desks) {
             let rows: Vec<form::Row<Msg>> = sec

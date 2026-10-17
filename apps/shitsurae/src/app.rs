@@ -388,7 +388,7 @@ impl Shitsurae {
                 }));
             }
             None => {
-                line = line.push(text(self.shared.settings_path.display().to_string()).mono().size(10.5).role(Role::Faint));
+                line = line.push(text(short_path(&self.shared.settings_path)).mono().size(10.5).role(Role::Faint).tooltip(self.shared.settings_path.display().to_string()));
             }
         }
         line = line.push(spacer());
@@ -605,5 +605,15 @@ impl Program for Shitsurae {
             self.sheet = None;
         }
         true
+    }
+}
+
+/// A path as people say it: `~/.config/aizome/settings.toml` in the home
+/// folder, else just its name.
+pub fn short_path(p: &std::path::Path) -> String {
+    let home = aizome_config::home_dir();
+    match p.strip_prefix(&home) {
+        Ok(rest) => format!("~/{}", rest.display()),
+        Err(_) => p.file_name().map_or_else(|| p.display().to_string(), |n| n.to_string_lossy().into_owned()),
     }
 }

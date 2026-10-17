@@ -279,17 +279,16 @@ impl Pane for Appearance {
         .spacing(14.0);
         let mut theme_rows =
             vec![form::whole(container(themes).padding([14.0, 12.0, 12.0, 12.0]).width(Fill).align_x(Align::Center)).entry("theme")];
-        if a.theme == ThemeChoice::Auto {
-            theme_rows.push(
-                form::row("Follow sunset and sunrise", toggle(a.follow_sunset).on_toggle(Msg::FollowSunset))
-                    .entry("follow-sunset")
-                    .help(if a.follow_sunset {
-                        "Day while the sun is up where you are, Night after sunset."
-                    } else {
-                        "Day from 07:00 to 19:00, Night otherwise."
-                    }),
-            );
-        }
+        let auto = a.theme == ThemeChoice::Auto;
+        theme_rows.push(
+            form::row("Follow sunset and sunrise", toggle(a.follow_sunset).enabled(auto).on_toggle(Msg::FollowSunset))
+                .entry("follow-sunset")
+                .help(match (auto, a.follow_sunset) {
+                    (false, _) => "With Auto: Day while the sun is up where you are, else from 07:00 to 19:00.",
+                    (true, true) => "Day while the sun is up where you are, Night after sunset.",
+                    (true, false) => "Day from 07:00 to 19:00, Night otherwise.",
+                }),
+        );
 
         // The swatches in the theme showing now.
         let now = aizome_kit::theme::Appearance::from(a).theme_name();

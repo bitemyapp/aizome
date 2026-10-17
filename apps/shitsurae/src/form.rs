@@ -250,3 +250,11 @@ pub fn segments<Msg: Clone + Send + 'static>(
 ) -> Element<Msg> {
     segmented(options.iter().copied(), selected).on_select(f).into()
 }
+
+impl ViewCx<'_> {
+    /// `el` as the place option `entry` is revealed at (a sub-page's
+    /// heading, a tab's introduction), highlighted when search matches it.
+    pub fn anchor<Msg: 'static>(&self, entry: &str, el: impl Into<Element<Msg>>) -> Element<Msg> {
+        highlight(el, self.matches(entry)).id(self.entry_name(entry)).key(entry.to_owned())
+    }
+}
