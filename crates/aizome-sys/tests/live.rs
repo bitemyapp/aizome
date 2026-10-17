@@ -33,3 +33,24 @@ fn network_reads_networkmanager() {
     println!("  radios: {:?} airplane={}", state.radios, state.airplane_mode);
     assert!(!state.devices.is_empty());
 }
+
+#[test]
+#[ignore = "reads the real system bus"]
+fn bluetooth_reads_bluez() {
+    let bt = aizome_sys::bluetooth::Bluetooth::new(Wake::none());
+    assert!(eventually(|| bt.available()), "BlueZ is not running");
+    let state = bt.snapshot();
+    for adapter in &state.adapters {
+        println!(
+            "adapter {} {} powered={} ({}) discoverable={} discovering={}",
+            adapter.path, adapter.alias, adapter.powered, adapter.power_state, adapter.discoverable, adapter.discovering
+        );
+    }
+    for device in &state.devices {
+        println!(
+            "  device {} {:?} {:?} paired={} connected={} battery={:?}",
+            device.address, device.name, device.kind, device.paired, device.connected, device.battery
+        );
+    }
+    assert!(!state.adapters.is_empty());
+}
