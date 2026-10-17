@@ -63,6 +63,7 @@ pub fn drawn<Msg>(width: f64, height: f64, hash: impl std::hash::Hash, paint: im
             fit: None,
             hovered_msg: None,
             pad: aizome_kit::Padding::default(),
+            drop: None,
         },
         common: aizome_kit::element::Common::default(),
         child: None,
@@ -106,6 +107,12 @@ impl<Msg: Clone + Send + 'static> Drawn<Msg> {
     /// Drags with the left button.
     pub fn on_drag(mut self, f: impl Fn(DragPhase) -> Msg + 'static) -> Self {
         self.w.drag = Some(MsgMap::new(f));
+        self
+    }
+
+    /// Takes drops of files, links and text.
+    pub fn on_drop(mut self, f: impl Fn(Vec<String>, Option<String>) -> Msg + 'static) -> Self {
+        self.w.drop = Some(MsgMap::new(move |(u, t): (Vec<String>, Option<String>)| f(u, t)));
         self
     }
 
@@ -185,6 +192,8 @@ struct DrawnWidget {
     hovered_msg: Option<MsgFn>,
     /// Room round its child.
     pad: aizome_kit::Padding,
+    /// Takes drops: files' URLs and text.
+    drop: Option<MsgMap<(Vec<String>, Option<String>)>>,
 }
 
 /// A press under way.
@@ -233,7 +242,7 @@ impl Widget for DrawnWidget {
     }
 
     fn hit(&self) -> bool {
-        self.hover || self.drag.is_some() || self.middle.is_some()
+        self.hover || self.drag.is_some() || self.middle.is_some() || self.drop.is_some()
     }
 
     fn hover_paints(&self) -> bool {
@@ -328,6 +337,14 @@ impl Widget for DrawnWidget {
                 }
                 None => Status::Ignored,
             },
+            Event::DragOver { .. } => if self.drop.is_some() { Status::Handled } else { Status::Ignored },
+            Event::Drop { urls, text, .. } => match &self.drop {
+                Some(m) => {
+                    cx.emit_map(m, (urls.clone(), text.clone()));
+                    Status::Handled
+                }
+                None => Status::Ignored,
+            },
             Event::PointerLeave => {
                 cx.state::<PressState>().over = false;
                 Status::Ignored
@@ -369,4 +386,35 @@ pub fn around<Msg>(
     d.w.pad = pad.into();
     d.child = Some(child.into());
     d
+}
+
+/// Two children at the ends of a row at least `min_width` wide: the first
+/// from the left, the second from the right, `gap` apart at least; the row
+/// is as wide as both need when that's more than `min_width` (a header
+/// whose widgets outgrow it).
+pub fn split<Msg>(left: Element<Msg>, right: Element<Msg>, min_width: f64, gap: f64, pad: (f64, f64)) -> Element<Msg> {
+    Element::new(SplitWidget { min_width, gap, pad }, vec![left, right])
+}
+
+struct SplitWidget {
+    min_width: f64,
+    gap: f64,
+    pad: (f64, f64),
+}
+
+impl Widget for SplitWidget {
+    fn name(&self) -> &'static str {
+        "split"
+    }
+
+    fn layout(&mut self, cx: &mut LayoutCx, bc: Constraints) -> Size {
+        let room = Constraints::loose(Size::new(f64::INFINITY, bc.max.height));
+        let l = cx.layout_child(0, room);
+        let r = cx.layout_child(1, room);
+        let h = l.height.max(r.height);
+        let w = (self.pad.0 + l.width + self.gap + r.width + self.pad.1).max(self.min_width).ceil();
+        cx.place_child(0, Point::new(self.pad.0, ((h - l.height) / 2.0).round()));
+        cx.place_child(1, Point::new(w - self.pad.1 - r.width, ((h - r.height) / 2.0).round()));
+        bc.constrain(Size::new(w, h))
+    }
 }

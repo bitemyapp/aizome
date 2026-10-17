@@ -126,16 +126,23 @@ impl Store {
     /// `quiet` is Do Not Disturb (or the app is muted): filed without the
     /// bar's line. Critical ones show anyway.
     pub fn post(&mut self, n: Incoming, filed_under: String, quiet: bool, now: u64) -> Posted {
-        let replaced = n.replaces_id != 0 && self.list.iter().any(|x| x.id == n.replaces_id);
-        let id = if replaced {
-            n.replaces_id
-        } else {
+        let id = if n.replaces_id != 0 && self.list.iter().any(|x| x.id == n.replaces_id) { n.replaces_id } else { self.fresh_id() };
+        self.post_as(id, n, filed_under, quiet, now)
+    }
+
+    /// An id no notification has.
+    pub fn fresh_id(&mut self) -> u32 {
+        self.next_id = self.next_id.wrapping_add(1).max(1);
+        while self.list.iter().any(|x| x.id == self.next_id) {
             self.next_id = self.next_id.wrapping_add(1).max(1);
-            while self.list.iter().any(|x| x.id == self.next_id) {
-                self.next_id = self.next_id.wrapping_add(1).max(1);
-            }
-            self.next_id
-        };
+        }
+        self.next_id
+    }
+
+    /// Take a notification in under `id` (the server gave it), replacing
+    /// the one with that id if there is one.
+    pub fn post_as(&mut self, id: u32, n: Incoming, filed_under: String, quiet: bool, now: u64) -> Posted {
+        let replaced = self.list.iter().any(|x| x.id == id);
         let note = Notification {
             id,
             app_name: n.app_name,

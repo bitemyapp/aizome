@@ -20,6 +20,7 @@ serde_json.workspace = true
 log.workspace = true
 env_logger.workspace = true
 libc = "0.2"
+zbus = { version = "5.19", default-features = false, features = ["async-io", "blocking-api"] }
 
 [[bin]]
 name = "aizome-shell"

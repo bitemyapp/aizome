@@ -180,3 +180,34 @@ pub fn shots() -> PathBuf {
 pub fn golden(name: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden").join(name)
 }
+
+/// Three unread mails and the boards' Shelf.
+pub fn with_mail_and_shelf(h: &mut Harness<Shell>) {
+    use aizome_shell::notifications::server::NoteEvent;
+    use aizome_shell::notifications::store::Incoming;
+    for (i, (summary, body)) in [
+        ("Build passed", "sidestep-ui: 61 tests ok"),
+        ("Lunch?", "There's ramen downstairs"),
+        ("Re: tiles at fractional scale", "“Half a pixel off rather than blurred…”"),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let n = Incoming {
+            app_name: "Mail".into(),
+            summary: summary.into(),
+            body: body.into(),
+            desktop_entry: Some("thunderbird".into()),
+            actions: vec![("default".into(), "Open".into())],
+            ..Incoming::default()
+        };
+        h.send(Msg::Note(NoteEvent::Notify(10 + i as u32, Box::new(n))));
+    }
+    let s = h.program_mut();
+    s.shelf.items = vec![
+        aizome_shell::shelf::ShelfItem::File { path: "/home/u/wallpaper-draft.png".into() },
+        aizome_shell::shelf::ShelfItem::Text { text: "damage is per layer, not per window".into() },
+        aizome_shell::shelf::ShelfItem::Folder { path: "/home/u/release-notes".into() },
+    ];
+    h.send(Msg::Nothing);
+}

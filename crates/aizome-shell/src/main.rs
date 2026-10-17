@@ -12,6 +12,7 @@ fn main() {
                 println!("aizome-shell {}", env!("CARGO_PKG_VERSION"));
                 return;
             }
+            "msg" => std::process::exit(aizome_shell::msg(args.collect())),
             other => {
                 eprintln!("aizome-shell: unknown option {other}\n\n{}", aizome_shell::USAGE);
                 std::process::exit(2);

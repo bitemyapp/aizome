@@ -15,7 +15,7 @@ use aizome_theme::typeface;
 use crate::look::{self, Hue};
 use crate::actions::Action;
 use crate::systray::meters::{Reading, TRACK};
-use crate::widgets::drawn::{Press, around, drawn};
+use crate::widgets::drawn::{Press, around, drawn, split};
 
 /// What the bar's elements say.
 #[derive(Clone, Debug, PartialEq)]
@@ -525,10 +525,9 @@ fn header(model: &BarModel) -> Element<BarMsg> {
             ));
         }
     }
-    items.push(aizome_kit::spacer().into());
-    items.push(clock(&model.clock, open(TrayWidget::Clock)));
-    let content = row(items).spacing(9.0).align(Align::Center).height(HEIGHT);
-    around(content, [0.0, 10.0, 0.0, 11.0], aizome_kit::Size::new(HEADER, HEIGHT), "header-edge", |cx| {
+    let left = row(items).spacing(9.0).align(Align::Center).height(HEIGHT).into();
+    let content = split(left, clock(&model.clock, open(TrayWidget::Clock)), HEADER, 16.0, (11.0, 10.0));
+    around(content, 0.0, aizome_kit::Size::ZERO, "header-edge", |cx| {
         let t = cx.theme();
         let b = cx.bounds();
         cx.canvas.fill_rect(Rect::new(0.0, 0.0, 1.0, b.y1 - 1.0), t.bevel_lo());
@@ -596,4 +595,67 @@ mod tests {
         assert_eq!(NetGlyph::Wifi(4).icon(), Icon::Wifi);
         assert_eq!(TrayWidget::named("battery"), Some(TrayWidget::Battery));
     }
+}
+
+/// Measures one line of text set as a spec: the kit's text cache.
+pub type Measure<'a> = dyn FnMut(&str, &aizome_kit::text::TextSpec) -> f64 + 'a;
+
+/// The header's width, as `header` lays it out.
+pub fn header_width(t: &aizome_kit::Theme, m: &mut Measure, model: &BarModel) -> f64 {
+    let tray = &model.tray;
+    let mut items: Vec<f64> = Vec::new();
+    if tray.cpu {
+        items.push(model.meters.cores.len().max(1) as f64 * 4.0 - 1.0);
+    }
+    if tray.memory {
+        items.push(4.0);
+    }
+    if let Some(_n) = model.folded_apps {
+        let label = model.folded_apps.map(|n| if n == 1 { "1 app".to_owned() } else { format!("{n} apps") }).unwrap_or_default();
+        let mut w = m(&label, &ui_spec(t, 12.0, typeface::WEIGHT_SEMIBOLD, t.text2())) + 21.0;
+        if model.unread > 0 {
+            w += 6.0 + 8.0 * model.unread.to_string().len() as f64;
+        }
+        items.push(w.ceil());
+    } else {
+        for on in [tray.network.is_some(), tray.sound.is_some(), tray.bluetooth.is_some(), tray.display.is_some()] {
+            if on {
+                items.push(15.0);
+            }
+        }
+        if let Some((p, _)) = tray.battery {
+            items.push((19.0 + m(&format!("{p:.0}%"), &look::digits(11.5 * t.metrics.factor, typeface::WEIGHT_REGULAR, t.text2()))).ceil());
+        }
+    }
+    let row: f64 = items.iter().sum::<f64>() + 9.0 * (items.len().saturating_sub(1)) as f64;
+    let clock = m(&model.clock, &look::digits(12.5 * t.metrics.factor, typeface::WEIGHT_SEMIBOLD, t.text())).ceil();
+    (11.0 + row + 16.0 + clock + 10.0).max(HEADER).ceil()
+}
+
+/// Where each Desk of the strip is, across a bar `width` wide: (index,
+/// left and right edges).
+pub fn desk_rects(t: &aizome_kit::Theme, m: &mut Measure, model: &BarModel, width: f64) -> Vec<(u32, Rect)> {
+    let header = if model.primary { header_width(t, m, model) } else { 0.0 };
+    let mut widths: Vec<(u32, f64)> = Vec::new();
+    for d in &model.desks {
+        let name = model.renaming.as_ref().filter(|(r, _)| *r == d.index).map(|(_, s)| s.clone()).unwrap_or_else(|| d.name.clone());
+        let show_name = name != d.index.to_string() || model.renaming.as_ref().is_some_and(|(r, _)| *r == d.index);
+        let ns = look::mono(12.0 * t.metrics.factor, typeface::WEIGHT_REGULAR, t.text3());
+        let mut w = (9.0 + m(&d.index.to_string(), &ns) + 9.0 + 1.0).ceil();
+        if show_name {
+            w = (9.0 + m(&d.index.to_string(), &ns) + 9.0 + 1.0 + 5.0 + m(&name, &ui_spec(t, 12.0, typeface::WEIGHT_TAB, t.text()))).ceil();
+        }
+        widths.push((d.index, w));
+    }
+    let strip: f64 = widths.iter().map(|(_, w)| w).sum::<f64>() + 24.0 + 2.0;
+    let right = width - header - if model.primary { 12.0 } else { 0.0 };
+    let mut x = right - strip + 1.0;
+    widths
+        .into_iter()
+        .map(|(i, w)| {
+            let r = Rect::new(x, 0.0, x + w, HEIGHT);
+            x += w;
+            (i, r)
+        })
+        .collect()
 }

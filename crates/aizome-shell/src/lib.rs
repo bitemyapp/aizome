@@ -5,6 +5,8 @@
 pub mod actions;
 pub mod apps;
 pub mod clock;
+pub mod deskbar;
+mod deskbar_glue;
 pub mod ipc;
 pub mod launch;
 pub mod look;
@@ -27,6 +29,11 @@ Aizome's desktop shell: the menu bar, Toolchest, Desks strip, systray,
 Deskbar and Shelf, command palette, menus, notifications, OSD, desktop,
 lock screen and authentication dialog. The compositor starts it.
 
+Usage:
+  aizome-shell             run the shell (the compositor starts it)
+  aizome-shell msg REQ     ask the running shell: palette, toolchest, lock,
+                           dismiss, state, or a JSON request
+
 Environment:
   AIZOME_SOCKET          the compositor's IPC socket
   AIZOME_SHELL_SOCKET    where apps publish their menus to the shell
@@ -40,6 +47,37 @@ pub fn run() -> i32 {
         Ok(_) => 0,
         Err(e) => {
             log::error!("{e}");
+            1
+        }
+    }
+}
+
+/// `aizome-shell msg REQUEST [JSON fields]`: ask the running shell (at
+/// `$AIZOME_SHELL_SOCKET`) to do something, as the compositor does:
+/// `aizome-shell msg palette`, `aizome-shell msg '{"request":"osd","kind":"volume","value":0.4}'`.
+pub fn msg(args: Vec<String>) -> i32 {
+    let Some(first) = args.first() else {
+        eprintln!("usage: aizome-shell msg REQUEST|JSON");
+        return 2;
+    };
+    let json = if first.trim_start().starts_with('{') { first.clone() } else { format!("{{\"request\":\"{first}\"}}") };
+    let request: aizome_shell_proto::ShellRequest = match serde_json::from_str(&json) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("aizome-shell msg: {e}");
+            return 2;
+        }
+    };
+    let path = apps::server::socket_path();
+    match aizome_shell_proto::request(&path, request) {
+        Ok((ok, message)) => {
+            if !message.is_empty() {
+                println!("{message}");
+            }
+            if ok { 0 } else { 1 }
+        }
+        Err(e) => {
+            eprintln!("aizome-shell msg: {}: {e}", path.display());
             1
         }
     }

@@ -47,6 +47,10 @@ pub enum Msg {
     SettingsChanged,
     Run(Action),
     Bar(WindowKey, BarMsg),
+    Deskbar(crate::deskbar::DeskbarMsg),
+    Note(crate::notifications::server::NoteEvent),
+    /// The bar's notification line has shown long enough.
+    BannerDone(u32),
     /// Nothing: a message to wake the loop.
     Nothing,
 }
@@ -118,6 +122,21 @@ pub struct Shell {
     pub meters: Reading,
     pub now: Local,
     pub renaming: Option<(u32, String)>,
+    pub shelf: crate::shelf::Shelf,
+    /// Apps whose windows the person folded (true) or unfolded (false).
+    pub folded: HashMap<String, bool>,
+    pub notes: crate::notifications::store::Store,
+    /// Apps whose every unread notification shows.
+    pub notes_open: Vec<String>,
+    pub note_server: Option<crate::notifications::server::NoteServer>,
+    /// The notification in the bar's line now, and those waiting for it.
+    pub banner: Option<u32>,
+    pub banner_queue: Vec<u32>,
+    pub(crate) deskbar_size: Option<aizome_kit::Size>,
+    pub(crate) icons: HashMap<String, Option<aizome_kit::Image>>,
+    /// The primary bar's Desks, by where they are across it.
+    pub(crate) desk_strip: Vec<(u32, Rect)>,
+    pub(crate) text: aizome_kit::text::TextCache,
     launches: HashMap<ActivationRequest, (Launch, Option<PathBuf>)>,
     stream: Option<MsgSender<Msg>>,
     _settings_watch: Option<aizome_config::Watcher>,
@@ -148,6 +167,17 @@ impl Shell {
             meters: Reading::default(),
             now: Local::now(),
             renaming: None,
+            shelf: crate::shelf::Shelf::default(),
+            folded: HashMap::new(),
+            notes: crate::notifications::store::Store::default(),
+            notes_open: Vec::new(),
+            note_server: None,
+            banner: None,
+            banner_queue: Vec::new(),
+            deskbar_size: None,
+            icons: HashMap::new(),
+            desk_strip: Vec::new(),
+            text: aizome_kit::text::TextCache::default(),
             launches: HashMap::new(),
             stream: None,
             _settings_watch: None,
@@ -273,8 +303,8 @@ impl Shell {
             meters: self.meters.clone(),
             clock: self.now.bar_label(self.bar_cfg.clock, self.bar_cfg.clock_seconds, self.bar_cfg.clock_date),
             folded_apps: folded,
-            unread: 0,
-            banner: None,
+            unread: self.notes.unread_count(),
+            banner: if primary { self.banner_view() } else { None },
             primary,
         }
     }
@@ -284,7 +314,10 @@ impl Shell {
             BarMsg::Run(a) => self.run(a, cx),
             BarMsg::Press(slot, rect) => self.open_slot(win, slot, rect, cx),
             BarMsg::Hover(_) => {}
-            BarMsg::Banner(_) => {}
+            BarMsg::Banner(id) => {
+                self.open_note(id, cx);
+                self.banner_done(id, cx);
+            }
             BarMsg::DeskMenu(index, at) => {
                 let Some(desk) = self.wm.desk(index).cloned() else { return };
                 let menu = build::desk_context(&desk, self.wm.desks.len() > 1);
@@ -420,7 +453,11 @@ impl Shell {
             }
             Action::Screenshot => self.ipc.send(Request::Screenshot { output: None, path: None, window: None, area: None, clipboard: false }),
             Action::About { .. } | Action::Palette { .. } | Action::Toolchest | Action::SetTheme { .. } => {}
-            Action::ToggleDoNotDisturb | Action::Service(_) | Action::Disk { .. } | Action::ShelfRemove { .. } => {}
+            Action::ToggleDoNotDisturb => {
+                self.notes_cfg.do_not_disturb = !self.notes_cfg.do_not_disturb;
+                self.save_section("notifications");
+            }
+            Action::Service(_) | Action::Disk { .. } | Action::ShelfRemove { .. } => {}
             Action::NewFolderOnDesktop => {
                 let dir = crate::launch::desktop_dir();
                 let mut path = dir.join("New Folder");
@@ -499,11 +536,13 @@ impl Shell {
                 .name("meters".into())
                 .spawn(move || {
                     let mut s = crate::systray::meters::Sampler::new();
+                    // A first reading soon, then every two seconds.
+                    std::thread::sleep(Duration::from_millis(250));
                     loop {
-                        std::thread::sleep(Duration::from_secs(2));
                         if !tx.send(Msg::Meters(s.read())) {
                             return;
                         }
+                        std::thread::sleep(Duration::from_secs(2));
                     }
                 })
                 .ok();
@@ -513,6 +552,15 @@ impl Shell {
             self._settings_watch = Some(aizome_config::Watcher::spawn(move || {
                 tx.send(Msg::SettingsChanged);
             }));
+        }
+        {
+            let tx = tx.clone();
+            match crate::notifications::server::NoteServer::start(move |e| {
+                tx.send(Msg::Note(e));
+            }) {
+                Ok(s) => self.note_server = Some(s),
+                Err(e) => log::warn!("the notifications server: {e}"),
+            }
         }
         let tx2 = tx.clone();
         self.sys = crate::sys::Sys::start(move || {
@@ -656,8 +704,12 @@ impl Program for Shell {
             Msg::SettingsChanged => self.reload_settings(),
             Msg::Run(a) => self.run(a, cx),
             Msg::Bar(w, m) => self.bar(w, m, cx),
+            Msg::Deskbar(m) => self.deskbar_msg(m, cx),
+            Msg::Note(e) => self.take_note(e, cx),
+            Msg::BannerDone(id) => self.banner_done(id, cx),
             Msg::Nothing => {}
         }
+        self.after_update(cx);
     }
 
     fn view(&self, window: WindowKey) -> Element<Msg> {
@@ -672,7 +724,8 @@ impl Program for Shell {
                 cx.canvas.fill_rect(b, aizome_kit::theme::color(t.palette.desktop));
             })
             .into(),
-            Some(Surface::Deskbar) | None => aizome_kit::space(0.0),
+            Some(Surface::Deskbar) => crate::deskbar::view(&self.deskbar_model()).map(Msg::Deskbar),
+            None => aizome_kit::space(0.0),
         }
     }
 
@@ -741,4 +794,19 @@ pub fn layer(opts: LayerOptions, width: f64, height: f64, title: &str) -> Window
     let mut s = WindowSpec::layer(opts, width, height);
     s.title = title.to_owned();
     s
+}
+
+impl Shell {
+    /// What every update ends with: surfaces sized to their content, the
+    /// geometry drags need.
+    pub fn after_update(&mut self, cx: &mut Cx<Msg>) {
+        self.sync_deskbar(cx);
+        if let Some(screen) = self.primary().cloned() {
+            let model = self.bar_model(&screen);
+            let theme = cx.theme().clone();
+            let text = &mut self.text;
+            let mut measure = |s: &str, spec: &aizome_kit::text::TextSpec| text.layout(&theme, s, spec, None).size().width;
+            self.desk_strip = crate::menubar::desk_rects(&theme, &mut measure, &model, screen.output.frame.width());
+        }
+    }
 }
