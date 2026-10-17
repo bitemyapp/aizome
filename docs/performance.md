@@ -521,3 +521,46 @@ p50 0.9–2.0 ms, p95 1.2–2.8 ms; damage 87% (the figures of every visible
 row change each second). Resident memory 36.6 MB.
 
 No exceptions.
+
+## Shashin (Images)
+
+Headlessly, `apps/shashin/tests/budget.rs` (`cargo test --release -p
+aizome-shashin --test budget -- --nocapture`), a 3000 × 2000 camera JPEG in
+a 1440 × 900 window, from the event to the damage rasterised at 2× (the
+picture fills 2880 × 1740 pixels of it). Release build, with Aizome's
+fonts:
+
+| Interaction | frame p50 | p95 | max | Shashin's part p50 / p95 | drawn |
+|---|---|---|---|---|---|
+| Showing a fitted photo (its drawing for the fit, one to one) | 22.2 ms | 28.8 ms | 30.3 ms | 0.02 / 0.02 ms | 100% |
+| Panning at 100% by dragging | 24.2 ms | 30.2 ms | 31.6 ms | 0.06 / 0.09 ms | 70% |
+| Pinching (drawn from what's there, nearest pixel) | 30.3 ms | 38.8 ms | 45.7 ms | 0.11 / 0.27 ms | 100% |
+| A zoom step (❖+, ❖−), settled | 27.5 ms | 31.1 ms | 31.6 ms | 0.02 / 0.03 ms | 100% |
+| The next picture (read ahead) | 6.0 ms | 28.8 ms | 29.7 ms | 0.08 / 4.0 ms | 99% |
+
+Shashin's part (the event, update, view, layout and diff) stays far
+inside the budget: decoding, scaling, turning, SVG rendering, thumbnails
+and the next and previous pictures all happen on the kit's worker threads,
+a camera's EXIF thumbnail shows while a JPEG decodes, and every frame at
+rest draws a picture already scaled to exactly the zoom, one device pixel
+to one, with `BlendMode::Copy` for opaque pictures and the `sunk` ground
+filled only around them. The next picture's p50 is low because most of
+the test folder's pictures are small; a full-window photo costs what the
+other rows do.
+
+Live, the release build under headless sway (pixman) at 2× on a 2880 ×
+1800 output, a 6000 × 4000 JPEG, Sidestep's frame stats: ❖+ and ❖− steps,
+23 frames, rasterise p50 24.7 ms, p95 30.8 ms, record 23 µs, damage 95%.
+
+Exception: **a picture filling a window at 2×**. All of a frame's cost is
+Sidestep rasterising the picture: it draws images through tiny-skia's
+pattern pipeline at about 4 ns a device pixel whatever the scale or
+filter (`apps/shashin/examples/drawbench.rs`: a one-to-one 2800 × 1800
+blit takes 21 ms, 18 ms with `Copy`; a solid fill of the same area
+0.3 ms), so any frame that redraws a full-window photo at 2× (opening it,
+panning, zooming) takes 18–30 ms, and a 1× window a quarter of that. The
+fix belongs in Sidestep: a fast path in `raster::images::draw` for images
+whose pixels land one to one on whole device pixels (a row copy for
+`Copy` or opaque pictures, a straight blend otherwise) would bring these
+frames to about 2 ms, since Shashin already draws every frame at rest
+that way.
