@@ -8,9 +8,12 @@
 //! everyone goes through Sekka's installed `yukimi-helper`, under its
 //! polkit action, exactly as the GTK Yukimi does it.
 
+pub mod app;
 pub mod checks;
+pub mod fixture;
+pub mod instance;
 pub mod job;
 pub mod model;
 pub mod ops;
 pub mod paths;
-pub mod fixture;
+pub mod ui;
