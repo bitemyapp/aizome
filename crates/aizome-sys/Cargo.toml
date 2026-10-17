@@ -1,0 +1,19 @@
+[package]
+name = "aizome-sys"
+description = "Aizome's system services: network, Bluetooth, sound, power, date and time, users, printers, disks, processes, media players, notifications, polkit, apps and keyboard data"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+log.workspace = true
+# D-Bus: the blocking API for calls, the async one (on a thread of our own)
+# for following each daemon's signals.
+zbus = { version = "5.19", default-features = false, features = ["async-io", "blocking-api"] }
+# Already in zbus's tree: timeouts and merging signal streams.
+async-io = "2.3"
+futures-lite = { version = "2.6", default-features = false, features = ["std"] }
+libc = "0.2"
+serde.workspace = true
