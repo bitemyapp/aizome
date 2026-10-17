@@ -25,6 +25,7 @@
   fontconfig,
   freetype,
   dbus,
+  libpulseaudio,
   pam,
   src,
   sidestep,
@@ -41,6 +42,7 @@ let
   # fontconfig for the text engine, and xkbcommon for smithay's keymaps.
   runtimeLibs = [
     libglvnd
+    libpulseaudio
     fontconfig
     libxkbcommon
     wayland
@@ -73,6 +75,7 @@ rustPlatform.buildRustPackage {
     freetype
     dbus
     pam
+    libpulseaudio
   ];
 
   cargoBuildFlags = [ "--workspace" ];
