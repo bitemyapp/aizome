@@ -159,6 +159,12 @@ in
     services.udisks2.enable = lib.mkDefault true;
     services.accounts-daemon.enable = lib.mkDefault true;
     services.printing.enable = lib.mkDefault true;
+    # Network and driverless (IPP Everywhere) printers announce themselves
+    # over mDNS, which is how Settings finds them.
+    services.avahi = {
+      enable = lib.mkDefault true;
+      nssmdns4 = lib.mkDefault true;
+    };
     services.geoclue2.enable = lib.mkDefault true;
     # Tenki's "Current Location", and Settings' automatic time zone. They
     # ask for city accuracy; the location comes from nixpkgs' default
