@@ -94,7 +94,7 @@ pub use process::{
     Process, ProcessSampler, ProcessState, SortKey, SystemdUnit, UnitManager, sort_processes,
 };
 pub use sensors::{Temperature, cpu_temperature, pick_cpu_temperature, temperatures};
-pub use signal::{Signal, kill, signal_process, terminate};
+pub use signal::{Signal, kill, signal_process, signal_started, terminate};
 
 use crate::Error;
 use std::io::Read;

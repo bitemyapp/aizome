@@ -79,6 +79,17 @@ pub fn kill(pid: u32) -> Result<()> {
     signal_process(pid, Signal::Kill)
 }
 
+/// Send `signal` to process `pid` only if it is still the one that started
+/// at `start_ticks` (clock ticks after boot, as [`Process::start_ticks`]):
+/// a pid reused since it was listed gets [`Error::NotFound`], not the
+/// signal. For lists kept as plain data, without the [`Process`] at hand.
+///
+/// [`Process::start_ticks`]: super::Process::start_ticks
+/// [`Process`]: super::Process
+pub fn signal_started(pid: u32, start_ticks: u64, signal: Signal) -> Result<()> {
+    send_checked(pid, signal, Some(start_ticks))
+}
+
 /// [`signal_process`], also refusing with [`Error::NotFound`] if the
 /// process's start time (clock ticks since boot) isn't `start_ticks`: the
 /// pid now belongs to another process.
