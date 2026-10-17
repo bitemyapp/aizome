@@ -384,3 +384,112 @@ fn grim_wlr_randr_and_lswt_work() {
         assert!(text.contains("test.a") && text.contains("Screencopy"), "lswt: {text}");
     }
 }
+
+#[test]
+fn dragging_the_frame_edge_resizes() {
+    let c = Compositor::start(opts(None));
+    let a = c.client(Spec::new("test.a", 0x2222cc).size(400, 300));
+    let w = c.wait_window("test.a");
+    let g = w.geometry;
+    // The bottom-right corner, just outside the frame.
+    let corner = ((g.x + g.w + 3) as f64, (g.y + g.h + 3) as f64);
+    c.ok(Request::Synthesize {
+        events: vec![
+            Synthetic::PointerMotion { x: corner.0, y: corner.1 },
+            Synthetic::PointerButton { button: "left".into(), pressed: true },
+            Synthetic::PointerMotion { x: corner.0 + 60.0, y: corner.1 + 40.0 },
+            Synthetic::PointerButton { button: "left".into(), pressed: false },
+        ],
+    });
+    a.wait_seen("resized", |s| s.size == (460, 340));
+    let w2 = c.wait_windows("the model follows", |ws| ws[0].geometry.w == 460);
+    assert_eq!((w2[0].geometry.x, w2[0].geometry.y), (g.x, g.y), "the top-left stays");
+    // From the left edge the right edge stays put.
+    let left = ((g.x - 3) as f64, (g.y + 150) as f64);
+    c.ok(Request::Synthesize {
+        events: vec![
+            Synthetic::PointerMotion { x: left.0, y: left.1 },
+            Synthetic::PointerButton { button: "left".into(), pressed: true },
+            Synthetic::PointerMotion { x: left.0 + 50.0, y: left.1 },
+            Synthetic::PointerButton { button: "left".into(), pressed: false },
+        ],
+    });
+    let ws = c.wait_windows("narrower", |ws| ws[0].geometry.w == 410);
+    assert_eq!(ws[0].geometry.x + ws[0].geometry.w, g.x + 460, "anchored on the right");
+}
+
+#[test]
+fn shift_dragging_a_tab_slides_it_along_the_top() {
+    let c = Compositor::start(opts(None));
+    let _a = c.client(Spec::new("test.a", 0x2222cc).size(600, 300).title("Slide"));
+    let w = c.wait_window("test.a");
+    let g = w.geometry;
+    let tab = (g.x as f64 + 40.0, g.y as f64 - 12.0);
+    c.ok(Request::Synthesize {
+        events: vec![
+            Synthetic::Key { key: "shift".into(), pressed: true },
+            Synthetic::PointerMotion { x: tab.0, y: tab.1 },
+            Synthetic::PointerButton { button: "left".into(), pressed: true },
+            Synthetic::PointerMotion { x: tab.0 + 200.0, y: tab.1 + 30.0 },
+            Synthetic::PointerButton { button: "left".into(), pressed: false },
+            Synthetic::Key { key: "shift".into(), pressed: false },
+        ],
+    });
+    c.settle();
+    let img = c.screenshot();
+    // The window didn't move; its tab now starts 200pt in.
+    let w2 = c.window("test.a").unwrap();
+    assert_eq!(w2.geometry, g);
+    assert_px(&img, g.x + 5, g.y - 14, rgb(DESKTOP), "the tab left its corner");
+    assert_px(&img, g.x + 200 + 2, g.y - 14, rgb(FOCUS), "and sits 200pt along");
+}
+
+#[test]
+fn settings_apply_live() {
+    let c = Compositor::start(opts(None));
+    let _a = c.client(Spec::new("test.a", 0x2222cc));
+    let w = c.wait_window("test.a");
+    c.settle();
+    let img = c.screenshot();
+    assert_px(&img, w.geometry.x + 2, w.geometry.y - 14, rgb(FOCUS), "Night's amber");
+    std::fs::write(c.dir.join("config/aizome/settings.toml"), "[appearance]\ntheme = \"day\"\nfocus = \"cyan\"\neffects = \"austere\"\n").unwrap();
+    c.ok(Request::ReloadConfig);
+    c.settle();
+    let img = c.screenshot();
+    assert_px(&img, w.geometry.x + 2, w.geometry.y - 14, rgb(0x8fd8f7), "Day's cyan");
+    assert_px(&img, 3, 3, rgb(0xc9cde0), "Day's desktop");
+}
+
+#[test]
+fn windows_reopen_where_their_app_left_them() {
+    let c = Compositor::start(opts(None));
+    let a = c.client(Spec::new("test.remember", 0x2222cc).size(500, 320));
+    let w = c.wait_window("test.remember");
+    c.ok(Request::Move { id: Some(w.id), x: 77, y: 99 });
+    c.wait_windows("moved", |ws| ws[0].geometry.x == 77);
+    drop(a);
+    c.wait_windows("closed", |ws| ws.is_empty());
+    let _b = c.client(Spec::new("test.remember", 0x2222cc).size(500, 320));
+    let w = c.wait_window("test.remember");
+    assert_eq!((w.geometry.x, w.geometry.y), (77, 99));
+}
+
+#[test]
+fn the_screenshot_chord_saves_and_announces() {
+    let c = Compositor::start(opts(None));
+    let _a = c.client(Spec::new("test.a", 0x2222cc));
+    c.wait_window("test.a");
+    let mut events = aizome_ipc::Client::connect_to(&c.ipc).unwrap().events().unwrap();
+    events.stream().set_read_timeout(Some(std::time::Duration::from_secs(10))).unwrap();
+    c.ok(Request::Synthesize { events: vec![Synthetic::Chord { keys: "super+shift+3".into() }] });
+    let path = events.by_ref().find_map(|e| match e {
+        Ok(aizome_ipc::Event::ScreenshotTaken { path }) => Some(path),
+        _ => None,
+    });
+    let path = std::path::PathBuf::from(path.expect("a screenshot event"));
+    assert!(path.starts_with(c.dir.join("home/Pictures/Screenshots")), "{}", path.display());
+    let name = path.file_name().unwrap().to_string_lossy().into_owned();
+    assert!(name.starts_with("Screenshot ") && name.contains(" at ") && name.ends_with(".png"), "{name}");
+    let img = Image::load(&path);
+    assert_eq!((img.width, img.height), (1280, 800));
+}
