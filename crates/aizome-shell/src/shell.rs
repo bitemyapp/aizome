@@ -458,7 +458,7 @@ impl Shell {
                 let anchor = Rect::new(rect.x0, rect.y0, rect.x1, crate::menubar::HEIGHT - 1.0);
                 let output = self.screen_of(win).map(|s| s.name()).unwrap_or_default();
                 let tear = Msg::TearOff { app: crate::tearoff::TOOLCHEST.into(), path: vec![], output, at: Point::new(rect.x0 + 12.0, crate::menubar::HEIGHT + 12.0) };
-                let style = MenuStyle::below().titled("Toolchest").min_width(rect.width()).on_tear_off(tear);
+                let style = MenuStyle::below().titled("Toolchest").mark().min_width(rect.width()).on_tear_off(tear);
                 self.show_menu(win, anchor, &menu, style, cx);
             }
             Slot::Menu(i) => {

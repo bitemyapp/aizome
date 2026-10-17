@@ -107,8 +107,12 @@ pub fn size(menu: &ShellMenu, measure: &mut dyn FnMut(&str, &TextSpec) -> f64, t
 }
 
 /// A palette: the kit's menu drawn in place, under a hold for its strip.
-pub fn view(index: usize, menu: aizome_kit::Menu<Msg>, title: &str, pinned: bool, size: Size) -> Element<Msg> {
-    let menu = menu_view(menu)
+pub fn view(index: usize, menu: aizome_kit::Menu<Msg>, title: &str, pinned: bool, size: Size, mark: bool) -> Element<Msg> {
+    let mut menu = menu_view(menu);
+    if mark {
+        menu = menu.mark();
+    }
+    let menu = menu
         .title(title.to_owned())
         .on_close(Msg::Tear(TearMsg::Close(index)))
         .pin(pinned, move |p| Msg::Tear(TearMsg::Pin(index, p)));
@@ -231,7 +235,7 @@ impl Shell {
         let (Some(t), Some(shown)) = (self.tearoffs.get(i), self.tear_shown.get(&i)) else { return aizome_kit::space(0.0) };
         let Some((title, menu)) = self.tear_menu(t) else { return aizome_kit::space(0.0) };
         let kit = build::to_kit(&menu, &Msg::Run);
-        view(i, kit, &title, t.pinned, shown.size)
+        view(i, kit, &title, t.pinned, shown.size, t.app == TOOLCHEST)
     }
 
     pub fn tear_msg(&mut self, m: TearMsg, cx: &mut Cx<Msg>) {
