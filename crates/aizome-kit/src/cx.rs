@@ -238,6 +238,13 @@ impl<Msg: Clone + Send + 'static> Cx<'_, Msg> {
         &self.core.theme
     }
 
+    /// Draw every window with `appearance` now: what Settings does as it
+    /// writes a change, rather than waiting for the settings file's watcher
+    /// (which looks once a second).
+    pub fn set_appearance(&mut self, appearance: crate::theme::Appearance) {
+        self.core.retheme(appearance, self.platform);
+    }
+
     pub fn info(&self) -> &AppInfo {
         &self.core.info
     }
