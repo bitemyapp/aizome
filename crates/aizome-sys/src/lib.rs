@@ -34,6 +34,7 @@
 
 pub mod bus;
 pub mod error;
+pub mod network;
 mod service;
 
 pub use bus::Bus;

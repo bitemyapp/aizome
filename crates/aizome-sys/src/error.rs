@@ -27,6 +27,9 @@ pub enum Error {
     /// An argument is not acceptable: an empty network name, a volume out
     /// of range, a path that is not a device.
     InvalidArgument(String),
+    /// The other side refused: a wrong Wi-Fi password, a Bluetooth device
+    /// that declined pairing, a wrong PIN.
+    Rejected(String),
     /// The object is gone or never existed (a device unplugged, a player
     /// that quit).
     NotFound(String),
@@ -92,9 +95,10 @@ impl Error {
             | "org.freedesktop.UDisks2.Error.NotAuthorized"
             | "org.freedesktop.UDisks2.Error.NotAuthorizedCanObtain"
             | "org.freedesktop.Accounts.Error.PermissionDenied"
-            | "org.bluez.Error.AuthenticationFailed"
-            | "org.bluez.Error.AuthenticationRejected"
             | "org.bluez.Error.NotAuthorized" => Error::NotAuthorized(message),
+            "org.bluez.Error.AuthenticationFailed" | "org.bluez.Error.AuthenticationRejected" => {
+                Error::Rejected(message)
+            }
             "org.freedesktop.DBus.Error.FileExists" | "org.freedesktop.DBus.Error.NotSupported"
                 if lower.contains("read-only") || lower.contains("read only") =>
             {
@@ -119,6 +123,8 @@ impl Error {
             Error::Timeout => "The service did not answer in time".into(),
             Error::Cancelled => "Cancelled".into(),
             Error::InvalidArgument(what) => what.clone(),
+            Error::Rejected(what) if what.is_empty() => "Refused".into(),
+            Error::Rejected(what) => what.clone(),
             Error::NotFound(what) if what.is_empty() => "No longer there".into(),
             Error::NotFound(what) => format!("Not found: {what}"),
             Error::DBus { message, name } if message.is_empty() => name.clone(),

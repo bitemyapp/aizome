@@ -347,6 +347,32 @@ impl PropsExt for HashMap<String, Value<'static>> {
     }
 }
 
+impl PropsExt for HashMap<String, &Value<'static>> {
+    fn value(&self, key: &str) -> Option<&Value<'static>> {
+        self.get(key).map(|value| unwrap_variant(value))
+    }
+}
+
+/// The entries of an `a{sv}` (or `a{ss}`) value; anything else reads as
+/// empty.
+pub(crate) fn value_dict<'a>(value: &'a Value<'static>) -> HashMap<String, &'a Value<'static>> {
+    match unwrap_variant(value) {
+        Value::Dict(dict) => dict
+            .iter()
+            .filter_map(|(key, value)| Some((value_str(key)?, unwrap_variant(value))))
+            .collect(),
+        _ => HashMap::new(),
+    }
+}
+
+/// The dictionaries of an `aa{sv}` value.
+pub(crate) fn value_dicts<'a>(value: &'a Value<'static>) -> Vec<HashMap<String, &'a Value<'static>>> {
+    match unwrap_variant(value) {
+        Value::Array(array) => array.iter().map(value_dict).collect(),
+        _ => Vec::new(),
+    }
+}
+
 /// The value inside any number of variant wrappers.
 pub(crate) fn unwrap_variant<'a, 'v>(value: &'a Value<'v>) -> &'a Value<'v> {
     let mut value = value;
@@ -684,6 +710,23 @@ fn dispatch(
     }
     if sender.is_some() && sender == *owner {
         handle(bus, Event::Signal(msg));
+    }
+}
+
+/// Run `work` with the bus on a thread, as a [`Task`](crate::Task); without
+/// a bus the task fails at once with [`Error::Unavailable`].
+pub(crate) fn spawn<T: Send + 'static>(
+    bus: &Option<Bus>,
+    service: &str,
+    wake: crate::Wake,
+    work: impl FnOnce(&Bus) -> Result<T> + Send + 'static,
+) -> crate::Task<T> {
+    match bus {
+        None => crate::Task::ready(Err(Error::Unavailable(service.to_owned()))),
+        Some(bus) => {
+            let bus = bus.clone();
+            crate::Task::spawn(service, &wake, move || work(&bus))
+        }
     }
 }
 
