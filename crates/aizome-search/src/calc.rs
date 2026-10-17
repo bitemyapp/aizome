@@ -12,6 +12,14 @@
 //! postfix = primary ("!" | "%")*                                      ("15%" is 0.15; "15% of 80" is 12)
 //! primary = number | constant | function "(" sum ("," sum)* ")" | "(" sum ")"
 //! ```
+//!
+//! Numbers may be written `0x1F`, `0o17` or `0b101`. [`eval_with`] takes
+//! [`Options`]: the angle unit trigonometry uses (Soroban's Deg/Rad) and
+//! named values (`ans`, memory). A postfix `°` reads a number as degrees
+//! whatever the unit. [`int`] evaluates integer expressions at a word
+//! size, with bitwise operators, for Soroban's Programmer mode.
+
+pub mod int;
 
 use std::fmt;
 
@@ -65,6 +73,25 @@ fn tokenize(src: &str) -> Result<Vec<Token>, Error> {
                     out.push(Token::Num(v as f64));
                     continue;
                 }
+                // 0b101 and 0o17 (only with a digit after the prefix).
+                if c == '0'
+                    && let Some(radix) = match chars.get(i + 1) {
+                        Some('b' | 'B') => Some(2),
+                        Some('o' | 'O') => Some(8),
+                        _ => None,
+                    }
+                    && chars.get(i + 2).is_some_and(|d| d.is_digit(radix))
+                {
+                    i += 2;
+                    let ds = i;
+                    while i < chars.len() && (chars[i].is_digit(radix) || chars[i] == '_') {
+                        i += 1;
+                    }
+                    let digits: String = chars[ds..i].iter().filter(|c| **c != '_').collect();
+                    let v = u64::from_str_radix(&digits, radix).map_err(|_| Error::Syntax(digits.clone()))?;
+                    out.push(Token::Num(v as f64));
+                    continue;
+                }
                 while i < chars.len() && (chars[i].is_ascii_digit() || chars[i] == '.' || chars[i] == '_') {
                     i += 1;
                 }
@@ -83,7 +110,7 @@ fn tokenize(src: &str) -> Result<Vec<Token>, Error> {
                 let text: String = chars[start..i].iter().filter(|c| **c != '_').collect();
                 out.push(Token::Num(text.parse().map_err(|_| Error::Syntax(text.clone()))?));
             }
-            '+' | '-' | '−' | '*' | '×' | '·' | '/' | '÷' | '^' | '!' | '%' => {
+            '+' | '-' | '−' | '*' | '×' | '·' | '/' | '÷' | '^' | '!' | '%' | '°' => {
                 if c == '*' && chars.get(i + 1) == Some(&'*') {
                     out.push(Token::Op('^'));
                     i += 2;
@@ -131,12 +158,30 @@ fn tokenize(src: &str) -> Result<Vec<Token>, Error> {
     Ok(out)
 }
 
-struct Parser {
-    tokens: Vec<Token>,
-    at: usize,
+/// The unit trigonometric functions take and give.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum Angle {
+    #[default]
+    Radians,
+    Degrees,
 }
 
-impl Parser {
+/// How [`eval_with`] reads an expression.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Options<'a> {
+    pub angle: Angle,
+    /// Named values (`ans`, `m`), matched without case. The constants and
+    /// the functions come first.
+    pub vars: &'a [(&'a str, f64)],
+}
+
+struct Parser<'a> {
+    tokens: Vec<Token>,
+    at: usize,
+    opts: Options<'a>,
+}
+
+impl Parser<'_> {
     fn peek(&self) -> Option<&Token> {
         self.tokens.get(self.at)
     }
@@ -239,6 +284,13 @@ impl Parser {
                     self.at += 1;
                     v /= 100.0;
                 }
+                // 30° is thirty degrees in whichever unit trigonometry takes.
+                Some(Token::Op('°')) => {
+                    self.at += 1;
+                    if self.opts.angle == Angle::Radians {
+                        v = v.to_radians();
+                    }
+                }
                 _ => return Ok(v),
             }
         }
@@ -263,7 +315,10 @@ impl Parser {
                         // sqrt 2, sin pi: a function applied to the next factor.
                         if is_function(&name) {
                             let arg = self.power()?;
-                            return apply(&name, &[arg]);
+                            return apply(&name, &[arg], self.opts.angle);
+                        }
+                        if let Some((_, v)) = self.opts.vars.iter().find(|(n, _)| n.eq_ignore_ascii_case(&name)) {
+                            return Ok(*v);
                         }
                         return Err(Error::UnknownName(name));
                     }
@@ -277,7 +332,7 @@ impl Parser {
                         Some(Token::Close) | None => {}
                         Some(t) => return Err(Error::Syntax(format!("{t:?}"))),
                     }
-                    apply(&name, &args)
+                    apply(&name, &args, self.opts.angle)
                 }
             },
             Some(t) => Err(Error::Syntax(format!("{t:?}"))),
@@ -287,15 +342,15 @@ impl Parser {
 }
 
 const FUNCTIONS: &[&str] = &[
-    "sqrt", "cbrt", "sin", "cos", "tan", "asin", "acos", "atan", "sinh", "cosh", "tanh", "ln", "log", "log2", "log10",
-    "exp", "abs", "floor", "ceil", "round", "min", "max", "hypot", "atan2",
+    "sqrt", "cbrt", "sin", "cos", "tan", "asin", "acos", "atan", "sinh", "cosh", "tanh", "asinh", "acosh", "atanh", "ln",
+    "log", "log2", "log10", "exp", "abs", "floor", "ceil", "round", "min", "max", "hypot", "atan2", "root",
 ];
 
 fn is_function(name: &str) -> bool {
     FUNCTIONS.contains(&name)
 }
 
-fn apply(name: &str, args: &[f64]) -> Result<f64, Error> {
+fn apply(name: &str, args: &[f64], angle: Angle) -> Result<f64, Error> {
     let one = |f: fn(f64) -> f64| -> Result<f64, Error> {
         match args {
             [x] => Ok(f(*x)),
@@ -303,19 +358,51 @@ fn apply(name: &str, args: &[f64]) -> Result<f64, Error> {
         }
     };
     let x = args.first().copied().unwrap_or(f64::NAN);
+    let degrees = angle == Angle::Degrees;
+    // Trigonometry in degrees, exact at the angles where radians would
+    // leave 1e-16 behind (sin 180° is 0, tan 45° is 1).
+    let trig = |f: fn(f64) -> f64| -> Result<f64, Error> {
+        let [x] = args else { return Err(Error::Syntax(format!("{name} takes one value"))) };
+        if !degrees {
+            return Ok(f(*x));
+        }
+        let d = x.rem_euclid(360.0);
+        let exact = match (name, d) {
+            ("sin", 0.0 | 180.0) | ("cos", 90.0 | 270.0) | ("tan", 0.0 | 180.0) => Some(0.0),
+            ("sin", 90.0) | ("cos", 0.0) | ("tan", 45.0 | 225.0) => Some(1.0),
+            ("sin", 270.0) | ("cos", 180.0) | ("tan", 135.0 | 315.0) => Some(-1.0),
+            ("sin", 30.0 | 150.0) | ("cos", 60.0 | 300.0) => Some(0.5),
+            ("sin", 210.0 | 330.0) | ("cos", 120.0 | 240.0) => Some(-0.5),
+            ("tan", 90.0 | 270.0) => return Err(Error::Domain("tangent of a right angle")),
+            _ => None,
+        };
+        Ok(exact.unwrap_or_else(|| f(x.to_radians())))
+    };
+    let inverse = |f: fn(f64) -> f64| -> Result<f64, Error> {
+        let v = one(f)?;
+        if v.is_nan() {
+            return Err(Error::Domain("outside the function's domain"));
+        }
+        Ok(if degrees { v.to_degrees() } else { v })
+    };
     match name {
         "sqrt" if x < 0.0 => Err(Error::Domain("square root of a negative number")),
         "sqrt" => one(f64::sqrt),
         "cbrt" => one(f64::cbrt),
-        "sin" => one(f64::sin),
-        "cos" => one(f64::cos),
-        "tan" => one(f64::tan),
-        "asin" => one(f64::asin),
-        "acos" => one(f64::acos),
-        "atan" => one(f64::atan),
+        "sin" => trig(f64::sin),
+        "cos" => trig(f64::cos),
+        "tan" => trig(f64::tan),
+        "asin" => inverse(f64::asin),
+        "acos" => inverse(f64::acos),
+        "atan" => inverse(f64::atan),
         "sinh" => one(f64::sinh),
         "cosh" => one(f64::cosh),
         "tanh" => one(f64::tanh),
+        "asinh" => one(f64::asinh),
+        "acosh" if x < 1.0 => Err(Error::Domain("acosh of a number under one")),
+        "acosh" => one(f64::acosh),
+        "atanh" if x.abs() >= 1.0 => Err(Error::Domain("atanh outside (−1, 1)")),
+        "atanh" => one(f64::atanh),
         "ln" | "log" | "log2" | "log10" if x <= 0.0 => Err(Error::Domain("logarithm of zero or a negative number")),
         "ln" => one(f64::ln),
         "log" | "log10" => match args {
@@ -332,20 +419,39 @@ fn apply(name: &str, args: &[f64]) -> Result<f64, Error> {
         "max" => args.iter().copied().reduce(f64::max).ok_or(Error::Syntax("max of nothing".into())),
         "hypot" | "atan2" => match args {
             [a, b] if name == "hypot" => Ok(a.hypot(*b)),
+            [a, b] if degrees => Ok(a.atan2(*b).to_degrees()),
             [a, b] => Ok(a.atan2(*b)),
             _ => Err(Error::Syntax(format!("{name} takes two values"))),
+        },
+        // root(x, n): the nth root, real for a negative x and an odd n.
+        "root" => match args {
+            [_, n] if *n == 0.0 => Err(Error::Domain("zeroth root")),
+            [x, n] if *x < 0.0 => {
+                if n.fract() == 0.0 && (*n as i64) % 2 != 0 {
+                    Ok(-(-x).powf(1.0 / n))
+                } else {
+                    Err(Error::Domain("even root of a negative number"))
+                }
+            }
+            [x, n] => Ok(x.powf(1.0 / n)),
+            _ => Err(Error::Syntax("root takes a value and a degree".into())),
         },
         _ => Err(Error::UnknownName(name.to_owned())),
     }
 }
 
-/// Evaluates an expression.
+/// Evaluates an expression (in radians, with no named values).
 pub fn eval(src: &str) -> Result<f64, Error> {
+    eval_with(src, &Options::default())
+}
+
+/// Evaluates an expression as `opts` say.
+pub fn eval_with(src: &str, opts: &Options) -> Result<f64, Error> {
     let tokens = tokenize(src)?;
     if tokens.is_empty() {
         return Err(Error::Syntax("nothing".into()));
     }
-    let mut p = Parser { tokens, at: 0 };
+    let mut p = Parser { tokens, at: 0, opts: *opts };
     let v = p.sum()?;
     if p.at < p.tokens.len() {
         return Err(Error::Syntax(format!("{:?}", p.tokens[p.at])));
@@ -433,6 +539,31 @@ mod tests {
         assert_eq!(eval("max(1, 5, 3)").unwrap(), 5.0);
         assert_eq!(eval("(1+2").unwrap(), 3.0);
         assert_eq!(eval("1e3 + 2.5E-1").unwrap(), 1000.25);
+    }
+
+    #[test]
+    fn reads_options_and_literals() {
+        let deg = Options { angle: Angle::Degrees, vars: &[] };
+        assert_eq!(eval_with("sin(30)", &deg).unwrap(), 0.5);
+        assert_eq!(eval_with("sin 180", &deg).unwrap(), 0.0);
+        assert_eq!(eval_with("cos(-90)", &deg).unwrap(), 0.0);
+        assert_eq!(eval_with("tan 45", &deg).unwrap(), 1.0);
+        assert!(eval_with("tan 90", &deg).is_err());
+        assert!(close(eval_with("asin(1)", &deg).unwrap(), 90.0));
+        assert!(close(eval_with("atan2(1, 1)", &deg).unwrap(), 45.0));
+        assert!(close(eval("sin(30°)").unwrap(), 0.5));
+        assert_eq!(eval_with("sin(30°)", &deg).unwrap(), 0.5);
+        assert!(close(eval("asin(1)").unwrap(), std::f64::consts::FRAC_PI_2));
+        let vars = Options { angle: Angle::Radians, vars: &[("ans", 8.0), ("m", 2.0)] };
+        assert_eq!(eval_with("ans × 2 + M", &vars).unwrap(), 18.0);
+        assert_eq!(eval_with("2ans", &vars).unwrap(), 16.0);
+        assert!(matches!(eval("ans + 1"), Err(Error::UnknownName(_))));
+        assert_eq!(eval("0b1010 + 0o17").unwrap(), 25.0);
+        assert_eq!(eval("root(27, 3)").unwrap(), 3.0);
+        assert!(close(eval("root(-8, 3)").unwrap(), -2.0));
+        assert!(eval("root(-8, 2)").is_err());
+        assert!(close(eval("asinh(sinh(2))").unwrap(), 2.0));
+        assert!(eval("acosh(0.5)").is_err());
     }
 
     #[test]
