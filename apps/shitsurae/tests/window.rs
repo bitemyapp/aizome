@@ -118,3 +118,33 @@ fn a_shortcut_is_recorded_from_keys() {
     assert!(saved.contains("\"Super+Space\" = \"none\""), "{saved}");
     h.save_png(w, common::shots_dir().join("shortcut-recorded.png"), 1.0);
 }
+
+#[test]
+fn choosing_day_saves_it_and_rethemes_the_window() {
+    let (mut h, path) = common::open("day", "appearance");
+    let w = h.window();
+    assert!(h.theme().is_dark());
+    assert!(h.click_text(w, "Day"));
+    h.program().shared.flush();
+    let saved = std::fs::read_to_string(&path).unwrap();
+    assert!(saved.contains("theme = \"day\""), "{saved}");
+    assert!(!h.theme().is_dark(), "the window follows at once");
+    // Focus colour: the swatches are named.
+    let before = h.program().shared.settings.appearance.focus;
+    assert_eq!(before, aizome_theme::FocusColor::Amber);
+}
+
+#[test]
+fn adding_a_user_in_the_sample() {
+    let (mut h, _) = common::open("adduser", "users");
+    let w = h.window();
+    assert!(h.click_text(w, "Add User…"));
+    let s = h.program().sheet_window().expect("the sheet");
+    h.type_text(s, "Kei Tanaka");
+    assert!(h.click_text(s, "Add User"));
+    assert_eq!(h.program().sheet_window(), None);
+    let users = h.program().shared.sys.accounts.snapshot();
+    let kei = users.user("kei").expect("an account named from the full name");
+    assert_eq!(kei.real_name, "Kei Tanaka");
+    assert!(h.texts(w).iter().any(|t| t == "Kei Tanaka"));
+}

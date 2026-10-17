@@ -88,7 +88,8 @@ impl Appearance {
         } else {
             Role::Text2
         });
-        column![pic, caption].spacing(8.0).align(Align::Center).into()
+        let caption = press(caption).style(PressStyle::Plain).padding([2.0, 6.0]).on_press(Msg::Theme(choice));
+        column![pic, caption].spacing(6.0).align(Align::Center).into()
     }
 
     fn wallpaper_grid(&self, vcx: &ViewCx) -> Element<Msg> {
