@@ -48,16 +48,19 @@ impl Widget for Root {
 /// The layer a sheet sits on: it takes the whole window, dims it, keeps
 /// the pointer and focus inside the sheet, and hangs the sheet from the
 /// window's top, centred.
-pub(crate) struct SheetLayer;
+pub(crate) struct SheetLayer {
+    /// Where the sheet hangs from (under the in-window menu bar).
+    top: f64,
+}
 
 impl SheetLayer {
-    pub fn element(content: RawElement, key: u64) -> RawElement {
+    pub fn element(content: RawElement, key: u64, top: f64) -> RawElement {
         let mut panel_common = Common::default();
         panel_common.key = Some(1);
         let panel = RawElement::new(SheetPanel, panel_common, vec![content]);
         let mut c = Common::sized(Length::Fill, Length::Fill);
         c.key = Some(key);
-        RawElement::new(SheetLayer, c, vec![panel])
+        RawElement::new(SheetLayer { top }, c, vec![panel])
     }
 }
 
@@ -69,8 +72,8 @@ impl Widget for SheetLayer {
     fn layout(&mut self, cx: &mut LayoutCx, bc: Constraints) -> Size {
         let size = bc.max;
         let max_w = (size.width - 32.0).clamp(160.0, 640.0);
-        let s = cx.layout_child(0, Constraints::loose(Size::new(max_w, (size.height - 16.0).max(80.0))));
-        cx.place_child(0, Point::new(((size.width - s.width) / 2.0).round(), 0.0));
+        let s = cx.layout_child(0, Constraints::loose(Size::new(max_w, (size.height - self.top - 16.0).max(80.0))));
+        cx.place_child(0, Point::new(((size.width - s.width) / 2.0).round(), self.top));
         size
     }
 

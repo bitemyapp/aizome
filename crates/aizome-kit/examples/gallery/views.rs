@@ -48,6 +48,9 @@ pub enum Msg {
     Edit(EditorAction),
     Pressed,
     Popover(bool),
+    /// `GALLERY_DEMO=menu` (or `popover`, `alert`) shows one a moment after
+    /// launch, for screenshots under a headless compositor.
+    Demo,
 }
 
 pub struct Gallery {
@@ -71,6 +74,7 @@ pub struct Gallery {
     pub content: EditorContent,
     pub presses: u32,
     pub popover: bool,
+    pub window: Option<WindowKey>,
 }
 
 impl Default for Gallery {
@@ -97,6 +101,7 @@ impl Default for Gallery {
             content: EditorContent::new(EDITOR_TEXT),
             presses: 0,
             popover: false,
+            window: None,
         }
     }
 }
@@ -163,6 +168,7 @@ impl Gallery {
             }
             Msg::Pressed => self.presses += 1,
             Msg::Popover(b) => self.popover = b,
+            Msg::Demo => {}
         }
     }
 
@@ -380,10 +386,28 @@ impl Program for Gallery {
     }
 
     fn launched(&mut self, cx: &mut Cx<Msg>) {
-        cx.open_window(WindowSpec::new("Gallery").size(1100.0, 720.0).min_size(720.0, 480.0));
+        let w = cx.open_window(WindowSpec::new("Gallery").size(1100.0, 720.0).min_size(720.0, 480.0));
+        self.window = Some(w);
+        if std::env::var_os("GALLERY_DEMO").is_some() {
+            cx.after(std::time::Duration::from_millis(1200), Msg::Demo);
+        }
     }
 
     fn update(&mut self, msg: Msg, cx: &mut Cx<Msg>) {
+        if let (Msg::Demo, Some(w)) = (&msg, self.window) {
+            match std::env::var("GALLERY_DEMO").as_deref() {
+                Ok("popover") => self.popover = true,
+                Ok("alert") => cx.alert(w, Alert::new("Delete “notes.md”?", "It goes to the Trash.").destructive_button("Delete", Msg::Pressed).cancel_button("Cancel").default_button("Keep", Msg::Pressed)),
+                _ => {
+                    let view = Menu::new("View")
+                        .items(PAGES.iter().enumerate().map(|(n, (p, i, name))| MenuItem::new(*name, Msg::Page(*p)).icon(*i).checked(self.page == *p).shortcut(Shortcut::cmd(char::from(b'1' + n as u8)))))
+                        .separator()
+                        .submenu(Menu::new("Theme").items(["Night", "Day", "High Contrast"].iter().enumerate().map(|(n, t)| MenuItem::new(*t, Msg::Theme(n)).checked(self.theme == n))));
+                    cx.show_menu(w, Rect::new(380.0, 120.0, 381.0, 121.0), view, MenuStyle::at_point().titled("View").on_tear_off(Msg::Pressed));
+                }
+            }
+            return;
+        }
         let theme = matches!(msg, Msg::Theme(_));
         self.update_msg(msg);
         if theme {

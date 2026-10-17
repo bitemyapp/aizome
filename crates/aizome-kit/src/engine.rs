@@ -412,7 +412,9 @@ impl Core {
         let is_normal = matches!(&w.kind, WinKind::App { spec, .. } if spec.has_menu_bar());
         let opaque = matches!(&w.kind, WinKind::App { spec, .. } if !matches!(spec.kind, WindowKind::Layer(_) | WindowKind::Lock { .. } | WindowKind::Popup { .. }));
         let mut layers = Vec::new();
-        let body = if self.in_window_menus && is_normal && !self.menubar.is_empty() {
+        let bar = self.in_window_menus && is_normal && !self.menubar.is_empty();
+        let top = if bar { self.theme.metrics.target } else { 0.0 };
+        let body = if bar {
             let bar = MenuBarStrip::element(&self.info, &self.menubar, win);
             let mut c = Common::sized(Length::Fill, Length::Fill);
             c.key = Some(1);
@@ -422,18 +424,18 @@ impl Core {
         };
         layers.push(body);
         for (i, s) in sheets.into_iter().enumerate() {
-            layers.push(SheetLayer::element(s, 100 + i as u64));
+            layers.push(SheetLayer::element(s, 100 + i as u64, top));
         }
         let alerts = w.alerts.clone();
         let panels = w.panels.clone();
         for p in panels {
             if let Some(el) = crate::dialogs::panel_element(self, p) {
-                layers.push(SheetLayer::element(el, 2000 + p));
+                layers.push(SheetLayer::element(el, 2000 + p, top));
             }
         }
         for a in alerts {
             if let Some(el) = crate::dialogs::alert_element(self, a) {
-                layers.push(SheetLayer::element(el, 1000 + a));
+                layers.push(SheetLayer::element(el, 1000 + a, top));
             }
         }
         let root = RawElement::new(Root { opaque }, Common::sized(Length::Fill, Length::Fill), layers);
