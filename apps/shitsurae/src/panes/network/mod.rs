@@ -348,6 +348,8 @@ pub struct Edit {
     pub dns_error: Option<String>,
 }
 
+// A profile read for a details page is the large one; messages are few.
+#[allow(clippy::large_enum_variant)]
 #[derive(Clone, Debug)]
 pub enum Msg {
     Wifi(bool),

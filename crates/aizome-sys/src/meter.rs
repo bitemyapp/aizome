@@ -68,7 +68,7 @@ impl Drop for Meter {
 
 /// A peak as a meter shows it: decibels from −60 to 0 spread over 0.0–1.0.
 pub fn loudness(peak: f32) -> f32 {
-    if !(peak > 0.0) {
+    if peak.is_nan() || peak <= 0.0 {
         return 0.0;
     }
     let db = 20.0 * peak.log10();
@@ -107,8 +107,10 @@ fn run(server: Option<&str>, device: &str, level: &Arc<AtomicU32>, wake: &Wake, 
                 match s.peek() {
                     Ok(PeekResult::Data(data)) => {
                         let peak = data
-                            .chunks_exact(4)
-                            .map(|b| f32::from_ne_bytes([b[0], b[1], b[2], b[3]]).abs())
+                            .as_chunks::<4>()
+                            .0
+                            .iter()
+                            .map(|b| f32::from_ne_bytes(*b).abs())
                             .fold(0.0f32, f32::max);
                         level.store(peak.min(1.0).to_bits(), Ordering::Relaxed);
                         let _ = s.discard();

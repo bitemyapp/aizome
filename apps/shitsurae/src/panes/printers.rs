@@ -202,7 +202,7 @@ impl Printers {
         if !printer.is_empty() {
             self.busy.insert(printer.to_owned());
         }
-        let (what, printer) = (format!("{what}"), printer.to_owned());
+        let (what, printer) = (what.to_owned(), printer.to_owned());
         cx.wait(task, move |r| Msg::Done(format!("{what}\u{1f}{printer}"), r));
     }
 

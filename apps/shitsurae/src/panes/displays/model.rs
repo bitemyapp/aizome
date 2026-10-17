@@ -186,7 +186,7 @@ impl Display {
             .or_else(|| modes.first().copied())
             .unwrap_or_default();
         let mut modes = modes;
-        if mode.width > 0 && !modes.iter().any(|m| *m == mode) {
+        if mode.width > 0 && !modes.contains(&mode) {
             modes.push(mode);
         }
         let mirror = entry.and_then(mirror_of);

@@ -89,7 +89,7 @@ impl Fit {
         Fit { factor, origin: (left, top), offset: ((size.width - sx * factor) / 2.0, (size.height - sy * factor) / 2.0) }
     }
 
-    fn to_widget(&self, r: LRect) -> Rect {
+    fn to_widget(self, r: LRect) -> Rect {
         let x = self.offset.0 + (r.x - self.origin.0) as f64 * self.factor;
         let y = self.offset.1 + (r.y - self.origin.1) as f64 * self.factor;
         let w = (r.w as f64 * self.factor).max(24.0);
@@ -97,7 +97,7 @@ impl Fit {
         Rect::new(x.round(), y.round(), (x + w).round(), (y + h).round())
     }
 
-    fn to_layout(&self, p: Point) -> (i32, i32) {
+    fn to_layout(self, p: Point) -> (i32, i32) {
         let f = self.factor.max(1e-6);
         (((p.x - self.offset.0) / f).round() as i32 + self.origin.0, ((p.y - self.offset.1) / f).round() as i32 + self.origin.1)
     }

@@ -176,27 +176,24 @@ impl Compositor {
         let spawned = std::thread::Builder::new().name("shitsurae-outputs".into()).spawn(move || {
             while !stop.load(Ordering::Relaxed) {
                 let events = aizome_ipc::Client::connect().and_then(|c| c.events());
-                match events {
-                    Ok(events) => {
-                        // Wake now and then to see whether to stop.
-                        let _ = events.stream().set_read_timeout(Some(Duration::from_secs(1)));
-                        for e in events {
-                            if stop.load(Ordering::Relaxed) {
-                                return;
-                            }
-                            match e {
-                                Ok(Event::OutputsChanged { outputs }) => {
-                                    if !changed(outputs) {
-                                        return;
-                                    }
+                if let Ok(events) = events {
+                    // Wake now and then to see whether to stop.
+                    let _ = events.stream().set_read_timeout(Some(Duration::from_secs(1)));
+                    for e in events {
+                        if stop.load(Ordering::Relaxed) {
+                            return;
+                        }
+                        match e {
+                            Ok(Event::OutputsChanged { outputs }) => {
+                                if !changed(outputs) {
+                                    return;
                                 }
-                                Ok(_) => {}
-                                Err(e) if matches!(e.kind(), std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut | std::io::ErrorKind::InvalidData) => {}
-                                Err(_) => break,
                             }
+                            Ok(_) => {}
+                            Err(e) if matches!(e.kind(), std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut | std::io::ErrorKind::InvalidData) => {}
+                            Err(_) => break,
                         }
                     }
-                    Err(_) => {}
                 }
                 std::thread::sleep(Duration::from_secs(2));
             }

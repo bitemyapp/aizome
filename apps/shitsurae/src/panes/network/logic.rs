@@ -301,7 +301,7 @@ pub fn wired(state: &NetworkState) -> Vec<Wired> {
 
 /// "1 Gb/s", "100 Mb/s", "866 Mb/s".
 pub fn speed_words(mbps: u32) -> String {
-    if mbps >= 1000 && mbps % 1000 == 0 { format!("{} Gb/s", mbps / 1000) } else { format!("{mbps} Mb/s") }
+    if mbps >= 1000 && mbps.is_multiple_of(1000) { format!("{} Gb/s", mbps / 1000) } else { format!("{mbps} Mb/s") }
 }
 
 /// "WireGuard", "OpenVPN", "VPN".
