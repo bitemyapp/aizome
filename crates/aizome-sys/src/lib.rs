@@ -41,6 +41,7 @@ pub mod network;
 pub mod power;
 pub mod printers;
 pub mod sysinfo;
+pub mod users;
 mod oneshot;
 mod service;
 

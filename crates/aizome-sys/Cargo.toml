@@ -16,6 +16,8 @@ zbus = { version = "5.19", default-features = false, features = ["async-io", "bl
 async-io = "2.3"
 futures-lite = { version = "2.6", default-features = false, features = ["std"] }
 libc = "0.2"
+# Password hashes for AccountsService (crypt(3) SHA-512).
+sha-crypt = { version = "0.5", default-features = false }
 # PipeWire's volume and devices, through pipewire-pulse (see audio.rs).
 libpulse-binding = "2.30"
 serde.workspace = true

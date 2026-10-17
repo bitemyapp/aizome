@@ -138,3 +138,18 @@ fn datetime_reads_timedated_localed_hostnamed() {
     println!("{} zones; {} regions", zones.len(), by_region(&zones).len());
     assert!(!time.snapshot().timezone.is_empty());
 }
+
+#[test]
+#[ignore = "reads the real system bus"]
+fn users_reads_accountsservice() {
+    let users = aizome_sys::users::Users::new(Wake::none());
+    assert!(eventually(|| users.available() && !users.snapshot().users.is_empty()), "AccountsService is not running");
+    let state = users.snapshot();
+    for user in &state.users {
+        println!(
+            "user {} {:?} {:?} {:?} icon={:?} last login {:?} logins {}",
+            user.uid, user.name, user.real_name, user.account_type, user.icon_file, user.last_login, user.login_count
+        );
+    }
+    println!("current {:?}, managed {}", state.current().map(|u| &u.name), state.users_managed);
+}
