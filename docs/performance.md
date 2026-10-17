@@ -31,3 +31,104 @@ widget that holds the focus for typing spans the window. A real keyboard
 redraws only the display and the key.
 
 No exceptions.
+
+## The compositor
+
+The compositor's budget is **4 ms of CPU per output frame**: collecting
+the scene's elements, rendering what's damaged and submitting it.
+
+### Method
+
+- The compositor times every frame it draws on every output, from the
+  start of element collection to the end of submission (the damage
+  tracker's render, or DrmCompositor's render and queue). Redraws that find
+  nothing damaged are counted as skipped and draw nothing. Under headless
+  GLES it also waits on the frame's fence and records that wait as the GPU
+  time.
+- The last 4096 frames per output are kept; `aizomectl stats` (IPC
+  `stats`) prints p50, p95, p99, max and mean, frames rendered and frames
+  skipped, and `--reset` starts over.
+- `crates/aizome-comp/examples/frame_bench.rs` starts a headless
+  compositor with one 2880 × 1800 output at scale 2 (the laptop panel),
+  opens sidestep-ui windows (`examples/sidestep_client.rs`) and runs the
+  scenarios below, resetting the statistics around each:
+
+  ```sh
+  nix develop --command cargo build --release -p aizome-comp --bin aizome --examples
+  nix develop --command target/release/examples/frame_bench --renderer gles
+  nix develop --command target/release/examples/frame_bench --renderer pixman
+  ```
+
+- Release build (thin LTO), Intel Core Ultra 7 365 (8 threads), Mesa
+  Intel graphics (Panther Lake) through EGL on the render node; pixman on
+  the same CPU. Effects tier Lean (hard shadows, 80 ms motion).
+
+### Results (2026-10-17)
+
+Milliseconds of compositor CPU per rendered frame.
+
+GLES:
+
+| Scenario | Frames | p50 | p95 | p99 | max | GPU p50 / p99 |
+|---|---|---|---|---|---|---|
+| Idle, 2 s | 0 | – | – | – | – | – |
+| Moving a 320 × 200 window, 240 steps | 225 | 0.40 | 0.53 | 1.13 | 16.4 | 0.74 / 3.07 |
+| A client drawing every frame (800 × 500) | 152 | 0.87 | 2.18 | 3.71 | 4.57 | 0.65 / 3.65 |
+| Switching Desks (slides), 12 | 24 | 0.37 | 0.47 | 0.64 | 0.64 | 0.47 / 3.64 |
+| Overview open and close, 8 | 32 | 0.72 | 2.68 | 12.9 | 12.9 | 1.73 / 5.76 |
+| 10 windows, one moving | 110 | 0.70 | 0.99 | 1.56 | 2.32 | 0.54 / 6.54 |
+| A full-screen client drawing every frame | 145 | 1.87 | 2.93 | 5.04 | 5.54 | 1.43 / 3.40 |
+
+pixman:
+
+| Scenario | Frames | p50 | p95 | p99 | max |
+|---|---|---|---|---|---|
+| Idle, 2 s | 0 | – | – | – | – |
+| Moving a 320 × 200 window, 240 steps | 226 | 0.49 | 0.69 | 0.99 | 1.10 |
+| A client drawing every frame (800 × 500) | 166 | 1.31 | 1.46 | 1.82 | 2.15 |
+| Switching Desks (slides), 12 | 26 | 0.53 | 0.89 | 2.29 | 2.29 |
+| Overview open and close, 8 | 32 | 7.13 | 28.7 | 57.3 | 57.3 |
+| 10 windows, one moving | 114 | 0.80 | 0.89 | 1.16 | 1.44 |
+| A full-screen client drawing every frame | 88 | 4.41 | 11.6 | 18.1 | 18.1 |
+
+What these show:
+
+- **Idle means no frames**: nothing changes, nothing is drawn, and no
+  frame callbacks fire.
+- **Moving a window composites**: the window's buffers are reused and only
+  the old and new rectangles are redrawn; the client is never asked to
+  redraw. Tabs and frames are cached solid-colour elements with stable
+  identities, and labels are cached textures, so they cost nothing until
+  they change.
+- Everything ordinary stays well inside the budget on both renderers,
+  pixman included. (A Desk slide here is two or three drawn frames: the
+  80 ms ease-out carries a window off the output within a few frames,
+  after which nothing visible changes.)
+
+### Exceptions
+
+1. **Full-output damage under pixman at 2880 × 1800** (a full-screen
+   client redrawing every frame: p50 4.4 ms, p95 11.6 ms). Each frame
+   composites 5.2 million pixels on the CPU; the cost is memory traffic,
+   not the scene. GLES does the same frame in 1.9 ms. Full-screen video or
+   games without a usable GPU miss the budget; ordinary windows (partial
+   damage) don't.
+2. **The Desks overview under pixman** (p50 7 ms, p99 57 ms). Opening and
+   closing it damages the whole output, and its thumbnails are window
+   buffers scaled down at composition, which pixman filters on the CPU. It
+   redraws only when opened, closed, filtered or dragged in, never
+   continuously, so the cost is a handful of frames per use.
+3. **First frames.** A frame that first shows a label (a new title, the
+   overview's captions, the first cursor image) rasterizes it with
+   Sidestep's offscreen canvas and uploads it; the first use of a font
+   also loads it. The 12.9 ms overview p99 and the 16 ms move maximum
+   under GLES are such frames. Labels are cached per text, style and
+   scale, so these are one-off costs.
+4. **GPU time** under headless GLES is the wait for the frame's fence,
+   which includes queueing behind other GPU work; its p99 spikes (3–6 ms)
+   don't hold the compositor's CPU.
+
+On the udev backend frames are paced by vblank: a frame waits for the
+previous one's scan-out rather than being dropped, and the CPU cost per
+frame is the same as above (DrmCompositor also puts suitable buffers on
+planes for direct scan-out, which only lowers it).

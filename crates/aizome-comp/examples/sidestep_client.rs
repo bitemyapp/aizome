@@ -25,6 +25,8 @@ struct Client {
     flip: Option<TimerId>,
     unlock: Option<TimerId>,
     quit: Option<TimerId>,
+    tick: Option<TimerId>,
+    frame: u32,
 }
 
 impl Handler for Client {
@@ -34,6 +36,12 @@ impl Handler for Client {
                 let w = cx.open_window(WindowOptions::new("Sidestep test").size(320.0, 200.0));
                 self.windows.push(w);
                 self.flip = Some(cx.set_timer(Duration::from_millis(700)));
+            }
+            "animate" => {
+                // A window that draws a new frame every 16ms, for measuring.
+                let w = cx.open_window(WindowOptions::new("Animating").size(800.0, 500.0));
+                self.windows.push(w);
+                self.tick = Some(cx.set_repeating_timer(Duration::from_millis(16)));
             }
             "panel" => {
                 let opts = LayerOptions::new(Layer::Top, "aizome-test-panel")
@@ -56,6 +64,14 @@ impl Handler for Client {
     }
 
     fn timer(&mut self, cx: &mut Cx, timer: TimerId) {
+        if Some(timer) == self.tick {
+            self.frame += 1;
+            for w in self.windows.clone() {
+                if let Some(mut win) = cx.window(w) {
+                    win.redraw();
+                }
+            }
+        }
         if Some(timer) == self.flip {
             self.flipped = true;
             for w in self.windows.clone() {
@@ -86,6 +102,7 @@ impl Handler for Client {
         let color = match self.mode.as_str() {
             "panel" => BAR,
             "lock" => LOCK,
+            "animate" => Color::rgb8((self.frame * 7 % 256) as u8, 0x40, (255 - self.frame * 3 % 256) as u8),
             _ if self.flipped => MAGENTA,
             _ => GREEN,
         };
@@ -96,5 +113,5 @@ impl Handler for Client {
 fn main() {
     let mode = std::env::args().nth(1).unwrap_or_else(|| "toplevel".into());
     let app = App::new().app_id("org.aizome.test-client").quit_when_last_window_closes(mode != "lock");
-    app.run(Client { mode, flipped: false, windows: Vec::new(), flip: None, unlock: None, quit: None }).expect("run");
+    app.run(Client { mode, flipped: false, windows: Vec::new(), flip: None, unlock: None, quit: None, tick: None, frame: 0 }).expect("run");
 }
