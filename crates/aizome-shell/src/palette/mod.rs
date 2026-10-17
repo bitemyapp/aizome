@@ -1,3 +1,579 @@
-//! The command palette (Strip's, in Aizome's look).
+//! The command palette (Strip's, in Aizome's look): ❖Space opens it on the
+//! focused output with every command of the focused app's menus, the
+//! windows, files, apps, settings and actions, ranked as you type.
 
 pub mod model;
+pub mod view;
+
+use std::path::PathBuf;
+use std::sync::Arc;
+
+use aizome_ipc::Request;
+use aizome_kit::prelude::*;
+use aizome_kit::sidestep_ui::{Key, KeyEvent, NamedKey};
+use aizome_kit::{KeyboardInteractivity, Layer, LayerOptions, MenuStyle};
+use aizome_search::Scope;
+use aizome_search::files::FileIndex;
+
+use crate::actions::{Action, SessionVerb};
+use crate::menus::model::{Entry, Menu as ShellMenu, MenuIcon};
+use crate::shell::{Msg, Shell, Surface, layer};
+use model::{Item, Ranking, Section, SettingEntry};
+use view::{Detail, PaletteMsg, PaletteView};
+
+/// The palette while it's open.
+#[derive(Clone, Debug)]
+pub struct PaletteState {
+    pub window: WindowKey,
+    pub query: String,
+    pub scope: Option<Scope>,
+    pub selected: usize,
+    pub scroll: f64,
+    /// Every row but files', made when it opened.
+    pub items: Vec<Item>,
+    /// Files found for `files_for`.
+    pub files: Vec<Item>,
+    pub files_for: String,
+    pub sections: Vec<Section>,
+    /// "in Editor · damage.rs".
+    pub context: String,
+    pub app_name: Option<String>,
+    pub app_id: String,
+    pub search: u64,
+}
+
+/// The file index, read or built on a thread.
+#[derive(Clone)]
+pub struct Index(pub Arc<FileIndex>);
+
+impl std::fmt::Debug for Index {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Index({} entries)", self.0.len())
+    }
+}
+
+/// What the palette hears from its elements and threads.
+#[derive(Clone, Debug)]
+pub enum PaletteEvent {
+    Ui(PaletteMsg),
+    /// ↑ ↓ (by rows), Tab and ⇧Tab, ❖K.
+    Move(isize),
+    Cycle(bool),
+    Actions,
+    /// Files found for search `seq`.
+    Files(u64, Vec<Item>),
+    Index(Index),
+    Settings(Vec<SettingEntry>),
+}
+
+/// The system actions the palette offers.
+pub fn actions(day: bool, dnd: bool) -> Vec<Item> {
+    let a = |t: &str, g: Icon, action: Action, kw: &[&str]| {
+        Item::new(Scope::Action, t, g, action).keywords(kw.iter().map(|s| s.to_string()).collect()).key(format!("act:{t}"))
+    };
+    vec![
+        a("Lock", Icon::Lock, Action::Session(SessionVerb::Lock), &["screen", "away"]),
+        a("Sleep", Icon::Moon, Action::Session(SessionVerb::Sleep), &["suspend"]),
+        a("Restart…", Icon::RotateCw, Action::Session(SessionVerb::Restart), &["reboot"]),
+        a("Shut Down…", Icon::Power, Action::Session(SessionVerb::ShutDown), &["power off", "turn off"]),
+        a("Log Out…", Icon::LogOut, Action::Session(SessionVerb::LogOut), &["sign out", "quit session"]),
+        if day {
+            a("Switch to Night", Icon::Moon, Action::SetTheme { day: false }, &["dark", "theme"])
+        } else {
+            a("Switch to Day", Icon::Sun, Action::SetTheme { day: true }, &["light", "theme"])
+        },
+        a(if dnd { "Turn Off Do Not Disturb" } else { "Do Not Disturb" }, Icon::BellOff, Action::ToggleDoNotDisturb, &["notifications", "quiet", "focus"]),
+        a("Screenshot", Icon::Camera, Action::Screenshot, &["capture", "screen"]),
+        a("New Desk", Icon::Grid2x2, Action::NewDesk, &["workspace"]),
+        a("Empty Trash", Icon::Trash, Action::EmptyTrash, &["delete"]),
+        a("Show Desktop", Icon::Monitor, Action::ShowDesktop, &["minimise all", "hide windows"]),
+    ]
+}
+
+/// A shortcut as keycaps: each modifier, then the key.
+pub fn keycaps(s: &aizome_shell_proto::Shortcut) -> Vec<String> {
+    let mut k = Vec::new();
+    for (on, g) in [(s.ctrl, "⌃"), (s.alt, "⌥"), (s.shift, "⇧"), (s.command, "❖")] {
+        if on {
+            k.push(g.to_owned());
+        }
+    }
+    k.push(s.key.clone());
+    k
+}
+
+/// What a key in the palette does (the keys the query field leaves).
+pub fn key_event(k: &KeyEvent) -> Option<PaletteEvent> {
+    let m = k.modifiers;
+    Some(match &k.key {
+        Key::Named(NamedKey::Escape) => PaletteEvent::Ui(PaletteMsg::Close),
+        Key::Named(NamedKey::Enter) => PaletteEvent::Ui(PaletteMsg::Run { keep_open: m.super_key() }),
+        Key::Named(NamedKey::ArrowUp) => PaletteEvent::Move(-1),
+        Key::Named(NamedKey::ArrowDown) => PaletteEvent::Move(1),
+        Key::Named(NamedKey::PageUp) => PaletteEvent::Move(-6),
+        Key::Named(NamedKey::PageDown) => PaletteEvent::Move(6),
+        Key::Named(NamedKey::Tab) => PaletteEvent::Cycle(!m.shift()),
+        Key::Character(c) if m.super_key() && c.eq_ignore_ascii_case("k") => PaletteEvent::Actions,
+        _ => return None,
+    })
+}
+
+impl Shell {
+    /// Open the palette (or close it if open) on the focused output.
+    pub fn toggle_palette(&mut self, scope: Option<Scope>, query: String, cx: &mut Cx<Msg>) {
+        if self.palette.is_some() {
+            self.close_palette(cx);
+            return;
+        }
+        self.open_palette(scope, query, cx);
+    }
+
+    pub fn open_palette(&mut self, scope: Option<Scope>, query: String, cx: &mut Cx<Msg>) {
+        if let Some(p) = &mut self.palette {
+            p.scope = scope;
+            p.query = query;
+            self.rank_palette(cx);
+            return;
+        }
+        let Some(output) = self.focused_screen().map(|s| s.output.id) else { return };
+        let opts = LayerOptions::new(Layer::Overlay, "aizome-palette").keyboard(KeyboardInteractivity::Exclusive).output(output);
+        let size = view::size();
+        let window = cx.open_window(layer(opts, size.width, size.height, "Palette"));
+        self.surfaces.insert(window, Surface::Palette);
+        let (app_name, app_id, context) = match self.wm.focused_window() {
+            Some(w) => {
+                let name = self.focused_menus().0;
+                let ctx = if w.title.is_empty() { format!("in {name}") } else { format!("in {name} · {}", w.title) };
+                (Some(name), w.app_id.clone(), ctx)
+            }
+            None => (None, String::new(), "in Aizome".into()),
+        };
+        let items = self.palette_items();
+        self.palette = Some(PaletteState {
+            window,
+            query,
+            scope,
+            selected: 0,
+            scroll: 0.0,
+            items,
+            files: Vec::new(),
+            files_for: "\u{0}".into(),
+            sections: Vec::new(),
+            context,
+            app_name,
+            app_id,
+            search: 0,
+        });
+        self.rank_palette(cx);
+        cx.focus("palette-query");
+    }
+
+    pub fn close_palette(&mut self, cx: &mut Cx<Msg>) {
+        if let Some(p) = self.palette.take() {
+            cx.close_window(p.window);
+            self.surfaces.remove(&p.window);
+        }
+    }
+
+    /// Every row the palette can show but files.
+    pub fn palette_items(&self) -> Vec<Item> {
+        let mut out = Vec::new();
+        let app_id = self.wm.focused_window().map(|w| w.app_id.clone()).unwrap_or_else(|| "aizome".into());
+        // Commands: every item of the focused app's menus.
+        let (_name, menus) = self.focused_menus();
+        for m in &menus {
+            for f in m.flatten() {
+                if !f.entry.enabled || f.entry.action == Action::None {
+                    continue;
+                }
+                let mut trail = vec![m.title.clone()];
+                trail.extend(f.trail.iter().cloned());
+                out.push(self.command_item(&app_id, &trail, &f.entry));
+            }
+        }
+        // The Window menu's verbs, for apps whose menus lack them.
+        if self.wm.focused_window().is_some() {
+            let verbs = crate::menus::build::window_verbs(self.wm.focused_window(), &self.wm.desks);
+            for f in verbs.flatten() {
+                if out.iter().any(|i| i.scope == Scope::Command && i.title == f.entry.label) {
+                    continue;
+                }
+                let mut trail = vec!["Window".to_owned()];
+                trail.extend(f.trail.iter().cloned());
+                out.push(self.command_item(&app_id, &trail, &f.entry));
+            }
+        }
+        // Windows.
+        for w in self.wm.in_open_order() {
+            let (name, glyph, _) = self.app_look(&w.app_id);
+            let where_ = if w.minimised || w.hidden {
+                "hidden".to_owned()
+            } else {
+                w.desk.map(|d| format!("desk {d}")).unwrap_or_else(|| "every desk".into())
+            };
+            let title = if w.title.is_empty() { name.clone() } else { w.title.clone() };
+            out.push(
+                Item::new(Scope::Window, title, glyph, Action::Wm(Request::Focus { id: w.id }))
+                    .trail(format!("{name} · {where_}"))
+                    .keywords(vec![name])
+                    .key(format!("win:{}", w.app_id)),
+            );
+        }
+        // Apps.
+        if let Some(index) = &self.apps {
+            for a in index.apps() {
+                let glyph = crate::apps::catalog::glyph_for(a.app_id())
+                    .map(|g| g.0)
+                    .unwrap_or_else(|| crate::apps::catalog::glyph_by_category(&a.categories));
+                let mut kw: Vec<String> = a.keywords.clone();
+                kw.extend(a.generic_name.clone());
+                let key = format!("app:{}", a.app_id());
+                let mut item = Item::new(Scope::App, a.name.clone(), glyph, Action::Launch { app_id: a.app_id().to_owned() })
+                    .trail(a.generic_name.clone().unwrap_or_default())
+                    .keywords(kw)
+                    .key(key.clone());
+                item.boost = self.frecency.boost(&key);
+                out.push(item);
+            }
+        }
+        // Settings.
+        let list = if self.settings_list.is_empty() { model::builtin_settings() } else { self.settings_list.clone() };
+        for s in &list {
+            let mut item = model::setting_item(s);
+            item.boost = item.key.as_deref().map_or(0, |k| self.frecency.boost(k));
+            out.push(item);
+        }
+        // Actions.
+        for mut a in actions(self.theme_day, self.notes_cfg.do_not_disturb) {
+            a.boost = a.key.as_deref().map_or(0, |k| self.frecency.boost(k));
+            out.push(a);
+        }
+        out
+    }
+
+    fn command_item(&self, app_id: &str, trail: &[String], e: &Entry) -> Item {
+        let key = format!("cmd:{app_id}:{}/{}", trail.join("/"), e.label);
+        let glyph = match &e.icon {
+            Some(MenuIcon::Glyph(g)) => *g,
+            _ => Icon::Command,
+        };
+        let mut item = Item::new(Scope::Command, e.label.clone(), glyph, e.action.clone())
+            .trail(trail.join(" › "))
+            .shortcut(e.shortcut.clone())
+            .key(key.clone());
+        item.boost = self.frecency.boost(&key);
+        item
+    }
+
+    /// Rank again for the query and scope; search files if they're wanted.
+    pub fn rank_palette(&mut self, cx: &mut Cx<Msg>) {
+        let per_section = self.palette_cfg.per_section as usize;
+        let home = aizome_config::home_dir();
+        let boosts = self.palette.as_ref().map(|_| self.file_boosts()).unwrap_or_default();
+        let index = self.file_index.clone();
+        let Some(p) = &mut self.palette else { return };
+        let wants_files = p.scope.is_none() || p.scope == Some(Scope::File);
+        let q = p.query.trim().to_owned();
+        if wants_files && p.files_for != q {
+            if q.is_empty() {
+                // Recent files first when nothing's typed.
+                p.files = aizome_search::recent::load(aizome_search::recent::default_path())
+                    .into_iter()
+                    .take(20)
+                    .map(|r| {
+                        let folder = r.path.is_dir();
+                        Item::file(&r.path, folder, &home)
+                    })
+                    .collect();
+                p.files_for = q.clone();
+            } else if let Some(index) = index {
+                p.search += 1;
+                let seq = p.search;
+                let query = q.clone();
+                cx.spawn(move || {
+                    let boost = |path: &std::path::Path| boosts.get(&format!("file:{}", path.display())).copied().unwrap_or(0);
+                    let hits = index.search(&query, 40, &boost);
+                    let items = hits.iter().map(|h| Item::file(&h.path, h.folder, &home)).collect();
+                    Msg::Palette(PaletteEvent::Files(seq, items))
+                });
+            }
+        }
+        let files: Vec<Item> = if wants_files { p.files.clone() } else { Vec::new() };
+        let r = Ranking { query: &p.query, scope: p.scope, per_section, app_name: p.app_name.as_deref() };
+        p.sections = model::sections(&r, &p.items, &files);
+        let n = model::flat(&p.sections).len();
+        if p.selected >= n {
+            p.selected = n.saturating_sub(1);
+        }
+        p.scroll = view::scroll_for(&p.sections, p.selected, p.scroll);
+    }
+
+    /// Frecency boosts of recently used files, for a search on a thread
+    /// (the store stays here).
+    fn file_boosts(&self) -> std::collections::HashMap<String, i64> {
+        aizome_search::recent::load(aizome_search::recent::default_path())
+            .into_iter()
+            .take(200)
+            .map(|r| {
+                let k = format!("file:{}", r.path.display());
+                let b = self.frecency.boost(&k).max(8);
+                (k, b)
+            })
+            .collect()
+    }
+
+    pub fn palette_view(&self) -> Option<PaletteView> {
+        let p = self.palette.as_ref()?;
+        let rows = model::flat(&p.sections);
+        let detail = rows.get(p.selected).map(|r| self.detail_of(&r.item, p));
+        Some(PaletteView { query: p.query.clone(), scope: p.scope, context: p.context.clone(), sections: p.sections.clone(), selected: p.selected, detail })
+    }
+
+    fn detail_of(&self, i: &Item, p: &PaletteState) -> Detail {
+        let caption = match i.scope {
+            Scope::Command => "COMMAND",
+            Scope::Window => "WINDOW",
+            Scope::File if i.title.ends_with('/') => "FOLDER",
+            Scope::File => "FILE",
+            Scope::App => "APP",
+            Scope::Setting => "SETTING",
+            Scope::Action => "ACTION",
+            Scope::Answer => "ANSWER",
+        };
+        let mut d = Detail { caption: caption.into(), title: i.title.clone(), path: i.trail.clone(), ..Detail::default() };
+        match i.scope {
+            Scope::Command => {
+                d.path = format!("{} › {}", p.app_name.clone().unwrap_or_else(|| "Aizome".into()), i.trail);
+                if let Some(s) = &i.shortcut {
+                    d.keys = keycaps(s);
+                    let count = i
+                        .key
+                        .as_deref()
+                        .map(|k| model::coach_count(self.frecency.score(&format!("menu:{}", k.trim_start_matches("cmd:")))))
+                        .unwrap_or(0);
+                    d.coach = model::coach(count, true);
+                }
+                d.actions = vec![("Run".into(), "↩".into()), ("Run, keep palette open".into(), "❖↩".into()), ("More actions".into(), "❖K".into())];
+            }
+            Scope::Answer => d.actions = vec![("Copy the result".into(), "↩".into())],
+            Scope::Window => d.actions = vec![("Focus".into(), "↩".into()), ("More actions".into(), "❖K".into())],
+            _ => d.actions = vec![("Open".into(), "↩".into()), ("More actions".into(), "❖K".into())],
+        }
+        d
+    }
+
+    /// What the palette heard.
+    pub fn palette_event(&mut self, e: PaletteEvent, cx: &mut Cx<Msg>) {
+        match e {
+            PaletteEvent::Index(Index(i)) => self.file_index = Some(i),
+            PaletteEvent::Settings(list) => self.settings_list = list,
+            PaletteEvent::Files(seq, items) => {
+                if let Some(p) = &mut self.palette
+                    && p.search == seq
+                {
+                    p.files = items;
+                    p.files_for = p.query.trim().to_owned();
+                    self.rank_palette(cx);
+                }
+            }
+            PaletteEvent::Move(by) => self.palette_move(by),
+            PaletteEvent::Cycle(forward) => self.palette_cycle(forward, cx),
+            PaletteEvent::Actions => self.palette_actions(cx),
+            PaletteEvent::Ui(m) => self.palette_msg(m, cx),
+        }
+    }
+
+    pub fn palette_msg(&mut self, m: PaletteMsg, cx: &mut Cx<Msg>) {
+        let Some(p) = &mut self.palette else { return };
+        match m {
+            PaletteMsg::Query(q) => {
+                p.query = q;
+                p.selected = 0;
+                p.scroll = 0.0;
+                self.rank_palette(cx);
+            }
+            PaletteMsg::Scope(s) => {
+                p.scope = s;
+                p.selected = 0;
+                p.scroll = 0.0;
+                self.rank_palette(cx);
+            }
+            PaletteMsg::Click(i) => {
+                if p.selected == i {
+                    self.run_selected(false, cx);
+                } else {
+                    p.selected = i;
+                    p.scroll = view::scroll_for(&p.sections, i, p.scroll);
+                }
+            }
+            PaletteMsg::Run { keep_open } => self.run_selected(keep_open, cx),
+            PaletteMsg::Close => self.close_palette(cx),
+        }
+    }
+
+    /// ↑ and ↓.
+    pub fn palette_move(&mut self, by: isize) {
+        let Some(p) = &mut self.palette else { return };
+        let n = model::flat(&p.sections).len();
+        if n == 0 {
+            return;
+        }
+        let at = p.selected as isize + by;
+        p.selected = if by.abs() > 1 { at.clamp(0, n as isize - 1) as usize } else { at.rem_euclid(n as isize) as usize };
+        p.scroll = view::scroll_for(&p.sections, p.selected, p.scroll);
+    }
+
+    /// Tab and ⇧Tab.
+    pub fn palette_cycle(&mut self, forward: bool, cx: &mut Cx<Msg>) {
+        let Some(p) = &mut self.palette else { return };
+        p.scope = model::cycle(p.scope, forward);
+        p.selected = 0;
+        p.scroll = 0.0;
+        self.rank_palette(cx);
+    }
+
+    fn run_selected(&mut self, keep_open: bool, cx: &mut Cx<Msg>) {
+        let Some(p) = &self.palette else { return };
+        let Some(item) = model::flat(&p.sections).get(p.selected).map(|r| r.item.clone()) else { return };
+        if let Some(k) = &item.key {
+            self.frecency.visit(k);
+            if item.scope == Scope::Command && item.shortcut.is_some() {
+                self.frecency.visit(&format!("menu:{}", k.trim_start_matches("cmd:")));
+            }
+            self.save_frecency();
+        }
+        if !keep_open {
+            self.close_palette(cx);
+        }
+        self.run(item.action, cx);
+        if keep_open {
+            // The app may have changed its menus: rows again.
+            let items = self.palette_items();
+            if let Some(p) = &mut self.palette {
+                p.items = items;
+            }
+            self.rank_palette(cx);
+        }
+    }
+
+    /// ❖K: the selected row's actions, as a menu over it.
+    pub fn palette_actions(&mut self, cx: &mut Cx<Msg>) {
+        let Some(p) = &self.palette else { return };
+        let Some(item) = model::flat(&p.sections).get(p.selected).map(|r| r.item.clone()) else { return };
+        let Some(rect) = view::row_rect(&p.sections, p.selected, p.scroll) else { return };
+        let window = p.window;
+        let entries = match (&item.scope, &item.action) {
+            (Scope::File, Action::Open { path }) => {
+                let p = path.clone();
+                let mut open_with: Vec<Entry> = Vec::new();
+                if let Some(index) = &self.apps {
+                    for a in index.apps().into_iter().filter(|a| !a.mime_types.is_empty()).take(12) {
+                        let argv = a
+                            .exec
+                            .as_deref()
+                            .and_then(|e| aizome_sys::apps::Exec::parse(e).ok())
+                            .map(|e| e.expand(&[p.to_string_lossy().into_owned()], &aizome_sys::apps::ExecContext::default()))
+                            .unwrap_or_default();
+                        if !argv.is_empty() {
+                            open_with.push(Entry::action(a.name.clone(), Action::Spawn { argv }));
+                        }
+                    }
+                }
+                vec![
+                    Entry::action("Open", Action::Open { path: p.clone() }),
+                    Entry::submenu("Open With", open_with),
+                    Entry::action("Show in Hako", Action::Reveal { path: p.clone() }),
+                    Entry::action("Copy Path", Action::Copy { text: p.to_string_lossy().into_owned() }),
+                    Entry::separator(),
+                    Entry::action("Move to Trash", Action::MoveToTrash { path: p.clone() }),
+                ]
+            }
+            (Scope::Window, Action::Wm(Request::Focus { id })) => vec![
+                Entry::action("Focus", crate::actions::wm::focus(*id)),
+                Entry::action("Close", crate::actions::wm::close(Some(*id))),
+                Entry::submenu("Move to Desk", crate::menus::build::desk_items(&self.wm.desks, |d| crate::actions::wm::move_to_desk(Some(*id), d))),
+            ],
+            (Scope::App, Action::Launch { app_id }) => {
+                let running = self.wm.is_running(app_id);
+                vec![
+                    Entry::action("Open", Action::FocusApp { app_id: app_id.clone() }),
+                    Entry::action("New Window", Action::NewWindow { app_id: app_id.clone() }),
+                    Entry::action("Quit", Action::QuitApp { app_id: app_id.clone() }).enabled(running),
+                ]
+            }
+            (Scope::Command, a) => {
+                let mut v = vec![Entry::action("Run", a.clone())];
+                if let Some(s) = &item.shortcut {
+                    v.push(Entry::action("Copy Shortcut", Action::Copy { text: s.label() }));
+                }
+                v.push(Entry::action("Show in Menu", Action::ShowInMenu { trail: item.trail.clone() }));
+                v
+            }
+            (_, a) => vec![Entry::action("Run", a.clone())],
+        };
+        let menu = ShellMenu::new(item.title.clone(), entries);
+        let anchor = aizome_kit::Rect::new(rect.x1 - 200.0, rect.y0, rect.x1, rect.y1);
+        self.show_menu(window, anchor, &menu, MenuStyle::below(), cx);
+    }
+
+    pub fn save_frecency(&self) {
+        if !self.opts.live {
+            return;
+        }
+        if let Ok(bytes) = serde_json::to_vec(&self.frecency) {
+            let path = aizome_search::frecency::Frecency::default_path();
+            std::thread::spawn(move || {
+                if let Some(d) = path.parent() {
+                    let _ = std::fs::create_dir_all(d);
+                }
+                let tmp = path.with_extension("json.tmp");
+                if std::fs::write(&tmp, bytes).is_ok() {
+                    let _ = std::fs::rename(tmp, path);
+                }
+            });
+        }
+    }
+
+    /// Read (or build) the file index and Shitsurae's settings list, on
+    /// threads.
+    pub fn start_palette_threads(&mut self, cx: &mut Cx<Msg>) {
+        let roots: Vec<PathBuf> = self.palette_cfg.roots.iter().map(|r| aizome_config::expand_home(r)).collect();
+        let max_age = std::time::Duration::from_secs(self.palette_cfg.reindex_minutes.max(1) as u64 * 60);
+        cx.spawn(move || {
+            let cache = FileIndex::default_cache_path();
+            let index = match FileIndex::load(&cache) {
+                Some(i) if i.age().is_some_and(|a| a < max_age) => i,
+                _ => {
+                    let i = FileIndex::build(&roots, &aizome_search::files::Limits::default());
+                    if let Some(d) = cache.parent() {
+                        let _ = std::fs::create_dir_all(d);
+                    }
+                    let _ = i.save(&cache);
+                    i
+                }
+            };
+            Msg::Palette(PaletteEvent::Index(Index(Arc::new(index))))
+        });
+        cx.spawn(|| {
+            let cache = model::settings_cache_path();
+            let list = std::process::Command::new("aizome-shitsurae")
+                .args(["--list-settings", "--json"])
+                .stderr(std::process::Stdio::null())
+                .output()
+                .ok()
+                .filter(|o| o.status.success())
+                .and_then(|o| {
+                    let text = String::from_utf8_lossy(&o.stdout).into_owned();
+                    let list = model::parse_settings(&text)?;
+                    if let Some(d) = cache.parent() {
+                        let _ = std::fs::create_dir_all(d);
+                    }
+                    let _ = std::fs::write(&cache, &text);
+                    Some(list)
+                })
+                .or_else(|| std::fs::read_to_string(&cache).ok().and_then(|t| model::parse_settings(&t)))
+                .unwrap_or_default();
+            Msg::Palette(PaletteEvent::Settings(list))
+        });
+    }
+}

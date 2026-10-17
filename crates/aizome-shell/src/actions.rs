@@ -67,6 +67,8 @@ pub enum Action {
     ShelfRemove { index: usize },
     /// Make a folder on the desktop.
     NewFolderOnDesktop,
+    /// Open the focused app's menu holding a command (its trail).
+    ShowInMenu { trail: String },
 }
 
 /// Leaving or pausing the session.

@@ -48,6 +48,7 @@ pub enum Msg {
     Run(Action),
     Bar(WindowKey, BarMsg),
     Deskbar(crate::deskbar::DeskbarMsg),
+    Palette(crate::palette::PaletteEvent),
     Note(crate::notifications::server::NoteEvent),
     /// The bar's notification line has shown long enough.
     BannerDone(u32),
@@ -71,6 +72,7 @@ pub enum Surface {
     MenuBar { output: u32 },
     Desktop { output: u32 },
     Deskbar,
+    Palette,
 }
 
 /// An output and the shell's surfaces on it.
@@ -132,6 +134,14 @@ pub struct Shell {
     /// The notification in the bar's line now, and those waiting for it.
     pub banner: Option<u32>,
     pub banner_queue: Vec<u32>,
+    pub palette: Option<crate::palette::PaletteState>,
+    pub frecency: aizome_search::frecency::Frecency,
+    pub file_index: Option<Arc<aizome_search::files::FileIndex>>,
+    pub settings_list: Vec<crate::palette::model::SettingEntry>,
+    /// The theme showing is Day.
+    pub theme_day: bool,
+    /// The text selected in the focused app, for Services.
+    pub selection: Option<String>,
     pub(crate) deskbar_size: Option<aizome_kit::Size>,
     pub(crate) icons: HashMap<String, Option<aizome_kit::Image>>,
     /// The primary bar's Desks, by where they are across it.
@@ -174,6 +184,12 @@ impl Shell {
             note_server: None,
             banner: None,
             banner_queue: Vec::new(),
+            palette: None,
+            frecency: aizome_search::frecency::Frecency::default(),
+            file_index: None,
+            settings_list: Vec::new(),
+            theme_day: false,
+            selection: None,
             deskbar_size: None,
             icons: HashMap::new(),
             desk_strip: Vec::new(),
@@ -184,6 +200,7 @@ impl Shell {
             _apps_watch: None,
         };
         s.read_settings();
+        s.theme_day = s.settings.appearance.theme.resolve(aizome_kit::theme::local_hour()) == aizome_theme::ThemeName::Day;
         s
     }
 
@@ -452,7 +469,12 @@ impl Shell {
                 }
             }
             Action::Screenshot => self.ipc.send(Request::Screenshot { output: None, path: None, window: None, area: None, clipboard: false }),
-            Action::About { .. } | Action::Palette { .. } | Action::Toolchest | Action::SetTheme { .. } => {}
+            Action::About { app_id: None } => self.run(Action::Settings { pane: "about".into(), anchor: None }, cx),
+            Action::About { app_id: Some(app_id) } => self.about_app(&app_id, cx),
+            Action::Palette { scope, query } => self.open_palette(scope, query, cx),
+            Action::Toolchest => self.open_toolchest(None, cx),
+            Action::SetTheme { day } => self.set_theme(day),
+            Action::ShowInMenu { trail } => self.show_in_menu(&trail, cx),
             Action::ToggleDoNotDisturb => {
                 self.notes_cfg.do_not_disturb = !self.notes_cfg.do_not_disturb;
                 self.save_section("notifications");
@@ -504,6 +526,9 @@ impl Shell {
     fn start_threads(&mut self, cx: &mut Cx<Msg>) {
         let tx = cx.stream();
         self.stream = Some(tx.clone());
+        self.frecency = aizome_search::frecency::Frecency::load(aizome_search::frecency::Frecency::default_path());
+        self.shelf = crate::shelf::Shelf::load(&crate::shelf::Shelf::default_dir());
+        self.start_palette_threads(cx);
         {
             let tx = tx.clone();
             self.ipc = Ipc::spawn(self.opts.ipc_socket.clone(), move |e| {
@@ -587,6 +612,12 @@ impl Shell {
     fn binding(&mut self, action: &str, pointer: Option<(f64, f64)>, output: Option<String>, cx: &mut Cx<Msg>) {
         match action {
             "toolchest" => self.open_toolchest(output.as_deref(), cx),
+            "palette" => self.toggle_palette(None, String::new(), cx),
+            "app-menu" => {
+                if let Some((x, y)) = pointer {
+                    self.pointer_menu(x, y, cx);
+                }
+            }
             _ => log::debug!("binding {action} at {pointer:?} on {output:?}"),
         }
     }
@@ -605,6 +636,8 @@ impl Shell {
         }
         self.read_settings();
         self.tray = self.sys.tray(&self.bar_cfg);
+        let day = self.settings.appearance.theme.resolve(aizome_kit::theme::local_hour()) == aizome_theme::ThemeName::Day;
+        self.theme_changed(day);
     }
 
     fn take_server(&mut self, e: ServerEvent, cx: &mut Cx<Msg>) {
@@ -637,6 +670,29 @@ impl Shell {
                 (true, String::new())
             }
             proto::ShellRequest::State => (true, self.state_json()),
+            proto::ShellRequest::Palette { scope, query } => {
+                let scope = scope.as_deref().and_then(crate::palette::model::scope_named);
+                if query.is_empty() && scope.is_none() {
+                    self.toggle_palette(None, String::new(), cx);
+                } else {
+                    self.open_palette(scope, query, cx);
+                }
+                (true, String::new())
+            }
+            proto::ShellRequest::AppMenu { x, y } => {
+                self.pointer_menu(x, y, cx);
+                (true, String::new())
+            }
+            proto::ShellRequest::Notify { app, summary, body } => {
+                let n = crate::notifications::store::Incoming { app_name: app, summary, body, ..Default::default() };
+                let id = self.notes.fresh_id();
+                self.take_note(crate::notifications::server::NoteEvent::Notify(id, Box::new(n)), cx);
+                (true, id.to_string())
+            }
+            proto::ShellRequest::Dismiss => {
+                self.close_palette(cx);
+                (true, String::new())
+            }
             other => (false, format!("not yet: {other:?}")),
         }
     }
@@ -705,6 +761,7 @@ impl Program for Shell {
             Msg::Run(a) => self.run(a, cx),
             Msg::Bar(w, m) => self.bar(w, m, cx),
             Msg::Deskbar(m) => self.deskbar_msg(m, cx),
+            Msg::Palette(e) => self.palette_event(e, cx),
             Msg::Note(e) => self.take_note(e, cx),
             Msg::BannerDone(id) => self.banner_done(id, cx),
             Msg::Nothing => {}
@@ -725,6 +782,13 @@ impl Program for Shell {
             })
             .into(),
             Some(Surface::Deskbar) => crate::deskbar::view(&self.deskbar_model()).map(Msg::Deskbar),
+            Some(Surface::Palette) => match (self.palette_view(), &self.palette) {
+                (Some(v), Some(p)) => {
+                    let inner = crate::palette::view::view(&v, p.scroll).map(|m| Msg::Palette(crate::palette::PaletteEvent::Ui(m)));
+                    crate::widgets::keys::keys(inner, |k| crate::palette::key_event(k).map(Msg::Palette))
+                }
+                _ => aizome_kit::space(0.0),
+            },
             None => aizome_kit::space(0.0),
         }
     }
@@ -808,5 +872,121 @@ impl Shell {
             let mut measure = |s: &str, spec: &aizome_kit::text::TextSpec| text.layout(&theme, s, spec, None).size().width;
             self.desk_strip = crate::menubar::desk_rects(&theme, &mut measure, &model, screen.output.frame.width());
         }
+    }
+}
+
+impl Shell {
+    /// About an app: its name, generic name and description, in the bar's
+    /// line.
+    fn about_app(&mut self, app_id: &str, cx: &mut Cx<Msg>) {
+        let (name, _, _) = self.app_look(app_id);
+        let entry = self.apps.as_deref().and_then(|i| i.match_window(app_id)).cloned();
+        let body = entry
+            .map(|e| [e.generic_name.unwrap_or_default(), e.comment.unwrap_or_default()].into_iter().filter(|s| !s.is_empty()).collect::<Vec<_>>().join(" — "))
+            .unwrap_or_default();
+        let n = crate::notifications::store::Incoming {
+            app_name: name.clone(),
+            summary: name,
+            body: if body.is_empty() { app_id.to_owned() } else { body },
+            transient: true,
+            desktop_entry: Some(app_id.to_owned()),
+            ..Default::default()
+        };
+        let id = self.notes.fresh_id();
+        self.take_note(crate::notifications::server::NoteEvent::Notify(id, Box::new(n)), cx);
+    }
+
+    /// Open the focused app's menu a command is in (its trail's first
+    /// part), under the bar.
+    fn show_in_menu(&mut self, trail: &str, cx: &mut Cx<Msg>) {
+        let first = trail.split(" › ").next().unwrap_or("");
+        let (_, menus) = self.focused_menus();
+        let Some(i) = menus.iter().position(|m| m.title == first) else { return };
+        let Some(bar) = self.focused_screen().and_then(|s| s.bar) else { return };
+        let x = 92.0 + 40.0 * i as f64;
+        self.open_slot(bar, Slot::Menu(i), Rect::new(x, 0.0, x + 40.0, crate::menubar::HEIGHT), cx);
+    }
+
+    /// Night or Day: written to the settings, which the compositor and every
+    /// app follow.
+    pub fn set_theme(&mut self, day: bool) {
+        self.settings.appearance.theme = if day { aizome_config::ThemeChoice::Day } else { aizome_config::ThemeChoice::Night };
+        if self.opts.live {
+            if let Err(e) = self.settings.save() {
+                log::warn!("saving the theme: {e}");
+            }
+            self.ipc.send(Request::ReloadConfig);
+        }
+        self.theme_changed(day);
+    }
+
+    /// The theme turned: foot instances and GTK follow (foot reloads its
+    /// colours on SIGUSR1 for dark and SIGUSR2 for light).
+    pub fn theme_changed(&mut self, day: bool) {
+        if self.theme_day == day {
+            return;
+        }
+        self.theme_day = day;
+        if !self.opts.live {
+            return;
+        }
+        std::thread::spawn(move || {
+            let signal = if day { libc::SIGUSR2 } else { libc::SIGUSR1 };
+            if let Ok(rd) = std::fs::read_dir("/proc") {
+                let me = unsafe { libc::getuid() };
+                for e in rd.flatten() {
+                    let Ok(pid) = e.file_name().to_string_lossy().parse::<i32>() else { continue };
+                    let comm = std::fs::read_to_string(e.path().join("comm")).unwrap_or_default();
+                    let owner = std::os::unix::fs::MetadataExt::uid(&match e.metadata() {
+                        Ok(m) => m,
+                        Err(_) => continue,
+                    });
+                    if comm.trim() == "foot" && owner == me {
+                        // SAFETY: a signal to the user's own foot.
+                        unsafe { libc::kill(pid, signal) };
+                    }
+                }
+            }
+            let scheme = if day { "'prefer-light'" } else { "'prefer-dark'" };
+            let _ = std::process::Command::new("dconf")
+                .args(["write", "/org/gnome/desktop/interface/color-scheme", scheme])
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .status();
+        });
+    }
+}
+
+impl Shell {
+    /// The focused app's whole menu at a point of the global layout (NeXT's
+    /// menu at the pointer), as a popup of that output's bar.
+    pub fn pointer_menu(&mut self, x: f64, y: f64, cx: &mut Cx<Msg>) {
+        let screen = self
+            .screens
+            .iter()
+            .find(|s| s.output.frame.contains(Point::new(x, y)))
+            .or(self.focused_screen())
+            .cloned();
+        let Some(screen) = screen else { return };
+        let Some(bar) = screen.bar else { return };
+        let (name, menus) = self.focused_menus();
+        let window = self.wm.focused_window();
+        let hide = Action::Wm(Request::HideApp { app: AppSel { app_id: None, pid: window.and_then(|w| w.pid) } });
+        let quit = match window {
+            Some(w) => {
+                let conn = self.registry.for_window(w.pid, &w.app_id);
+                let quit_item = menus.first().and_then(|m| m.flatten().into_iter().find(|f| f.entry.role.as_deref() == Some("quit")));
+                match (conn, quit_item) {
+                    (Some(_), Some(f)) => f.entry.action,
+                    _ => Action::QuitApp { app_id: w.app_id.clone() },
+                }
+            }
+            None => Action::Session(SessionVerb::LogOut),
+        };
+        let text = self.selection.clone();
+        let menu = build::pointer_menu(&name, &menus, build::services(text.as_deref()), hide, quit);
+        let at = Point::new(x - screen.output.frame.x0, y - screen.output.frame.y0);
+        let style = MenuStyle::at_point().titled(name.clone());
+        self.show_menu(bar, at_point(at), &menu, style, cx);
     }
 }
