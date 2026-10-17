@@ -39,6 +39,7 @@ pub mod datetime;
 pub mod error;
 pub mod network;
 pub mod power;
+pub mod printers;
 pub mod sysinfo;
 mod oneshot;
 mod service;
