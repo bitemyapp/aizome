@@ -21,6 +21,8 @@ const APP_ROW: f64 = 26.0;
 const WINDOW_ROW: f64 = 22.0;
 const CARD: f64 = 62.0;
 const CARD_GAP: f64 = 6.0;
+/// The row of a card's action buttons.
+const BUTTONS: f64 = 26.0;
 const SHELF_ROW: f64 = 26.0;
 const SHELF_GAP: f64 = 4.0;
 const CAPTION: f64 = 27.0;
@@ -107,7 +109,7 @@ impl DeskbarModel {
             if !a.folded {
                 h += a.windows.len() as f64 * WINDOW_ROW;
             }
-            h += a.cards.len() as f64 * (CARD + CARD_GAP);
+            h += a.cards.iter().map(|c| CARD + CARD_GAP + if c.buttons.is_empty() { 0.0 } else { BUTTONS }).sum::<f64>();
         }
         h += 1.0 + CAPTION;
         h += self.shelf.len() as f64 * (SHELF_ROW + SHELF_GAP) + SHELF_ROW + 10.0;
@@ -240,10 +242,21 @@ fn card(c: &NoteCard) -> Element<DeskbarMsg> {
     .on_click(DeskbarMsg::OpenNote(c.id))
     .text(label, SemanticRole::Group);
     let close = drawn(18.0, 18.0, "x", |_| {}).on_click(DeskbarMsg::DismissNote(c.id)).text("Dismiss", SemanticRole::Button);
-    aizome_kit::container(aizome_kit::stack(vec![
+    let stacked: Element<DeskbarMsg> = aizome_kit::stack(vec![
         card.into(),
         aizome_kit::container(close).padding([2.0, 2.0, 0.0, WIDTH - 42.0 - 20.0]).into(),
-    ]))
+    ])
+    .into();
+    let mut parts = vec![stacked];
+    if !c.buttons.is_empty() {
+        // The notification's actions, as buttons under it.
+        let mut row: Vec<Element<DeskbarMsg>> = Vec::new();
+        for (key, label) in c.buttons.iter().take(2) {
+            row.push(aizome_kit::button(label.clone()).compact().on_press(DeskbarMsg::NoteAction(c.id, key.clone())).into());
+        }
+        parts.push(aizome_kit::row(row).spacing(6.0).height(BUTTONS).align(Align::Center).into());
+    }
+    aizome_kit::container(column(parts))
     .padding([0.0, 10.0, CARD_GAP, 32.0])
     .key(("note", c.id))
     .into()

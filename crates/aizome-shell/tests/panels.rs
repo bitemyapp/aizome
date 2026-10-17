@@ -58,6 +58,7 @@ fn fixture() -> aizome_shell::systray::glue::Fixture {
         TrayWidget::Clock,
         Panel::Clock(ClockPanel {
             now: Local { year: 2026, month: 10, day: 17, hour: 21, minute: 42, second: 0, weekday: 6 },
+            dnd: false,
             zones: vec![("Tokyo".into(), "11:42".into()), ("Lisbon".into(), "03:42".into())],
         }),
     );

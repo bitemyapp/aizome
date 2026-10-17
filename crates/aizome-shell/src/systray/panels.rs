@@ -44,6 +44,7 @@ pub enum PanelMsg {
     Theme(usize),
     Size(usize),
     PowerMode(String),
+    DoNotDisturb(bool),
     /// Open Shitsurae at a pane.
     Settings(String),
     Close,
@@ -133,6 +134,8 @@ pub struct BatteryPanel {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct ClockPanel {
     pub now: Local,
+    /// Do Not Disturb is on.
+    pub dnd: bool,
     /// Other places' times: name and time.
     pub zones: Vec<(String, String)>,
 }
@@ -490,6 +493,8 @@ fn clock(p: &ClockPanel) -> Vec<Element<PanelMsg>> {
         })
         .into(),
     );
+    v.push(sep());
+    v.push(labelled("Do Not Disturb", typeface::WEIGHT_REGULAR, Some(toggle(p.dnd).on_toggle(PanelMsg::DoNotDisturb).into()), ROW));
     if !p.zones.is_empty() {
         v.push(sep());
         for (name, time) in &p.zones {
@@ -565,7 +570,7 @@ pub fn height(p: &Panel) -> f64 {
         Panel::Battery(b) => HEAD + 34.0 + if b.modes.is_empty() { 0.0 } else { 24.0 + 30.0 } + sep + ROW,
         Panel::Clock(c) => {
             let weeks = crate::clock::month_grid(c.now.year, c.now.month).len();
-            HEAD + 40.0 + weeks as f64 * 26.0 + 6.0 + if c.zones.is_empty() { 0.0 } else { sep + c.zones.len() as f64 * ROW } + sep + ROW
+            HEAD + 40.0 + weeks as f64 * 26.0 + 6.0 + sep + ROW + if c.zones.is_empty() { 0.0 } else { sep + c.zones.len() as f64 * ROW } + sep + ROW
         }
     };
     (rows + 10.0 + 2.0 + SHADOW).ceil()

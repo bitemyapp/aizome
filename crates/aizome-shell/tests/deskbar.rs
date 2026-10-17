@@ -64,3 +64,15 @@ fn pictures_of_the_deskbar() {
     }
     let _ = Size::ZERO;
 }
+
+#[test]
+fn a_window_dragged_onto_a_desk_of_the_strip_finds_it() {
+    let h = scene(false);
+    let s = h.program();
+    // The Deskbar's left edge, in the output.
+    let left = W - aizome_shell::deskbar::WIDTH - aizome_shell::deskbar::SHADOW;
+    // Over the bar's strip (y above the Deskbar's top), along it.
+    let hits: Vec<Option<u32>> = (0..300).map(|x| s.desk_at_deskbar_point(Point::new(900.0 + x as f64 * 1.0 - left, -12.0))).collect();
+    assert!(hits.contains(&Some(1)) && hits.contains(&Some(2)) && hits.contains(&Some(3)), "{hits:?}");
+    assert_eq!(s.desk_at_deskbar_point(Point::new(40.0, 40.0)), None, "inside the Deskbar");
+}

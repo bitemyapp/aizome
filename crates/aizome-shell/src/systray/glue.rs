@@ -147,7 +147,7 @@ impl Shell {
                 }
                 Panel::Battery(p)
             }
-            TrayWidget::Clock => Panel::Clock(ClockPanel { now: self.now, zones: Vec::new() }),
+            TrayWidget::Clock => Panel::Clock(ClockPanel { now: self.now, dnd: self.notes_cfg.do_not_disturb, zones: Vec::new() }),
         }
     }
 
@@ -305,6 +305,11 @@ impl Shell {
             PanelMsg::Size(i) => {
                 self.settings.appearance.size = [aizome_config::UiSize::Small, aizome_config::UiSize::Medium, aizome_config::UiSize::Large][i.min(2)];
                 self.save_appearance();
+            }
+            PanelMsg::DoNotDisturb(on) => {
+                if self.notes_cfg.do_not_disturb != on {
+                    self.run(crate::actions::Action::ToggleDoNotDisturb, cx);
+                }
             }
             PanelMsg::PowerMode(mode) => {
                 if let Some(p) = &sys.profiles {
