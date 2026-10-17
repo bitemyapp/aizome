@@ -83,8 +83,8 @@ What `launched` and `update` act with:
 
 | | |
 |---|---|
-| `open_window(WindowSpec) -> WindowKey` | `WindowSpec::new(title).size(w, h).min_size(..).max_size(..).resizable(b)`, `.dialog(parent)`, `.utility()`, `WindowSpec::layer(LayerOptions, w, h)`, `WindowSpec::lock(output)` |
-| `close_window(key)`, `set_title(key, t)`, `request_size`, `minimise`, `windows()` | |
+| `open_window(WindowSpec) -> WindowKey` | `WindowSpec::new(title).size(w, h).min_size(..).max_size(..).resizable(b)`, `.dialog(parent)`, `.utility()`, `WindowSpec::layer(LayerOptions, w, h)`, `WindowSpec::lock(output)`. Sizes are the content's: where the kit draws the menu bar in the window (no Aizome shell), the bar comes on top. |
+| `close_window(key)`, `set_title(key, t)`, `request_size`, `minimise`, `activate(key)`, `windows()` | `activate` brings a window forward (a one-instance app hearing its second launch). |
 | `spawn(\|\| msg)` | Work on the kit's thread pool; its result comes back as a message. |
 | `stream() -> MsgSender<Msg>` | A `Clone + Send` sender for threads that keep sending (D-Bus, IPC event streams, file watchers): `sender.send(msg)` wakes the loop. |
 | `after(d, msg)`, `every(d, msg) -> TimerHandle`, `cancel(h)`, `send(msg)` | Timers; a message to the next update. |
