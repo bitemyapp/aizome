@@ -39,6 +39,8 @@
 //! | [`users`] | accounts, names, pictures, passwords | AccountsService | `services.accounts-daemon.enable`, `users.mutableUsers = true` |
 //! | [`printers`] | printers, jobs, discovery | CUPS's tools | `services.printing.enable` |
 //! | [`disks`] | drives, partitions, filesystems, LUKS, images, jobs | UDisks2 | `services.udisks2.enable` |
+//! | [`mpris`] | media players, media keys | MPRIS on the session bus | — |
+//! | [`notifications`] | the notification server (the shell) and a client (apps) | `org.freedesktop.Notifications` | — |
 //! | [`polkit`] | the authentication agent | polkit's helper | `security.polkit.enable` |
 //! | [`sysinfo`] | CPU, memory, processes, I/O, sensors, hardware | `/proc`, `/sys` | `pkgs.hwdata` for GPU names |
 //! | [`apps`] | desktop entries, launching, icons, default apps | XDG files, `systemd-run` | — |
@@ -55,7 +57,9 @@ pub mod datetime;
 pub mod disks;
 pub mod error;
 pub mod keyboard;
+pub mod mpris;
 pub mod network;
+pub mod notifications;
 pub mod polkit;
 pub mod power;
 pub mod printers;

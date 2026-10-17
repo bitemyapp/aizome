@@ -222,6 +222,7 @@ pub(crate) fn register(bus: &Bus, prompt: Prompt) -> Result<Registration> {
         let _ = server.remove::<Agent, _>(AGENT_PATH).await;
         server.at(AGENT_PATH, agent).await
     })?;
+    crate::bus::wait_until_serving(bus, AGENT_PATH)?;
     let path = ObjectPath::try_from(AGENT_PATH)?;
     let registered = bus
         .call::<_, ()>(BLUEZ, "/org/bluez", "org.bluez.AgentManager1", "RegisterAgent", &(&path, CAPABILITY))

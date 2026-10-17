@@ -739,6 +739,27 @@ fn dispatch(
     }
 }
 
+/// Wait until the connection's object server answers calls to `path`.
+///
+/// zbus starts a connection's object server lazily, as a task on the
+/// connection's executor, and a method call that arrives before that task
+/// has subscribed is dropped without a reply (the caller waits out its
+/// timeout). Connections built with `serve_at` wait for the task; objects
+/// served later on a shared connection (the Bluetooth and polkit agents,
+/// the notification server) don't. So ping our own object until it
+/// answers before telling anyone to call it.
+pub(crate) fn wait_until_serving(bus: &Bus, path: &str) -> Result<()> {
+    let Some(me) = bus.unique_name() else { return Ok(()) };
+    let ping = Opts { timeout: Duration::from_millis(100), interactive: false };
+    let mut tries = 0;
+    loop {
+        match bus.call_with::<_, ()>(ping, &me, path, "org.freedesktop.DBus.Peer", "Ping", &()) {
+            Err(Error::Timeout) if tries < 50 => tries += 1,
+            other => return other,
+        }
+    }
+}
+
 /// Run `work` with the bus on a thread, as a [`Task`](crate::Task); without
 /// a bus the task fails at once with [`Error::Unavailable`].
 pub(crate) fn spawn<T: Send + 'static>(

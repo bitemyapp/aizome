@@ -625,6 +625,11 @@ impl PolkitAgent {
             AGENTS.fetch_sub(1, Ordering::AcqRel);
             return Err(error.into());
         }
+        if let Err(error) = crate::bus::wait_until_serving(&bus, AGENT_PATH) {
+            let _ = zbus::block_on(async { conn.object_server().remove::<Agent, _>(AGENT_PATH).await });
+            AGENTS.fetch_sub(1, Ordering::AcqRel);
+            return Err(error);
+        }
         let locale = std::env::var("LC_ALL")
             .or_else(|_| std::env::var("LC_MESSAGES"))
             .or_else(|_| std::env::var("LANG"))
