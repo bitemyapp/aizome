@@ -17,6 +17,11 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, SystemTime};
 
 pub use aizome_theme::{Effects, FocusColor, ThemeName};
+
+pub mod shell;
+pub use shell::{
+    ClockFormat, DeskbarSettings, LockSettings, MenubarSettings, NotificationSettings, PaletteSettings, SYSTRAY_WIDGETS,
+};
 use serde::{Deserialize, Serialize};
 
 /// Everything in `settings.toml`.
@@ -527,6 +532,51 @@ impl Settings {
         std::fs::write(&tmp, text)?;
         std::fs::rename(&tmp, path)?;
         Ok(())
+    }
+
+    /// `[menubar]`, typed (see [`shell`]).
+    pub fn menubar_settings(&self) -> MenubarSettings {
+        shell::read(Some(&self.menubar))
+    }
+
+    /// `[deskbar]`, typed.
+    pub fn deskbar_settings(&self) -> DeskbarSettings {
+        shell::read(Some(&self.deskbar))
+    }
+
+    /// `[notifications]`, typed.
+    pub fn notification_settings(&self) -> NotificationSettings {
+        shell::read(Some(&self.notifications))
+    }
+
+    /// `[lock]`, typed.
+    pub fn lock_settings(&self) -> LockSettings {
+        shell::read(Some(&self.lock))
+    }
+
+    /// `[palette]`, typed (kept among the top level's extra keys).
+    pub fn palette_settings(&self) -> PaletteSettings {
+        shell::read(self.extra.get("palette").and_then(|v| v.as_table()))
+    }
+
+    /// Write one of the shell's sections (`"menubar"`, `"deskbar"`,
+    /// `"notifications"`, `"lock"` or `"palette"`) over its table, keeping
+    /// the keys it doesn't know.
+    pub fn set_shell_section<T: Serialize>(&mut self, section: &str, value: &T) {
+        let table = match section {
+            "menubar" => &mut self.menubar,
+            "deskbar" => &mut self.deskbar,
+            "notifications" => &mut self.notifications,
+            "lock" => &mut self.lock,
+            other => {
+                let v = self.extra.entry(other.to_owned()).or_insert_with(|| toml::Value::Table(toml::Table::new()));
+                if !v.is_table() {
+                    *v = toml::Value::Table(toml::Table::new());
+                }
+                v.as_table_mut().expect("a table")
+            }
+        };
+        shell::write(table, value);
     }
 
     /// The Desks to use: the configured ones, or the four defaults.
