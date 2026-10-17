@@ -591,7 +591,7 @@ impl Pane for Printers {
         rows.insert(0, first.entry("printers"));
         rows.push(
             form::row("Add a printer on the network or plugged in", button("Add Printer…").on_press(Msg::AddPrinter))
-                .leading(icon(Icon::CirclePlus).size(16.0).role(Role::Text2))
+                .leading(container(icon(Icon::CirclePlus).size(16.0).role(Role::Text2)).width(28.0).center())
                 .entry("add-printer"),
         );
         sections.push(vcx.section("Printers", rows));

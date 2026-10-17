@@ -153,7 +153,7 @@ fn main(n: &Network, vcx: &ViewCx, state: &NetworkState) -> Element<Msg> {
     let mut rows: Vec<Row<Msg>> = state.vpns().map(|c| vpn_row(n, state, c)).collect();
     rows.push(
         form::row("Add VPN", button("From File…").on_press(Msg::ImportVpn))
-            .leading(icon(Icon::FilePlus).size(16.0).role(Role::Text2))
+            .leading(lead(icon(Icon::FilePlus).size(16.0).role(Role::Text2)))
             .help("A WireGuard .conf or OpenVPN .ovpn file from your provider")
             .entry("add-vpn"),
     );
