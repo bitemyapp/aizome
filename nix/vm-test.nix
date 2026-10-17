@@ -74,7 +74,7 @@ pkgs.testers.runNixOSTest {
     def capture(name):
         machine.screenshot(name)
         as_alice(f"aizomectl screenshot /tmp/{name}.png")
-        machine.copy_from_vm(f"/tmp/{name}.png", "")
+        machine.copy_from_machine(f"/tmp/{name}.png")
 
     machine.wait_for_unit("multi-user.target")
     machine.wait_until_succeeds("ls /run/user/1000/ | grep -q '^aizome\\..*\\.sock$'", timeout=120)
