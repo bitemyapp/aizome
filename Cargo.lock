@@ -206,6 +206,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "aizome-sumi"
+version = "0.1.0"
+dependencies = [
+ "aizome-kit",
+ "aizome-search",
+ "env_logger",
+ "log",
+ "regex",
+ "ropey",
+ "serde",
+ "serde_json",
+ "toml",
+]
+
+[[package]]
 name = "aizome-sys"
 version = "0.1.0"
 dependencies = [
