@@ -2,6 +2,7 @@
 //! Collector and the Trash, and golden images of the main views.
 
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -367,4 +368,280 @@ fn the_nix_store_is_never_collected() {
     // Inside the store, the list says how it's cleaned.
     h.send(Msg::Open(tree.find(Path::new("/nix/store")).unwrap()));
     assert!(h.texts(h.window()).iter().any(|t| t == "Open Yukimi's Storage"));
+}
+
+/// A home of 29,000 files in four levels, sizes spread unevenly.
+fn big_scan() -> Arc<Scan> {
+    let mut t = Tree::new(PathBuf::from("/home/big"), Kind::Dir, 4096, 4096, 0);
+    let mut seed = 0x9e37_79b9_u64;
+    let mut rand = move || {
+        seed ^= seed << 13;
+        seed ^= seed >> 7;
+        seed ^= seed << 17;
+        seed
+    };
+    let dir = |n: String| Entry { name: n.into_bytes(), kind: Kind::Dir, flags: 0, alloc: 4096, apparent: 4096, mtime: 0 };
+    let top = t.push_children(NodeId::ROOT, &(0..12).map(|i| dir(format!("top-{i}"))).collect::<Vec<_>>());
+    for a in 0..12 {
+        let mid = t.push_children(NodeId(top + a), &(0..8).map(|i| dir(format!("mid-{i}"))).collect::<Vec<_>>());
+        for b in 0..8 {
+            let low = t.push_children(NodeId(mid + b), &(0..10).map(|i| dir(format!("low-{i}"))).collect::<Vec<_>>());
+            for c in 0..10 {
+                let files: Vec<Entry> = (0..30)
+                    .map(|i| {
+                        let s = (rand() % 50_000_000) * (1 + (a as u64 % 4)) * (1 + (i as u64 % 3));
+                        Entry { name: format!("file-{i}.bin").into_bytes(), kind: Kind::File, flags: 0, alloc: s, apparent: s, mtime: 0 }
+                    })
+                    .collect();
+                t.push_children(NodeId(low + c), &files);
+            }
+        }
+    }
+    t.finish();
+    Arc::new(Scan {
+        tree: t,
+        options: ScanOptions::new("/home/big"),
+        started: 0,
+        duration: Duration::ZERO,
+        error_count: 0,
+        errors: Vec::new(),
+        other_filesystems: Vec::new(),
+        hard_links: 0,
+        threads: 8,
+    })
+}
+
+fn frame(h: &mut Harness<Kura>, act: impl FnOnce(&mut Harness<Kura>)) -> Option<Duration> {
+    let w = h.window();
+    h.take_damage(w);
+    let start = std::time::Instant::now();
+    act(h);
+    let damage = h.take_damage(w);
+    let bounds = damage.into_iter().reduce(|a, b| a.union(b))?;
+    let _ = h.render_rect(w, bounds, 2.0);
+    Some(start.elapsed())
+}
+
+fn report(what: &str, mut frames: Vec<Duration>) -> Duration {
+    frames.sort();
+    let p = |q: f64| frames[((frames.len() - 1) as f64 * q) as usize];
+    eprintln!("kura {what}: p50 {:?} p95 {:?} max {:?} (n={}, at 2x)", p(0.5), p(0.95), frames.last().unwrap(), frames.len());
+    p(0.95)
+}
+
+#[test]
+fn hovering_and_going_down_fit_the_frame_budget() {
+    let out = scratch("perf");
+    let mut h = kura(&out, night());
+    h.send(Msg::Scanned(Ok(big_scan())));
+    let w = h.window();
+    let _ = h.render(w, 1.0);
+    let rect = h.find_id(w, "sunburst").unwrap();
+    let g = Geometry::new(rect.size(), RINGS);
+    eprintln!("kura: {} segments in the rings", h.program().segs.len());
+
+    // The pointer moving around the rings: each new segment it's over is a
+    // frame (the middle and the lit segment change).
+    let mut hover = Vec::new();
+    for i in 0..600 {
+        let a = i as f64 / 600.0 * std::f64::consts::TAU * 3.0;
+        let r = g.hole + g.ring * (0.5 + (i % 4) as f64);
+        let p = Point::new(rect.x0 + g.center.x + r * a.cos(), rect.y0 + g.center.y + r * a.sin());
+        if let Some(d) = frame(&mut h, |h| h.move_to(w, p)) {
+            hover.push(d);
+        }
+    }
+    let hover95 = report("hover", hover);
+
+    // Going down a level and back up: the click, then the rings' frames.
+    let mut moving = Vec::new();
+    for _ in 0..6 {
+        let p = point_on(&h, "top-0");
+        h.move_to(w, p);
+        if let Some(d) = frame(&mut h, |h| h.click(w, p)) {
+            moving.push(d);
+        }
+        for _ in 0..12 {
+            std::thread::sleep(Duration::from_millis(8));
+            if let Some(d) = frame(&mut h, |h| h.advance(Duration::from_millis(8))) {
+                moving.push(d);
+            }
+        }
+        std::thread::sleep(Duration::from_millis(90));
+        h.advance(Duration::from_millis(100));
+        let c = center_point(&h);
+        h.move_to(w, c);
+        if let Some(d) = frame(&mut h, |h| h.click(w, c)) {
+            moving.push(d);
+        }
+        std::thread::sleep(Duration::from_millis(90));
+        h.advance(Duration::from_millis(100));
+    }
+    let moving95 = report("going down and up", moving);
+
+    // The list: arrow keys through the rows.
+    let row = h.find(w, "top-0").unwrap();
+    h.click(w, row.center());
+    let mut keys = Vec::new();
+    for i in 0..40 {
+        let k = if i % 20 < 10 { aizome_kit::sidestep_ui::NamedKey::ArrowDown } else { aizome_kit::sidestep_ui::NamedKey::ArrowUp };
+        if let Some(d) = frame(&mut h, |h| h.named(w, k, aizome_kit::sidestep_ui::Modifiers::NONE)) {
+            keys.push(d);
+        }
+    }
+    let keys95 = report("list arrows", keys);
+    if !cfg!(debug_assertions) {
+        assert!(hover95 < Duration::from_millis(4), "hover p95 {hover95:?}");
+        assert!(keys95 < Duration::from_millis(4), "list p95 {keys95:?}");
+        let _ = moving95;
+    }
+}
+
+#[test]
+#[ignore = "a measurement, not a check"]
+fn where_a_frame_goes() {
+    let out = scratch("perf-split");
+    let mut h = kura(&out, night());
+    h.send(Msg::Scanned(Ok(big_scan())));
+    let w = h.window();
+    let _ = h.render(w, 1.0);
+    let rect = h.find_id(w, "sunburst").unwrap();
+    let mut update = Vec::new();
+    let mut paint = Vec::new();
+    let mut whole = Vec::new();
+    for i in 0..200 {
+        let a = i as f64 / 200.0 * std::f64::consts::TAU;
+        let g = Geometry::new(rect.size(), RINGS);
+        let r = g.hole + g.ring * 1.5;
+        let p = Point::new(rect.x0 + g.center.x + r * a.cos(), rect.y0 + g.center.y + r * a.sin());
+        h.take_damage(w);
+        let t = std::time::Instant::now();
+        h.move_to(w, p);
+        update.push(t.elapsed());
+        let damage = h.take_damage(w);
+        if let Some(b) = damage.into_iter().reduce(|a, b| a.union(b)) {
+            let t = std::time::Instant::now();
+            let _ = h.render_rect(w, b, 2.0);
+            paint.push(t.elapsed());
+            eprintln!("damage {b:?}");
+        }
+        let t = std::time::Instant::now();
+        let _ = h.render_rect(w, rect, 2.0);
+        whole.push(t.elapsed());
+    }
+    report("event, update, view, layout", update);
+    report("paint the damage", paint);
+    report("paint the whole sunburst", whole);
+}
+
+#[test]
+#[ignore = "a measurement, not a check"]
+fn what_painting_nothing_costs() {
+    let out = scratch("perf-empty");
+    let mut h = kura(&out, night());
+    let w = h.window();
+    // The disks page's empty lower half, the sunburst's size.
+    let r = aizome_kit::Rect::new(0.0, 0.0, 620.0, 588.0);
+    let mut v = Vec::new();
+    for _ in 0..100 {
+        let t = std::time::Instant::now();
+        let _ = h.render_rect(w, r, 2.0);
+        v.push(t.elapsed());
+    }
+    report("painting the page behind, the sunburst's size", v);
+}
+
+#[test]
+#[ignore = "a measurement, not a check: KURA_BENCH_DIR names a real folder to draw"]
+fn what_drawing_the_rings_costs() {
+    use aizome_kit::sidestep_ui::{Appearance as Look, offscreen};
+    use kura::ui::sunburst::Burst;
+    let scan = match std::env::var_os("KURA_BENCH_DIR") {
+        Some(d) => Arc::new(kura::scan::scan(ScanOptions::new(PathBuf::from(d)), kura::scan::Progress::new()).unwrap()),
+        None => big_scan(),
+    };
+    let segs = Rc::new(rings::segments(&scan.tree, NodeId::ROOT, RINGS));
+    eprintln!("kura: {} segments", segs.len());
+    let theme = aizome_kit::Theme::night();
+    let burst = Burst {
+        scan: scan.clone(),
+        generation: 1,
+        center: NodeId::ROOT,
+        segs,
+        outer: None,
+        transition: None,
+        progress: None,
+        hover: None,
+        selected: None,
+        press: None,
+        dragging: false,
+        drag_over: false,
+        can_up: false,
+        origin: Rc::default(),
+        zone: Rc::default(),
+        labels: Rc::default(),
+    };
+    let size = Size::new(730.0, 565.0);
+    let bounds = aizome_kit::Rect::from_origin_size(Point::ZERO, size);
+    let time = |what: &str, f: &dyn Fn(&mut aizome_kit::sidestep_ui::Canvas)| {
+        let mut v = Vec::new();
+        for _ in 0..30 {
+            let t = std::time::Instant::now();
+            let _ = offscreen::render(size, 2.0, Look::DARK, |c| f(c));
+            v.push(t.elapsed());
+        }
+        report(what, v);
+    };
+    let surface = aizome_kit::theme::color(theme.palette.surface);
+    time("nothing", &|_c| {});
+    time("the surface", &|c| c.fill_rect(bounds, surface));
+    time("surface and rings", &|c| {
+        c.fill_rect(bounds, surface);
+        burst.draw(c, bounds, &theme)
+    });
+    let cached = offscreen::render(size, 2.0, Look::DARK, |c| {
+        c.fill_rect(bounds, surface);
+        burst.draw(c, bounds, &theme)
+    });
+    time("a cached picture of them", &|c| c.draw_image(&cached, bounds));
+    let g = Geometry::new(size, RINGS);
+    let fills = |c: &mut aizome_kit::sidestep_ui::Canvas, aa: bool, pieces: bool| {
+        c.set_antialias(aa);
+        for s in burst.segs.iter() {
+            let (ri, ro) = g.radii(f64::from(s.depth));
+            let a0 = Geometry::angle(s.x0);
+            let sweep = s.span() * std::f64::consts::TAU;
+            let n = if pieces { (sweep / (64.0 / ro).min(0.35)).ceil().max(1.0) as usize } else { 1 };
+            for k in 0..n {
+                let seg = aizome_kit::sidestep_ui::kurbo::CircleSegment::new(g.center, ro, ri, a0 + sweep * k as f64 / n as f64, sweep / n as f64);
+                c.fill(&seg, surface);
+            }
+        }
+    };
+    time("sectors whole", &|c| fills(c, true, false));
+    time("sectors in pieces", &|c| fills(c, true, true));
+    time("sectors whole, no antialiasing", &|c| fills(c, false, false));
+    time("rects of the same count", &|c| {
+        for (i, _) in burst.segs.iter().enumerate() {
+            c.fill_rect(aizome_kit::Rect::new(0.0, (i % 50) as f64, 700.0, 500.0), surface);
+        }
+    });
+}
+
+#[test]
+#[ignore = "a picture to look at: KURA_PICTURES names the folder"]
+fn pictures_of_the_rings_moving() {
+    let Some(dir) = std::env::var_os("KURA_PICTURES").map(PathBuf::from) else { return };
+    let out = scratch("moving");
+    let mut h = kura(&out, night());
+    with_results(&mut h);
+    let w = h.window();
+    let p = point_on(&h, "work");
+    h.click(w, p);
+    for (i, at) in [20u64, 40, 60].into_iter().enumerate() {
+        let t = h.program().transition.unwrap();
+        h.program_mut().transition = Some(kura::ui::sunburst::Transition { started: std::time::Instant::now() - Duration::from_millis(at), duration: Duration::from_millis(80), ..t });
+        h.send(Msg::Dismiss);
+        h.save_png(w, dir.join(format!("moving-{i}.png")), 1.0);
+    }
 }

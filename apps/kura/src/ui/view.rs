@@ -65,11 +65,11 @@ fn status(k: &Kura) -> Element<Msg> {
     let right = match &k.index {
         IndexState::None => String::new(),
         IndexState::Writing => "Writing the index for agents…".into(),
-        IndexState::Written { json, reclaimable } => {
+        IndexState::Written { reclaimable, .. } => {
             if *reclaimable > 0 {
-                format!("About {} could be freed · index for agents in {}", format::size(*reclaimable), format::path(json))
+                format!("About {} could be freed · index for agents written", format::size(*reclaimable))
             } else {
-                format!("Index for agents in {}", format::path(json))
+                "Index for agents written".into()
             }
         }
         IndexState::Failed(e) => format!("The index for agents wasn't written: {e}"),
@@ -257,6 +257,7 @@ fn results(k: &Kura) -> Element<Msg> {
     };
     let burst: Element<Msg> = aizome_kit::canvas(state, |c, bounds, st: &Burst, theme| st.draw(c, bounds, theme))
         .on_event(|ev, size, st: &Burst| st.event(ev, size))
+        .parts(|st: &Burst, size| st.parts(size))
         .width(Length::Fill)
         .height(Length::Fill)
         .label("Disk usage rings")

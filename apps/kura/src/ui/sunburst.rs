@@ -121,13 +121,13 @@ pub struct Burst {
     pub labels: Rc<RefCell<Labels>>,
 }
 
+// What's hovered and selected are parts ([`Burst::parts`]): left out, so that
+// lighting a segment redraws only it and the middle.
 impl Hash for Burst {
     fn hash<H: Hasher>(&self, h: &mut H) {
         (Arc::as_ptr(&self.scan) as usize).hash(h);
         self.generation.hash(h);
         self.center.hash(h);
-        self.hover.hash(h);
-        self.selected.hash(h);
         self.can_up.hash(h);
         self.progress.map(|p| (p * 1000.0) as u32).hash(h);
         self.transition.map(|t| (t.outer, t.inner, t.zoom_in)).hash(h);
@@ -135,6 +135,34 @@ impl Hash for Burst {
 }
 
 impl Burst {
+    /// The parts that change by themselves, for the canvas: the middle
+    /// (what it says), the hovered segment and the selected one.
+    pub fn parts(&self, size: Size) -> Vec<(Rect, u64)> {
+        if self.progress.is_some() {
+            return Vec::new();
+        }
+        let geo = Geometry::new(size, RINGS);
+        let key = |v: &dyn Fn(&mut std::collections::hash_map::DefaultHasher)| {
+            let mut h = std::collections::hash_map::DefaultHasher::new();
+            v(&mut h);
+            h.finish()
+        };
+        let r = geo.hole + 1.0;
+        let middle = Rect::new(geo.center.x - r, geo.center.y - r, geo.center.x + r, geo.center.y + r);
+        let mut out = vec![(middle, key(&|h| (0u8, self.hover, self.can_up).hash(h)))];
+        if let Some(Target::Seg(i)) = self.hover
+            && let Some(s) = self.segs.get(i)
+        {
+            out.push((seg_rect(&geo, s), key(&|h| (1u8, i).hash(h))));
+        }
+        if let Some(sel) = self.selected
+            && let Some(s) = self.segs.iter().find(|s| s.node == Some(sel))
+        {
+            out.push((seg_rect(&geo, s), key(&|h| (2u8, sel).hash(h))));
+        }
+        out
+    }
+
     fn node_of(&self, t: Target) -> Option<NodeId> {
         match t {
             Target::Center => Some(self.center),
@@ -206,9 +234,8 @@ impl Burst {
     pub fn draw(&self, canvas: &mut Canvas, bounds: Rect, theme: &Theme) {
         self.origin.set(Some(canvas.transform() * bounds.origin()));
         let geo = Geometry::new(bounds.size(), RINGS);
-        let surface = aizome_kit::theme::color(theme.palette.surface);
-        canvas.fill_rect(bounds, surface);
-        let sep = StrokeStyle::new(1.0);
+        // The surface under it is its container's fill.
+
         let raised = aizome_kit::theme::color(theme.palette.raised);
 
         if let (Some(t), Some(p), Some(outer)) = (self.transition, self.progress, &self.outer) {
@@ -216,6 +243,10 @@ impl Burst {
             let Some(inner) = outer.iter().find(|s| s.depth == 1 && s.node == Some(t.inner)) else { return };
             let s = if t.zoom_in { p } else { 1.0 - p };
             let z = Zoom { c0: inner.x0, c1: inner.x1, s };
+            // For the few frames the rings move, edges needn't be smooth: drawn
+            // without antialiasing, a frame costs half as much.
+            canvas.save();
+            canvas.set_antialias(false);
             let r0 = geo.boundary(-s);
             if r0 > 0.5 {
                 canvas.fill(&Circle::new(geo.center, r0), raised);
@@ -241,10 +272,9 @@ impl Burst {
                     };
                     fill = fill.mix(after, s as f32);
                 }
-                let shape = CircleSegment::new(geo.center, ro, ri, Geometry::angle(x0), (x1 - x0) * TAU);
-                canvas.fill(&shape, fill);
-                canvas.stroke(&shape, &sep, surface);
+                canvas.fill(&sector(geo.center, ri, ro, x0, x1), fill);
             }
+            canvas.restore();
             return;
         }
 
@@ -254,9 +284,7 @@ impl Burst {
             if self.hover == Some(Target::Seg(i)) {
                 fill = colors::hovered(fill);
             }
-            let shape = CircleSegment::new(geo.center, ro, ri, Geometry::angle(seg.x0), seg.span() * TAU);
-            canvas.fill(&shape, fill);
-            canvas.stroke(&shape, &sep, surface);
+            canvas.fill(&sector(geo.center, ri, ro, seg.x0, seg.x1), fill);
         }
         // The selected item, ringed in the focus colour.
         if let Some(sel) = self.selected
@@ -418,4 +446,37 @@ fn fits(geo: &Geometry, seg: &Seg, ri: f64, ro: f64, r: Rect) -> bool {
         }
         x >= seg.x0 && x <= seg.x1
     })
+}
+
+/// A segment's shape, with half a point of gap on every side so that
+/// neighbours show the surface between them (cheaper than stroking each).
+fn sector(center: Point, ri: f64, ro: f64, x0: f64, x1: f64) -> CircleSegment {
+    let (ri, ro) = (if ri > 0.5 { ri + 0.5 } else { 0.0 }, (ro - 0.5).max(ri + 0.5));
+    let span = (x1 - x0) * TAU;
+    let gap = (0.5 / ((ri + ro) / 2.0).max(1.0)).min(span / 4.0);
+    CircleSegment::new(center, ro, ri, Geometry::angle(x0) + gap, (span - 2.0 * gap).max(0.0))
+}
+
+
+/// The rectangle a segment covers (with room for the selection's ring).
+fn seg_rect(geo: &Geometry, s: &Seg) -> Rect {
+    let (ri, ro) = geo.radii(f64::from(s.depth));
+    let (a0, a1) = (Geometry::angle(s.x0), Geometry::angle(s.x1));
+    let mut angles = vec![a0, a1];
+    // The quarter turns inside it are where its outline reaches furthest.
+    let mut q = (a0 / FRAC_PI_2).ceil() * FRAC_PI_2;
+    while q < a1 {
+        angles.push(q);
+        q += FRAC_PI_2;
+    }
+    let mut r = Rect::from_points(geo.center, geo.center);
+    let mut first = true;
+    for a in angles {
+        for rad in [ri, ro] {
+            let p = Point::new(geo.center.x + rad * a.cos(), geo.center.y + rad * a.sin());
+            r = if first { Rect::from_points(p, p) } else { r.union_pt(p) };
+            first = false;
+        }
+    }
+    r.inflate(3.0, 3.0)
 }
