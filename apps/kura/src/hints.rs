@@ -433,7 +433,7 @@ impl<'a> Detector<'a> {
     fn push(&mut self, id: &str, title: String, summary: String, risk: Risk, action: Action, mut paths: Vec<(NodeId, HintPath)>) {
         paths.retain(|(_, p)| p.allocated_bytes > 0);
         // Inner paths of an outer one in the same hint count once.
-        paths.sort_by(|a, b| self.tree.depth(a.0).cmp(&self.tree.depth(b.0)));
+        paths.sort_by_key(|p| self.tree.depth(p.0));
         let mut kept: Vec<(NodeId, HintPath)> = Vec::new();
         for (n, p) in paths {
             if kept.iter().any(|(k, _)| self.tree.is_within(n, *k)) {
@@ -447,7 +447,7 @@ impl<'a> Detector<'a> {
         for (n, _) in &kept {
             self.claim(*n);
         }
-        kept.sort_by(|a, b| b.1.allocated_bytes.cmp(&a.1.allocated_bytes));
+        kept.sort_by_key(|k| std::cmp::Reverse(k.1.allocated_bytes));
         let total: u64 = kept.iter().map(|(_, p)| p.allocated_bytes).sum();
         let more = kept.len().saturating_sub(MAX_PATHS) as u64;
         let paths: Vec<HintPath> = kept.into_iter().take(MAX_PATHS).map(|(_, p)| p).collect();
@@ -797,9 +797,12 @@ impl<'a> Detector<'a> {
         for (i, n) in tree.nodes().iter().enumerate() {
             let id = NodeId(i as u32);
             let parent_out = tree.parent(id).is_some_and(|p| excluded[p.index()]);
-            // Files in a Git working tree are the repository's, not copies to tidy.
+            // Files in a Git working tree are the repository's, and files in
+            // hidden folders (`~/.config`, `~/.local`, a tool's own) are the
+            // programs' that keep them: not copies for a person to tidy.
             let repo = n.is_dir() && tree.child_named(id, ".git").is_some();
-            let out = parent_out || self.claimed[i] || repo || (n.is_dir() && tree.name_bytes(id) == b".git");
+            let hidden = n.is_dir() && id != NodeId::ROOT && tree.name_bytes(id).starts_with(b".");
+            let out = parent_out || self.claimed[i] || repo || hidden;
             excluded[i] = out;
             if out || n.kind != Kind::File || n.has(flags::HARDLINK) || n.apparent < self.cx.dupe_limits.min_bytes {
                 continue;

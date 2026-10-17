@@ -181,7 +181,7 @@ and later hints skip what's claimed.
 | `tagged-caches` | Other folders holding a valid `CACHEDIR.TAG` | safe |
 | `logs` | `*.log` files of 1 MB or more and `log`/`logs` folders of 10 MB or more (not LevelDB's `NNNNNN.log` data); the summary mentions the systemd journal | low |
 | `old-downloads` | Items in the Downloads folder (`XDG_DOWNLOAD_DIR`) untouched for 90 days | medium |
-| `duplicates` | Files of 1 MB or more with identical contents under different inodes, outside Git working trees and what other hints cover | medium |
+| `duplicates` | Files of 1 MB or more with identical contents under different inodes, outside Git working trees, hidden folders (`~/.config`, `~/.local`, tools' own: the programs' data) and what other hints cover | medium |
 | `nix-generations` | Old generations of the system, `nix profile` and Home Manager profiles; `count` only, `action` opens Yukimi | low |
 | `nix-result-links` | `result` symlinks into the store left by `nix build` (GC roots); `count` only | low |
 

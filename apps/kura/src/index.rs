@@ -320,7 +320,7 @@ pub fn build(scan: &Scan, hints: Vec<Hint>, cx: &hints::Context, limits: Option<
         }
     }
     let mut kinds: Vec<KindTotal> = kinds.into_values().collect();
-    kinds.sort_by(|a, b| b.allocated_bytes.cmp(&a.allocated_bytes));
+    kinds.sort_by_key(|k| std::cmp::Reverse(k.allocated_bytes));
 
     let item = |id: NodeId| {
         let n = tree.node(id);

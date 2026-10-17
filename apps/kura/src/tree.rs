@@ -361,7 +361,7 @@ impl Tree {
         let mut v: Vec<NodeId> = self.children(dir).filter(|&c| !self.node(c).has(flags::REMOVED)).collect();
         // Already sorted unless something was removed: a stable sort of a
         // sorted list costs one pass.
-        v.sort_by(|a, b| self.node(*b).alloc.cmp(&self.node(*a).alloc));
+        v.sort_by_key(|n| std::cmp::Reverse(self.node(*n).alloc));
         v
     }
 

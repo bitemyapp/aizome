@@ -4,6 +4,11 @@
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if kura::cli::is_cli(&args) {
+        // Piped into `head`, stop quietly when the reader goes, as Unix tools do.
+        // SAFETY: setting a signal's disposition to the default is sound.
+        unsafe {
+            libc::signal(libc::SIGPIPE, libc::SIG_DFL);
+        }
         std::process::exit(kura::cli::run(&args));
     }
     #[cfg(feature = "gui")]

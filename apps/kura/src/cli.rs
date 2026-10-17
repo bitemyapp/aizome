@@ -285,7 +285,7 @@ fn cmd_hints(a: &Args) -> Result<i32, String> {
         let frees = h.frees();
         println!("\n{} ({}, {} risk)\n  {}", h.title, frees, h.risk.id(), h.summary);
         if let Some(c) = &h.action.command {
-            println!("  {}: {}", h.action.description, c);
+            println!("  {}\n  $ {}", h.action.description, c);
         } else {
             println!("  {}", h.action.description);
         }
