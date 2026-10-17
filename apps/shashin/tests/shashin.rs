@@ -15,237 +15,8 @@ use aizome_shashin::app::{Body, Wallpaper};
 use aizome_shashin::view::Zoom;
 use aizome_shashin::{Msg, Shashin};
 
-// Fixtures.
-
-fn scratch(name: &str) -> PathBuf {
-    let d = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("shashin-{name}"));
-    let _ = std::fs::remove_dir_all(&d);
-    std::fs::create_dir_all(&d).unwrap();
-    d
-}
-
-/// A landscape at dusk: sky in the dye ramp, a sun, two ridges, water.
-fn landscape(w: u32, h: u32) -> image::RgbImage {
-    let lerp = |a: [f32; 3], b: [f32; 3], t: f32| [0, 1, 2].map(|i| (a[i] + (b[i] - a[i]) * t.clamp(0.0, 1.0)) as u8);
-    image::RgbImage::from_fn(w, h, |x, y| {
-        let (fx, fy) = (x as f32 / w as f32, y as f32 / h as f32);
-        let sun = ((fx - 0.68).powi(2) + (fy - 0.42).powi(2) * 0.6).sqrt();
-        let ridge1 = 0.58 + 0.08 * (fx * 7.0).sin() + 0.04 * (fx * 17.0).cos();
-        let ridge2 = 0.66 + 0.05 * (fx * 4.0 + 1.0).sin();
-        let px = if fy > 0.8 {
-            lerp([36.0, 40.0, 59.0], [22.0, 22.0, 30.0], (fy - 0.8) * 5.0)
-        } else if fy > ridge2 {
-            [36, 40, 59]
-        } else if fy > ridge1 {
-            [61, 89, 161]
-        } else if sun < 0.07 {
-            [224, 175, 104]
-        } else {
-            lerp([169.0, 196.0, 255.0], [122.0, 162.0, 247.0], fy * 1.6)
-        };
-        // A little grain, as a photo has.
-        let n = ((x.wrapping_mul(73_856_093) ^ y.wrapping_mul(19_349_663)) % 7) as u8;
-        image::Rgb([px[0].saturating_add(n), px[1].saturating_add(n), px[2].saturating_add(n)])
-    })
-}
-
-/// A camera's EXIF (big-endian TIFF): make, model, and settings in the
-/// EXIF sub-IFD.
-fn camera_exif() -> Vec<u8> {
-    enum V {
-        Ascii(&'static str),
-        Short(u16),
-        Long(u32),
-        Rational(u32, u32),
-    }
-    fn ifd(out: &mut Vec<u8>, at: usize, entries: &[(u16, V)], data: &mut Vec<u8>, data_at: usize) {
-        out.extend_from_slice(&(entries.len() as u16).to_be_bytes());
-        for (tag, v) in entries {
-            out.extend_from_slice(&tag.to_be_bytes());
-            let (kind, count, inline): (u16, u32, Option<[u8; 4]>) = match v {
-                V::Ascii(s) => (2, s.len() as u32 + 1, None),
-                V::Short(n) => (3, 1, Some([(n >> 8) as u8, *n as u8, 0, 0])),
-                V::Long(n) => (4, 1, Some(n.to_be_bytes())),
-                V::Rational(..) => (5, 1, None),
-            };
-            out.extend_from_slice(&kind.to_be_bytes());
-            out.extend_from_slice(&count.to_be_bytes());
-            match inline {
-                Some(b) => out.extend_from_slice(&b),
-                None => {
-                    out.extend_from_slice(&((data_at + data.len()) as u32).to_be_bytes());
-                    match v {
-                        V::Ascii(s) => {
-                            data.extend_from_slice(s.as_bytes());
-                            data.push(0);
-                            if data.len() % 2 == 1 {
-                                data.push(0);
-                            }
-                        }
-                        V::Rational(a, b) => {
-                            data.extend_from_slice(&a.to_be_bytes());
-                            data.extend_from_slice(&b.to_be_bytes());
-                        }
-                        _ => {}
-                    }
-                }
-            }
-        }
-        out.extend_from_slice(&0u32.to_be_bytes());
-        let _ = at;
-    }
-    // IFD0 at 8 (3 entries: 42 bytes), its data after; then the EXIF IFD.
-    let ifd0_len = 2 + 3 * 12 + 4;
-    let ifd0_data = ["Fujifilm", "X100V"].iter().map(|s| (s.len() + 2) & !1).sum::<usize>();
-    let exif_at = 8 + ifd0_len + ifd0_data;
-    let mut t = b"MM\0\x2a\0\0\0\x08".to_vec();
-    let mut data = Vec::new();
-    ifd(&mut t, 8, &[(0x010f, V::Ascii("Fujifilm")), (0x0110, V::Ascii("X100V")), (0x8769, V::Long(exif_at as u32))], &mut data, 8 + ifd0_len);
-    t.extend_from_slice(&data);
-    assert_eq!(t.len(), exif_at);
-    let exif_len = 2 + 5 * 12 + 4;
-    let mut data = Vec::new();
-    ifd(
-        &mut t,
-        exif_at,
-        &[
-            (0x829a, V::Rational(1, 250)),
-            (0x829d, V::Rational(2, 1)),
-            (0x8827, V::Short(200)),
-            (0x9003, V::Ascii("2026:10:17 06:12:00")),
-            (0x920a, V::Rational(23, 1)),
-        ],
-        &mut data,
-        exif_at + exif_len,
-    );
-    t.extend_from_slice(&data);
-    t
-}
-
-fn jpeg_with_exif(img: &image::RgbImage, exif: &[u8]) -> Vec<u8> {
-    let mut plain = std::io::Cursor::new(Vec::new());
-    img.write_to(&mut plain, image::ImageFormat::Jpeg).unwrap();
-    let plain = plain.into_inner();
-    let mut out = plain[..2].to_vec();
-    out.extend_from_slice(&[0xff, 0xe1]);
-    out.extend_from_slice(&((exif.len() + 8) as u16).to_be_bytes());
-    out.extend_from_slice(b"Exif\0\0");
-    out.extend_from_slice(exif);
-    out.extend_from_slice(&plain[2..]);
-    out
-}
-
-/// Pixel art with alpha: a 16 × 16 sprite.
-fn sprite() -> image::RgbaImage {
-    const ART: [&str; 16] = [
-        "................",
-        "......####......",
-        "....##aaaa##....",
-        "...#aaaaaaaa#...",
-        "..#aaaaaaaaaa#..",
-        "..#aa##aa##aa#..",
-        ".#aaa##aa##aaa#.",
-        ".#aaaaaaaaaaaa#.",
-        ".#aaaaaaaaaaaa#.",
-        ".#aa#aaaaaa#aa#.",
-        "..#aa######aa#..",
-        "..#aaaaaaaaaa#..",
-        "...#aaaaaaaa#...",
-        "....##aaaa##....",
-        "......####......",
-        "................",
-    ];
-    image::RgbaImage::from_fn(16, 16, |x, y| match ART[y as usize].as_bytes()[x as usize] {
-        b'#' => image::Rgba([36, 40, 59, 255]),
-        b'a' => image::Rgba([224, 175, 104, 255]),
-        _ => image::Rgba([0, 0, 0, 0]),
-    })
-}
-
-fn gif(frames: usize) -> Vec<u8> {
-    let mut out = Vec::new();
-    {
-        let mut enc = image::codecs::gif::GifEncoder::new(&mut out);
-        enc.set_repeat(image::codecs::gif::Repeat::Infinite).unwrap();
-        let frames = (0..frames).map(|i| {
-            let img = image::RgbaImage::from_fn(48, 32, |x, _| {
-                if (x as usize / 8) % frames == i { image::Rgba([122, 162, 247, 255]) } else { image::Rgba([36, 40, 59, 255]) }
-            });
-            image::Frame::from_parts(img, 0, 0, image::Delay::from_numer_denom_ms(200, 1))
-        });
-        enc.encode_frames(frames).unwrap();
-    }
-    out
-}
-
-const SVG: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" width="320" height="240" viewBox="0 0 320 240">
-<rect width="320" height="240" fill="#16161e"/>
-<rect x="40" y="40" width="80" height="40" fill="#e0af68"/>
-<rect x="40" y="80" width="160" height="40" fill="#a9c4ff"/>
-<rect x="40" y="120" width="160" height="40" fill="#7aa2f7"/>
-<rect x="40" y="160" width="160" height="40" fill="#4a67b3"/>
-<circle cx="250" cy="120" r="44" fill="none" stroke="#e0af68" stroke-width="6"/>
-</svg>"##;
-
-/// A folder of pictures of every kind (and a text file), as Hako sorts
-/// them: app.ico, beach.png, dance.gif, IMG_2.jpg, IMG_10.jpg, logo.svg,
-/// old.bmp, scan.tiff, sticker.webp.
-fn folder(name: &str) -> PathBuf {
-    let d = scratch(name);
-    std::fs::write(d.join("IMG_2.jpg"), jpeg_with_exif(&landscape(1600, 1066), &camera_exif())).unwrap();
-    image::DynamicImage::ImageRgb8(landscape(800, 1200)).save(d.join("IMG_10.jpg")).unwrap();
-    sprite().save(d.join("beach.png")).unwrap();
-    std::fs::write(d.join("dance.gif"), gif(3)).unwrap();
-    std::fs::write(d.join("logo.svg"), SVG).unwrap();
-    image::DynamicImage::ImageRgb8(landscape(64, 48)).save(d.join("old.bmp")).unwrap();
-    image::DynamicImage::ImageRgb8(landscape(96, 64)).save(d.join("scan.tiff")).unwrap();
-    sprite().save(d.join("sticker.webp")).unwrap();
-    image::imageops::resize(&sprite(), 32, 32, image::imageops::FilterType::Nearest).save(d.join("app.ico")).unwrap();
-    std::fs::write(d.join("notes.txt"), "not a picture").unwrap();
-    d
-}
-
-struct Rig {
-    h: Harness<Shashin>,
-    dir: PathBuf,
-}
-
-fn rig(name: &str, theme: ThemeChoice, open: &str) -> Rig {
-    let dir = folder(name);
-    let mut app = Shashin::new();
-    app.trash = aizome_shashin::trash::Trash { home: dir.join(".trash-can"), uid: 1000 };
-    app.settings_path = Some(dir.join("settings.toml"));
-    app.thumb_dir = dir.join(".thumbnails");
-    app.dry_run = true;
-    if !open.is_empty() {
-        app.initial = vec![dir.join(open)];
-    }
-    let h = Harness::with(app, Appearance { theme, ..Appearance::default() }, false);
-    let mut r = Rig { h, dir };
-    settle(&mut r, 1.0);
-    r
-}
-
-/// Draw, take in what the background sent, and again, until nothing is
-/// being read or drawn.
-fn settle(r: &mut Rig, scale: f64) {
-    let w = r.h.window();
-    let mut quiet = 0;
-    for _ in 0..1000 {
-        let _ = r.h.render(w, scale);
-        r.h.send(Msg::Nothing);
-        if r.h.program().idle() {
-            quiet += 1;
-            if quiet >= 3 {
-                return;
-            }
-        } else {
-            quiet = 0;
-        }
-        std::thread::sleep(Duration::from_millis(4));
-    }
-    panic!("Shashin didn't settle");
-}
+mod common;
+use common::*;
 
 fn names(r: &Rig) -> Vec<String> {
     r.h.program().folder.iter().map(|p| p.file_name().unwrap().to_string_lossy().into_owned()).collect()
@@ -605,4 +376,33 @@ fn goldens() {
     let h = Harness::with(app, Appearance { theme: ThemeChoice::Day, ..Appearance::default() }, false);
     let mut r = Rig { h, dir: PathBuf::new() };
     pictures(&mut r, "empty-day");
+}
+
+#[test]
+fn a_camera_jpeg_shows_its_thumbnail_while_it_decodes() {
+    let d = scratch("preview");
+    let bytes = camera_jpeg(3000, 2000);
+    assert!(bytes.len() > 512 << 10, "{}", bytes.len());
+    std::fs::write(d.join("DSCF0001.jpg"), bytes).unwrap();
+    let r = rig_in(d, ThemeChoice::Night, "DSCF0001.jpg");
+    assert_eq!(r.h.program().previews, 1);
+    let p = r.h.program().pic.as_ref().unwrap();
+    assert_eq!(p.info.dims, (3000, 2000));
+    assert!(p.decoded);
+}
+
+#[test]
+fn scrolling_pans_a_picture_larger_than_the_view() {
+    let mut r = rig("scroll", ThemeChoice::Night, "IMG_2.jpg");
+    let w = r.h.window();
+    r.h.send(Msg::ActualSize);
+    let c = r.h.program().center;
+    r.h.scroll(w, Point::new(400.0, 300.0), Vec2::new(30.0, 40.0));
+    let c2 = r.h.program().center;
+    assert_eq!((c2.0 - c.0, c2.1 - c.1), (30.0, 40.0));
+    // A fitted picture stays put.
+    r.h.send(Msg::Fit);
+    let c = r.h.program().center;
+    r.h.scroll(w, Point::new(400.0, 300.0), Vec2::new(30.0, 40.0));
+    assert_eq!(r.h.program().center, c);
 }

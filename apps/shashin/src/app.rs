@@ -42,6 +42,8 @@ pub struct Tile {
     pub image: Image,
     /// Different for every tile, for the stage's hash.
     pub id: u64,
+    /// Every pixel opaque (a photo): drawn in place of what's under it.
+    pub opaque: bool,
 }
 
 impl Tile {
@@ -79,16 +81,17 @@ pub fn same_zoom(a: f64, b: f64) -> bool {
 
 static TILE_IDS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 
-pub fn tile(z: f64, turns: u8, at: (f64, f64), img: &RgbaImage) -> Option<Tile> {
+pub fn tile(z: f64, turns: u8, at: (f64, f64), img: &RgbaImage, opaque: bool) -> Option<Tile> {
     let image = load::to_image(img)?;
-    Some(Tile { z, turns, at, image, id: TILE_IDS.fetch_add(1, std::sync::atomic::Ordering::Relaxed) })
+    Some(Tile { z, turns, at, image, id: TILE_IDS.fetch_add(1, std::sync::atomic::Ordering::Relaxed), opaque })
 }
 
 /// What a picture is drawn from.
 #[derive(Clone)]
 pub enum Body {
-    /// Pixels, upright (not yet turned by the user).
-    Raster(Arc<RgbaImage>),
+    /// Pixels, upright (not yet turned by the user), and whether every
+    /// one is opaque.
+    Raster(Arc<RgbaImage>, bool),
     /// A drawing, rendered at any zoom.
     Svg(Arc<usvg::Tree>),
     /// An animation's frames, each with how long it shows.
@@ -133,7 +136,7 @@ impl Prepared {
 
     fn bytes(&self) -> u64 {
         let body = match &self.body {
-            Some(Body::Raster(b)) => b.as_raw().len() as u64,
+            Some(Body::Raster(b, _)) => b.as_raw().len() as u64,
             Some(Body::Frames(f, b)) => f.iter().map(|(i, _)| u64::from(i.pixel_size().0) * u64::from(i.pixel_size().1) * 4).sum::<u64>() + b.as_raw().len() as u64,
             _ => 0,
         };
@@ -334,6 +337,8 @@ pub struct Shashin {
     pub initial: Vec<PathBuf>,
     /// Whether anything was opened yet (the command line opens once).
     pub opened: bool,
+    /// Previews shown before a picture decoded (for tests).
+    pub previews: usize,
 }
 
 impl Default for Shashin {
@@ -386,6 +391,7 @@ impl Shashin {
             instance: None,
             initial: Vec::new(),
             opened: false,
+            previews: 0,
         }
     }
 
@@ -643,7 +649,7 @@ impl Shashin {
             (x0 as u32, y0 as u32, (x1 - x0).max(1.0) as u32, (y1 - y0).max(1.0) as u32)
         };
         let job: Box<dyn FnOnce() -> Option<Tile> + Send> = match pic.info.body.clone() {
-            Some(Body::Raster(base)) => {
+            Some(Body::Raster(base, opaque)) => {
                 if z > 2.0 + 1e-9 || same_zoom(z, 1.0) {
                     // Drawn from the full picture, nearest pixel above 200%.
                     if pic.tiles.iter().any(|t| t.turns == turns && same_zoom(t.z, 1.0) && t.whole(dims)) {
@@ -651,18 +657,18 @@ impl Shashin {
                     }
                     Box::new(move || {
                         let turned = load::turn((*base).clone(), turns);
-                        tile(1.0, turns, (0.0, 0.0), &turned)
+                        tile(1.0, turns, (0.0, 0.0), &turned, opaque)
                     })
                 } else if z < 1.0 && sw * sh <= 40e6 {
                     Box::new(move || {
                         // Scale first, then turn: turning the small one is cheap.
                         let (tw, th) = if turns % 2 == 1 { (sh, sw) } else { (sw, sh) };
                         let scaled = load::scale_to(&base, tw.round() as u32, th.round() as u32);
-                        tile(z, turns, (0.0, 0.0), &load::turn(scaled, turns))
+                        tile(z, turns, (0.0, 0.0), &load::turn(scaled, turns), opaque)
                     })
                 } else {
                     let r = region();
-                    Box::new(move || tile(z, turns, (f64::from(r.0), f64::from(r.1)), &load::region(&base, turns, z, r)))
+                    Box::new(move || tile(z, turns, (f64::from(r.0), f64::from(r.1)), &load::region(&base, turns, z, r), opaque))
                 }
             }
             Some(Body::Svg(tree)) => {
@@ -673,7 +679,7 @@ impl Shashin {
                     let u = view::unturn_rect((f64::from(r.0), f64::from(r.1), f64::from(r.2), f64::from(r.3)), (bw, bh), turns);
                     let region = (u.0.round().max(0.0) as u32, u.1.round().max(0.0) as u32, u.2.round().max(1.0) as u32, u.3.round().max(1.0) as u32);
                     let img = load::render_svg(&tree, z, region)?;
-                    tile(z, turns, (f64::from(r.0), f64::from(r.1)), &load::turn(img, turns))
+                    tile(z, turns, (f64::from(r.0), f64::from(r.1)), &load::turn(img, turns), false)
                 })
             }
             _ => return,
@@ -843,7 +849,7 @@ impl Shashin {
         let Some(pic) = &self.pic else { return };
         let turns = self.current_turns();
         let base = match &pic.info.body {
-            Some(Body::Raster(b)) => b.clone(),
+            Some(Body::Raster(b, _)) => b.clone(),
             Some(Body::Frames(_, first)) => first.clone(),
             Some(Body::Svg(tree)) => {
                 let tree = tree.clone();
@@ -940,7 +946,7 @@ pub fn prepare(path: &Path, view: (f64, f64), early: impl Fn(Early)) -> Prepared
                 let d = (f64::from(out.dims.0), f64::from(out.dims.1));
                 let z = view::fit(d, view);
                 let (w, h) = ((d.0 * z).round().max(1.0) as u32, (d.1 * z).round().max(1.0) as u32);
-                out.fit = load::render_svg(&tree, z, (0, 0, w, h)).and_then(|img| tile(z, 0, (0.0, 0.0), &img));
+                out.fit = load::render_svg(&tree, z, (0, 0, w, h)).and_then(|img| tile(z, 0, (0.0, 0.0), &img, false));
                 out.body = Some(Body::Svg(tree));
             }
             Err(e) => out.error = Some(e),
@@ -967,7 +973,7 @@ pub fn prepare(path: &Path, view: (f64, f64), early: impl Fn(Early)) -> Prepared
         if size > 512 << 10
             && let Some(thumb) = load::exif_thumbnail(ex, orientation)
             && (f64::from(thumb.width()) / f64::from(thumb.height()) - d.0 / d.1).abs() < 0.05
-            && let Some(t) = tile(z, 0, (0.0, 0.0), &load::scale_to(&thumb, fit_size.0, fit_size.1))
+            && let Some(t) = tile(z, 0, (0.0, 0.0), &load::scale_to(&thumb, fit_size.0, fit_size.1), true)
         {
             early(Early::Preview(t));
         }
@@ -980,11 +986,11 @@ pub fn prepare(path: &Path, view: (f64, f64), early: impl Fn(Early)) -> Prepared
             return out;
         }
     }
-    match load::decode(&src) {
-        Ok(img) => {
+    match load::decode_opaque(&src) {
+        Ok((img, opaque)) => {
             out.dims = img.dimensions();
-            out.fit = tile(z, 0, (0.0, 0.0), &load::scale_to(&img, fit_size.0, fit_size.1));
-            out.body = Some(Body::Raster(Arc::new(img)));
+            out.fit = tile(z, 0, (0.0, 0.0), &load::scale_to(&img, fit_size.0, fit_size.1), opaque);
+            out.body = Some(Body::Raster(Arc::new(img), opaque));
         }
         Err(e) => out.error = Some(format!("It doesn't decode ({e}).")),
     }
@@ -1110,6 +1116,7 @@ impl Program for Shashin {
             Msg::Preview { serial, tile } => {
                 if let Some(p) = self.pic.as_mut().filter(|p| p.serial == serial && !p.decoded) {
                     p.tiles.push(tile);
+                    self.previews += 1;
                 }
             }
             Msg::Decoded { serial, prepared } => {

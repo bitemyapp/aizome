@@ -9,7 +9,7 @@ use std::time::SystemTime;
 
 use aizome_kit::column;
 use aizome_kit::prelude::*;
-use aizome_kit::sidestep_ui::{Canvas, ImageOptions, Key, NamedKey, PointerButton};
+use aizome_kit::sidestep_ui::{BlendMode, Canvas, ImageOptions, Key, NamedKey, PointerButton};
 use aizome_kit::widget::Event;
 use aizome_kit::MsgSender;
 
@@ -165,7 +165,7 @@ pub fn stage_of(app: &Shashin) -> Stage {
         center: app.center,
         tiles: Rc::new(pic.map(|p| p.tiles.clone()).unwrap_or_default()),
         frame,
-        raster: matches!(pic.and_then(|p| p.info.body.as_ref()), Some(Body::Raster(_))),
+        raster: matches!(pic.and_then(|p| p.info.body.as_ref()), Some(Body::Raster(..))),
         assumed: (app.view, app.scale),
         panning: app.panning.is_some(),
         report: app.stream.clone().map(|tx| Reporter { tx, last: app.reported.clone() }),
@@ -177,6 +177,7 @@ fn stage_area(app: &Shashin) -> Element<Msg> {
     let canvas = canvas(st, |c, bounds, st, theme| paint_stage(c, bounds, st, theme))
         .on_event(stage_event)
         .focusable()
+        .focus_ring(aizome_kit::widget::FocusRing::Never)
         .id("stage")
         .label("Picture");
     let mut layers: Vec<Element<Msg>> = vec![canvas.into()];
@@ -284,8 +285,8 @@ fn stage_event(ev: &Event, size: Size, st: &Stage) -> Option<Msg> {
 /// there is one, else the nearest-pixel best of what there is, and ask
 /// the program for the exact one.
 pub fn paint_stage(c: &mut Canvas, bounds: Rect, st: &Stage, theme: &Theme) {
-    c.fill_rect(bounds, theme.sunk());
     if st.dims.0 <= 0.0 || st.dims.1 <= 0.0 {
+        c.fill_rect(bounds, theme.sunk());
         return;
     }
     let s = c.scale();
@@ -295,31 +296,46 @@ pub fn paint_stage(c: &mut Canvas, bounds: Rect, st: &Stage, theme: &Theme) {
     let o = view::origin(st.dims, view, z, center);
     let vis = view::visible(st.dims, view, z, center);
     let to_pt = |x: f64, y: f64| Point::new(bounds.x0 + x / s, bounds.y0 + y / s);
-    let mut exact = false;
+    // What to draw: a drawing made for this zoom where there is one.
+    let mine = |t: &&Tile| t.turns == st.turns;
+    let full = st.tiles.iter().filter(mine).find(|t| same_zoom(t.z, 1.0) && t.whole(st.dims));
+    let (plan, exact): (Option<&Tile>, bool) = if st.frame.is_some() {
+        (None, true)
+    } else if let Some(t) = st.tiles.iter().filter(mine).rev().find(|t| t.covers(z, vis)) {
+        (Some(t), true)
+    } else if let (Some(t), true) = (full, st.raster && z > 1.0) {
+        // Over 200% the full picture's nearest pixels are the drawing.
+        (Some(t), z > 2.0 + 1e-9)
+    } else {
+        (best(st, z), false)
+    };
+    // The ground: only round the picture when an opaque drawing covers it
+    // (a photo's pixels needn't be filled twice).
+    let covered = plan.is_some_and(|t| t.opaque && (t.whole(st.dims) || t.covers(z, vis)));
+    if covered {
+        let (w, h) = (st.dims.0 * z, st.dims.1 * z);
+        let (x0, y0) = (o.0.max(0.0), o.1.max(0.0));
+        let (x1, y1) = ((o.0 + w).min(view.0), (o.1 + h).min(view.1));
+        for (a, b, cc, d) in [(0.0, 0.0, view.0, y0), (0.0, y1, view.0, view.1), (0.0, y0, x0, y1), (x1, y0, view.0, y1)] {
+            if cc > a && d > b {
+                c.fill_rect(Rect::from_points(to_pt(a, b), to_pt(cc, d)), theme.sunk());
+            }
+        }
+    } else {
+        c.fill_rect(bounds, theme.sunk());
+    }
     if let Some((frame, _)) = &st.frame {
         // Animations are small: drawn as they are, turned by the canvas.
         let (fw, fh) = { let (w, h) = frame.pixel_size(); (f64::from(w), f64::from(h)) };
         draw_turned(c, frame, (fw, fh), st.turns, to_pt(o.0, o.1), z / s, st.dims, z <= 2.0);
-        exact = true;
-    } else {
-        let mine = |t: &&Tile| t.turns == st.turns;
-        let full = st.tiles.iter().filter(mine).find(|t| same_zoom(t.z, 1.0) && t.whole(st.dims));
-        if let Some(t) = st.tiles.iter().filter(mine).rev().find(|t| t.covers(z, vis)) {
-            draw_tile(c, t, z, o, s, bounds, false);
-            exact = true;
-        } else if let (Some(t), true) = (full, st.raster && z > 1.0) {
-            // Over 200% the full picture's nearest pixels are the drawing.
-            draw_tile(c, t, z, o, s, bounds, false);
-            exact = z > 2.0 + 1e-9;
-        } else if let Some(t) = best(st, z) {
-            draw_tile(c, t, z, o, s, bounds, false);
-        } else if let Some(t) = st.tiles.iter().rev().find(|t| t.at == (0.0, 0.0)) {
-            // Drawn for another turn: turned on the canvas meanwhile.
-            let delta = (st.turns + 4 - t.turns % 4) % 4;
-            let (w, h) = t.size();
-            let scale = z / t.z / s;
-            draw_turned(c, &t.image, (w, h), delta, to_pt(o.0, o.1), scale, st.dims, false);
-        }
+    } else if let Some(t) = plan {
+        draw_tile(c, t, z, o, s, bounds, false);
+    } else if let Some(t) = st.tiles.iter().rev().find(|t| t.at == (0.0, 0.0)) {
+        // Drawn for another turn: turned on the canvas meanwhile.
+        let delta = (st.turns + 4 - t.turns % 4) % 4;
+        let (w, h) = t.size();
+        let scale = z / t.z / s;
+        draw_turned(c, &t.image, (w, h), delta, to_pt(o.0, o.1), scale, st.dims, false);
     }
     if let Some(r) = &st.report {
         let changed_view = (bounds.size(), s) != st.assumed;
@@ -357,7 +373,15 @@ fn draw_tile(c: &mut Canvas, t: &Tile, z: f64, o: (f64, f64), s: f64, bounds: Re
     let x = o.0 + (t.at.0 * k).round();
     let y = o.1 + (t.at.1 * k).round();
     let dst = Rect::new(bounds.x0 + x / s, bounds.y0 + y / s, bounds.x0 + (x + (w * k).round()) / s, bounds.y0 + (y + (h * k).round()) / s);
-    c.draw_image_with(&t.image, None, dst, ImageOptions { smooth, ..ImageOptions::default() });
+    if t.opaque {
+        // In place of what's there: no blending, a quarter less work.
+        c.save();
+        c.set_blend_mode(BlendMode::Copy);
+        c.draw_image_with(&t.image, None, dst, ImageOptions { smooth, ..ImageOptions::default() });
+        c.restore();
+    } else {
+        c.draw_image_with(&t.image, None, dst, ImageOptions { smooth, ..ImageOptions::default() });
+    }
 }
 
 /// Draw `image` (of `size` pixels) turned `turns` quarter turns, scaled by

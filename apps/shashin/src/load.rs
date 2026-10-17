@@ -131,11 +131,18 @@ pub fn header(src: &Source) -> Result<((u32, u32), u8), String> {
 
 /// The picture's pixels, upright.
 pub fn decode(src: &Source) -> Result<RgbaImage, String> {
+    decode_opaque(src).map(|(img, _)| img)
+}
+
+/// The picture's pixels, upright, and whether its kind has no alpha (so
+/// every pixel is opaque).
+pub fn decode_opaque(src: &Source) -> Result<(RgbaImage, bool), String> {
     let mut decoder = reader(&src.bytes)?.into_decoder().map_err(|e| e.to_string())?;
     let orientation = decoder.orientation().unwrap_or(image::metadata::Orientation::NoTransforms);
     let mut img = DynamicImage::from_decoder(decoder).map_err(|e| e.to_string())?;
     img.apply_orientation(orientation);
-    Ok(img.into_rgba8())
+    let opaque = !img.color().has_alpha();
+    Ok((img.into_rgba8(), opaque))
 }
 
 /// The picture's EXIF, if it has some.
