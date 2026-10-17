@@ -12,8 +12,9 @@
 //!
 //! Behaviour: ↑↓ move, → opens a submenu, ← closes it, Return or Space
 //! activates, Escape clears what's typed and then closes; typing filters
-//! the rows (and the submenus', flattened with their paths); moving toward
-//! an open submenu across other rows doesn't close it.
+//! the rows (and the submenus', flattened with their paths), or goes to
+//! whoever showed the menu ([`MenuStyle::on_type`]); moving toward an open
+//! submenu across other rows doesn't close it.
 
 use std::marker::PhantomData;
 use std::time::Duration;
@@ -132,6 +133,14 @@ impl<Msg: Clone + Send + 'static> MenuStyle<Msg> {
         self.look.closed = Some(MsgFn::new(msg));
         self
     }
+
+    /// Typing in the menu (or in a submenu of it) sends what was typed,
+    /// and the menus close, instead of filtering the rows: a launcher's
+    /// menu handing over to a search (the Toolchest to the palette).
+    pub fn on_type(mut self, f: impl Fn(String) -> Msg + 'static) -> Self {
+        self.look.typed = Some(MsgMap::new(f));
+        self
+    }
 }
 
 /// What a menu looks like and does besides its items (type-erased).
@@ -146,12 +155,14 @@ pub(crate) struct MenuLook {
     pub mark: bool,
     /// Sent when the menu closes (the menu's own, not its submenus').
     pub closed: Option<MsgFn>,
+    /// What's typed goes here instead of filtering (submenus' too).
+    pub typed: Option<MsgMap<String>>,
 }
 
 impl MenuLook {
     /// A submenu's look: titled with its own name if its parent was.
     pub fn sub(&self, title: &str) -> MenuLook {
-        MenuLook { title: self.title.as_ref().map(|_| title.to_owned()), ..MenuLook::default() }
+        MenuLook { title: self.title.as_ref().map(|_| title.to_owned()), typed: self.typed.clone(), ..MenuLook::default() }
     }
 }
 
@@ -795,6 +806,13 @@ impl Widget for MenuView {
                     }
                     Key::Character(_) => {
                         let Some(typed) = k.text.clone() else { return Status::Ignored };
+                        if let Some(f) = &self.look.typed {
+                            // Handed over: the menus make way.
+                            cx.emit_any(f.make(typed));
+                            let window = cx.window_id();
+                            cx.emit_any(Box::new(KitMsg::CloseMenus { window }));
+                            return Status::Handled;
+                        }
                         let mut q = cx.state::<MenuState>().query.clone();
                         q.push_str(&typed);
                         self.set_query(cx, q);

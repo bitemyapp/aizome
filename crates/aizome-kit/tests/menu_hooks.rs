@@ -1,5 +1,6 @@
 //! What a menu tells whoever showed it, besides the item chosen: that it
-//! closed (however it closed).
+//! closed (however it closed), and what's typed in it when it hands typing
+//! over.
 
 use aizome_kit::prelude::*;
 use aizome_kit::sidestep_ui::{Modifiers, NamedKey};
@@ -15,9 +16,12 @@ struct Bar {
 #[derive(Clone, Debug, PartialEq)]
 enum Msg {
     Open(u32),
+    /// A launcher's menu: typing in it is a search.
+    OpenLauncher,
     CloseAll,
     Closed(u32),
     Choose(&'static str),
+    Typed(String),
 }
 
 fn menu() -> Menu<Msg> {
@@ -46,9 +50,14 @@ impl Program for Bar {
                 let x = 40.0 * n as f64;
                 cx.show_menu(bar, Rect::new(x, 0.0, x + 40.0, 24.0), menu(), MenuStyle::below().on_closed(Msg::Closed(n)));
             }
+            Msg::OpenLauncher => {
+                let style = MenuStyle::below().titled("Toolchest").on_type(Msg::Typed).on_closed(Msg::Closed(0));
+                cx.show_menu(bar, Rect::new(0.0, 0.0, 40.0, 24.0), menu(), style);
+            }
             Msg::CloseAll => cx.close_menus(bar),
             Msg::Closed(n) => self.heard.push(format!("closed {n}")),
             Msg::Choose(c) => self.heard.push(c.to_owned()),
+            Msg::Typed(s) => self.heard.push(format!("typed {s}")),
         }
     }
     fn view(&self, _w: WindowKey) -> Element<Msg> {
@@ -105,4 +114,38 @@ fn a_menu_says_when_it_closes_however_it_closes() {
     h.click(bar, Point::new(500.0, 12.0));
     assert!(h.popups(bar).is_empty());
     assert_eq!(heard(&mut h), ["closed 3"]);
+}
+
+#[test]
+fn a_launchers_menu_hands_typing_over() {
+    let mut h = Harness::new(Bar::default());
+    let bar = h.window();
+    h.send(Msg::OpenLauncher);
+    h.type_text(bar, "s");
+    assert!(h.popups(bar).is_empty(), "the menus make way");
+    assert_eq!(heard(&mut h), ["typed s", "closed 0"]);
+
+    // From a submenu too; the keys that move and choose still do.
+    h.send(Msg::OpenLauncher);
+    for _ in 0..3 {
+        h.named(bar, NamedKey::ArrowDown, Modifiers::NONE);
+    }
+    h.named(bar, NamedKey::ArrowRight, Modifiers::NONE);
+    assert_eq!(h.popups(bar).len(), 2);
+    h.type_text(bar, "n");
+    assert!(h.popups(bar).is_empty());
+    assert_eq!(heard(&mut h), ["typed n", "closed 0"]);
+
+    // Space still chooses the highlighted row.
+    h.send(Msg::OpenLauncher);
+    h.named(bar, NamedKey::ArrowDown, Modifiers::NONE);
+    h.type_text(bar, " ");
+    let said = heard(&mut h);
+    assert!(said.contains(&"new".to_owned()), "{said:?}");
+
+    // Without it, typing filters as ever.
+    h.send(Msg::Open(1));
+    h.type_text(bar, "rec");
+    assert_eq!(h.popups(bar).len(), 1);
+    assert!(heard(&mut h).is_empty());
 }
