@@ -531,3 +531,257 @@ pub fn c(p: Rgba) -> Color {
 pub fn palette(name: aizome_theme::ThemeName, focus: aizome_theme::FocusColor) -> Palette {
     Palette::new(name, focus)
 }
+
+// Pictures.
+
+/// A picture `width` × `height`, cropped to cover it; a quiet well with an
+/// image glyph while there's none yet.
+/// `id` names the picture, so a different one in the same place redraws.
+pub fn picture<Msg>(image: Option<Image>, id: u64, width: f64, height: f64) -> Element<Msg> {
+    Element::new(PictureWidget { image, id, size: Size::new(width, height) }, Vec::new())
+}
+
+struct PictureWidget {
+    image: Option<Image>,
+    id: u64,
+    size: Size,
+}
+
+impl Widget for PictureWidget {
+    fn name(&self) -> &'static str {
+        "picture"
+    }
+
+    fn layout(&mut self, _cx: &mut LayoutCx, bc: Constraints) -> Size {
+        bc.constrain(self.size)
+    }
+
+    fn paint(&self, cx: &mut PaintCx) {
+        let t = cx.theme();
+        let r = Rect::new(0.0, 0.0, self.size.width, self.size.height);
+        match &self.image {
+            Some(img) => {
+                let s = img.size();
+                let k = (r.width() / s.width).max(r.height() / s.height);
+                let (w, h) = (s.width * k, s.height * k);
+                let dst = Rect::new((r.width() - w) / 2.0, (r.height() - h) / 2.0, (r.width() + w) / 2.0, (r.height() + h) / 2.0);
+                cx.canvas.save();
+                cx.canvas.clip_rect(r);
+                cx.canvas.draw_image(img, dst);
+                cx.canvas.restore();
+            }
+            None => {
+                cx.canvas.fill_rect(r, t.sunk());
+                let g = 20.0;
+                Icon::Image.draw(cx.canvas, Point::new(((r.width() - g) / 2.0).round(), ((r.height() - g) / 2.0).round()), g, t.faint());
+            }
+        }
+        draw::border(cx.canvas, r, t.bevel_lo().with_alpha(0.7), 1.0);
+    }
+
+    fn hash(&self, h: &mut PaintHasher) {
+        h.add(&(self.id, self.image.as_ref().map(|i| i.pixel_size()))).f64(self.size.width).f64(self.size.height);
+    }
+}
+
+/// A square of colour `size` points, edged: a focus colour to pick.
+pub fn swatch<Msg>(fill: Rgba, size: f64, selected: bool) -> Element<Msg> {
+    Element::new(SwatchWidget { fill, size, selected }, Vec::new())
+}
+
+struct SwatchWidget {
+    fill: Rgba,
+    size: f64,
+    selected: bool,
+}
+
+impl Widget for SwatchWidget {
+    fn name(&self) -> &'static str {
+        "swatch"
+    }
+
+    fn layout(&mut self, _cx: &mut LayoutCx, bc: Constraints) -> Size {
+        bc.constrain(Size::new(self.size + 6.0, self.size + 6.0))
+    }
+
+    fn paint(&self, cx: &mut PaintCx) {
+        let t = cx.theme();
+        let outer = Rect::new(0.0, 0.0, self.size + 6.0, self.size + 6.0);
+        let r = outer.inset(-3.0);
+        cx.canvas.fill_rect(r, color(self.fill));
+        draw::border(cx.canvas, r, t.bevel_lo().with_alpha(0.8), 1.0);
+        draw::top(cx.canvas, r.inset(-1.0), Color::rgba8(255, 255, 255, 50), 1.0);
+        if self.selected {
+            draw::border(cx.canvas, outer, t.text(), 2.0);
+            let g = (self.size * 0.6).round();
+            let on = if self.fill.contrast(Rgba::hex(0x16161e)) > self.fill.contrast(Rgba::hex(0xffffff)) {
+                Color::rgba8(0x16, 0x16, 0x1e, 0xff)
+            } else {
+                Color::rgba8(0xff, 0xff, 0xff, 0xff)
+            };
+            Icon::Check.draw(cx.canvas, Point::new(((outer.width() - g) / 2.0).round(), ((outer.height() - g) / 2.0).round()), g, on);
+        }
+    }
+
+    fn hash(&self, h: &mut PaintHasher) {
+        h.add(&(self.fill, self.selected)).f64(self.size);
+    }
+}
+
+// Bars of parts.
+
+/// A colour for a part of a bar, chosen from the theme when drawn.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Segment {
+    Ai,
+    Hanada,
+    Violet,
+    Cyan,
+    Green,
+    Kohaku,
+    Red,
+    Slate,
+    Focus,
+    /// What's left: the well.
+    Free,
+}
+
+impl Segment {
+    pub fn color(self, t: &Theme) -> Color {
+        let p = &t.palette;
+        match self {
+            Segment::Ai => color(if p.name == aizome_theme::ThemeName::Day { Rgba::hex(0x3d59a1) } else { Rgba::hex(0x4a67b3) }),
+            Segment::Hanada => color(p.blue),
+            Segment::Violet => color(p.violet),
+            Segment::Cyan => color(p.cyan),
+            Segment::Green => color(p.green),
+            Segment::Kohaku => color(p.amber),
+            Segment::Red => color(p.red),
+            Segment::Slate => t.faint(),
+            Segment::Focus => t.focus(),
+            Segment::Free => t.sunk(),
+        }
+    }
+}
+
+/// A bar `height` points tall split into `parts` by share of `total`,
+/// with a 1pt gap of the surface between them, in a sunken well.
+pub fn bar<Msg>(parts: Vec<(f64, Segment)>, total: f64, height: f64) -> Element<Msg> {
+    Element::new(BarWidget { parts, total, height }, Vec::new())
+}
+
+struct BarWidget {
+    parts: Vec<(f64, Segment)>,
+    total: f64,
+    height: f64,
+}
+
+impl Widget for BarWidget {
+    fn name(&self) -> &'static str {
+        "bar"
+    }
+
+    fn layout(&mut self, _cx: &mut LayoutCx, bc: Constraints) -> Size {
+        bc.constrain(Size::new(bc.max.width.min(10_000.0), self.height))
+    }
+
+    fn paint(&self, cx: &mut PaintCx) {
+        let t = cx.theme();
+        let r = cx.bounds();
+        draw::sunken(cx.canvas, t, r, t.sunk(), t.line2());
+        let inner = r.inset(-1.0);
+        let total = if self.total > 0.0 { self.total } else { self.parts.iter().map(|p| p.0).sum::<f64>().max(1.0) };
+        let mut x = inner.x0;
+        for (i, (v, seg)) in self.parts.iter().enumerate() {
+            if *seg == Segment::Free {
+                continue;
+            }
+            let w = (v / total * inner.width()).max(0.0);
+            let x1 = (x + w).round().min(inner.x1);
+            let gap = if i + 1 < self.parts.len() { 1.0 } else { 0.0 };
+            if x1 - gap > x {
+                cx.canvas.fill_rect(Rect::new(x.round(), inner.y0, x1 - gap, inner.y1), seg.color(t));
+            }
+            x = x1;
+        }
+    }
+
+    fn hash(&self, h: &mut PaintHasher) {
+        for (v, s) in &self.parts {
+            h.f64(*v).add(s);
+        }
+        h.f64(self.total).f64(self.height);
+    }
+
+    fn semantics(&self) -> Option<Semantics> {
+        let used: f64 = self.parts.iter().filter(|p| p.1 != Segment::Free).map(|p| p.0).sum();
+        Some(Semantics { role: SemanticRole::Meter, range: Some((0.0, self.total, used)), ..Default::default() })
+    }
+}
+
+/// A small square of a part's colour, for a bar's legend.
+pub fn dot<Msg>(seg: Segment) -> Element<Msg> {
+    Element::new(DotWidget(seg), Vec::new())
+}
+
+struct DotWidget(Segment);
+
+impl Widget for DotWidget {
+    fn name(&self) -> &'static str {
+        "dot"
+    }
+
+    fn layout(&mut self, _cx: &mut LayoutCx, bc: Constraints) -> Size {
+        bc.constrain(Size::new(8.0, 8.0))
+    }
+
+    fn paint(&self, cx: &mut PaintCx) {
+        let t = cx.theme();
+        let c = self.0.color(t);
+        cx.canvas.fill_rect(cx.bounds(), c);
+        if self.0 == Segment::Free {
+            draw::border(cx.canvas, cx.bounds(), t.line2(), 1.0);
+        }
+    }
+
+    fn hash(&self, h: &mut PaintHasher) {
+        h.add(&self.0);
+    }
+}
+
+// Flow.
+
+/// Children left to right, wrapping onto new lines when the room runs
+/// out: a legend, a set of chips.
+pub fn flow<Msg>(children: Vec<Element<Msg>>, gap_x: f64, gap_y: f64) -> Element<Msg> {
+    Element::new(FlowWidget { gap_x, gap_y }, children)
+}
+
+struct FlowWidget {
+    gap_x: f64,
+    gap_y: f64,
+}
+
+impl Widget for FlowWidget {
+    fn name(&self) -> &'static str {
+        "flow"
+    }
+
+    fn layout(&mut self, cx: &mut LayoutCx, bc: Constraints) -> Size {
+        let max_w = if bc.max.width.is_finite() { bc.max.width } else { 10_000.0 };
+        let (mut x, mut y, mut line_h, mut width) = (0.0f64, 0.0f64, 0.0f64, 0.0f64);
+        for i in 0..cx.child_count() {
+            let s = cx.layout_child(i, Constraints::loose(Size::new(max_w, f64::INFINITY)));
+            if x > 0.0 && x + s.width > max_w {
+                x = 0.0;
+                y += line_h + self.gap_y;
+                line_h = 0.0;
+            }
+            cx.place_child(i, Point::new(x, y));
+            x += s.width + self.gap_x;
+            line_h = line_h.max(s.height);
+            width = width.max(x - self.gap_x);
+        }
+        bc.constrain(Size::new(width, y + line_h))
+    }
+}

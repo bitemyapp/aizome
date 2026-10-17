@@ -19,9 +19,12 @@ pub mod instance;
 pub mod listing;
 pub mod pane;
 pub mod panes;
+pub mod preview;
 pub mod search;
 pub mod shared;
 pub mod system;
+pub mod tz;
+pub mod wallpaper;
 pub mod widgets;
 
 pub use app::{AppMsg, Shitsurae, Start};

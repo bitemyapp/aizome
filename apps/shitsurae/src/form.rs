@@ -35,6 +35,7 @@ pub struct Row<Msg> {
     entry: Option<String>,
     whole: Option<Element<Msg>>,
     stacked: bool,
+    compact: bool,
 }
 
 /// A label and its control.
@@ -48,6 +49,7 @@ pub fn row<Msg>(label: impl Into<String>, control: impl Into<Element<Msg>>) -> R
         entry: None,
         whole: None,
         stacked: false,
+        compact: false,
     }
 }
 
@@ -63,7 +65,7 @@ pub fn value_mono<Msg: 'static>(label: impl Into<String>, value: impl Into<Strin
 
 /// A row that is one element, the whole width (a list, a preview).
 pub fn whole<Msg>(element: impl Into<Element<Msg>>) -> Row<Msg> {
-    Row { label: None, control: None, help: None, detail: None, leading: None, entry: None, whole: Some(element.into()), stacked: false }
+    Row { label: None, control: None, help: None, detail: None, leading: None, entry: None, whole: Some(element.into()), stacked: false, compact: false }
 }
 
 /// A setting the system configuration pins: its value, "Set by your
@@ -116,6 +118,12 @@ impl<Msg> Row<Msg> {
         self
     }
 
+    /// Shorter, for a sheet of facts (a spec list).
+    pub fn compact(mut self) -> Self {
+        self.compact = true;
+        self
+    }
+
     /// The control under the label, the whole width (a long slider, a
     /// list of choices).
     pub fn stacked(mut self) -> Self {
@@ -158,7 +166,8 @@ fn body<Msg: 'static>(r: Row<Msg>) -> Element<Msg> {
     if let Some(c) = r.control {
         line = line.push(c);
     }
-    container(line).padding([8.0, INSET]).min_height(ROW).align_y(Align::Center).width(Fill).into()
+    let (pad, min) = if r.compact { (5.0, 30.0) } else { (8.0, ROW) };
+    container(line).padding([pad, INSET]).min_height(min).align_y(Align::Center).width(Fill).into()
 }
 
 impl ViewCx<'_> {

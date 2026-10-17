@@ -62,9 +62,10 @@ impl Shared {
     }
 
     /// Read the file again (someone else wrote it).
-    pub fn reread(&mut self) {
+    pub fn reread(&mut self, cx: &mut Cx<AppMsg>) {
         if let Ok(s) = Settings::load_from(&self.settings_path) {
             self.settings = s;
+            cx.set_appearance(aizome_kit::theme::Appearance::from(&self.settings.appearance));
         }
     }
 
@@ -87,6 +88,8 @@ impl Shared {
             return;
         }
         self.settings = fresh;
+        // This window first, without waiting for the file's watcher.
+        cx.set_appearance(aizome_kit::theme::Appearance::from(&self.settings.appearance));
         if !self.reload_pending {
             self.reload_pending = true;
             cx.after(RELOAD_AFTER, AppMsg::Reload);

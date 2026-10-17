@@ -347,19 +347,27 @@ impl Shitsurae {
     fn title_strip(&self) -> Element<AppMsg> {
         let empty = HashSet::new();
         let p = &self.panes[self.current];
+        let crumb = p.crumb_any();
+        let can_back = !self.back.is_empty() || crumb.is_some();
         let mut bar = row![
-            icon_button(Icon::ChevronLeft).toolbar().enabled(!self.back.is_empty()).on_press(AppMsg::Back).tooltip("Back"),
+            icon_button(Icon::ChevronLeft).toolbar().enabled(can_back).on_press(AppMsg::Back).tooltip("Back"),
             icon_button(Icon::ChevronRight).toolbar().enabled(!self.forward.is_empty()).on_press(AppMsg::Forward).tooltip("Forward"),
             space(4.0),
             tile(p.icon(), p.tile(), 20.0),
-            text(p.title()).size(15.0).weight(650.0),
-            spacer(),
         ]
         .spacing(6.0)
         .align(Align::Center)
         .padding([0.0, 12.0, 0.0, 8.0])
         .height(44.0)
         .width(Fill);
+        bar = match crumb {
+            None => bar.push(text(p.title()).size(15.0).weight(650.0)),
+            Some(c) => bar
+                .push(text(p.title()).size(15.0).role(Role::Text3))
+                .push(icon(Icon::ChevronRight).size(12.0).role(Role::Text3))
+                .push(text(c).size(15.0).weight(650.0)),
+        };
+        bar = bar.push(spacer());
         if let Some(t) = p.toolbar_any(&self.vcx(self.current, &empty)) {
             bar = bar.push(t);
         }
@@ -439,6 +447,9 @@ impl Program for Shitsurae {
     fn launched(&mut self, cx: &mut Cx<AppMsg>) {
         let w = cx.open_window(WindowSpec::new("Shitsurae").size(940.0, 660.0).min_size(780.0, 480.0));
         self.shared.window = w;
+        // The settings this window edits, which the sample (or a test) may
+        // keep somewhere other than where the kit looked.
+        cx.set_appearance(aizome_kit::theme::Appearance::from(&self.shared.settings.appearance));
         let tx = cx.stream();
         self.shared.sys = crate::system::System::start(
             self.shared.sample,
@@ -471,7 +482,17 @@ impl Program for Shitsurae {
 
     fn update(&mut self, msg: AppMsg, cx: &mut Cx<AppMsg>) {
         match msg {
-            AppMsg::Show(i) => self.go(i, cx, true),
+            AppMsg::Show(i) => {
+                // The pane showing again: back to its first page.
+                if i == self.current && self.started {
+                    for _ in 0..8 {
+                        if !self.panes[i].back_any(cx, &mut self.shared) {
+                            break;
+                        }
+                    }
+                }
+                self.go(i, cx, true);
+            }
             AppMsg::Open(id, entry) => self.open(&id, entry.as_deref(), cx),
             AppMsg::Search(q) => self.search(q),
             AppMsg::SearchSubmit => {
@@ -503,7 +524,7 @@ impl Program for Shitsurae {
                 }
             }
             AppMsg::SystemChanged => self.refresh_picture(),
-            AppMsg::SettingsOnDisk => self.shared.reread(),
+            AppMsg::SettingsOnDisk => self.shared.reread(cx),
             AppMsg::Reload => self.shared.reload(cx),
             AppMsg::ClearStatus(g) => self.shared.clear_status(g),
             AppMsg::Said(text, error) => self.shared.say(text, error, cx),

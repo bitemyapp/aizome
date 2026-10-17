@@ -356,6 +356,12 @@ pub trait Pane: 'static {
         None
     }
 
+    /// The sub-page showing, which the title strip puts after the pane's
+    /// title ("General › About"); Back then returns from it.
+    fn crumb(&self) -> Option<&'static str> {
+        None
+    }
+
     /// Escape or Back pressed (with no sheet open): whether the pane went
     /// back a page by itself (General's sub-pages do).
     fn back(&mut self, cx: &mut PaneCx<Self::Msg>) -> bool {
@@ -382,6 +388,7 @@ pub trait AnyPane {
     fn hidden_any(&mut self, cx: &mut Cx<AppMsg>, shared: &mut Shared);
     fn focus_entry_any(&mut self, entry: &str, cx: &mut Cx<AppMsg>, shared: &mut Shared);
     fn back_any(&mut self, cx: &mut Cx<AppMsg>, shared: &mut Shared) -> bool;
+    fn crumb_any(&self) -> Option<&'static str>;
 }
 
 fn wrap<M: Send + Sync + 'static>(pane: &'static str, msg: M) -> AppMsg {
@@ -458,6 +465,10 @@ impl<P: Pane> AnyPane for P {
     fn back_any(&mut self, cx: &mut Cx<AppMsg>, shared: &mut Shared) -> bool {
         let id = Pane::id(self);
         self.back(&mut PaneCx::new(cx, shared, id))
+    }
+
+    fn crumb_any(&self) -> Option<&'static str> {
+        self.crumb()
     }
 }
 

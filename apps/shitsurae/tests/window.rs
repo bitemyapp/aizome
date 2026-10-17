@@ -16,3 +16,10 @@ fn opens_on_a_pane_and_shows_it() {
     h.set_appearance(Appearance { theme: ThemeChoice::Day, ..Appearance::default() });
     h.save_png(w, common::shots_dir().join("mouse-day.png"), 1.0);
 }
+
+#[test]
+fn appearance_shows_previews() {
+    let (mut h, _) = common::open("appearance", "appearance");
+    let w = h.window();
+    h.save_png(w, common::shots_dir().join("appearance-night.png"), 1.0);
+}
