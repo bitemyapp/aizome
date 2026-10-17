@@ -221,6 +221,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "aizome-tansu"
+version = "0.1.0"
+dependencies = [
+ "aizome-kit",
+ "aizome-sys",
+ "aizome-theme",
+ "env_logger",
+ "log",
+]
+
+[[package]]
 name = "aizome-tenki"
 version = "0.1.0"
 dependencies = [
