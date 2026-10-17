@@ -129,6 +129,51 @@ in
         )
       );
       "xdg/aizome/foot/foot.ini".source = ../etc/foot/foot.ini;
+      # Aizome's apps open what they're for in Aizome sessions: the
+      # desktop-specific list (XDG_CURRENT_DESKTOP=Aizome) is read before
+      # mimeapps.list, so other desktops keep their own defaults, and the
+      # user's own choices (~/.config/mimeapps.list) still win.
+      "xdg/aizome-mimeapps.list".text =
+        let
+          entry = app: types: lib.concatMapStrings (type: "${type}=org.aizome.${app}.desktop;\n") types;
+        in
+        ''
+          [Default Applications]
+        ''
+        + entry "Shashin" [
+          "image/png"
+          "image/apng"
+          "image/jpeg"
+          "image/gif"
+          "image/webp"
+          "image/bmp"
+          "image/tiff"
+          "image/x-icon"
+          "image/vnd.microsoft.icon"
+          "image/svg+xml"
+        ]
+        + entry "Sumi" [
+          "text/plain"
+          "text/markdown"
+          "text/x-markdown"
+          "text/rust"
+          "text/x-python"
+          "text/x-nix"
+          "application/x-shellscript"
+          "application/toml"
+          "application/json"
+          "application/x-yaml"
+        ]
+        + entry "Hako" [ "inode/directory" ]
+        + entry "Koyomi" [ "text/calendar" ]
+        + entry "Tansu" [
+          "application/x-cd-image"
+          "application/x-raw-disk-image"
+        ];
+      # The welcome tour, once, at the first Aizome login (it decides for
+      # itself whether to show; OnlyShowIn=Aizome keeps it out of others).
+      "xdg/autostart/org.aizome.Annai.Welcome.desktop".source =
+        "${cfg.package}/share/applications/org.aizome.Annai.Welcome.desktop";
     };
 
     # Screenshots and screencasts through wlr-screencopy; files, settings
