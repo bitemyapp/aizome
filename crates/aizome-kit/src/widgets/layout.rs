@@ -99,10 +99,6 @@ impl FlexWidget {
     pub fn column(spacing: f64) -> FlexWidget {
         FlexWidget { axis: Axis::Vertical, spacing, padding: Padding::ZERO, align: Align::Start }
     }
-
-    pub fn row(spacing: f64) -> FlexWidget {
-        FlexWidget { axis: Axis::Horizontal, spacing, padding: Padding::ZERO, align: Align::Center }
-    }
 }
 
 /// (main, cross) of a size along an axis.

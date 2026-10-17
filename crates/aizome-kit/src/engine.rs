@@ -103,6 +103,7 @@ pub(crate) struct Win {
     pub mapper: Option<Mapper>,
     pub sheets: Vec<WindowKey>,
     pub alerts: Vec<u64>,
+    pub panels: Vec<u64>,
     pub tooltip: Option<(NodeId, u64)>,
     pub tooltip_shown: Option<WinId>,
     pub ime: (bool, Option<Rect>),
@@ -136,6 +137,7 @@ impl Win {
             mapper: None,
             sheets: Vec::new(),
             alerts: Vec::new(),
+            panels: Vec::new(),
             tooltip: None,
             tooltip_shown: None,
             ime: (false, None),
@@ -423,6 +425,12 @@ impl Core {
             layers.push(SheetLayer::element(s, 100 + i as u64));
         }
         let alerts = w.alerts.clone();
+        let panels = w.panels.clone();
+        for p in panels {
+            if let Some(el) = crate::dialogs::panel_element(self, p) {
+                layers.push(SheetLayer::element(el, 2000 + p));
+            }
+        }
         for a in alerts {
             if let Some(el) = crate::dialogs::alert_element(self, a) {
                 layers.push(SheetLayer::element(el, 1000 + a));
