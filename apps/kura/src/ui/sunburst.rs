@@ -153,12 +153,14 @@ impl Burst {
         if let Some(Target::Seg(i)) = self.hover
             && let Some(s) = self.segs.get(i)
         {
-            out.push((seg_rect(&geo, s), key(&|h| (1u8, i).hash(h))));
+            let k = key(&|h| (1u8, i).hash(h));
+            out.extend(seg_rects(&geo, s).into_iter().map(|r| (r, k)));
         }
         if let Some(sel) = self.selected
             && let Some(s) = self.segs.iter().find(|s| s.node == Some(sel))
         {
-            out.push((seg_rect(&geo, s), key(&|h| (2u8, sel).hash(h))));
+            let k = key(&|h| (2u8, sel).hash(h));
+            out.extend(seg_rects(&geo, s).into_iter().map(|r| (r, k)));
         }
         out
     }
@@ -458,10 +460,23 @@ fn sector(center: Point, ri: f64, ro: f64, x0: f64, x1: f64) -> CircleSegment {
 }
 
 
-/// The rectangle a segment covers (with room for the selection's ring).
-fn seg_rect(geo: &Geometry, s: &Seg) -> Rect {
+/// Rectangles that together cover a segment (with room for the selection's
+/// ring): one per eighth of a turn, so a long arc's damage hugs it.
+fn seg_rects(geo: &Geometry, s: &Seg) -> Vec<Rect> {
     let (ri, ro) = geo.radii(f64::from(s.depth));
-    let (a0, a1) = (Geometry::angle(s.x0), Geometry::angle(s.x1));
+    let n = ((s.x1 - s.x0) * 8.0).ceil().max(1.0) as usize;
+    (0..n)
+        .map(|k| {
+            let x0 = s.x0 + (s.x1 - s.x0) * k as f64 / n as f64;
+            let x1 = s.x0 + (s.x1 - s.x0) * (k + 1) as f64 / n as f64;
+            arc_rect(geo, ri, ro, x0, x1)
+        })
+        .collect()
+}
+
+/// The rectangle around part of a ring.
+fn arc_rect(geo: &Geometry, ri: f64, ro: f64, x0: f64, x1: f64) -> Rect {
+    let (a0, a1) = (Geometry::angle(x0), Geometry::angle(x1));
     let mut angles = vec![a0, a1];
     // The quarter turns inside it are where its outline reaches furthest.
     let mut q = (a0 / FRAC_PI_2).ceil() * FRAC_PI_2;

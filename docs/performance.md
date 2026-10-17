@@ -240,3 +240,70 @@ redraws nine tenths of the window, and its worst frames are the first
 time a place's strings are shaped. The release build keeps its p95 under
 4 ms; the test holds it under 8 ms (as it runs beside other builds) and
 everything else under 4 ms.
+
+## Kura (Disk Usage)
+
+### Scanning
+
+The scanner (`apps/kura/src/scan.rs`) reads folders on a thread per CPU
+(8 here) into one arena. On this laptop's home folder, 908,849 files and
+113,202 folders (345 GB), with the cache warm, release build:
+
+| | |
+|---|---|
+| The scan, 8 threads | 0.5 s |
+| The scan, 1 thread | 1.9 s |
+| `aizome-kura scan` in all: scan, hints (duplicates read and hashed), `index.json` and `index.md` written | 0.6–0.75 s |
+| The arena after the scan | 67 MB for 981,366 nodes (48-byte nodes and the names), shrunk to fit |
+
+The first `scan` on a Nix system also asks Nix for the store's size (`nix
+path-info --all --json`, about 2.5 s here, in the background in the
+window); it's cached against the store database's modification time.
+Cold-cache numbers need root to drop the page cache, so there are none.
+
+### The window
+
+Headlessly, `apps/kura/tests/ui.rs`, `hovering_and_going_down_fit_the_frame_budget`
+(`cargo test --release -p aizome-kura --test ui hovering_and_going -- --nocapture --test-threads 1`),
+on a made-up home of 29,000 files (204 segments in the rings), from the
+event to the damage rasterised at 2× (its bounding box, so upper bounds).
+The machine was busy with other builds (load average 13–21 on 8 CPUs)
+while these were taken:
+
+| Interaction | p50 | p95 | max |
+|---|---|---|---|
+| Moving over the rings (a frame for each new segment under the pointer) | 0.96–1.16 ms | 1.5–2.2 ms | 2.3–8.7 ms |
+| Arrow keys in the folder's list (the row and the ringed segment) | 1.7–3.2 ms | 3.0–7.8 ms | 3.3–9.5 ms |
+| Going into a folder and back up (the click, then the rings' frames) | 2.5–4.2 ms | 6.7–11.7 ms | 10–12.7 ms |
+
+The sunburst is the kit's `canvas`; what's hovered and selected are its
+`parts`, so lighting a segment redraws the middle and that segment's
+rectangles (one per eighth of a turn, hugging the arc) rather than the
+rings. Segments are filled with half-point gaps between them instead of
+stroked edges: stroking each segment was four fifths of a full drawing.
+Painting a full set of rings (190 segments, a real home folder's) costs
+about 4 ms at 2×, of which the antialiased fills are 3.5 ms; without
+antialiasing 1.4–1.8 ms. (For comparison, the harness's offscreen
+rendering of an empty area of the same size costs about 4 ms of its own,
+so the headless numbers above are pessimistic.)
+
+Live, the release build under headless sway (pixman) at 2× (2560 × 1600),
+`SIDESTEP_FRAME_STATS=1`, on `~/work` (622,000 items), driven with
+`wlrctl` (the pointer around the rings 160 times, into the largest folder
+and out four times, a context menu), on the same busy machine: moving over
+the rings, 128 frames, total p50 2.8 ms, p95 13 ms (9% of the window
+redrawn on average); going in and out, total p50 3.2 ms, p95 11 ms; the
+menu open, p50 1.7 ms.
+
+Exceptions:
+
+- **The rings moving** between levels (Aizome's motion time, 80 ms in
+  Lean; none with reduced motion or Austere) redraw the whole sunburst on
+  every frame. They're drawn without antialiasing (half the cost) and
+  without labels; a frame is 2.5–3.5 ms at the median, more on a busy
+  machine. It's five or six frames, a few times a minute.
+- **Lighting the largest segments**: a segment spanning half a ring (a
+  `target` folder that's half the disk) has rectangles covering much of
+  the sunburst, and they're redrawn whole. That's the p95 above.
+- **The first drawing after a scan**, and a resize: the whole window, as
+  for any app.

@@ -172,6 +172,9 @@ impl Tree {
             p.mtime = p.mtime.max(c.mtime);
         }
         self.sort_children();
+        // Growth leaves up to half of each buffer spare.
+        self.nodes.shrink_to_fit();
+        self.names.shrink_to_fit();
     }
 
     /// Each folder's children largest first (then by name), keeping every
