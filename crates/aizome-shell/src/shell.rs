@@ -58,6 +58,8 @@ pub enum Msg {
     /// What's in `~/Desktop`, and whether the Trash is full.
     DesktopItems(Vec<(PathBuf, bool)>, bool),
     Lock(crate::lock::LockMsg),
+    Auth(crate::auth::AuthIn),
+    AuthUi(crate::auth::AuthMsg),
     Note(crate::notifications::server::NoteEvent),
     /// The bar's notification line has shown long enough.
     BannerDone(u32),
@@ -85,6 +87,7 @@ pub enum Surface {
     Panel,
     Osd,
     Lock { output: u32 },
+    Auth,
 }
 
 /// An output and the shell's surfaces on it.
@@ -171,6 +174,7 @@ pub struct Shell {
     pub lock: crate::lock::LockState,
     pub authenticator: Arc<dyn crate::pam::Authenticator>,
     pub user_picture: Option<aizome_kit::Image>,
+    pub auth: Option<crate::auth::AuthState>,
     pub(crate) deskbar_size: Option<aizome_kit::Size>,
     pub(crate) icons: HashMap<String, Option<aizome_kit::Image>>,
     /// The primary bar's Desks, by where they are across it.
@@ -233,6 +237,7 @@ impl Shell {
             lock: Default::default(),
             authenticator: Arc::new(crate::pam::Pam::new("aizome")),
             user_picture: None,
+            auth: None,
             deskbar_size: None,
             icons: HashMap::new(),
             desk_strip: Vec::new(),
@@ -653,6 +658,7 @@ impl Shell {
         });
         self.watch_desktop();
         self.start_lock();
+        self.start_polkit();
     }
 
     fn take_ipc(&mut self, e: IpcEvent, cx: &mut Cx<Msg>) {
@@ -853,6 +859,8 @@ impl Program for Shell {
             Msg::OsdHide(g) => self.hide_osd(g, cx),
             Msg::Desktop(o, m) => self.desktop_msg(o, m, cx),
             Msg::Lock(m) => self.lock_msg(m, cx),
+            Msg::Auth(e) => self.auth_in(e, cx),
+            Msg::AuthUi(m) => self.auth_msg(m, cx),
             Msg::DesktopItems(items, full) => {
                 self.desktop.items = items;
                 self.trash_full = full;
@@ -885,6 +893,10 @@ impl Program for Shell {
                     matches!(k.key, aizome_kit::sidestep_ui::Key::Named(aizome_kit::sidestep_ui::NamedKey::Escape)).then_some(Msg::Lock(crate::lock::LockMsg::Escape))
                 })
             }
+            Some(Surface::Auth) => match self.auth_view() {
+                Some(v) => crate::auth::view(&v).map(Msg::AuthUi),
+                None => aizome_kit::space(0.0),
+            },
             Some(Surface::Osd) => match &self.osd {
                 Some(o) => crate::osd::view(&o.osd),
                 None => aizome_kit::space(0.0),
