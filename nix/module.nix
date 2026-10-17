@@ -85,6 +85,13 @@ in
       pkgs.adwaita-icon-theme
       pkgs.hicolor-icon-theme
       pkgs.shared-mime-info
+      # GPU names for Activity and About (aizome-sys's sysinfo).
+      pkgs.hwdata
+      # Keyboard layouts and options for Settings (evdev.xml), linked
+      # into /run/current-system/sw/share/X11/xkb.
+      pkgs.xkeyboard_config
+      # Hako compresses and extracts archives with bsdtar.
+      pkgs.libarchive
     ];
     services.displayManager.sessionPackages = [ session ];
     systemd.packages = [ cfg.package ];
