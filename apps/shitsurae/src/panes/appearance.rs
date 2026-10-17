@@ -68,6 +68,14 @@ pub fn focus_name(f: FocusColor) -> &'static str {
 }
 
 impl Appearance {
+    /// The thumbnail of the wallpaper at `path`, once it's made, and an id.
+    fn thumb_for(&self, path: Option<&str>) -> Option<(Image, u64)> {
+        let path = path?;
+        let list = self.wallpapers.as_ref()?;
+        let (_, thumb) = list.iter().find(|(p, _)| p.as_os_str() == path)?;
+        thumb.clone().map(|t| (t, aizome_kit::hash::hash_of(path)))
+    }
+
     fn theme_card(&self, vcx: &ViewCx, choice: ThemeChoice, label: &str) -> Element<Msg> {
         let a = &vcx.settings().appearance;
         let look = match choice {
@@ -77,7 +85,13 @@ impl Appearance {
             ThemeChoice::Auto => Look::Auto,
         };
         let selected = a.theme == choice;
-        let pic = press(preview::desktop(look, a.focus, a.effects, PREVIEW.0, PREVIEW.1))
+        // High Contrast keeps to its plain desktop, for legibility.
+        let walls = if choice == ThemeChoice::HighContrast {
+            [None, None]
+        } else {
+            [self.thumb_for(a.wallpaper_night.as_deref()), self.thumb_for(a.wallpaper_day.as_deref())]
+        };
+        let pic = press(preview::with_wallpapers(look, a.focus, a.effects, PREVIEW.0, PREVIEW.1, walls))
             .style(PressStyle::Card)
             .selected(selected)
             .padding([3.0, 3.0])
@@ -168,8 +182,16 @@ impl Appearance {
             return;
         }
         let tx = cx.stream();
+        let a = &cx.settings().appearance;
+        let chosen: Vec<PathBuf> = [a.wallpaper_night.clone(), a.wallpaper_day.clone()].into_iter().flatten().map(PathBuf::from).collect();
         let _ = std::thread::Builder::new().name("shitsurae-wallpapers".into()).spawn(move || {
-            let found = wallpaper::find(&wallpaper::dirs(), 48);
+            let mut found = wallpaper::find(&wallpaper::dirs(), 48);
+            // Pictures chosen from elsewhere, so the previews show them too.
+            for c in chosen {
+                if !found.contains(&c) && c.is_file() {
+                    found.push(c);
+                }
+            }
             tx.send(Msg::Found(found.clone()));
             for p in found {
                 let t = wallpaper::thumbnail(&p);
@@ -236,6 +258,19 @@ impl Pane for Appearance {
             Msg::ReducedMotion(on) => cx.change(|s| s.appearance.reduced_motion = on),
             Msg::WallpaperTab(day) => self.day_tab = day,
             Msg::Wallpaper(w) => {
+                // A picture from elsewhere joins the grid, with a thumbnail.
+                if let (Some(p), Some(list)) = (&w, &mut self.wallpapers) {
+                    let path = PathBuf::from(p);
+                    if !list.iter().any(|(x, _)| *x == path) {
+                        list.push((path.clone(), None));
+                        if !cx.sample() {
+                            cx.spawn(move || {
+                                let t = wallpaper::thumbnail(&path);
+                                Msg::Thumb(path, t)
+                            });
+                        }
+                    }
+                }
                 let day = self.day_tab;
                 cx.change(|s| {
                     if day {

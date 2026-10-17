@@ -11,6 +11,7 @@ use aizome_kit::sidestep_ui::Canvas;
 use aizome_kit::sidestep_ui::kurbo::BezPath;
 use aizome_kit::theme::color;
 use aizome_kit::widget::{LayoutCx, PaintCx, SemanticRole, Semantics, Widget};
+use aizome_kit::Image;
 use aizome_theme::{Brand, Effects, FocusColor, Palette, Rgba, ThemeName};
 
 /// What a preview shows.
@@ -23,7 +24,20 @@ pub enum Look {
 
 /// A mini desktop `width` × `height` points.
 pub fn desktop<Msg>(look: Look, focus: FocusColor, effects: Effects, width: f64, height: f64) -> Element<Msg> {
-    Element::new(Preview { look, focus, effects, size: Size::new(width, height) }, Vec::new())
+    with_wallpapers(look, focus, effects, width, height, [None, None])
+}
+
+/// The same over the wallpapers chosen for Night and Day (a thumbnail and
+/// an id for it).
+pub fn with_wallpapers<Msg>(
+    look: Look,
+    focus: FocusColor,
+    effects: Effects,
+    width: f64,
+    height: f64,
+    wallpapers: [Option<(Image, u64)>; 2],
+) -> Element<Msg> {
+    Element::new(Preview { look, focus, effects, size: Size::new(width, height), wallpapers }, Vec::new())
 }
 
 struct Preview {
@@ -31,6 +45,8 @@ struct Preview {
     focus: FocusColor,
     effects: Effects,
     size: Size,
+    /// Night's and Day's.
+    wallpapers: [Option<(Image, u64)>; 2],
 }
 
 impl Widget for Preview {
@@ -45,9 +61,13 @@ impl Widget for Preview {
     fn paint(&self, cx: &mut PaintCx) {
         let r = Rect::from_origin_size(Point::ZERO, cx.size());
         match self.look {
-            Look::Theme(t) => paint_desktop(cx.canvas, r, &Palette::new(t, self.focus), self.effects),
+            Look::Theme(t) => {
+                let wall = if t == ThemeName::Day { &self.wallpapers[1] } else { &self.wallpapers[0] };
+                paint_desktop(cx.canvas, r, &Palette::new(t, self.focus), self.effects, wall.as_ref().map(|w| &w.0));
+            }
             Look::Auto => {
-                paint_desktop(cx.canvas, r, &Palette::new(ThemeName::Night, self.focus), self.effects);
+                let night = self.wallpapers[0].as_ref().map(|w| &w.0);
+                paint_desktop(cx.canvas, r, &Palette::new(ThemeName::Night, self.focus), self.effects, night);
                 let mut tri = BezPath::new();
                 tri.move_to((r.x1, r.y0));
                 tri.line_to((r.x1, r.y1));
@@ -55,7 +75,8 @@ impl Widget for Preview {
                 tri.close_path();
                 cx.canvas.save();
                 cx.canvas.clip(&tri);
-                paint_desktop(cx.canvas, r, &Palette::new(ThemeName::Day, self.focus), self.effects);
+                let day = self.wallpapers[1].as_ref().map(|w| &w.0);
+                paint_desktop(cx.canvas, r, &Palette::new(ThemeName::Day, self.focus), self.effects, day);
                 cx.canvas.restore();
             }
         }
@@ -65,6 +86,7 @@ impl Widget for Preview {
 
     fn hash(&self, h: &mut PaintHasher) {
         h.add(&(self.look, self.focus, self.effects)).f64(self.size.width).f64(self.size.height);
+        h.add(&self.wallpapers.each_ref().map(|w| w.as_ref().map(|(_, id)| *id)));
     }
 
     fn semantics(&self) -> Option<Semantics> {
@@ -78,17 +100,32 @@ fn snap(r: Rect) -> Rect {
 }
 
 /// The mini desktop in `p`, filling `r`.
-pub fn paint_desktop(c: &mut Canvas, r: Rect, p: &Palette, effects: Effects) {
+pub fn paint_desktop(c: &mut Canvas, r: Rect, p: &Palette, effects: Effects, wallpaper: Option<&Image>) {
     let (w, h) = (r.width(), r.height());
     let at = |x: f64, y: f64, ww: f64, hh: f64| snap(Rect::new(r.x0 + x * w, r.y0 + y * h, r.x0 + (x + ww) * w, r.y0 + (y + hh) * h));
-    // The desktop: its colour, with a dusk of the dye ramp low down, as
-    // the boards' wallpapers glow.
-    c.fill_rect(r, color(p.desktop));
-    let glow = if p.name == ThemeName::Day { Rgba::hex(0xa9c4ff) } else { Rgba::hex(0x3d59a1) };
-    for i in 0..6 {
-        let y0 = 0.62 + f64::from(i) * 0.065;
-        let a = 0.10 + f64::from(i) * 0.06;
-        c.fill_rect(at(0.0, y0, 1.0, 0.066), color(glow.with_alpha(a as f32)));
+    match wallpaper {
+        // The picture, covering the desktop.
+        Some(img) => {
+            let s = img.size();
+            let k = (w / s.width).max(h / s.height);
+            let (iw, ih) = (s.width * k, s.height * k);
+            let dst = Rect::new(r.x0 + (w - iw) / 2.0, r.y0 + (h - ih) / 2.0, r.x0 + (w + iw) / 2.0, r.y0 + (h + ih) / 2.0);
+            c.save();
+            c.clip_rect(r);
+            c.draw_image(img, dst);
+            c.restore();
+        }
+        // The desktop's colour, with a dusk of the dye ramp low down, as
+        // the boards' wallpapers glow.
+        None => {
+            c.fill_rect(r, color(p.desktop));
+            let glow = if p.name == ThemeName::Day { Rgba::hex(0xa9c4ff) } else { Rgba::hex(0x3d59a1) };
+            for i in 0..6 {
+                let y0 = 0.62 + f64::from(i) * 0.065;
+                let a = 0.10 + f64::from(i) * 0.06;
+                c.fill_rect(at(0.0, y0, 1.0, 0.066), color(glow.with_alpha(a as f32)));
+            }
+        }
     }
 
     // The menu bar.
