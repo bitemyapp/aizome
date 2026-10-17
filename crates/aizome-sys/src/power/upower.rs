@@ -193,6 +193,16 @@ impl WarningLevel {
     }
 }
 
+/// A point of a device's history ([`Upower::history`]).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct HistoryPoint {
+    /// Unix time, in seconds.
+    pub time: u32,
+    /// Percent for `"charge"`, watts for `"rate"`.
+    pub value: f64,
+    pub state: BatteryState,
+}
+
 /// A keyboard backlight.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct KeyboardBacklight {
@@ -365,6 +375,19 @@ impl Upower {
     /// Whether UPower is running.
     pub fn available(&self) -> bool {
         self.model.get().available
+    }
+
+    /// A device's recorded history of `kind` (`"charge"`, in percent, or
+    /// `"rate"`, in watts) over the last `timespan` seconds, at most
+    /// `resolution` points, oldest first. UPower keeps it for batteries
+    /// (`GetHistory`); a query, so it never asks for authorization.
+    pub fn history(&self, path: &str, kind: &str, timespan: u32, resolution: u32) -> Task<Vec<HistoryPoint>> {
+        let (path, kind) = (path.to_owned(), kind.to_owned());
+        bus::spawn(&self.bus, "UPower", self.model.wake(), move |bus| {
+            let mut points: Vec<(u32, f64, u32)> = bus.call(UPOWER, &path, IFACE_DEVICE, "GetHistory", &(kind, timespan, resolution))?;
+            points.sort_by_key(|p| p.0);
+            Ok(points.into_iter().map(|(time, value, state)| HistoryPoint { time, value, state: BatteryState::from_u32(state) }).collect())
+        })
     }
 
     /// Set a keyboard backlight's level (0–its maximum).
