@@ -153,3 +153,13 @@ fn users_reads_accountsservice() {
     }
     println!("current {:?}, managed {}", state.current().map(|u| &u.name), state.users_managed);
 }
+
+#[test]
+#[ignore = "looks at the real system"]
+fn polkit_helper_is_found() {
+    // Registering would take over this session's authentication dialogs,
+    // so only the helper lookup is checked live.
+    let helper = aizome_sys::polkit::Helper::find();
+    println!("polkit helper: {helper:?}");
+    assert!(helper.is_some());
+}

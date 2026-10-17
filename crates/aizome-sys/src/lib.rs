@@ -38,6 +38,7 @@ pub mod bus;
 pub mod datetime;
 pub mod error;
 pub mod network;
+pub mod polkit;
 pub mod power;
 pub mod printers;
 pub mod sysinfo;

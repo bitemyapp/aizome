@@ -485,3 +485,8 @@ fn read_state(base: &LogindState, manager: &Props, session: &Props, held: bool) 
 pub(crate) fn session_path(bus: &Bus) -> Option<String> {
     find_session(bus, None).map(|(_, path)| path).filter(|p| !p.is_empty())
 }
+
+/// This process's login session id, for registering per-session agents.
+pub(crate) fn session_id(bus: &Bus) -> Option<String> {
+    find_session(bus, None).map(|(id, _)| id).filter(|id| !id.is_empty())
+}
