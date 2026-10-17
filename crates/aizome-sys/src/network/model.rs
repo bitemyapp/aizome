@@ -1346,6 +1346,92 @@ pub(crate) fn with_setting(
     out
 }
 
+/// A connection's settings in the form `Update2` takes.
+pub(crate) type EditableSettings = HashMap<String, HashMap<String, Value<'static>>>;
+
+/// How a connection gets its IPv4 address.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Ipv4Method {
+    /// DHCP (NetworkManager's `auto`).
+    Automatic,
+    /// Fixed addresses (with prefix lengths) and a router.
+    Manual { addresses: Vec<(Ipv4Addr, u8)>, gateway: Option<Ipv4Addr> },
+    /// A 169.254.x.x address only.
+    LinkLocal,
+    /// Share this machine's connection with the network (a hotspot or a
+    /// cable to another computer).
+    Shared,
+    Disabled,
+}
+
+/// Set a connection's IPv4 method (and addresses) in `settings`.
+pub(crate) fn apply_ipv4(settings: &mut EditableSettings, method: &Ipv4Method) {
+    let ipv4 = settings.entry("ipv4".to_owned()).or_default();
+    // The old array forms override the new ones when present: drop them.
+    ipv4.remove("addresses");
+    ipv4.remove("address-data");
+    ipv4.remove("gateway");
+    let name = match method {
+        Ipv4Method::Automatic => "auto",
+        Ipv4Method::Manual { .. } => "manual",
+        Ipv4Method::LinkLocal => "link-local",
+        Ipv4Method::Shared => "shared",
+        Ipv4Method::Disabled => "disabled",
+    };
+    ipv4.insert("method".to_owned(), Value::from(name));
+    if let Ipv4Method::Manual { addresses, gateway } = method {
+        let data: Vec<HashMap<String, Value<'static>>> = addresses
+            .iter()
+            .map(|(address, prefix)| {
+                HashMap::from([
+                    ("address".to_owned(), Value::from(address.to_string())),
+                    ("prefix".to_owned(), Value::from(u32::from(*prefix))),
+                ])
+            })
+            .collect();
+        ipv4.insert("address-data".to_owned(), Value::from(data));
+        if let Some(gateway) = gateway {
+            ipv4.insert("gateway".to_owned(), Value::from(gateway.to_string()));
+        }
+    }
+}
+
+/// Set a connection's DNS servers in `settings`: `servers` (IPv4 and IPv6)
+/// instead of the network's when `automatic` is false, besides them when
+/// it is true.
+pub(crate) fn apply_dns(settings: &mut EditableSettings, servers: &[std::net::IpAddr], automatic: bool) {
+    let v4: Vec<u32> = servers
+        .iter()
+        .filter_map(|ip| match ip {
+            std::net::IpAddr::V4(ip) => Some(u32::from_ne_bytes(ip.octets())),
+            std::net::IpAddr::V6(_) => None,
+        })
+        .collect();
+    let v6: Vec<Vec<u8>> = servers
+        .iter()
+        .filter_map(|ip| match ip {
+            std::net::IpAddr::V6(ip) => Some(ip.octets().to_vec()),
+            std::net::IpAddr::V4(_) => None,
+        })
+        .collect();
+    for (group, list) in [("ipv4", Value::from(v4)), ("ipv6", Value::from(v6))] {
+        let props = settings.entry(group.to_owned()).or_default();
+        props.remove("dns-data");
+        props.insert("dns".to_owned(), list);
+        props.insert("ignore-auto-dns".to_owned(), Value::from(!automatic && !servers.is_empty()));
+    }
+}
+
+/// Settings as `Update2` takes them, from what `GetSettings` returned.
+pub(crate) fn editable(settings: &ConnectionSettings) -> EditableSettings {
+    settings
+        .iter()
+        .map(|(group, props)| {
+            (group.clone(), props.iter().filter_map(|(k, v)| Some((k.clone(), v.try_clone().ok().map(Value::from)?))).collect())
+        })
+        .collect()
+}
+
 /// Whether a value is a string equal to `expected` (for tests and checks).
 #[allow(dead_code)]
 pub(crate) fn is_str(value: &Value<'_>, expected: &str) -> bool {
@@ -1588,6 +1674,35 @@ mod tests {
         assert_eq!(ssid_name(b"Caf\xc3\xa9"), "Café");
         assert_eq!(ssid_name(b"\xff\x01ab"), "\\xff\\x01ab");
         assert_eq!(Band::from_mhz(5955), Band::SixGhz);
+    }
+
+    #[test]
+    fn addresses_and_dns_edit_the_right_keys() {
+        let mut settings: EditableSettings = HashMap::from([(
+            "ipv4".to_owned(),
+            HashMap::from([
+                ("method".to_owned(), Value::from("auto")),
+                ("addresses".to_owned(), Value::from(vec![vec![1u32, 24, 0]])),
+                ("dns-data".to_owned(), Value::from(vec!["9.9.9.9"])),
+            ]),
+        )]);
+        apply_ipv4(
+            &mut settings,
+            &Ipv4Method::Manual { addresses: vec![(Ipv4Addr::new(192, 168, 1, 20), 24)], gateway: Some(Ipv4Addr::new(192, 168, 1, 1)) },
+        );
+        let ipv4 = &settings["ipv4"];
+        assert!(is_str(&ipv4["method"], "manual"));
+        assert!(!ipv4.contains_key("addresses"), "the old form would override the new");
+        assert_eq!(dict_keys(&Value::from(HashMap::from([("k", 1u32)]))), ["k"]);
+        assert!(is_str(&ipv4["gateway"], "192.168.1.1"));
+        apply_dns(&mut settings, &["1.1.1.1".parse().unwrap(), "2606:4700:4700::1111".parse().unwrap()], false);
+        let ipv4 = &settings["ipv4"];
+        assert!(!ipv4.contains_key("dns-data"));
+        assert_eq!(ipv4["dns"], Value::from(vec![u32::from_ne_bytes([1, 1, 1, 1])]));
+        assert_eq!(ipv4["ignore-auto-dns"], Value::from(true));
+        assert_eq!(settings["ipv6"]["ignore-auto-dns"], Value::from(true));
+        apply_dns(&mut settings, &[], true);
+        assert_eq!(settings["ipv4"]["ignore-auto-dns"], Value::from(false));
     }
 
     #[test]

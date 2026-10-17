@@ -35,7 +35,7 @@ pub(crate) mod rfkill;
 pub use model::{
     AccessPoint, ActiveConnection, ActiveState, Band, ConnectionKind, ConnectionSettings, Connectivity,
     Details, Device, DeviceKind, DeviceState, Enterprise, IpConfig, Metered, NetworkState, NmState, Proxy,
-    Radio, RadioKind, SavedConnection, Security, WifiNetwork, bars, describe_reason, signal_icon, ssid_name,
+    Ipv4Method, Radio, RadioKind, SavedConnection, Security, WifiNetwork, bars, describe_reason, signal_icon, ssid_name,
 };
 
 use crate::bus::{self, Bus, Event, Objects, Opts, signals_from};
@@ -331,6 +331,27 @@ impl Network {
         self.task(move |bus| update_setting(bus, &uuid, "connection", "metered", Value::from(metered.setting())))
     }
 
+    /// How a saved connection gets its IPv4 address: automatically (DHCP)
+    /// or fixed ones; reconnect it for the change to take effect.
+    pub fn set_ipv4(&self, uuid: &str, method: Ipv4Method) -> Task<()> {
+        if let Ipv4Method::Manual { addresses, .. } = &method
+            && (addresses.is_empty() || addresses.iter().any(|(_, prefix)| !(1..=32).contains(prefix)))
+        {
+            return Task::ready(Err(Error::InvalidArgument("Give at least one address with a prefix of 1 to 32".into())));
+        }
+        let uuid = uuid.to_owned();
+        self.task(move |bus| update_settings(bus, &uuid, |settings| apply_ipv4(settings, &method)))
+    }
+
+    /// A saved connection's DNS servers: `servers` instead of the
+    /// network's (`automatic` false), or as well (`automatic` true; with no
+    /// servers, the network's alone).
+    pub fn set_dns(&self, uuid: &str, servers: &[std::net::IpAddr], automatic: bool) -> Task<()> {
+        let uuid = uuid.to_owned();
+        let servers = servers.to_vec();
+        self.task(move |bus| update_settings(bus, &uuid, |settings| apply_dns(settings, &servers, automatic)))
+    }
+
     /// Import a VPN configuration file: `.conf` (WireGuard) or `.ovpn`
     /// (OpenVPN; needs NetworkManager's OpenVPN plugin), or another type
     /// given by its plugin name (`vpnc`, `openconnect`…). Returns the new
@@ -517,9 +538,18 @@ const UPDATE_TO_DISK: u32 = 0x1;
 const UPDATE_IN_MEMORY: u32 = 0x2;
 
 fn update_setting(bus: &Bus, uuid: &str, group: &str, key: &str, value: Value<'static>) -> Result<()> {
+    update_settings(bus, uuid, |settings| {
+        settings.entry(group.to_owned()).or_default().insert(key.to_owned(), value);
+    })
+}
+
+/// Change a saved connection's settings with `edit`, save them to disk,
+/// and have NetworkManager apply them where the connection is up.
+fn update_settings(bus: &Bus, uuid: &str, edit: impl FnOnce(&mut EditableSettings)) -> Result<()> {
     let path = connection_path(bus, uuid)?;
     let settings: ConnectionSettings = bus.call(NM, &path, IFACE_CONNECTION, "GetSettings", &())?;
-    let updated = with_setting(&settings, group, key, value);
+    let mut updated = editable(&settings);
+    edit(&mut updated);
     let args: HashMap<&str, Value> = HashMap::new();
     bus.call_with::<_, HashMap<String, OwnedValue>>(
         Opts::ACTION,

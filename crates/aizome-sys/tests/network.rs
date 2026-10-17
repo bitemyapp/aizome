@@ -559,3 +559,28 @@ fn airplane_mode_blocks_every_radio() {
     // struct rfkill_event { idx 0, type ALL, op CHANGE_ALL, soft 1, hard 0 }
     assert_eq!(written, [0, 0, 0, 0, 0, 3, 1, 0]);
 }
+
+#[test]
+fn addresses_and_dns_are_saved_on_the_profile() {
+    use aizome_sys::network::Ipv4Method;
+    use std::net::Ipv4Addr;
+    let bus = test_bus!();
+    let (_fake, log) = serve(&bus);
+    let network = Network::with_bus(bus.bus(), Wake::none(), no_radios());
+    assert!(eventually(|| network.snapshot().network("Home").is_some_and(|n| n.known)));
+    let uuid = network.snapshot().network("Home").unwrap().connection.clone().unwrap();
+    network.set_dns(&uuid, &["9.9.9.9".parse().unwrap()], false).wait().unwrap();
+    {
+        let log = log.lock().unwrap();
+        let (settings, _) = log.updated.last().unwrap();
+        let dns = Vec::<u32>::try_from(settings["ipv4"]["dns"].try_clone().unwrap()).unwrap();
+        assert_eq!(dns, [u32::from_ne_bytes([9, 9, 9, 9])]);
+        assert!(bool::try_from(settings["ipv4"]["ignore-auto-dns"].try_clone().unwrap()).unwrap());
+        // The password and the rest are kept.
+        assert_eq!(setting_str(settings, "802-11-wireless-security", "psk").as_deref(), Some("right"));
+    }
+    let manual = Ipv4Method::Manual { addresses: vec![(Ipv4Addr::new(10, 0, 0, 5), 24)], gateway: Some(Ipv4Addr::new(10, 0, 0, 1)) };
+    network.set_ipv4(&uuid, manual).wait().unwrap();
+    assert_eq!(setting_str(&log.lock().unwrap().updated.last().unwrap().0, "ipv4", "method").as_deref(), Some("manual"));
+    assert!(network.set_ipv4(&uuid, Ipv4Method::Manual { addresses: vec![], gateway: None }).wait().is_err());
+}
