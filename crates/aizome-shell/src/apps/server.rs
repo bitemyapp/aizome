@@ -148,7 +148,8 @@ mod tests {
         // A second shell can't take the socket while this one listens.
         assert!(Server::listen(&path, |_| {}).is_err());
         drop(app);
-        assert_eq!(rx.recv().unwrap(), ServerEvent::Gone(conn));
+        // (The probe above was a connection too, gone at once.)
+        while rx.recv().unwrap() != ServerEvent::Gone(conn) {}
         drop(server);
         assert!(!path.exists());
         let _ = std::fs::remove_dir_all(dir);
