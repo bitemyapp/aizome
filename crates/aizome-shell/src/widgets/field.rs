@@ -31,6 +31,7 @@ pub fn field<Msg>(value: &str, spec: impl Fn(&aizome_kit::Theme) -> TextSpec + '
             secure: false,
             on_change: None,
             on_submit: None,
+            on_caps: None,
             height: 24.0,
         },
         _m: std::marker::PhantomData,
@@ -45,6 +46,11 @@ impl<Msg: Clone + Send + 'static> Field<Msg> {
 
     pub fn on_submit(mut self, msg: Msg) -> Self {
         self.w.on_submit = Some(MsgFn::new(msg));
+        self
+    }
+
+    pub fn on_caps(mut self, f: impl Fn(bool) -> Msg + 'static) -> Self {
+        self.w.on_caps = Some(MsgMap::new(f));
         self
     }
 }
@@ -80,6 +86,8 @@ struct FieldWidget {
     secure: bool,
     on_change: Option<MsgMap<String>>,
     on_submit: Option<MsgFn>,
+    /// Told when Caps Lock turns on or off, as keys show it.
+    on_caps: Option<MsgMap<bool>>,
     height: f64,
 }
 
@@ -92,6 +100,7 @@ struct FieldState {
     seen: String,
     preedit: String,
     blink_off: bool,
+    caps: Option<bool>,
 }
 
 fn prev_boundary(s: &str, i: usize) -> usize {
@@ -299,6 +308,15 @@ impl Widget for FieldWidget {
             }
             Event::Key(k) if k.pressed => {
                 let m = k.modifiers;
+                let caps = m.contains(aizome_kit::sidestep_ui::Modifiers::CAPS_LOCK);
+                if cx.state::<FieldState>().caps != Some(caps) {
+                    cx.state::<FieldState>().caps = Some(caps);
+                    if let Some(f) = &self.on_caps {
+                        let msg = f.make(caps);
+                        let cell = std::cell::RefCell::new(Some(msg));
+                        cx.emit(&MsgFn::from_fn(move || cell.borrow_mut().take().expect("once")));
+                    }
+                }
                 let (caret, anchor) = {
                     let st = cx.state::<FieldState>();
                     st.blink_off = false;

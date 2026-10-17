@@ -78,7 +78,7 @@ impl Shell {
 
     /// Whether the screen is locked (notifications are only filed then).
     pub fn locked(&self) -> bool {
-        self.wm.locked
+        self.wm.locked || self.lock.phase != crate::lock::Phase::Unlocked
     }
 
     /// The Deskbar app a notification is filed under: its desktop entry's

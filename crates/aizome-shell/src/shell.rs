@@ -57,6 +57,7 @@ pub enum Msg {
     Desktop(u32, crate::desktop::DesktopMsg),
     /// What's in `~/Desktop`, and whether the Trash is full.
     DesktopItems(Vec<(PathBuf, bool)>, bool),
+    Lock(crate::lock::LockMsg),
     Note(crate::notifications::server::NoteEvent),
     /// The bar's notification line has shown long enough.
     BannerDone(u32),
@@ -83,6 +84,7 @@ pub enum Surface {
     Palette,
     Panel,
     Osd,
+    Lock { output: u32 },
 }
 
 /// An output and the shell's surfaces on it.
@@ -166,6 +168,9 @@ pub struct Shell {
     pub(crate) drag_grab: aizome_kit::Vec2,
     /// Volumes to show when the system has none (tests and pictures).
     pub volumes_fixture: Vec<aizome_sys::disks::Volume>,
+    pub lock: crate::lock::LockState,
+    pub authenticator: Arc<dyn crate::pam::Authenticator>,
+    pub user_picture: Option<aizome_kit::Image>,
     pub(crate) deskbar_size: Option<aizome_kit::Size>,
     pub(crate) icons: HashMap<String, Option<aizome_kit::Image>>,
     /// The primary bar's Desks, by where they are across it.
@@ -225,6 +230,9 @@ impl Shell {
             user: crate::pam::current_user(),
             drag_grab: aizome_kit::Vec2::ZERO,
             volumes_fixture: Vec::new(),
+            lock: Default::default(),
+            authenticator: Arc::new(crate::pam::Pam::new("aizome")),
+            user_picture: None,
             deskbar_size: None,
             icons: HashMap::new(),
             desk_strip: Vec::new(),
@@ -490,7 +498,7 @@ impl Shell {
                     let _ = l.power_off();
                 }
             }
-            Action::Session(SessionVerb::Lock) => {}
+            Action::Session(SessionVerb::Lock) => self.lock(cx),
             Action::Pin { app_id, on } => {
                 self.deskbar_cfg.pinned.retain(|a| *a != app_id);
                 if on {
@@ -644,6 +652,7 @@ impl Shell {
             tx2.send(Msg::Sys);
         });
         self.watch_desktop();
+        self.start_lock();
     }
 
     fn take_ipc(&mut self, e: IpcEvent, cx: &mut Cx<Msg>) {
@@ -654,6 +663,7 @@ impl Shell {
                 match e {
                     Event::ConfigChanged => self.reload_settings(),
                     Event::Binding { action, pointer, output } => self.binding(&action, pointer, output, cx),
+                    Event::Idle { kind } if kind == "lock" => self.lock(cx),
                     _ => {}
                 }
             }
@@ -666,6 +676,7 @@ impl Shell {
         match action {
             "toolchest" => self.open_toolchest(output.as_deref(), cx),
             "palette" => self.toggle_palette(None, String::new(), cx),
+            "lock" => self.lock(cx),
             "app-menu" => {
                 if let Some((x, y)) = pointer {
                     self.pointer_menu(x, y, cx);
@@ -757,6 +768,10 @@ impl Shell {
                 }
                 None => (false, format!("no OSD for {kind}")),
             },
+            proto::ShellRequest::Lock => {
+                self.lock(cx);
+                (true, String::new())
+            }
             proto::ShellRequest::Dismiss => {
                 self.close_palette(cx);
                 (true, String::new())
@@ -819,7 +834,10 @@ impl Program for Shell {
                     });
                 }
             }
-            Msg::Sys => self.tray = self.sys.tray(&self.bar_cfg),
+            Msg::Sys => {
+                self.tray = self.sys.tray(&self.bar_cfg);
+                self.session_events(cx);
+            }
             Msg::Meters(r) => self.meters = r,
             Msg::Tick => {
                 self.now = Local::now();
@@ -834,6 +852,7 @@ impl Program for Shell {
             Msg::Media(m) => self.media = m,
             Msg::OsdHide(g) => self.hide_osd(g, cx),
             Msg::Desktop(o, m) => self.desktop_msg(o, m, cx),
+            Msg::Lock(m) => self.lock_msg(m, cx),
             Msg::DesktopItems(items, full) => {
                 self.desktop.items = items;
                 self.trash_full = full;
@@ -860,6 +879,12 @@ impl Program for Shell {
                 }
                 _ => aizome_kit::space(0.0),
             },
+            Some(Surface::Lock { output }) => {
+                let inner = self.lock_view(*output);
+                crate::widgets::keys::keys(inner, |k| {
+                    matches!(k.key, aizome_kit::sidestep_ui::Key::Named(aizome_kit::sidestep_ui::NamedKey::Escape)).then_some(Msg::Lock(crate::lock::LockMsg::Escape))
+                })
+            }
             Some(Surface::Osd) => match &self.osd {
                 Some(o) => crate::osd::view(&o.osd),
                 None => aizome_kit::space(0.0),
@@ -922,6 +947,14 @@ impl Program for Shell {
 
     fn quit_when_last_window_closes(&self) -> bool {
         false
+    }
+
+    fn session_locked(&mut self, cx: &mut Cx<Msg>) {
+        self.lock_confirmed(cx);
+    }
+
+    fn session_lock_finished(&mut self, _cx: &mut Cx<Msg>) {
+        self.lock_ended();
     }
 }
 
@@ -1071,5 +1104,65 @@ impl Shell {
         let at = Point::new(x - screen.output.frame.x0, y - screen.output.frame.y0);
         let style = MenuStyle::at_point().titled(name.clone());
         self.show_menu(bar, at_point(at), &menu, style, cx);
+    }
+}
+
+/// Whether this shell runs an Aizome session (not a test beside another
+/// desktop): only then does it hold logind's sleep, serve polkit, and lock
+/// for logind.
+pub fn real_session() -> bool {
+    std::env::var("XDG_CURRENT_DESKTOP").is_ok_and(|v| v.split(':').any(|d| d.eq_ignore_ascii_case("aizome")))
+}
+
+impl Shell {
+    /// logind's session events: lock and unlock asked for, the machine
+    /// about to sleep (lock first, then let it).
+    fn session_events(&mut self, cx: &mut Cx<Msg>) {
+        let events = match &self.sys.logind {
+            Some(l) if real_session() => l.take_events(),
+            _ => return,
+        };
+        use aizome_sys::power::SessionEvent;
+        for e in events {
+            match e {
+                SessionEvent::Lock => self.lock(cx),
+                SessionEvent::Unlock => self.unlock(cx),
+                SessionEvent::PrepareForSleep => {
+                    if self.lock_cfg.before_sleep && self.lock.phase == crate::lock::Phase::Unlocked {
+                        self.lock.sleep_pending = true;
+                        self.lock(cx);
+                    } else if let Some(l) = &self.sys.logind {
+                        l.sleep_ready();
+                    }
+                }
+                SessionEvent::Resumed => {
+                    // Take the delay again for the next sleep.
+                    if let Some(l) = &self.sys.logind
+                        && let Err(e) = l.take_sleep_delay()
+                    {
+                        log::warn!("logind's sleep delay: {e}");
+                    }
+                }
+                SessionEvent::PrepareForShutdown => {}
+            }
+        }
+    }
+
+    /// What the lock screen needs from the system: PAM's service, the
+    /// user's picture, and logind's sleep delay.
+    fn start_lock(&mut self) {
+        self.authenticator = Arc::new(crate::pam::Pam::new(self.lock_cfg.pam_service.clone()));
+        if self.lock_cfg.show_picture {
+            let home = aizome_config::home_dir();
+            let candidates = [home.join(".face"), PathBuf::from(format!("/var/lib/AccountsService/icons/{}", self.user.0))];
+            self.user_picture = candidates.iter().find(|p| p.is_file()).and_then(|p| aizome_kit::Image::open(p).ok());
+        }
+        if real_session()
+            && self.lock_cfg.before_sleep
+            && let Some(l) = &self.sys.logind
+            && let Err(e) = l.take_sleep_delay()
+        {
+            log::warn!("logind's sleep delay: {e}");
+        }
     }
 }

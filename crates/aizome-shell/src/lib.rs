@@ -11,6 +11,7 @@ pub mod desktop;
 mod desktop_glue;
 pub mod ipc;
 pub mod launch;
+pub mod lock;
 pub mod look;
 pub mod menubar;
 pub mod menus;
