@@ -154,3 +154,44 @@ whole window, took 5.4 ms; that's opening, not a tick).
 
 The timer's ring is drawn in a thousand steps, so it redraws when a step
 passes rather than on every tick. No exceptions.
+
+## Yukimi (Software)
+
+Headlessly, `apps/yukimi/tests/budget.rs` (`cargo test --release -p
+aizome-yukimi --test budget -- --nocapture`), on the sample system, from
+the event to the damage rasterised at 2× (the damage's bounding box, so
+these are upper bounds). Release build, with Aizome's fonts:
+
+| Interaction | p50 | p95 | max | drawn |
+|---|---|---|---|---|
+| Scrolling Installed with the wheel | 1.48 ms | 1.55 ms | 1.57 ms | 76% |
+| Typing in Discover's search | 0.50 ms | 0.74 ms | 1.15 ms | 23% |
+| Opening a generation in History | 1.36 ms | 1.90 ms | 2.17 ms | 61% |
+| Hovering cards and rows | 0.00 ms | 0.01 ms | 0.01 ms | 0% (no view) |
+| A frame of falling snow (Overview) | 0.94 ms | 1.04 ms | 1.12 ms | 19% |
+| Switching pages | 4.92 ms | 5.82 ms | 7.38 ms | 97% |
+
+Searching itself runs on a thread of its own (the window only shows the
+answer), as does reading the system and the store, working out what a
+generation changed, checking for updates and making the package index;
+none of it is on the interface thread.
+
+Live, the release build under headless sway (pixman) at 2× on this
+system's real store (36,000 paths), Sidestep's frame stats: with the
+Overview's snow falling, 184 frames in 5 s, total p50 0.93 ms, p95
+2.4 ms; while switching pages every 1.2 s (through the instance socket),
+p50 1.7–2.1 ms, p95 6.8–13 ms.
+
+Exception: **switching pages**. A new page repaints the whole content
+area (and the toolbar and the sidebar's selection) at 2×. Yukimi's part,
+the update, the view and the layout, is 0.15–0.65 ms of it (Discover's
+catalog, 47 cards, is the most); the rest is rasterising about 3.4
+million pixels, which costs Sidestep's renderer about 3.5–4.5 ms for any
+full window, however simple (History, the plainest page, 3.65 ms).
+Switching pages is a deliberate act a few times a minute, not something
+repeated under the hand, so it is left at that rather than made to draw
+less than the page that's new.
+
+`YUKIMI_STALLS=50` prints, on standard error, every update or view that
+takes longer than that many milliseconds (as the GTK Yukimi does for its
+interface thread).
