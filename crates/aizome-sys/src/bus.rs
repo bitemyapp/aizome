@@ -581,12 +581,18 @@ pub(crate) enum Event {
     Idle,
 }
 
-/// Follow the daemon that owns `name`: on a thread of its own, subscribe to
-/// `rules` (signals; the sender is checked against `name`'s current owner,
-/// since a shared connection hears other daemons' signals too) and to
-/// `name`'s owner changes, then call `handle` with each [`Event`]. Bursts of
-/// signals end with one [`Event::Idle`]. The thread ends when `stop` is set
-/// (at the next message) or the connection closes.
+/// Follow the daemon that owns `name`: subscribe to `rules` (signals; the
+/// sender is checked against `name`'s current owner, since a shared
+/// connection hears other daemons' signals too) and to `name`'s owner
+/// changes, then call `handle` with each [`Event`] on a thread of its own.
+/// Bursts of signals end with one [`Event::Idle`]. It ends soon after
+/// `stop` is set, or when the connection closes.
+///
+/// Two threads do this. One only moves messages from zbus's queues into an
+/// unbounded channel, so zbus's socket reader never waits on a full queue
+/// (which would hold up every reply on the shared connection, including
+/// the ones `handle` itself waits for). The other runs `handle`, which may
+/// make blocking calls.
 ///
 /// When `activate` is set and the daemon is not running but activatable,
 /// it is started first.
@@ -598,15 +604,41 @@ pub(crate) fn follow(
     stop: Stop,
     mut handle: impl FnMut(&Bus, Event) + Send + 'static,
 ) {
-    let thread = std::thread::Builder::new()
-        .name(format!("aizome-sys {name}"))
-        .spawn(move || {
-            if let Err(error) = zbus::block_on(follow_loop(&bus, name, rules, activate, &stop, &mut handle)) {
-                log::warn!("aizome-sys: stopped following {name}: {error}");
+    let (messages, inbox) = std::sync::mpsc::channel::<Message>();
+    let (ready, subscribed) = std::sync::mpsc::channel::<Result<()>>();
+    let drain_bus = bus.clone();
+    let drain_stop = stop.clone();
+    let drained = std::thread::Builder::new().name(format!("aizome-sys {name} signals")).spawn(move || {
+        zbus::block_on(async move {
+            let mut stream = match subscribe_all(drain_bus.connection(), name, &rules).await {
+                Ok(stream) => stream,
+                Err(error) => {
+                    let _ = ready.send(Err(error));
+                    return;
+                }
+            };
+            let _ = ready.send(Ok(()));
+            while let Some(msg) = stream.next().await {
+                let Ok(msg) = msg else { continue };
+                if drain_stop.stopped() || messages.send(msg).is_err() {
+                    return;
+                }
             }
-            handle(&bus, Event::Vanished);
-            handle(&bus, Event::Idle);
-        });
+        })
+    });
+    if let Err(error) = drained {
+        log::warn!("aizome-sys: could not start a thread for {name}: {error}");
+        return;
+    }
+    let thread = std::thread::Builder::new().name(format!("aizome-sys {name}")).spawn(move || {
+        match subscribed.recv() {
+            Ok(Ok(())) => follow_loop(&bus, name, activate, &stop, &inbox, &mut handle),
+            Ok(Err(error)) => log::warn!("aizome-sys: can't follow {name}: {error}"),
+            Err(_) => {}
+        }
+        handle(&bus, Event::Vanished);
+        handle(&bus, Event::Idle);
+    });
     if let Err(error) = thread {
         log::warn!("aizome-sys: could not start a thread for {name}: {error}");
     }
@@ -614,25 +646,29 @@ pub(crate) fn follow(
 
 type BoxedStream = Pin<Box<dyn futures_lite::Stream<Item = zbus::Result<Message>> + Send>>;
 
-async fn follow_loop(
-    bus: &Bus,
-    name: &'static str,
-    rules: Vec<String>,
-    activate: bool,
-    stop: &Stop,
-    handle: &mut (impl FnMut(&Bus, Event) + Send),
-) -> Result<()> {
-    let conn = bus.connection();
+/// One stream of `name`'s owner changes and every rule's signals.
+async fn subscribe_all(conn: &zbus::Connection, name: &str, rules: &[String]) -> Result<BoxedStream> {
     let owner_rule = format!(
         "type='signal',sender='org.freedesktop.DBus',interface='org.freedesktop.DBus',\
          member='NameOwnerChanged',arg0='{name}'"
     );
     let mut stream: BoxedStream = Box::pin(subscribe(conn, &owner_rule).await?);
-    for rule in &rules {
+    for rule in rules {
         let more = subscribe(conn, rule).await?;
         stream = Box::pin(futures_lite::stream::or(stream, more));
     }
+    Ok(stream)
+}
 
+fn follow_loop(
+    bus: &Bus,
+    name: &'static str,
+    activate: bool,
+    stop: &Stop,
+    inbox: &std::sync::mpsc::Receiver<Message>,
+    handle: &mut impl FnMut(&Bus, Event),
+) {
+    use std::sync::mpsc::RecvTimeoutError;
     // Subscribed: now see who owns the name, so no change is missed.
     let mut owner = bus.owner(name);
     if owner.is_none() && activate && bus.activatable(name) {
@@ -648,27 +684,23 @@ async fn follow_loop(
     }
     handle(bus, Event::Idle);
 
-    while let Some(msg) = stream.next().await {
+    loop {
+        let msg = match inbox.recv_timeout(Duration::from_millis(250)) {
+            Ok(msg) => msg,
+            Err(RecvTimeoutError::Timeout) if stop.stopped() => return,
+            Err(RecvTimeoutError::Timeout) => continue,
+            Err(RecvTimeoutError::Disconnected) => return,
+        };
         if stop.stopped() {
-            return Ok(());
+            return;
         }
-        let Ok(msg) = msg else { continue };
         dispatch(bus, name, &mut owner, msg, handle);
         // Take whatever else is already queued before publishing.
-        loop {
-            match futures_lite::future::poll_once(stream.next()).await {
-                Some(Some(Ok(msg))) => dispatch(bus, name, &mut owner, msg, handle),
-                Some(Some(Err(_))) => continue,
-                Some(None) => return Ok(()),
-                None => break,
-            }
-        }
-        if stop.stopped() {
-            return Ok(());
+        while let Ok(msg) = inbox.try_recv() {
+            dispatch(bus, name, &mut owner, msg, handle);
         }
         handle(bus, Event::Idle);
     }
-    Ok(())
 }
 
 async fn subscribe(conn: &zbus::Connection, rule: &str) -> Result<zbus::MessageStream> {

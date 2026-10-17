@@ -448,3 +448,48 @@ fn backlight_steps_through_logind() {
     assert!(backlight.set_brightness("nonexistent", 3).wait().is_err());
     std::fs::remove_dir_all(&root).unwrap();
 }
+
+/// A daemon announcing thousands of devices at once, each needing a call
+/// back to it: the follower keeps up, and the shared connection doesn't
+/// stall on full queues while it waits for replies.
+#[test]
+fn a_burst_of_new_devices_doesnt_stall_the_connection() {
+    let bus = test_bus!();
+    let fake = bus
+        .builder()
+        .name("org.freedesktop.UPower")
+        .unwrap()
+        .serve_at("/org/freedesktop/UPower", UpowerManager)
+        .unwrap()
+        .serve_at("/org/freedesktop/UPower/devices/battery_BAT0", device(2, 57.0, 2, "", true))
+        .unwrap()
+        .serve_at("/org/freedesktop/UPower/devices/line_power_AC", device(1, 0.0, 0, "", true))
+        .unwrap()
+        .serve_at("/org/freedesktop/UPower/devices/DisplayDevice", device(2, 57.0, 2, "", true))
+        .unwrap()
+        .build()
+        .unwrap();
+    let upower = Upower::with_bus(bus.bus(), Wake::none());
+    assert!(eventually(|| upower.snapshot().devices.len() == 2));
+    const N: usize = 2500;
+    let start = std::time::Instant::now();
+    zbus::block_on(async {
+        let server = fake.inner().object_server();
+        let manager = server.interface::<_, UpowerManager>("/org/freedesktop/UPower").await.unwrap();
+        for n in 0..N {
+            let p = format!("/org/freedesktop/UPower/devices/mouse_{n}");
+            server.at(p.as_str(), device(5, 50.0, 2, "Mouse", false)).await.unwrap();
+            UpowerManager::device_added(manager.signal_emitter(), path(&p)).await.unwrap();
+        }
+    });
+    let deadline = std::time::Duration::from_secs(20);
+    while upower.snapshot().devices.len() < N + 2 && start.elapsed() < deadline {
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    assert_eq!(upower.snapshot().devices.len(), N + 2, "after {:?}", start.elapsed());
+    // And the connection still answers at once.
+    let quick = std::time::Instant::now();
+    upower.set_keyboard_brightness("/nonexistent", 1).wait().unwrap_err();
+    assert!(quick.elapsed() < std::time::Duration::from_secs(1));
+    eprintln!("{N} devices followed in {:?}", start.elapsed());
+}
