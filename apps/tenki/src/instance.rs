@@ -58,3 +58,23 @@ pub fn serve<Msg: Send + 'static>(listener: UnixListener, tx: MsgSender<Msg>, ms
         }
     });
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_second_launch_hands_over() {
+        let name = format!("tenki-test-{}", std::process::id());
+        let Claim::First(listener) = claim(&name, &[]) else {
+            // No runtime directory to bind in: nothing to test.
+            return;
+        };
+        assert!(matches!(claim(&name, &["--x".into()]), Claim::Handed));
+        drop(listener);
+        // A socket left behind by a crash is taken over.
+        let Claim::First(again) = claim(&name, &[]) else { panic!("the stale socket taken over") };
+        drop(again);
+        let _ = std::fs::remove_file(socket_path(&name));
+    }
+}

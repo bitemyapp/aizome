@@ -181,6 +181,7 @@ fn dragging_reorders_places() {
     h.click(w, chicago.center());
     assert_eq!(names(&h), ["Reykjavík", "Tokyo", "Chicago"]);
     assert_eq!(h.program().selected_place().map(|p| p.name), Some("Chicago".into()));
+    assert_eq!(h.title(w), "Chicago", "the window is named for its place");
 }
 
 #[test]

@@ -18,6 +18,8 @@ use crate::units::Units;
 
 /// A forecast older than this is fetched again when its place shows.
 pub const STALE: i64 = 20 * 60;
+/// The places not showing are fetched again when older than this.
+pub const HOURLY: i64 = 60 * 60;
 /// A failed fetch is tried again no sooner than this.
 pub const RETRY: i64 = 60;
 /// How long typing waits before searching.
@@ -470,6 +472,9 @@ impl Program for Tenki {
         self.refresh_selected(STALE, cx);
         let rows = self.rows();
         self.refresh(rows, STALE, cx);
+        if let Some(p) = self.selected_place() {
+            cx.set_title(self.window, p.name);
+        }
     }
 
     fn update(&mut self, msg: Msg, cx: &mut Cx<Msg>) {
@@ -595,6 +600,9 @@ impl Program for Tenki {
             }
             Msg::Minute => {
                 self.refresh_selected(STALE, cx);
+                // The others, hourly, for the sidebar.
+                let rows = self.rows();
+                self.refresh(rows, HOURLY, cx);
                 self.ensure_timezone_city(cx);
             }
             Msg::SetUnits(u) => {
@@ -678,6 +686,9 @@ impl Program for Tenki {
             }
             Msg::Idle => {}
         }
+        // The window is named for the place it shows (its tab, the Deskbar).
+        let title = self.selected_place().map_or_else(|| "Tenki".to_owned(), |p| p.name);
+        cx.set_title(self.window, title);
     }
 
     fn view(&self, window: WindowKey) -> Element<Msg> {

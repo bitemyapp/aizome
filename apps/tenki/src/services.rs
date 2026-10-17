@@ -92,7 +92,14 @@ impl Live {
             req = req.query(*k, v);
         }
         let mut resp = req.call().map_err(|e| match e {
-            ureq::Error::Io(_) | ureq::Error::Timeout(_) | ureq::Error::HostNotFound | ureq::Error::ConnectionFailed => {
+            ureq::Error::Io(_)
+            | ureq::Error::Timeout(_)
+            | ureq::Error::HostNotFound
+            | ureq::Error::ConnectionFailed
+            | ureq::Error::Protocol(_)
+            | ureq::Error::Tls(_)
+            | ureq::Error::Rustls(_)
+            | ureq::Error::BodyStalled => {
                 FetchError::Offline(e.to_string())
             }
             other => FetchError::Bad(other.to_string()),

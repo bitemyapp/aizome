@@ -228,7 +228,7 @@ fn location_banner() -> Element<Msg> {
         text("See the weather where you are?").size(14.0).semibold(),
         text(
             "Tenki can ask GeoClue for your approximate position, to the nearest town, and send it rounded to \
-             Open-Meteo. Nothing else leaves the computer. Change your mind in the Places menu."
+             Open-Meteo. Nothing else leaves the computer. You can change your mind in Settings."
         )
         .size(12.0)
         .role(Role::Text2)
