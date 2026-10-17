@@ -82,3 +82,27 @@ fn screenshots_say_where_they_went() {
     assert_eq!(n.summary, "Screenshot saved");
     assert!(n.buttons().any(|(_, l)| l == "Show in Hako"));
 }
+
+#[test]
+fn the_bar_goes_back_to_the_menus_five_seconds_after_the_last_notification() {
+    let mut h = scene(false);
+    let note = |s: &str| Box::new(Incoming { app_name: "Mail".into(), summary: s.into(), ..Default::default() });
+    h.send(Msg::Note(NoteEvent::Notify(50, note("one"))));
+    h.advance(Duration::from_secs(3));
+    h.send(Msg::Note(NoteEvent::Notify(51, note("two"))));
+    assert_eq!(h.program().banner, Some(51), "the newer one takes the line");
+    h.advance(Duration::from_millis(2500));
+    assert_eq!(h.program().banner, Some(51), "the first's time running out doesn't end the second's");
+    h.advance(Duration::from_millis(2600));
+    assert_eq!(h.program().banner, None, "five seconds after the last, the menus are back");
+    let bar = window_titled(&h, "Menu bar");
+    assert!(h.texts(bar).iter().any(|t| t == "Format"));
+}
+
+#[test]
+fn palette_commands_wear_their_apps_glyph() {
+    let h = scene(false);
+    let items = h.program().palette_items();
+    let bold = items.iter().find(|i| i.title == "Bold").unwrap();
+    assert_eq!(bold.glyph, aizome_kit::Icon::Code, "Sumi's glyph, not ⌘");
+}

@@ -108,16 +108,15 @@ impl Shell {
         if n.app_name.is_empty() { "notifications".into() } else { n.app_name.clone() }
     }
 
-    /// Show a notification in the bar's line (after the one there now).
+    /// Show a notification in the bar's line for its own few seconds (a
+    /// newer one takes the line; none waits in line, so the bar goes back
+    /// to the app's menus five seconds after the last one came).
     pub fn show_banner(&mut self, id: u32, cx: &mut Cx<Msg>) {
-        if self.banner == Some(id) {
-            return;
-        }
-        if self.banner.is_some() {
-            if !self.banner_queue.contains(&id) {
-                self.banner_queue.push(id);
+        if let Some(old) = self.banner.filter(|b| *b != id) {
+            // The one it replaces has had its moment.
+            if self.notes.banner_done(old) {
+                self.note_closed(old, crate::notifications::store::CloseReason::Expired);
             }
-            return;
         }
         self.banner = Some(id);
         let secs = self.notes_cfg.banner_seconds.max(1) as u64;
@@ -130,15 +129,9 @@ impl Shell {
             return;
         }
         self.banner = None;
+        let _ = cx;
         if self.notes.banner_done(id) {
             self.note_closed(id, crate::notifications::store::CloseReason::Expired);
-        }
-        while !self.banner_queue.is_empty() {
-            let next = self.banner_queue.remove(0);
-            if self.notes.get(next).is_some() {
-                self.show_banner(next, cx);
-                break;
-            }
         }
     }
 

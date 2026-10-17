@@ -63,6 +63,8 @@ pub enum PaletteEvent {
     /// Files found for search `seq`.
     Files(u64, Vec<Item>),
     Index(Index),
+    /// Time to see whether the index is stale.
+    Refresh,
     Settings(Vec<SettingEntry>),
 }
 
@@ -164,11 +166,15 @@ impl Shell {
             app_id,
             search: 0,
         });
+        if self.file_index.is_none() && self.opts.live {
+            self.index_soon(true, cx);
+        }
         self.rank_palette(cx);
         cx.focus("palette-query");
     }
 
     pub fn close_palette(&mut self, cx: &mut Cx<Msg>) {
+        self.file_index = None;
         if let Some(p) = self.palette.take() {
             cx.close_window(p.window);
             self.surfaces.remove(&p.window);
@@ -253,9 +259,11 @@ impl Shell {
 
     fn command_item(&self, app_id: &str, trail: &[String], e: &Entry) -> Item {
         let key = format!("cmd:{app_id}:{}/{}", trail.join("/"), e.label);
+        // The item's own glyph, else its app's (Aizome's command key is ❖,
+        // so never ⌘), else a chevron.
         let glyph = match &e.icon {
             Some(MenuIcon::Glyph(g)) => *g,
-            _ => Icon::Command,
+            _ => crate::apps::catalog::glyph_for(app_id).map(|g| g.0).unwrap_or(Icon::ChevronRight),
         };
         let mut item = Item::new(Scope::Command, e.label.clone(), glyph, e.action.clone())
             .trail(trail.join(" › "))
@@ -365,7 +373,21 @@ impl Shell {
     /// What the palette heard.
     pub fn palette_event(&mut self, e: PaletteEvent, cx: &mut Cx<Msg>) {
         match e {
-            PaletteEvent::Index(Index(i)) => self.file_index = Some(i),
+            PaletteEvent::Index(Index(i)) => {
+                // Only the palette needs it: dropped when it closes.
+                if self.palette.is_some() {
+                    self.file_index = Some(i);
+                    if let Some(p) = &mut self.palette {
+                        p.files_for = "\u{0}".into();
+                    }
+                    self.rank_palette(cx);
+                }
+            }
+            PaletteEvent::Refresh => {
+                if self.opts.live && self.palette.is_none() {
+                    self.index_soon(false, cx);
+                }
+            }
             PaletteEvent::Settings(list) => self.settings_list = list,
             PaletteEvent::Files(seq, items) => {
                 if let Some(p) = &mut self.palette
@@ -537,6 +559,17 @@ impl Shell {
     /// Read (or build) the file index and Shitsurae's settings list, on
     /// threads.
     pub fn start_palette_threads(&mut self, cx: &mut Cx<Msg>) {
+        // The index is rebuilt when stale, now and every ten minutes, and
+        // held in memory only while the palette is open.
+        self.index_soon(false, cx);
+        let period = std::time::Duration::from_secs(self.palette_cfg.reindex_minutes.max(1) as u64 * 60);
+        cx.every(period, Msg::Palette(PaletteEvent::Refresh));
+        self.settings_list_soon(cx);
+    }
+
+    /// Read the file index (rebuilding it first if it's stale), on a
+    /// thread; `keep` hands it to the palette.
+    pub fn index_soon(&mut self, keep: bool, cx: &mut Cx<Msg>) {
         let roots: Vec<PathBuf> = self.palette_cfg.roots.iter().map(|r| aizome_config::expand_home(r)).collect();
         let max_age = std::time::Duration::from_secs(self.palette_cfg.reindex_minutes.max(1) as u64 * 60);
         cx.spawn(move || {
@@ -552,8 +585,11 @@ impl Shell {
                     i
                 }
             };
-            Msg::Palette(PaletteEvent::Index(Index(Arc::new(index))))
+            if keep { Msg::Palette(PaletteEvent::Index(Index(Arc::new(index)))) } else { Msg::Nothing }
         });
+    }
+
+    fn settings_list_soon(&mut self, cx: &mut Cx<Msg>) {
         cx.spawn(|| {
             let cache = model::settings_cache_path();
             let list = std::process::Command::new("aizome-shitsurae")

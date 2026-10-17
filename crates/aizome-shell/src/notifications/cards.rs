@@ -115,6 +115,7 @@ impl Shell {
                 let right = if self.deskbar.is_some() { crate::deskbar::WIDTH + crate::deskbar::SHADOW + 12.0 } else { 12.0 };
                 let opts = LayerOptions::new(Layer::Top, "aizome-notifications")
                     .anchors(Anchors::TOP | Anchors::RIGHT)
+                    .exclusive_zone(-1)
                     .margins(Margins::new(crate::menubar::HEIGHT as i32 + 8, right as i32, 0, 0))
                     .keyboard(KeyboardInteractivity::None)
                     .output(output);

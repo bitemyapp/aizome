@@ -106,6 +106,9 @@ impl Shell {
                 let size = crate::deskbar::size(&model);
                 let opts = LayerOptions::new(Layer::Top, "aizome-deskbar")
                     .anchors(Anchors::TOP | Anchors::RIGHT)
+                    // Placed by its margin from the output's top, whatever others'
+                    // zones (the bar's) say.
+                    .exclusive_zone(-1)
                     .margins(Margins::new(crate::menubar::HEIGHT as i32, 0, 0, 0))
                     .keyboard(KeyboardInteractivity::OnDemand)
                     .output(output);

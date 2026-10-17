@@ -198,6 +198,7 @@ impl Shell {
                     let size = size(&menu, &mut measure, &theme);
                     let opts = LayerOptions::new(Layer::Top, "aizome-menu")
                         .anchors(Anchors::TOP | Anchors::LEFT)
+                        .exclusive_zone(-1)
                         .margins(Margins::new(t.y as i32, 0, 0, t.x as i32))
                         .keyboard(KeyboardInteractivity::OnDemand)
                         .output(screen.output.id);
