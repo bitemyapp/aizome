@@ -324,7 +324,7 @@ pub fn span(kind: Kind) -> Span {
         Kind::Variable => s.role(Role::Cyan),
         Kind::Section => s.role(Role::Accent).weight(600.0),
         Kind::Heading => s.role(Role::Accent).weight(600.0),
-        Kind::HeadingMark => s.role(Role::Accent).weight(400.0),
+        Kind::HeadingMark => s.role(Role::Accent).weight(600.0).alpha(0.55),
         Kind::Code => s.role(Role::Success),
         Kind::Emphasis => s.italic(),
         Kind::Strong => s.weight(700.0),

@@ -785,13 +785,14 @@ impl Sumi {
             Command::ZoomOut => self.update(Msg::Zoom(Some(false)), cx),
             Command::FindShow | Command::ReplaceShow => {
                 let Some(d) = self.docs.get_mut(&w) else { return };
+                let opening = !d.find.shown;
                 d.find.shown = true;
                 if c == Command::ReplaceShow {
                     d.find.replace = true;
                 }
-                // A single-line selection is what's looked for.
+                // Opening the bar, a single-line selection is what's looked for.
                 let s = d.content.selected_text();
-                if !s.is_empty() && !s.contains('\n') && s.len() < 1000 {
+                if opening && !s.is_empty() && !s.contains('\n') && s.len() < 1000 {
                     d.find.query.text = if d.find.query.regex { regex::escape(&s) } else { s };
                 }
                 self.search(w, cx);
