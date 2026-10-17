@@ -304,7 +304,12 @@ impl Session {
                     outcome = Some(false);
                     break;
                 }
-                HelperLine::Unknown(line) => log::debug!("aizome-sys: polkit helper said {line:?}"),
+                HelperLine::Unknown(line) => {
+                    // As libpolkit-agent does: an unknown line ends the attempt.
+                    log::warn!("aizome-sys: unknown line from the polkit helper: {line:?}");
+                    outcome = Some(false);
+                    break;
+                }
             }
         }
         end.end();
@@ -383,8 +388,48 @@ pub(crate) enum HelperLine {
     Unknown(String),
 }
 
+/// Undo the helper's C-style escapes, as GLib's `g_strcompress` does (which
+/// libpolkit-agent applies to each line): `\n`, `\t`, `\\`, `\"`, octal
+/// `\NNN`, and `\X` for anything else.
+pub(crate) fn compress(line: &str) -> String {
+    let bytes = line.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] != b'\\' || i + 1 == bytes.len() {
+            out.push(bytes[i]);
+            i += 1;
+            continue;
+        }
+        i += 1;
+        match bytes[i] {
+            b'0'..=b'7' => {
+                let mut value: u32 = 0;
+                let mut digits = 0;
+                while digits < 3 && i < bytes.len() && (b'0'..=b'7').contains(&bytes[i]) {
+                    value = value * 8 + u32::from(bytes[i] - b'0');
+                    i += 1;
+                    digits += 1;
+                }
+                out.push((value & 0xff) as u8);
+                continue;
+            }
+            b'b' => out.push(8),
+            b'f' => out.push(12),
+            b'n' => out.push(b'\n'),
+            b'r' => out.push(b'\r'),
+            b't' => out.push(b'\t'),
+            b'v' => out.push(11),
+            other => out.push(other),
+        }
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
 pub(crate) fn parse_line(line: &str) -> HelperLine {
-    let line = line.trim_end_matches(['\r', '\n']);
+    let line = compress(line.strip_suffix('\n').unwrap_or(line));
+    let line = line.as_str();
     if let Some(text) = line.strip_prefix("PAM_PROMPT_ECHO_OFF ") {
         HelperLine::Prompt { text: text.to_owned(), echo: false }
     } else if let Some(text) = line.strip_prefix("PAM_PROMPT_ECHO_ON ") {
@@ -643,6 +688,8 @@ mod tests {
         assert_eq!(parse_line("SUCCESS"), HelperLine::Success);
         assert_eq!(parse_line("FAILURE"), HelperLine::Failure);
         assert!(matches!(parse_line("garbage"), HelperLine::Unknown(_)));
+        assert_eq!(parse_line("PAM_TEXT_INFO two\\nlines \\101 \\\\"), HelperLine::Info("two\nlines A \\".into()));
+        assert_eq!(compress("trailing\\"), "trailing\\");
     }
 
     #[test]
