@@ -264,7 +264,7 @@ impl Pane for Printers {
     fn shown(&mut self, cx: &mut PaneCx<Msg>) {
         if matches!(self.spool, Spool::None) {
             let wake = cx.wake();
-            self.spool = if cx.sample() { Spool::Sample(Cell::new(sample(), wake)) } else { Spool::Live(Cups::new(wake)) };
+            self.spool = if cx.sample() { Spool::Sample(Cell::new(crate::panes::hw::live_snapshot(|| Cups::new(aizome_sys::Wake::none()), |c| c.snapshot().loaded, |c| c.snapshot()).unwrap_or_else(sample), wake)) } else { Spool::Live(Cups::new(wake)) };
         } else if let Spool::Live(c) = &self.spool {
             let t = c.refresh();
             cx.wait(t, |_| Msg::Done(String::new(), Ok(())));

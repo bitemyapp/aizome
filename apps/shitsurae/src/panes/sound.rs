@@ -267,7 +267,7 @@ impl Pane for Sound {
     fn shown(&mut self, cx: &mut PaneCx<Msg>) {
         if matches!(self.snd, Snd::None) {
             let wake = cx.wake();
-            self.snd = if cx.sample() { Snd::Sample(Cell::new(sample(), wake)) } else { Snd::Live(Audio::new(wake)) };
+            self.snd = if cx.sample() { Snd::Sample(Cell::new(crate::panes::hw::live_snapshot(|| Audio::new(aizome_sys::Wake::none()), |a| a.available() && !a.snapshot().sinks.is_empty(), |a| a.snapshot()).unwrap_or_else(sample), wake)) } else { Snd::Live(Audio::new(wake)) };
         }
         if self.sounds.is_empty() {
             // The sample's are the same everywhere (for golden images).
@@ -468,15 +468,69 @@ impl Sound {
     }
 }
 
-fn device_row(d: &AudioDevice, io: Io) -> Row<Msg> {
+/// Words that say how many channels, at the end of a description.
+const LAYOUTS: [&str; 8] = ["Analog Stereo", "Digital Stereo", "Surround 4.0", "Surround 5.1", "Surround 7.1", "Multichannel", "Stereo", "Mono"];
+
+/// A device's name as people say it: a display's own name where HDMI
+/// gives one ("… Output [PG27UCDM] (Stereo)" is "PG27UCDM"), the sound
+/// card's long name taken off where other devices share it ("Core Ultra
+/// Processors (Series 3) HD Audio Speaker" is "Speaker"), and the channel
+/// layout dropped.
+pub fn device_name(d: &AudioDevice, all: &[&AudioDevice]) -> String {
+    let desc = d.description.trim();
+    if let (Some(a), Some(b)) = (desc.find('['), desc.rfind(']'))
+        && a < b
+        && !desc[a + 1..b].trim().is_empty()
+    {
+        return desc[a + 1..b].trim().to_owned();
+    }
+    let mut s = desc.to_owned();
+    for l in LAYOUTS {
+        for form in [format!(" ({l})"), format!(" {l}")] {
+            if s.len() > form.len() && s.ends_with(&form) {
+                s.truncate(s.len() - form.len());
+            }
+        }
+    }
+    // The words every device of its card begins with (its card: those
+    // sharing at least two first words with it).
+    let words: Vec<&str> = s.split(' ').collect();
+    let common = |o: &AudioDevice| words.iter().zip(o.description.split(' ')).take_while(|(a, b)| **a == *b).count();
+    let shared = all
+        .iter()
+        .filter(|o| o.index != d.index || o.name != d.name)
+        .map(|o| common(o))
+        .filter(|n| *n >= 2)
+        .min()
+        .unwrap_or(0);
+    if shared >= 2 && shared < words.len() {
+        s = words[shared..].join(" ");
+    }
+    for end in [" Output", " Input"] {
+        if s.len() > end.len() && s.ends_with(end) {
+            s.truncate(s.len() - end.len());
+        }
+    }
+    let mut c = s.chars();
+    match c.next() {
+        Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+        None => desc.to_owned(),
+    }
+}
+
+fn device_row(d: &AudioDevice, io: Io, all: &[&AudioDevice]) -> Row<Msg> {
+    let name = device_name(d, all);
     let detail = {
         let mut parts: Vec<String> = Vec::new();
         let bus = bus_words(d);
         if !bus.is_empty() {
             parts.push(bus.to_owned());
         }
-        if let Some(p) = d.active_port.as_ref().and_then(|p| d.ports.iter().find(|x| x.name == *p)) {
-            parts.push(p.description.clone());
+        if let Some(p) = d.active_port.as_ref().and_then(|p| d.ports.iter().find(|x| x.name == *p))
+            && p.description != name
+            && !(d.ports.len() == 1 && name.contains(p.description.trim_end_matches(" Output").trim_end_matches(" Input")))
+        {
+            parts.push(p.description.trim_end_matches(" Output").trim_end_matches(" Input").to_owned());
         }
         if d.state == DeviceState::Running {
             parts.push(if io == Io::Output { "Playing".into() } else { "In use".into() });
@@ -485,14 +539,14 @@ fn device_row(d: &AudioDevice, io: Io) -> Row<Msg> {
     };
     let line = row![
         tile(device_icon(d, io), if d.is_default { Tile::Ai } else { Tile::Slate }, 26.0),
-        column![text(d.description.clone()).weight(if d.is_default { 600.0 } else { 400.0 }), text(detail).size(11.0).role(Role::Text3)].spacing(2.0).width(Fill),
+        column![text(name.clone()).weight(if d.is_default { 600.0 } else { 400.0 }), text(detail).size(11.0).role(Role::Text3)].spacing(2.0).width(Fill),
         if d.is_default { icon(Icon::Check).size(16.0).role(Role::Accent).into() } else { space::<Msg>(16.0) },
     ]
     .spacing(10.0)
     .align(Align::Center)
     .width(Fill);
     let msg = (!d.is_default).then(|| Msg::Default(io, d.name.clone()));
-    form::whole(press(line).style(PressStyle::Plain).padding([7.0, 12.0]).on_press_maybe(msg).named(d.description.clone()).width(Fill))
+    form::whole(press(line).style(PressStyle::Plain).padding([7.0, 12.0]).on_press_maybe(msg).named(name).width(Fill))
 }
 
 /// A volume slider with the mute button before it and the level after.
@@ -528,8 +582,9 @@ fn devices(vcx: &ViewCx, state: &AudioState, io: Io, (level, peak): (f32, f32)) 
         rows.push(form::row(none, space(0.0)).entry(entry));
         return vcx.section(title, rows);
     }
+    let all: Vec<&AudioDevice> = state.sinks.iter().chain(&state.sources).collect();
     for (i, d) in list.iter().enumerate() {
-        let r = device_row(d, io);
+        let r = device_row(d, io, &all);
         rows.push(if i == 0 { r.entry(entry) } else { r });
     }
     let default = match io {
@@ -605,7 +660,8 @@ fn app_row(state: &AudioState, s: &AudioStream, rec: bool) -> Row<Msg> {
     .align(Align::Center)
     .width(Fill);
     if devices.len() > 1 {
-        let labels: Vec<String> = devices.iter().map(|d| d.description.clone()).collect();
+        let all: Vec<&AudioDevice> = state.sinks.iter().chain(&state.sources).collect();
+        let labels: Vec<String> = devices.iter().map(|d| device_name(d, &all)).collect();
         let at = devices.iter().position(|d| d.index == s.device).unwrap_or(0);
         let ids: Vec<u32> = devices.iter().map(|d| d.index).collect();
         line = line.push(dropdown(labels, at).compact().on_select(move |i| Msg::AppDevice(rec, index, ids[i.min(ids.len() - 1)])).width(150.0));
@@ -721,3 +777,28 @@ pub fn sample() -> AudioState {
     }
 }
 
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn dev(index: u32, description: &str) -> AudioDevice {
+        AudioDevice { index, name: format!("dev{index}"), description: description.into(), ..AudioDevice::default() }
+    }
+
+    #[test]
+    fn devices_go_by_the_names_people_say() {
+        let all = [
+            dev(1, "Core Ultra Processors (Series 3) HD Audio HDMI / DisplayPort 1 Output [PG27UCDM] (Stereo)"),
+            dev(2, "Core Ultra Processors (Series 3) HD Audio HDMI / DisplayPort 2 Output (Stereo)"),
+            dev(3, "Core Ultra Processors (Series 3) HD Audio Speaker"),
+            dev(4, "Core Ultra Processors (Series 3) HD Audio Microphones"),
+            dev(5, "WH-1000XM5"),
+            dev(6, "Built-in Audio Analog Stereo"),
+        ];
+        let refs: Vec<&AudioDevice> = all.iter().collect();
+        let names: Vec<String> = all.iter().map(|d| device_name(d, &refs)).collect();
+        assert_eq!(names, ["PG27UCDM", "HDMI / DisplayPort 2", "Speaker", "Microphones", "WH-1000XM5", "Built-in Audio"]);
+        assert_eq!(sound_label("dialog-warning"), "Dialog warning");
+    }
+}

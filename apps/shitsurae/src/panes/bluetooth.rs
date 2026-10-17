@@ -358,7 +358,7 @@ impl Pane for Bluetooth {
     fn shown(&mut self, cx: &mut PaneCx<Msg>) {
         if matches!(self.bt, Bt::None) {
             let wake = cx.wake();
-            self.bt = if cx.sample() { Bt::Sample(Cell::new(sample(), wake)) } else { Bt::Live(Bluez::new(wake)) };
+            self.bt = if cx.sample() { Bt::Sample(Cell::new(crate::panes::hw::live_snapshot(|| Bluez::new(aizome_sys::Wake::none()), |b| b.available(), |b| b.snapshot()).unwrap_or_else(sample), wake)) } else { Bt::Live(Bluez::new(wake)) };
         }
         if let Bt::Live(b) = &self.bt
             && !self.agent

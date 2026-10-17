@@ -215,3 +215,19 @@ impl Widget for Level {
     }
 }
 
+
+/// With `SHITSURAE_LIVE_SNAPSHOT=1` (and `--sample`), a pane's sample is a
+/// copy of this machine's state, read once through `start`'s service and
+/// let go: what the pane does changes only the copy. For looking at the
+/// panes with real devices and networks without touching them.
+pub fn live_snapshot<S: Clone, H>(start: impl FnOnce() -> H, ready: impl Fn(&H) -> bool, snapshot: impl Fn(&H) -> std::sync::Arc<S>) -> Option<S> {
+    std::env::var_os("SHITSURAE_LIVE_SNAPSHOT")?;
+    let service = start();
+    let deadline = Instant::now() + Duration::from_secs(4);
+    while !ready(&service) && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(25));
+    }
+    // A moment more for the rest of the objects to arrive.
+    std::thread::sleep(Duration::from_millis(300));
+    Some((*snapshot(&service)).clone())
+}

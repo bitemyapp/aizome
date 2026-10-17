@@ -448,7 +448,7 @@ impl Network {
             return;
         }
         let wake: Wake = cx.wake();
-        self.net = if cx.sample() { Net::Sample(Cell::new(sample::state(), wake)) } else { Net::Live(Nm::new(wake)) };
+        self.net = if cx.sample() { Net::Sample(Cell::new(crate::panes::hw::live_snapshot(|| Nm::new(aizome_sys::Wake::none()), |n| n.available(), |n| n.snapshot()).unwrap_or_else(sample::state), wake)) } else { Net::Live(Nm::new(wake)) };
     }
 
     fn scan(&mut self, cx: &mut PaneCx<Msg>) {
