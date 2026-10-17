@@ -131,6 +131,15 @@ impl<Msg: Clone + Send + 'static> Cx<'_, Msg> {
         }
     }
 
+    /// Bring `window` forward and give it the keyboard, as far as the
+    /// compositor allows (a second launch of a one-instance app asks for
+    /// its window this way).
+    pub fn activate(&mut self, window: WindowKey) {
+        if let Some(win) = self.core.window_of(window) {
+            self.platform.activate(win);
+        }
+    }
+
     /// The open windows (not sheets), oldest first.
     pub fn windows(&self) -> Vec<WindowKey> {
         self.core.app_windows().into_iter().map(|(_, k)| k).collect()
