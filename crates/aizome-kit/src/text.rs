@@ -81,6 +81,9 @@ pub struct Span {
     pub strikethrough: bool,
     pub background: Option<Color>,
     pub size: Option<f64>,
+    /// Its colour at this strength (0.0–1.0): a role made quieter (a
+    /// heading's #s).
+    pub alpha: Option<f32>,
 }
 
 impl Span {
@@ -96,6 +99,7 @@ impl Span {
             strikethrough: false,
             background: None,
             size: None,
+            alpha: None,
         }
     }
 
@@ -148,6 +152,12 @@ impl Span {
         self
     }
 
+    /// Its colour at `a` of its strength.
+    pub fn alpha(mut self, a: f32) -> Span {
+        self.alpha = Some(a.clamp(0.0, 1.0));
+        self
+    }
+
     fn hash_into(&self, h: &mut Fx) {
         self.text.hash(h);
         (self.role, self.weight.map(f32::to_bits), self.italic, self.mono, self.underline, self.strikethrough).hash(h);
@@ -157,6 +167,7 @@ impl Span {
             }
         }
         self.size.map(f64::to_bits).hash(h);
+        self.alpha.map(f32::to_bits).hash(h);
     }
 
     /// Its style over `base`.
@@ -175,6 +186,10 @@ impl Span {
             font.size = s;
         }
         let color = self.color.or(self.role.map(|r| theme.role(r))).unwrap_or(base.color);
+        let color = match self.alpha {
+            Some(a) => color.with_alpha(color.a * a),
+            None => color,
+        };
         let mut s = TextStyle::new(theme.font(font), color);
         s.underline = self.underline || base.underline;
         s.strikethrough = self.strikethrough || base.strikethrough;

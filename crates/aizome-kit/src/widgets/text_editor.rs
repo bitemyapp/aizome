@@ -15,6 +15,7 @@
 use std::marker::PhantomData;
 use std::ops::Range;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use ropey::Rope;
 use sidestep_ui::{Cursor, Ime, Key, NamedKey, PointerButton, TextLayout, Wrap};
@@ -31,6 +32,9 @@ use crate::widget::{
     StateView, Status, Widget,
 };
 use crate::widgets::text_field::BLINK;
+
+/// How long the position bar stays after scrolling stops.
+const BAR_LINGER: Duration = Duration::from_millis(900);
 
 /// What the Find items ask of the program (the editor has no find bar
 /// of its own: the program draws one and searches its content).
@@ -247,6 +251,10 @@ pub(crate) struct EditorState {
     width: f64,
     /// The selection the last layout showed.
     shown_selection: Option<Selection>,
+    /// The position bar shows until then (it scrolled).
+    bar_until: Option<Instant>,
+    /// When the caret blinks next.
+    next_blink: Option<Instant>,
 }
 
 struct EditorWidget {
@@ -388,6 +396,9 @@ impl EditorWidget {
                     if s.background.is_some() {
                         span.background = s.background;
                     }
+                    if s.alpha.is_some() {
+                        span.alpha = s.alpha;
+                    }
                 }
             }
             spans.push(span);
@@ -404,7 +415,7 @@ impl EditorWidget {
         text.hash(&mut fx);
         (selection.clone(), pre.clone(), selects_break, focused).hash(&mut fx);
         for (r, s) in &styled {
-            (r.start, r.end, s.role, s.weight.map(f32::to_bits), s.italic, s.underline).hash(&mut fx);
+            (r.start, r.end, s.role, s.weight.map(f32::to_bits), s.italic, s.underline, s.strikethrough, s.alpha.map(f32::to_bits)).hash(&mut fx);
         }
         let key = fx.finish();
         Laid { line, start, y: 0.0, h, layout, text: text.into(), preedit: pre, selection, selects_break, key }
@@ -593,12 +604,15 @@ impl EditorWidget {
         if !self.opts.wrap {
             x = (x + delta.x).max(0.0);
         }
+        let now = cx.now();
         let st = cx.state::<EditorState>();
         let moved = st.top_line != top || (st.top_offset - off).abs() > 0.01 || (st.scroll_x - x).abs() > 0.01;
         st.top_line = top;
         st.top_offset = off;
         st.scroll_x = x;
         if moved {
+            st.bar_until = Some(now + BAR_LINGER);
+            cx.request_tick(BAR_LINGER + Duration::from_millis(20));
             cx.relayout();
             cx.invalidate();
         }
@@ -893,7 +907,7 @@ impl Widget for EditorWidget {
                 // On the first row's baseline.
                 let number = cx.layout_text(&format!("{}", l.line + 1), &spec, None);
                 let base = l.layout.lines().first().map_or(0.0, |r| r.baseline);
-                let x = (self.gutter - 12.0 - number.size().width).round();
+                let x = (self.gutter - number.size().width).round();
                 cx.canvas.draw_text(&number, Point::new(x, (l.y + base - number.first_baseline()).round()));
             }
         }
@@ -917,9 +931,14 @@ impl Widget for EditorWidget {
     }
 
     fn paint_over(&self, cx: &mut PaintCx) {
-        // A thin bar showing where the view is in the document.
+        // A thin bar showing where the view is in the document, while it
+        // scrolls (as the scroll views' bars).
         let lines = self.line_count().max(1);
         if lines as f64 * self.line_h <= self.size.height {
+            return;
+        }
+        let now = cx.now();
+        if !cx.state::<EditorState>().is_some_and(|s| s.bar_until.is_some_and(|t| now < t)) {
             return;
         }
         let t = cx.theme();
@@ -1043,6 +1062,8 @@ impl Widget for EditorWidget {
                     st.preedit.clear();
                 }
                 if *on {
+                    let now = cx.now();
+                    cx.state::<EditorState>().next_blink = Some(now + BLINK);
                     cx.request_tick(BLINK);
                     let caret = self.caret.unwrap_or(Rect::new(self.text_x, 4.0, self.text_x + 2.0, 20.0));
                     cx.set_text_input(true, Some(caret));
@@ -1058,7 +1079,18 @@ impl Widget for EditorWidget {
                 Status::Ignored
             }
             Event::Tick => {
-                if cx.state::<EditorState>().focused {
+                let now = cx.now();
+                // The position bar goes once scrolling has stopped a while.
+                let st = cx.state::<EditorState>();
+                if st.bar_until.is_some_and(|t| now >= t) {
+                    st.bar_until = None;
+                    cx.invalidate_rect(Rect::new(self.size.width - 8.0, 0.0, self.size.width, self.size.height));
+                }
+                // The caret blinks on its own ticks, not the bar's.
+                let st = cx.state::<EditorState>();
+                let blink_due = st.next_blink.is_none_or(|b| now + Duration::from_millis(10) >= b);
+                if st.focused && blink_due {
+                    st.next_blink = Some(now + BLINK);
                     if cx.theme().motion() {
                         let st = cx.state::<EditorState>();
                         st.blink_off = !st.blink_off;

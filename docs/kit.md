@@ -132,7 +132,7 @@ there is; in a row or column, an equal share of what the others leave),
 | | |
 |---|---|
 | `text("…")` | `.role(Role::Text2)` (`Text`, `Text2`, `Text3`, `Faint`, `Accent`, `Danger`, `Success`, `Warning`, `Violet`, `Cyan`), `.size(p)`, `.weight(w)`, `.semibold()`, `.bold()`, `.mono()`, `.italic()`, `.tabular()`, `.condensed()` (Archivo at 87.5%), `.wrap()`, `.max_lines(n)` (wraps for up to `n` lines), `.center()`, `.caps()`, `.letter_spacing(p)`, `.underline()`, `.selectable()`. One line ends in an ellipsis where it doesn't fit. |
-| `rich_text([Span::new("Ln ").role(Role::Text3), Span::new("48").mono()])` | Runs with their own look: `role`, `color`, `weight`, `italic`, `mono`, `underline`, `strikethrough`, `background`, `size`. |
+| `rich_text([Span::new("Ln ").role(Role::Text3), Span::new("48").mono()])` | Runs with their own look: `role`, `color`, `weight`, `italic`, `mono`, `underline`, `strikethrough`, `background`, `size`, `alpha` (the colour at part strength). |
 | `icon(Icon::Wifi)` | `.size(16.0)`, `.role(Role::Text2)`. A curated set of ~290 Lucide icons (ISC), stroked at 1.5pt at 16pt. `Icon::from_name("wifi-off")`. |
 | `image(Image)` | `.fit(Fit::Contain / Cover / Fill / None)`, `.revision(n)` when the picture changes at the same size. |
 | `badge("3")`, `keycap("❖")` | A count on `red` (`.role(..)` for another); a key as a keycap. |
