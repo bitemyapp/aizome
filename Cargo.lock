@@ -140,6 +140,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "aizome-myaku"
+version = "0.1.0"
+dependencies = [
+ "aizome-ipc",
+ "aizome-kit",
+ "aizome-sys",
+ "env_logger",
+ "libc",
+ "log",
+]
+
+[[package]]
 name = "aizome-search"
 version = "0.1.0"
 dependencies = [
