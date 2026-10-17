@@ -160,6 +160,19 @@ in
     services.accounts-daemon.enable = lib.mkDefault true;
     services.printing.enable = lib.mkDefault true;
     services.geoclue2.enable = lib.mkDefault true;
+    # Tenki's "Current Location", and Settings' automatic time zone. They
+    # ask for city accuracy; the location comes from nixpkgs' default
+    # provider (BeaconDB).
+    services.geoclue2.appConfig = {
+      "org.aizome.Tenki" = {
+        isAllowed = true;
+        isSystem = false;
+      };
+      "org.aizome.Shitsurae" = {
+        isAllowed = true;
+        isSystem = false;
+      };
+    };
     services.gvfs.enable = lib.mkDefault true;
     services.gnome.gnome-keyring.enable = lib.mkDefault true;
     services.pipewire = {
