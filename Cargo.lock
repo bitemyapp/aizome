@@ -31,6 +31,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "aizome-annai"
+version = "0.1.0"
+dependencies = [
+ "aizome-kit",
+ "aizome-theme",
+ "env_logger",
+ "log",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "aizome-comp"
 version = "0.1.0"
 dependencies = [
