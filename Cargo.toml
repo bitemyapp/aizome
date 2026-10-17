@@ -1,0 +1,47 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+# Add "apps/*" once the first app exists (an empty glob is an error).
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/bitemyapp/aizome"
+
+[workspace.dependencies]
+aizome-theme = { path = "crates/aizome-theme" }
+aizome-ipc = { path = "crates/aizome-ipc" }
+aizome-config = { path = "crates/aizome-config" }
+aizome-kit = { path = "crates/aizome-kit" }
+aizome-sys = { path = "crates/aizome-sys" }
+aizome-search = { path = "crates/aizome-search" }
+# Sidestep's native toolkit, from the `aizome` branch of the Sidestep fork.
+# During development this is the worktree beside this repository; the Nix
+# package pins the same branch by revision (see nix/package.nix).
+sidestep-ui = { path = "../sidestep-aizome/crates/sidestep-ui" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.9"
+log = "0.4"
+env_logger = { version = "0.11", default-features = false, features = ["auto-color", "humantime"] }
+
+# Dependencies build without debug info: the disk is small, and backtraces
+# through our own crates are what matter.
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
+opt-level = 2
+
+# tiny-skia's portable SIMD wraps 16-bit lanes on purpose (see Sidestep's
+# workspace manifest).
+[profile.dev.package.tiny-skia]
+overflow-checks = false
+
+[profile.release]
+debug = "line-tables-only"
+lto = "thin"
+codegen-units = 4
