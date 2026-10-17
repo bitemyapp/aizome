@@ -4,3 +4,4 @@ pub mod chrome;
 pub mod controls;
 pub mod layout;
 pub mod menus;
+pub mod text_field;

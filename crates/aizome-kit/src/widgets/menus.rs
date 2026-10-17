@@ -1,24 +1,33 @@
-//! Menus as they draw: a menu's popup, the in-window menu bar (where
-//! there's no Aizome shell to publish to), and tooltips.
+//! Menus as they draw: a menu (in a popup, or in a window as a torn-off
+//! palette), the in-window menu bar (where there's no Aizome shell to
+//! publish to), and tooltips. The shell's menus are these too.
 //!
 //! The look is the boards': `raised` rows 24pt tall with 10pt padding,
 //! labels in Archivo 13, shortcuts right-aligned in IBM Plex Mono 11.5 in
 //! `text3` (the modifier glyphs from Noto Sans Symbols 2), the hovered row
 //! filled with `selection`, separators as an engraved `line`, a 1pt
-//! `bevel_lo` edge with the top highlight, and the hard 3pt shadow.
+//! `bevel_lo` edge with the top highlight, and the hard 3pt shadow. Menus
+//! at the pointer and palettes have a `menu_title` strip with their name,
+//! a close box and a pin.
+//!
+//! Behaviour: ↑↓ move, → opens a submenu, ← closes it, Return or Space
+//! activates, Escape clears what's typed and then closes; typing filters
+//! the rows (and the submenus', flattened with their paths); moving toward
+//! an open submenu across other rows doesn't close it.
 
-use std::time::{Duration, Instant};
+use std::marker::PhantomData;
+use std::time::Duration;
 
 use sidestep_ui::{Key, NamedKey, PointerButton};
 
 use crate::draw;
-use crate::element::{Common, RawElement};
+use crate::element::{Common, Element, MsgFn, MsgMap, RawElement};
 use crate::engine::KitMsg;
 use crate::hash::PaintHasher;
 use crate::icons::Icon;
-use crate::layout::{Align, Constraints, Length, Point, Rect, Size};
-use crate::menu::{ItemSpec, MenuSpec};
-use crate::platform::WinId;
+use crate::layout::{Align, Constraints, Length, Point, Rect, Size, Vec2};
+use crate::menu::{ItemSpec, Menu, MenuSpec};
+use crate::platform::{Placement, WinId};
 use crate::program::AppInfo;
 use crate::text::TextSpec;
 use crate::theme::{FontSpec, Theme};
@@ -27,6 +36,104 @@ use crate::widget::{Event, EventCx, LayoutCx, PaintCx, SemanticAction, SemanticR
 const PAD: f64 = 10.0;
 const GUTTER: f64 = 18.0;
 const ARROW: f64 = 16.0;
+const STRIP: f64 = 22.0;
+/// How long the pointer may cross other rows on its way to a submenu.
+const AIM: Duration = Duration::from_millis(220);
+
+/// Where a menu opens against the rectangle it's anchored to.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum MenuPlacement {
+    /// Below it, left edges lined up (a menu bar's title, a pop-up button).
+    #[default]
+    Below,
+    /// Its top left at the rectangle's top left (a context menu: anchor a
+    /// 1 × 1 rectangle at the pointer).
+    AtPoint,
+    /// To its right, tops lined up (a submenu).
+    Beside,
+    /// Above it.
+    Above,
+}
+
+impl MenuPlacement {
+    pub(crate) fn placement(self) -> Placement {
+        match self {
+            MenuPlacement::Below => Placement::Below,
+            MenuPlacement::AtPoint => Placement::AtPoint,
+            MenuPlacement::Beside => Placement::Beside,
+            MenuPlacement::Above => Placement::Above,
+        }
+    }
+}
+
+/// How a menu shows: where, with a title strip or not, and what its strip
+/// does.
+pub struct MenuStyle<Msg> {
+    pub(crate) placement: MenuPlacement,
+    pub(crate) look: MenuLook,
+    _m: PhantomData<fn() -> Msg>,
+}
+
+impl<Msg> Default for MenuStyle<Msg> {
+    fn default() -> Self {
+        MenuStyle { placement: MenuPlacement::Below, look: MenuLook::default(), _m: PhantomData }
+    }
+}
+
+impl<Msg> MenuStyle<Msg> {
+    /// Below the anchor (the default).
+    pub fn below() -> Self {
+        MenuStyle::default()
+    }
+
+    /// At the anchor's top left, as a menu at the pointer.
+    pub fn at_point() -> Self {
+        MenuStyle { placement: MenuPlacement::AtPoint, ..MenuStyle::default() }
+    }
+
+    pub fn placement(mut self, p: MenuPlacement) -> Self {
+        self.placement = p;
+        self
+    }
+
+    /// A `menu_title` strip with `title`, as menus at the pointer and
+    /// their submenus have.
+    pub fn titled(mut self, title: impl Into<String>) -> Self {
+        self.look.title = Some(title.into());
+        self
+    }
+
+    pub fn min_width(mut self, w: f64) -> Self {
+        self.look.min_width = w;
+        self
+    }
+}
+
+impl<Msg: Clone + Send + 'static> MenuStyle<Msg> {
+    /// Sent when the title strip is dragged (or the pin pressed) to tear
+    /// the menu off into a palette; the menu closes.
+    pub fn on_tear_off(mut self, msg: Msg) -> Self {
+        self.look.tear_off = Some(MsgFn::new(msg));
+        self
+    }
+}
+
+/// What a menu looks like and does besides its items (type-erased).
+#[derive(Clone, Default)]
+pub(crate) struct MenuLook {
+    pub title: Option<String>,
+    pub min_width: f64,
+    pub tear_off: Option<MsgFn>,
+    pub on_close: Option<MsgFn>,
+    pub pin: Option<(bool, MsgMap<bool>)>,
+}
+
+impl MenuLook {
+    /// A submenu's look: titled with its own name if its parent was.
+    pub fn sub(&self, title: &str) -> MenuLook {
+        MenuLook { title: self.title.as_ref().map(|_| title.to_owned()), ..MenuLook::default() }
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum RowKind {
@@ -36,42 +143,86 @@ enum RowKind {
     Header,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 struct Row {
     y: f64,
     h: f64,
-    item: usize,
+    /// The item's place: its index, and its submenus' when filtered.
+    path: Vec<usize>,
     kind: RowKind,
     enabled: bool,
+    /// The submenus it's in, when filtered ("Edit › Find").
+    trail: String,
 }
 
 /// What a menu remembers while open.
 #[derive(Default)]
 pub(crate) struct MenuState {
     hover: Option<usize>,
-    open_sub: Option<usize>,
-    typed: String,
-    typed_at: Option<Instant>,
+    /// The submenu open, by its row's item path.
+    open_sub: Option<Vec<usize>>,
+    /// What's been typed to filter the rows.
+    query: String,
+    /// The pointer, last seen, and a row it's crossing toward a submenu.
+    last: Option<Point>,
+    aiming: Option<usize>,
+    /// The strip being dragged from.
+    strip_press: Option<Point>,
 }
 
-/// A menu's popup.
+/// A menu, drawn and run.
 pub(crate) struct MenuView {
     spec: MenuSpec,
-    popup: WinId,
-    min_width: f64,
+    look: MenuLook,
     rows: Vec<Row>,
     gutter: f64,
     width: f64,
+    /// The query the rows were laid out for.
+    query: String,
+}
+
+/// Whether `query`'s characters come in order in `text` (case aside),
+/// and how well: lower is better.
+pub(crate) fn fuzzy(query: &str, text: &str) -> Option<u32> {
+    let q: Vec<char> = query.to_lowercase().chars().filter(|c| !c.is_whitespace()).collect();
+    if q.is_empty() {
+        return Some(0);
+    }
+    let t: Vec<char> = text.to_lowercase().chars().collect();
+    let mut qi = 0;
+    let mut score = 0u32;
+    let mut last: Option<usize> = None;
+    for (i, c) in t.iter().enumerate() {
+        if qi < q.len() && *c == q[qi] {
+            let word_start = i == 0 || !t[i - 1].is_alphanumeric();
+            score += match last {
+                Some(l) if l + 1 == i => 0,
+                _ if word_start => 1,
+                _ => 3,
+            };
+            last = Some(i);
+            qi += 1;
+        }
+    }
+    (qi == q.len()).then(|| score + t.len() as u32 / 16)
+}
+
+fn label_of(item: &ItemSpec) -> &str {
+    match item {
+        ItemSpec::Action(a) => &a.label,
+        ItemSpec::Submenu(m) => &m.title,
+        ItemSpec::Header(h) => h,
+        ItemSpec::Separator => "",
+    }
 }
 
 impl MenuView {
-    pub fn element(spec: MenuSpec, popup: WinId, _bar: bool) -> RawElement {
-        MenuView::element_min(spec, popup, _bar, 0.0)
+    pub fn new(spec: MenuSpec, look: MenuLook) -> MenuView {
+        MenuView { spec, look, rows: Vec::new(), gutter: 0.0, width: 0.0, query: String::new() }
     }
 
-    pub fn element_min(spec: MenuSpec, popup: WinId, _bar: bool, min_width: f64) -> RawElement {
-        let view = MenuView { spec, popup, min_width, rows: Vec::new(), gutter: 0.0, width: 0.0 };
-        RawElement::new(view, Common::default(), Vec::new())
+    pub fn element(spec: MenuSpec, look: MenuLook) -> RawElement {
+        RawElement::new(MenuView::new(spec, look), Common::default(), Vec::new())
     }
 
     fn label_spec(theme: &Theme) -> TextSpec {
@@ -80,6 +231,74 @@ impl MenuView {
 
     fn shortcut_spec(theme: &Theme) -> TextSpec {
         TextSpec::new(FontSpec::mono(theme.metrics.shortcut), theme.text3())
+    }
+
+    fn strip_spec(theme: &Theme) -> TextSpec {
+        let mut f = FontSpec::ui(12.5 * theme.metrics.factor);
+        f.weight = aizome_theme::typeface::WEIGHT_BOLD;
+        f.condensed = true;
+        TextSpec::new(f, theme.on_menu_title())
+    }
+
+    /// The top of the rows (under the strip, if any).
+    fn top(&self) -> f64 {
+        if self.look.title.is_some() { 1.0 + STRIP } else { 1.0 }
+    }
+
+    fn item(&self, path: &[usize]) -> Option<&ItemSpec> {
+        let (first, rest) = path.split_first()?;
+        let mut item = self.spec.items.get(*first)?;
+        for i in rest {
+            match item {
+                ItemSpec::Submenu(m) => item = m.items.get(*i)?,
+                _ => return None,
+            }
+        }
+        Some(item)
+    }
+
+    /// The rows for `query`: the menu's own, or every action matching
+    /// it, submenus' included, best first.
+    fn rows_for(&self, query: &str) -> Vec<(Vec<usize>, RowKind, bool, String)> {
+        if query.is_empty() {
+            return self
+                .spec
+                .items
+                .iter()
+                .enumerate()
+                .map(|(i, it)| {
+                    let (kind, enabled) = match it {
+                        ItemSpec::Action(a) => (RowKind::Action, a.enabled),
+                        ItemSpec::Submenu(m) => (RowKind::Submenu, !m.items.is_empty()),
+                        ItemSpec::Separator => (RowKind::Separator, false),
+                        ItemSpec::Header(_) => (RowKind::Header, false),
+                    };
+                    (vec![i], kind, enabled, String::new())
+                })
+                .collect();
+        }
+        let mut found: Vec<(u32, Vec<usize>, bool, String)> = Vec::new();
+        fn walk(spec: &MenuSpec, path: &mut Vec<usize>, trail: &str, query: &str, found: &mut Vec<(u32, Vec<usize>, bool, String)>) {
+            for (i, it) in spec.items.iter().enumerate() {
+                path.push(i);
+                match it {
+                    ItemSpec::Action(a) => {
+                        if let Some(s) = fuzzy(query, &a.label) {
+                            found.push((s, path.clone(), a.enabled, trail.to_owned()));
+                        }
+                    }
+                    ItemSpec::Submenu(m) => {
+                        let t = if trail.is_empty() { m.title.clone() } else { format!("{trail} › {}", m.title) };
+                        walk(m, path, &t, query, found);
+                    }
+                    _ => {}
+                }
+                path.pop();
+            }
+        }
+        walk(&self.spec, &mut Vec::new(), "", query, &mut found);
+        found.sort_by_key(|(s, p, _, _)| (*s, p.len()));
+        found.into_iter().map(|(_, p, e, t)| (p, RowKind::Action, e, t)).collect()
     }
 
     fn row_at(&self, p: Point) -> Option<usize> {
@@ -91,54 +310,73 @@ impl MenuView {
         Rect::new(1.0, r.y, self.width - 1.0, r.y + r.h)
     }
 
+    fn strip_rect(&self) -> Rect {
+        Rect::new(1.0, 1.0, self.width - 1.0, 1.0 + STRIP)
+    }
+
+    fn close_box(&self) -> Rect {
+        Rect::new(7.0, 1.0 + (STRIP - 10.0) / 2.0, 17.0, 1.0 + (STRIP + 10.0) / 2.0)
+    }
+
+    fn pin_box(&self) -> Rect {
+        Rect::new(self.width - 22.0, 1.0, self.width - 2.0, 1.0 + STRIP)
+    }
+
     fn selectable(&self, i: usize) -> bool {
         let r = &self.rows[i];
         r.enabled && matches!(r.kind, RowKind::Action | RowKind::Submenu)
     }
 
-    fn set_hover(&self, cx: &mut EventCx, row: Option<usize>) {
+    fn set_hover(&self, cx: &mut EventCx, row: Option<usize>, open_submenus: bool) {
         let old = cx.state::<MenuState>().hover;
-        if old == row {
+        if old != row {
+            cx.state::<MenuState>().hover = row;
+            for r in [old, row].into_iter().flatten() {
+                let rect = self.row_rect(r);
+                cx.invalidate_rect(rect);
+            }
+        }
+        if !open_submenus {
             return;
         }
-        cx.state::<MenuState>().hover = row;
-        for r in [old, row].into_iter().flatten() {
-            let rect = self.row_rect(r);
-            cx.invalidate_rect(rect);
-        }
-        // A submenu opens under the pointer; moving to another item
-        // closes it.
-        match row.map(|r| (r, self.rows[r])) {
+        // A submenu opens under the pointer; another item closes it.
+        match row.map(|r| (r, self.rows[r].clone())) {
             Some((i, r)) if r.kind == RowKind::Submenu && r.enabled => {
-                if cx.state::<MenuState>().open_sub != Some(r.item) {
-                    cx.state::<MenuState>().open_sub = Some(r.item);
-                    let anchor = self.row_rect(i) + cx.window_rect().origin().to_vec2();
-                    cx.emit_any(Box::new(KitMsg::OpenSubmenu { popup: self.popup, path: vec![r.item], anchor }));
+                if cx.state::<MenuState>().open_sub.as_ref() != Some(&r.path) {
+                    self.open_sub(cx, i);
                 }
             }
             Some(_) => {
                 if cx.state::<MenuState>().open_sub.take().is_some() {
-                    cx.emit_any(Box::new(KitMsg::CloseSubmenus { popup: self.popup }));
+                    let window = cx.window_id();
+                    cx.emit_any(Box::new(KitMsg::MenuCloseSubs { window }));
+                    cx.invalidate();
                 }
             }
             None => {}
         }
     }
 
+    fn open_sub(&self, cx: &mut EventCx, i: usize) {
+        let path = self.rows[i].path.clone();
+        cx.state::<MenuState>().open_sub = Some(path.clone());
+        let anchor = self.row_rect(i) + cx.window_rect().origin().to_vec2();
+        let (window, node) = (cx.window_id(), cx.id());
+        cx.emit_any(Box::new(KitMsg::MenuSub { window, node, path, anchor }));
+        cx.invalidate();
+    }
+
     fn activate_row(&self, cx: &mut EventCx, i: usize) {
-        let row = self.rows[i];
+        let row = self.rows[i].clone();
         if !row.enabled {
             return;
         }
-        match (&self.spec.items[row.item], row.kind) {
-            (ItemSpec::Action(_), RowKind::Action) => {
-                cx.emit_any(Box::new(KitMsg::Activate { popup: self.popup, item: row.item }));
+        match row.kind {
+            RowKind::Action => {
+                let (window, node) = (cx.window_id(), cx.id());
+                cx.emit_any(Box::new(KitMsg::MenuChoose { window, node, path: row.path }));
             }
-            (ItemSpec::Submenu(_), RowKind::Submenu) => {
-                cx.state::<MenuState>().open_sub = Some(row.item);
-                let anchor = self.row_rect(i) + cx.window_rect().origin().to_vec2();
-                cx.emit_any(Box::new(KitMsg::OpenSubmenu { popup: self.popup, path: vec![row.item], anchor }));
-            }
+            RowKind::Submenu => self.open_sub(cx, i),
             _ => {}
         }
     }
@@ -153,29 +391,30 @@ impl MenuView {
         for _ in 0..n {
             i = if down { (i + 1) % n } else { (i + n - 1) % n };
             if self.selectable(i) {
-                self.set_hover_keyboard(cx, Some(i));
+                self.set_hover(cx, Some(i), false);
                 return;
             }
         }
     }
 
-    /// Hover from the keyboard: no submenu opens by itself.
-    fn set_hover_keyboard(&self, cx: &mut EventCx, row: Option<usize>) {
-        let old = cx.state::<MenuState>().hover;
-        cx.state::<MenuState>().hover = row;
-        for r in [old, row].into_iter().flatten() {
-            let rect = self.row_rect(r);
-            cx.invalidate_rect(rect);
+    fn close(&self, cx: &mut EventCx) {
+        if let Some(m) = &self.look.on_close {
+            cx.emit(m);
         }
+        let window = cx.window_id();
+        cx.emit_any(Box::new(KitMsg::CloseMenus { window }));
     }
 
-    fn label(&self, i: usize) -> &str {
-        match &self.spec.items[self.rows[i].item] {
-            ItemSpec::Action(a) => &a.label,
-            ItemSpec::Submenu(m) => &m.title,
-            ItemSpec::Header(h) => h,
-            ItemSpec::Separator => "",
+    fn set_query(&self, cx: &mut EventCx, q: String) {
+        let st = cx.state::<MenuState>();
+        st.query = q;
+        st.hover = None;
+        if st.open_sub.take().is_some() {
+            let window = cx.window_id();
+            cx.emit_any(Box::new(KitMsg::MenuCloseSubs { window }));
         }
+        cx.rebuild();
+        cx.invalidate();
     }
 }
 
@@ -187,67 +426,121 @@ impl Widget for MenuView {
     fn layout(&mut self, cx: &mut LayoutCx, bc: Constraints) -> Size {
         let theme = cx.env.theme;
         let m = &theme.metrics;
+        self.query = cx.state::<MenuState>().query.clone();
         let label = MenuView::label_spec(theme);
         let shortcut = MenuView::shortcut_spec(theme);
         let caption = TextSpec::new(FontSpec::mono(m.caption), theme.text3());
-        self.gutter = if self.spec.items.iter().any(|i| matches!(i, ItemSpec::Action(a) if a.checked || a.icon.is_some())) {
+        let filtered = !self.query.is_empty();
+        let rows = self.rows_for(&self.query.clone());
+        self.gutter = if rows.iter().any(|(p, ..)| matches!(self.item(p), Some(ItemSpec::Action(a)) if a.checked || a.icon.is_some())) {
             GUTTER
         } else {
             0.0
         };
-        let mut rows = Vec::new();
-        let mut y = 1.0 + 4.0;
-        let mut widest: f64 = 0.0;
-        for (item, spec) in self.spec.items.iter().enumerate() {
-            let (kind, h, enabled, w) = match spec {
-                ItemSpec::Action(a) => {
+        let mut out = Vec::new();
+        let mut y = self.top() + 4.0;
+        let mut widest: f64 = self.look.title.as_ref().map_or(0.0, |t| cx.measure(t, &MenuView::strip_spec(theme)).width + 56.0);
+        if filtered {
+            widest = widest.max(cx.measure(&self.query, &label).width + 40.0);
+            y += m.menu_row;
+        }
+        for (path, kind, enabled, trail) in rows {
+            let item = self.item(&path).cloned();
+            let (h, w) = match (&item, kind) {
+                (Some(ItemSpec::Action(a)), _) => {
                     let lw = cx.measure(&a.label, &label).width;
+                    let tw = if trail.is_empty() { 0.0 } else { cx.measure(&trail, &shortcut).width + 12.0 };
                     let sw = a.shortcut.map_or(0.0, |s| cx.measure(&s.label(), &shortcut).width + 24.0);
-                    (RowKind::Action, m.menu_row, a.enabled, lw + sw)
+                    (m.menu_row, lw + tw + sw)
                 }
-                ItemSpec::Submenu(s) => {
-                    let lw = cx.measure(&s.title, &label).width;
-                    (RowKind::Submenu, m.menu_row, !s.items.is_empty(), lw + ARROW + 12.0)
-                }
-                ItemSpec::Separator => (RowKind::Separator, 9.0, false, 0.0),
-                ItemSpec::Header(t) => {
-                    let w = cx.measure(&t.to_uppercase(), &caption).width;
-                    (RowKind::Header, 22.0, false, w)
-                }
+                (Some(ItemSpec::Submenu(s)), _) => (m.menu_row, cx.measure(&s.title, &label).width + ARROW + 12.0),
+                (_, RowKind::Separator) => (9.0, 0.0),
+                (Some(ItemSpec::Header(t)), _) => (22.0, cx.measure(&t.to_uppercase(), &caption).width),
+                _ => (m.menu_row, 0.0),
             };
             widest = widest.max(w);
-            rows.push(Row { y, h, item, kind, enabled });
+            out.push(Row { y, h, path, kind, enabled, trail });
             y += h;
         }
+        if filtered && out.is_empty() {
+            y += m.menu_row;
+        }
         y += 4.0 + 1.0;
-        self.rows = rows;
-        let width = (widest + 2.0 * PAD + self.gutter + 2.0).ceil().max(180.0).max(self.min_width).min(bc.max.width - 3.0);
-        self.width = width;
+        self.rows = out;
         let shadow = m.shadow;
-        Size::new(width + shadow, y + shadow)
+        let max_w = (bc.max.width - shadow).max(120.0);
+        let width = (widest + 2.0 * PAD + self.gutter + 2.0).ceil().max(180.0).max(self.look.min_width).min(max_w);
+        // Laid out in a popup that keeps its size (filtered), fill it.
+        let width = width.max(bc.min.width - shadow);
+        self.width = width;
+        Size::new(width + shadow, (y + shadow).max(bc.min.height))
     }
 
     fn paint(&self, cx: &mut PaintCx) {
         let t = cx.theme();
         let panel = Rect::new(0.0, 0.0, self.width, cx.size().height - t.metrics.shadow);
         draw::floating(cx.canvas, t, panel);
-        let hover = cx.state::<MenuState>().and_then(|s| s.hover.or(s.open_sub.and_then(|it| self.rows.iter().position(|r| r.item == it))));
+        let state = cx.state::<MenuState>();
+        let hover = state.and_then(|s| {
+            s.hover.or_else(|| s.open_sub.as_ref().and_then(|p| self.rows.iter().position(|r| &r.path == p)))
+        });
         let label_spec = MenuView::label_spec(t);
         let sc_spec = MenuView::shortcut_spec(t);
+        if let Some(title) = &self.look.title {
+            let strip = self.strip_rect();
+            cx.canvas.fill_rect(strip, t.menu_title());
+            draw::bottom(cx.canvas, strip.inflate(0.0, 1.0), t.bevel_lo(), 1.0);
+            let fg = t.on_menu_title();
+            let close = self.close_box();
+            draw::border(cx.canvas, close, fg, 1.5);
+            let spec = MenuView::strip_spec(t);
+            let right = if self.look.pin.is_some() || self.look.tear_off.is_some() { self.pin_box().x0 } else { strip.x1 - 6.0 };
+            cx.draw_text_in(title, &spec, Rect::new(close.x1 + 7.0, strip.y0, right, strip.y1), Align::Start);
+            if self.look.pin.is_some() || self.look.tear_off.is_some() {
+                let pinned = self.look.pin.as_ref().is_some_and(|(p, _)| *p);
+                let pb = self.pin_box();
+                let c = if pinned { t.focus() } else { t.text3() };
+                let icon = if pinned { Icon::Pin } else { Icon::PinOff };
+                icon.draw(cx.canvas, Point::new(pb.x0 + 4.0, pb.y0 + (pb.height() - 12.0) / 2.0), 12.0, c);
+            }
+        }
+        let query = state.map(|s| s.query.as_str()).unwrap_or("");
+        if !query.is_empty() {
+            let r = Rect::new(1.0, self.top() + 4.0, self.width - 1.0, self.top() + 4.0 + t.metrics.menu_row);
+            Icon::Search.draw(cx.canvas, Point::new(r.x0 + PAD - 2.0, r.y0 + (r.height() - 13.0) / 2.0), 13.0, t.text3());
+            let spec = TextSpec { color: t.text(), ..label_spec.clone() };
+            let w = cx.draw_text_in(query, &spec, Rect::new(r.x0 + PAD + 16.0, r.y0, r.x1 - PAD, r.y1), Align::Start);
+            // The caret after what's typed.
+            let x = (r.x0 + PAD + 16.0 + w + 1.0).round();
+            cx.canvas.fill_rect(Rect::new(x, r.y0 + 5.0, x + 2.0, r.y1 - 5.0), t.focus());
+            draw::separator(cx.canvas, t, 1.0, self.width - 1.0, r.y1 - 1.0);
+            if self.rows.is_empty() {
+                let none = Rect::new(r.x0 + PAD, r.y1, r.x1 - PAD, r.y1 + t.metrics.menu_row);
+                cx.draw_text_in("No items match", &TextSpec { color: t.faint(), ..label_spec.clone() }, none, Align::Start);
+            }
+        }
         for (i, row) in self.rows.iter().enumerate() {
             let r = self.row_rect(i);
             if !cx.canvas.needs(r) {
                 continue;
             }
+            let item = self.item(&row.path);
             match row.kind {
                 RowKind::Separator => draw::separator(cx.canvas, t, 1.0, self.width - 1.0, row.y + 4.0),
                 RowKind::Header => {
                     let spec = TextSpec { letter_spacing: 1.2, ..TextSpec::new(FontSpec::mono(t.metrics.caption), t.text3()) };
-                    let text = self.label(i).to_uppercase();
+                    let text = item.map(label_of).unwrap_or("").to_uppercase();
                     cx.draw_text_in(&text, &spec, Rect::new(r.x0 + PAD, r.y0 + 6.0, r.x1 - PAD, r.y1), Align::Start);
                 }
                 RowKind::Action | RowKind::Submenu => {
                     let hot = hover == Some(i) && row.enabled;
+                    // NeXT's menus (titled ones) engrave every row.
+                    if self.look.title.is_some() && !hot {
+                        cx.canvas.fill_rect(Rect::new(r.x0, r.y0, r.x1, r.y0 + 1.0), t.bevel_hi());
+                        if self.rows.get(i + 1).is_some_and(|n| matches!(n.kind, RowKind::Action | RowKind::Submenu)) {
+                            cx.canvas.fill_rect(Rect::new(r.x0, r.y1 - 1.0, r.x1, r.y1), t.line());
+                        }
+                    }
                     if hot {
                         cx.canvas.fill_rect(r, t.selection());
                     }
@@ -265,12 +558,12 @@ impl Widget for MenuView {
                         Icon::ChevronRight.draw(cx.canvas, Point::new(right - 12.0, r.y0 + (r.height() - 12.0) / 2.0), 12.0, c);
                         right -= ARROW;
                     }
-                    if let ItemSpec::Action(a) = &self.spec.items[row.item] {
+                    if let Some(ItemSpec::Action(a)) = item {
+                        let gy = r.y0 + (r.height() - 14.0) / 2.0;
                         if a.checked {
-                            Icon::Check.draw(cx.canvas, Point::new(r.x0 + PAD - 3.0, r.y0 + (r.height() - 14.0) / 2.0), 14.0, fg);
+                            Icon::Check.draw(cx.canvas, Point::new(r.x0 + PAD - 3.0, gy), 14.0, fg);
                         } else if let Some(icon) = a.icon {
-                            let c = if hot { fg } else { t.text3() };
-                            icon.draw(cx.canvas, Point::new(r.x0 + PAD - 3.0, r.y0 + (r.height() - 14.0) / 2.0), 14.0, c);
+                            icon.draw(cx.canvas, Point::new(r.x0 + PAD - 3.0, gy), 14.0, if hot { fg } else { t.text3() });
                         }
                         if let Some(s) = a.shortcut {
                             let c = if hot { t.on_selection() } else if row.enabled { t.text3() } else { t.faint() };
@@ -280,21 +573,30 @@ impl Widget for MenuView {
                         }
                     }
                     let spec = TextSpec { color: fg, ..label_spec.clone() };
-                    cx.draw_text_in(self.label(i), &spec, Rect::new(x, r.y0, right.max(x), r.y1), Align::Start);
+                    let w = cx.draw_text_in(item.map(label_of).unwrap_or(""), &spec, Rect::new(x, r.y0, right.max(x), r.y1), Align::Start);
+                    if !row.trail.is_empty() {
+                        let c = if hot { t.on_selection() } else { t.text3() };
+                        let spec = TextSpec { color: c, ..sc_spec.clone() };
+                        cx.draw_text_in(&row.trail, &spec, Rect::new(x + w + 10.0, r.y0, right.max(x + w + 10.0), r.y1), Align::Start);
+                    }
                 }
             }
         }
     }
 
     fn hash(&self, h: &mut PaintHasher) {
-        h.str(&self.spec.title).f64(self.width);
+        h.str(&self.spec.title).f64(self.width).str(&self.query);
+        if let Some(t) = &self.look.title {
+            h.str(t);
+        }
+        h.add(&self.look.pin.as_ref().map(|(p, _)| *p));
         for i in &self.spec.items {
             match i {
                 ItemSpec::Action(a) => {
                     h.str(&a.label).add(&(a.enabled, a.checked, a.shortcut, a.icon));
                 }
                 ItemSpec::Submenu(m) => {
-                    h.str(&m.title);
+                    h.str(&m.title).add(&m.items.len());
                 }
                 ItemSpec::Header(t) => {
                     h.str(t);
@@ -318,69 +620,153 @@ impl Widget for MenuView {
         3.0
     }
 
+    fn menu(&self) -> Option<&MenuSpec> {
+        Some(&self.spec)
+    }
+
+    fn menu_title(&self) -> Option<&str> {
+        self.look.title.as_deref()
+    }
+
     fn event(&mut self, cx: &mut EventCx, event: &Event) -> Status {
         match event {
             Event::PointerMove { pos, .. } => {
+                if let Some(from) = cx.state::<MenuState>().strip_press {
+                    // Dragging the strip tears the menu off.
+                    if (*pos - from).hypot() > 4.0
+                        && let Some(m) = &self.look.tear_off
+                    {
+                        cx.state::<MenuState>().strip_press = None;
+                        cx.emit(m);
+                        let window = cx.window_id();
+                        cx.emit_any(Box::new(KitMsg::CloseMenus { window }));
+                    }
+                    return Status::Handled;
+                }
                 let row = self.row_at(*pos).filter(|&i| self.selectable(i));
-                self.set_hover(cx, row);
+                let last = cx.state::<MenuState>().last.replace(*pos);
+                // Heading right toward an open submenu: let the pointer
+                // cross rows on the way.
+                let toward_sub = cx.state::<MenuState>().open_sub.is_some()
+                    && last.is_some_and(|l| {
+                        let d: Vec2 = *pos - l;
+                        d.x > 0.5 && d.y.abs() < d.x * 2.0
+                    });
+                if toward_sub && row != cx.state::<MenuState>().hover {
+                    cx.state::<MenuState>().aiming = row;
+                    cx.request_tick(AIM);
+                } else {
+                    cx.state::<MenuState>().aiming = None;
+                    self.set_hover(cx, row, true);
+                }
+                Status::Handled
+            }
+            Event::Tick => {
+                // The pointer stopped on its way: follow it after all.
+                if let Some(row) = cx.state::<MenuState>().aiming.take() {
+                    self.set_hover(cx, Some(row), true);
+                }
                 Status::Handled
             }
             Event::PointerLeave => {
-                if cx.state::<MenuState>().open_sub.is_none() {
-                    self.set_hover_keyboard(cx, None);
+                let st = cx.state::<MenuState>();
+                st.last = None;
+                st.aiming = None;
+                if st.open_sub.is_none() {
+                    self.set_hover(cx, None, false);
+                }
+                Status::Handled
+            }
+            Event::PointerDown { pos, button: PointerButton::Left, .. } if self.look.title.is_some() && self.strip_rect().contains(*pos) => {
+                if self.close_box().inflate(4.0, 4.0).contains(*pos) {
+                    self.close(cx);
+                } else if (self.look.pin.is_some() || self.look.tear_off.is_some()) && self.pin_box().contains(*pos) {
+                    if let Some((on, f)) = &self.look.pin {
+                        cx.emit_any(f.make(!on));
+                    } else if let Some(m) = &self.look.tear_off {
+                        cx.emit(m);
+                        let window = cx.window_id();
+                        cx.emit_any(Box::new(KitMsg::CloseMenus { window }));
+                    }
+                } else if self.look.tear_off.is_some() {
+                    cx.state::<MenuState>().strip_press = Some(*pos);
+                } else {
+                    // A palette's strip moves its window.
+                    cx.begin_window_move();
                 }
                 Status::Handled
             }
             Event::PointerDown { .. } => Status::Handled,
             Event::PointerUp { pos, button: PointerButton::Left | PointerButton::Right, .. } => {
+                if cx.state::<MenuState>().strip_press.take().is_some() {
+                    return Status::Handled;
+                }
                 if let Some(i) = self.row_at(*pos).filter(|&i| self.selectable(i)) {
                     self.activate_row(cx, i);
                 }
                 Status::Handled
             }
             Event::Key(k) if k.pressed => {
+                let m = k.modifiers;
+                if m.super_key() || m.control() {
+                    return Status::Ignored;
+                }
                 match &k.key {
                     Key::Named(NamedKey::ArrowDown) => self.step(cx, true),
                     Key::Named(NamedKey::ArrowUp) => self.step(cx, false),
                     Key::Named(NamedKey::Home) => {
                         let first = (0..self.rows.len()).find(|&i| self.selectable(i));
-                        self.set_hover_keyboard(cx, first);
+                        self.set_hover(cx, first, false);
                     }
                     Key::Named(NamedKey::End) => {
                         let last = (0..self.rows.len()).rev().find(|&i| self.selectable(i));
-                        self.set_hover_keyboard(cx, last);
+                        self.set_hover(cx, last, false);
                     }
-                    Key::Named(NamedKey::Enter) | Key::Named(NamedKey::ArrowRight) => {
-                        if let Some(i) = cx.state::<MenuState>().hover {
-                            let right = matches!(k.key, Key::Named(NamedKey::ArrowRight));
-                            if !right || self.rows[i].kind == RowKind::Submenu {
-                                self.activate_row(cx, i);
-                            }
+                    Key::Named(NamedKey::Enter) => {
+                        let hover = cx.state::<MenuState>().hover;
+                        let filtered = !cx.state::<MenuState>().query.is_empty();
+                        let target = hover.or_else(|| filtered.then(|| (0..self.rows.len()).find(|&i| self.selectable(i))).flatten());
+                        if let Some(i) = target {
+                            self.activate_row(cx, i);
                         }
                     }
-                    Key::Named(NamedKey::ArrowLeft) => cx.close_popup(),
-                    Key::Named(NamedKey::Escape) => cx.emit_any(Box::new(KitMsg::CloseMenus { window: self.popup })),
-                    Key::Character(s) if s == " " => {
+                    Key::Named(NamedKey::ArrowRight) => {
+                        if let Some(i) = cx.state::<MenuState>().hover
+                            && self.rows[i].kind == RowKind::Submenu
+                        {
+                            self.open_sub(cx, i);
+                            let window = cx.window_id();
+                            cx.emit_any(Box::new(KitMsg::MenuFocusSub { window }));
+                        }
+                    }
+                    Key::Named(NamedKey::ArrowLeft) => {
+                        let window = cx.window_id();
+                        cx.emit_any(Box::new(KitMsg::MenuBack { window }));
+                    }
+                    Key::Named(NamedKey::Escape) => {
+                        if cx.state::<MenuState>().query.is_empty() {
+                            self.close(cx);
+                        } else {
+                            self.set_query(cx, String::new());
+                        }
+                    }
+                    Key::Named(NamedKey::Backspace) => {
+                        let mut q = cx.state::<MenuState>().query.clone();
+                        if q.pop().is_none() {
+                            return Status::Handled;
+                        }
+                        self.set_query(cx, q);
+                    }
+                    Key::Character(s) if s == " " && cx.state::<MenuState>().query.is_empty() => {
                         if let Some(i) = cx.state::<MenuState>().hover {
                             self.activate_row(cx, i);
                         }
                     }
-                    Key::Character(s) => {
-                        // Type-select: the first item starting with what's
-                        // been typed lately.
-                        let now = cx.now();
-                        let st = cx.state::<MenuState>();
-                        if st.typed_at.is_none_or(|t| now.duration_since(t) > Duration::from_millis(900)) {
-                            st.typed.clear();
-                        }
-                        st.typed.push_str(&s.to_lowercase());
-                        st.typed_at = Some(now);
-                        let typed = st.typed.clone();
-                        let found = (0..self.rows.len())
-                            .find(|&i| self.selectable(i) && self.label(i).to_lowercase().starts_with(&typed));
-                        if found.is_some() {
-                            self.set_hover_keyboard(cx, found);
-                        }
+                    Key::Character(_) => {
+                        let Some(typed) = k.text.clone() else { return Status::Ignored };
+                        let mut q = cx.state::<MenuState>().query.clone();
+                        q.push_str(&typed);
+                        self.set_query(cx, q);
                     }
                     _ => return Status::Ignored,
                 }
@@ -391,7 +777,65 @@ impl Widget for MenuView {
     }
 
     fn semantics(&self) -> Option<Semantics> {
-        Some(Semantics { role: SemanticRole::Menu, label: Some(self.spec.title.clone()), ..Default::default() })
+        Some(Semantics {
+            role: SemanticRole::Menu,
+            label: Some(self.look.title.clone().unwrap_or_else(|| self.spec.title.clone())),
+            ..Default::default()
+        })
+    }
+}
+
+/// A menu drawn in a window (a torn-off palette, a panel's list of
+/// verbs): `menu_view(menu).title("Format").on_close(Msg::ClosePalette)`.
+/// It behaves as the kit's popup menus do; its submenus open as popups.
+pub struct MenuViewEl<Msg> {
+    pub(crate) common: Common,
+    menu: MenuSpec,
+    look: MenuLook,
+    _m: PhantomData<fn() -> Msg>,
+}
+
+crate::builder!(MenuViewEl);
+
+pub fn menu_view<Msg>(menu: Menu<Msg>) -> MenuViewEl<Msg> {
+    MenuViewEl { common: Common::default(), menu: menu.spec, look: MenuLook::default(), _m: PhantomData }
+}
+
+impl<Msg> MenuViewEl<Msg> {
+    /// A `menu_title` strip with `title`, a close box and (with
+    /// [`pin`](MenuViewEl::pin)) a pin.
+    pub fn title(mut self, title: impl Into<String>) -> Self {
+        self.look.title = Some(title.into());
+        self
+    }
+
+    pub fn min_width(mut self, w: f64) -> Self {
+        self.look.min_width = w;
+        self
+    }
+}
+
+impl<Msg: Clone + Send + 'static> MenuViewEl<Msg> {
+    /// Sent by the close box.
+    pub fn on_close(mut self, msg: Msg) -> Self {
+        self.look.on_close = Some(MsgFn::new(msg));
+        self
+    }
+
+    /// A pin in the strip, `pinned` or not; pressing it sends `f(!pinned)`.
+    pub fn pin(mut self, pinned: bool, f: impl Fn(bool) -> Msg + 'static) -> Self {
+        self.look.pin = Some((pinned, MsgMap::new(f)));
+        self
+    }
+}
+
+impl<Msg> From<MenuViewEl<Msg>> for Element<Msg> {
+    fn from(m: MenuViewEl<Msg>) -> Element<Msg> {
+        let mut common = m.common;
+        if common.key.is_none() {
+            common.key = Some(crate::hash::hash_of(&m.menu.title));
+        }
+        Element::from_raw(RawElement::new(MenuView::new(m.menu, m.look), common, Vec::new()))
     }
 }
 

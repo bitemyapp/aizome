@@ -36,7 +36,7 @@ fn of(tree: &Tree, idx: usize) -> Option<Semantics> {
 
 /// The window's semantic tree: elements with nothing to say are left out
 /// and their children taken up.
-pub fn semantic_tree(tree: &Tree) -> Vec<SemanticNode> {
+pub(crate) fn semantic_tree(tree: &Tree) -> Vec<SemanticNode> {
     fn walk(tree: &Tree, idx: usize, out: &mut Vec<SemanticNode>) {
         let n = &tree.nodes[idx];
         if n.dead {
@@ -59,7 +59,7 @@ pub fn semantic_tree(tree: &Tree) -> Vec<SemanticNode> {
 }
 
 /// Every node with semantics, in tree order.
-pub fn nodes(tree: &Tree) -> Vec<(Semantics, Rect)> {
+pub(crate) fn nodes(tree: &Tree) -> Vec<(Semantics, Rect)> {
     let mut out = Vec::new();
     fn flatten(nodes: &[SemanticNode], out: &mut Vec<(Semantics, Rect)>) {
         for n in nodes {

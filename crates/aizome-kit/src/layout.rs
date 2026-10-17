@@ -222,10 +222,6 @@ impl Constraints {
     }
 }
 
-/// A whole number of points, as Aizome's 1pt edges want rectangles.
-pub(crate) fn snap(r: Rect) -> Rect {
-    Rect::new(r.x0.round(), r.y0.round(), r.x1.round(), r.y1.round())
-}
 
 #[cfg(test)]
 mod tests {

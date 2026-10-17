@@ -7,6 +7,12 @@ use crate::element::Element;
 use crate::icons::Icon;
 use crate::layout::Size;
 use crate::menu::MenuBar;
+pub use sidestep_ui::layer_shell::{Anchors, KeyboardInteractivity, Layer, LayerOptions, Margins};
+pub use sidestep_ui::Output;
+
+/// A request for an activation token ([`Cx::request_activation_token`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct ActivationRequest(pub(crate) u64);
 
 /// An Aizome app, Elm's way: state that [`update`](Program::update)
 /// changes with messages, and a [`view`](Program::view) of each window
@@ -73,6 +79,31 @@ pub trait Program: Sized + 'static {
     fn open(&mut self, paths: Vec<PathBuf>, cx: &mut Cx<Self::Msg>) {
         let _ = (paths, cx);
     }
+
+    /// The outputs (screens) came, went or changed, or were described for
+    /// the first time: [`Cx::outputs`] has them. (A shell opens a menu bar
+    /// and a desktop on each.)
+    fn outputs_changed(&mut self, cx: &mut Cx<Self::Msg>) {
+        let _ = cx;
+    }
+
+    /// The compositor locked the session, as [`Cx::lock_session`] asked:
+    /// only the lock's windows show until [`Cx::unlock_session`].
+    fn session_locked(&mut self, cx: &mut Cx<Self::Msg>) {
+        let _ = cx;
+    }
+
+    /// The lock ended without [`Cx::unlock_session`] (the compositor
+    /// refused it, or another program holds one); its windows are closed.
+    fn session_lock_finished(&mut self, cx: &mut Cx<Self::Msg>) {
+        let _ = cx;
+    }
+
+    /// The activation token asked for with
+    /// [`Cx::request_activation_token`], or none (no xdg-activation).
+    fn activation_token(&mut self, request: ActivationRequest, token: Option<String>, cx: &mut Cx<Self::Msg>) {
+        let _ = (request, token, cx);
+    }
 }
 
 /// Who an app is.
@@ -120,7 +151,7 @@ impl WindowKey {
 }
 
 /// What kind of window.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub enum WindowKind {
     /// A document or main window.
     #[default]
@@ -129,6 +160,14 @@ pub enum WindowKind {
     Dialog { parent: WindowKey },
     /// A small floating window (a palette, an inspector).
     Utility,
+    /// A desktop surface (wlr-layer-shell): a panel, a menu bar, a
+    /// wallpaper, an on-screen display. Its size is the spec's, a side of 0
+    /// where it's anchored to both edges that way being the compositor's
+    /// to choose. Move or resize it with `Cx::set_layer_…`.
+    Layer(LayerOptions),
+    /// The session lock's surface on an output (an [`Output`]'s id), while
+    /// [`Cx::lock_session`](crate::Cx::lock_session) holds the lock.
+    Lock { output: u32 },
 }
 
 /// What a window is asked to be: `WindowSpec::new("Soroban").size(320.0, 480.0)`.
@@ -185,5 +224,25 @@ impl WindowSpec {
 
     pub fn utility(self) -> Self {
         self.kind(WindowKind::Utility)
+    }
+}
+
+impl WindowSpec {
+    /// A desktop surface placed as `options` say, `width` by `height`
+    /// points (0 along an axis it's anchored at both ends of: the
+    /// compositor's choice).
+    pub fn layer(options: LayerOptions, width: f64, height: f64) -> WindowSpec {
+        WindowSpec { size: Size::new(width, height), resizable: false, kind: WindowKind::Layer(options), ..WindowSpec::new("") }
+    }
+
+    /// The lock screen's surface on output `output`.
+    pub fn lock(output: u32) -> WindowSpec {
+        WindowSpec { size: Size::ZERO, resizable: false, kind: WindowKind::Lock { output }, ..WindowSpec::new("") }
+    }
+
+    /// Whether the kit draws the in-window menu bar along its top (where
+    /// there's no Aizome shell): normal windows only.
+    pub fn has_menu_bar(&self) -> bool {
+        self.kind == WindowKind::Normal
     }
 }

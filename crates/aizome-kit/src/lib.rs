@@ -36,6 +36,7 @@ mod app;
 pub mod cx;
 pub mod dialogs;
 pub mod draw;
+pub mod editing;
 pub mod element;
 pub(crate) mod engine;
 pub mod fonts;
@@ -71,6 +72,9 @@ pub use widgets::controls::{
     segmented, segmented_icons, slider, stepper, toggle,
 };
 pub use widgets::layout::{Edge, Sides, Tone, column, container, divider, row, space, spacer, stack};
+pub use widgets::menus::{MenuPlacement, MenuStyle, menu_view};
+pub use widgets::text_field::{search_field, text_field};
+pub use program::{Anchors, KeyboardInteractivity, Layer, LayerOptions, Margins, Output, ActivationRequest};
 
 /// Everything an app usually needs: `use aizome_kit::prelude::*;`.
 pub mod prelude {
@@ -80,7 +84,8 @@ pub mod prelude {
         Menu, MenuBar, MenuItem, MenuRole, Padding, Point, Program, Rect, Role, Shortcut, ShortcutKey, Sides, Size,
         Span, Theme, TimerHandle, Tone, WindowKey, WindowKind, WindowSpec, badge, button, checkbox, container,
         divider, dropdown, icon, icon_button, image, keycap, meter, progress, progress_indeterminate, radio,
-        rich_text, segmented, segmented_icons, slider, space, spacer, stepper, text, toggle,
+        rich_text, segmented, segmented_icons, slider, space, spacer, stepper, text, toggle, text_field, search_field,
+        menu_view, MenuStyle, MenuPlacement,
     };
     pub use crate::{column, row, stack};
 }

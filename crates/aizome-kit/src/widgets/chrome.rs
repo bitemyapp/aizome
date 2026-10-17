@@ -9,7 +9,11 @@ use crate::widgets::layout::stack_layout;
 
 /// A window's root: the surface colour under everything, its layers (the
 /// content, then sheets) stacked to its size.
-pub(crate) struct Root;
+pub(crate) struct Root {
+    /// Painted with the surface colour (else see-through: a desktop
+    /// surface draws its own ground).
+    pub opaque: bool,
+}
 
 impl Widget for Root {
     fn name(&self) -> &'static str {
@@ -21,9 +25,15 @@ impl Widget for Root {
     }
 
     fn paint(&self, cx: &mut PaintCx) {
-        let c = cx.theme().surface();
-        let r = cx.bounds();
-        cx.canvas.fill_rect(r, c);
+        if self.opaque {
+            let c = cx.theme().surface();
+            let r = cx.bounds();
+            cx.canvas.fill_rect(r, c);
+        }
+    }
+
+    fn hash(&self, h: &mut crate::hash::PaintHasher) {
+        h.add(&self.opaque);
     }
 
     fn solid(&self) -> bool {

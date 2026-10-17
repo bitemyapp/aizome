@@ -28,9 +28,6 @@ impl MsgFn {
         MsgFn(Rc::new(move || Box::new(msg.clone())))
     }
 
-    pub(crate) fn kit(msg: crate::engine::KitMsg) -> MsgFn {
-        MsgFn(Rc::new(move || Box::new(msg.clone())))
-    }
 
     /// A message made by `f` each time.
     pub fn from_fn(f: impl Fn() -> AnyMsg + 'static) -> MsgFn {
@@ -62,9 +59,6 @@ impl<T: 'static> MsgMap<T> {
         MsgMap(Rc::new(move |t| Box::new(f(t))))
     }
 
-    pub(crate) fn raw(f: impl Fn(T) -> AnyMsg + 'static) -> MsgMap<T> {
-        MsgMap(Rc::new(f))
-    }
 
     pub fn make(&self, value: T) -> AnyMsg {
         (self.0)(value)

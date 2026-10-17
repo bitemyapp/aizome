@@ -12,7 +12,10 @@ use crate::engine::{Core, TimerUse};
 use crate::layout::{Point, Size};
 use crate::menu::{Menu, MenuRole};
 use crate::platform::{Platform, Waker, WinId};
-use crate::program::{AppInfo, WindowKey, WindowSpec};
+use crate::layout::Rect;
+use crate::platform::LayerChange;
+use crate::program::{ActivationRequest, Anchors, AppInfo, KeyboardInteractivity, Layer, Margins, Output, WindowKey, WindowSpec};
+use crate::widgets::menus::MenuStyle;
 use crate::theme::Theme;
 
 /// What only the compositor can do for the Window and app menus (hide,
@@ -279,5 +282,101 @@ impl<Msg: Clone + Send + 'static> Cx<'_, Msg> {
     /// How long frames took, recently.
     pub fn stats(&self) -> &crate::stats::Stats {
         &self.core.stats
+    }
+
+    /// Open `menu` over `window` at `anchor` (a rectangle of it: a menu
+    /// bar's title, a button, a 1 × 1 rectangle at the pointer), as
+    /// `style` says. It runs as every kit menu does: keyboard, filtering,
+    /// submenus. Any window will do, desktop surfaces included.
+    pub fn show_menu(&mut self, window: WindowKey, anchor: Rect, menu: Menu<Msg>, style: MenuStyle<Msg>) {
+        if let Some(win) = self.core.window_of(window) {
+            let placement = style.placement.placement();
+            self.core.show_menu(win, anchor, menu.spec, style.look, placement, None, self.platform);
+        }
+    }
+
+    /// Close the menus open over `window`.
+    pub fn close_menus(&mut self, window: WindowKey) {
+        if let Some(win) = self.core.window_of(window) {
+            self.core.kit(crate::engine::KitMsg::CloseMenus { window: win }, self.platform);
+        }
+    }
+
+    // The desktop's surfaces.
+
+    /// The outputs (screens), as the compositor last described them.
+    pub fn outputs(&self) -> Vec<Output> {
+        self.platform.outputs()
+    }
+
+    fn layer(&mut self, window: WindowKey, change: LayerChange) {
+        if let Some(win) = self.core.window_of(window) {
+            self.platform.set_layer(win, change);
+        }
+    }
+
+    /// A desktop surface's size (0 along an axis it's anchored at both
+    /// ends of: the compositor's choice).
+    pub fn set_layer_size(&mut self, window: WindowKey, size: Size) {
+        self.layer(window, LayerChange::Size(size));
+    }
+
+    pub fn set_layer(&mut self, window: WindowKey, layer: Layer) {
+        self.layer(window, LayerChange::Layer(layer));
+    }
+
+    pub fn set_layer_anchors(&mut self, window: WindowKey, anchors: Anchors) {
+        self.layer(window, LayerChange::Anchors(anchors));
+    }
+
+    pub fn set_layer_exclusive_zone(&mut self, window: WindowKey, points: i32) {
+        self.layer(window, LayerChange::ExclusiveZone(points));
+    }
+
+    /// Move a desktop surface: margins from the edges it's anchored to.
+    pub fn set_layer_margins(&mut self, window: WindowKey, margins: Margins) {
+        self.layer(window, LayerChange::Margins(margins));
+    }
+
+    pub fn set_layer_keyboard(&mut self, window: WindowKey, keyboard: KeyboardInteractivity) {
+        self.layer(window, LayerChange::Keyboard(keyboard));
+    }
+
+    /// Take the pointer only inside `region` (none: everywhere), letting
+    /// it through elsewhere (a shadow round a panel).
+    pub fn set_input_region(&mut self, window: WindowKey, region: Option<Vec<Rect>>) {
+        if let Some(win) = self.core.window_of(window) {
+            self.platform.set_input_region(win, region);
+        }
+    }
+
+    /// Tell the compositor where the window is opaque.
+    pub fn set_opaque_region(&mut self, window: WindowKey, region: Option<Vec<Rect>>) {
+        if let Some(win) = self.core.window_of(window) {
+            self.platform.set_opaque_region(win, region);
+        }
+    }
+
+    /// Lock the session: open a [`WindowSpec::lock`] window on each output
+    /// at once; the program hears `session_locked` when the compositor
+    /// has, or `session_lock_finished` if it won't.
+    pub fn lock_session(&mut self) {
+        self.platform.lock_session();
+    }
+
+    /// Unlock the session: the lock's windows close.
+    pub fn unlock_session(&mut self) {
+        self.platform.unlock_session();
+        self.core.close_lock_windows(self.platform);
+    }
+
+    pub fn is_session_locked(&self) -> bool {
+        self.platform.is_session_locked()
+    }
+
+    /// Ask for an xdg-activation token, for a program about to be launched
+    /// (`app_id` its id): the program hears it in `activation_token`.
+    pub fn request_activation_token(&mut self, app_id: Option<&str>) -> ActivationRequest {
+        ActivationRequest(self.platform.request_activation_token(app_id))
     }
 }

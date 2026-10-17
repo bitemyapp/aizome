@@ -329,18 +329,6 @@ impl Tree {
         found
     }
 
-    /// Whether `idx` is `ancestor` or under it.
-    pub fn is_within(&self, mut idx: usize, ancestor: usize) -> bool {
-        loop {
-            if idx == ancestor {
-                return true;
-            }
-            match self.nodes[idx].parent {
-                Some(p) => idx = p,
-                None => return false,
-            }
-        }
-    }
 
     pub fn get(&self, id: NodeId) -> Option<usize> {
         self.by_id.get(&id).copied().filter(|&i| !self.nodes[i].dead)

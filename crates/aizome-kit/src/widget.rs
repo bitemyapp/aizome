@@ -293,6 +293,17 @@ pub trait Widget: 'static {
         FocusRing::Keyboard
     }
 
+    /// The menu it shows (a menu view): the kit opens its submenus and
+    /// carries out its items.
+    fn menu(&self) -> Option<&MenuSpec> {
+        None
+    }
+
+    /// The title strip of the menu it shows, if it has one.
+    fn menu_title(&self) -> Option<&str> {
+        None
+    }
+
     /// The text selected in it (for Services and tests).
     fn selection(&self, state: Option<&dyn Any>) -> Option<String> {
         let _ = state;
@@ -524,6 +535,7 @@ impl<'a> PaintCx<'a> {
 pub struct EventCx<'a, 'e> {
     pub(crate) tree: &'a Tree,
     pub(crate) node: usize,
+    pub(crate) win: crate::platform::WinId,
     pub(crate) env: &'a mut Env<'e>,
     pub(crate) out: &'a mut Out,
     pub(crate) platform: &'a mut dyn Platform,
@@ -584,6 +596,11 @@ impl EventCx<'_, '_> {
 
     pub fn id(&self) -> NodeId {
         self.tree.nodes[self.node].id
+    }
+
+    /// The window (or popup) it's in, as the engine names it.
+    pub fn window_id(&self) -> crate::platform::WinId {
+        self.win
     }
 
     /// Its rectangle in the window.

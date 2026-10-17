@@ -18,7 +18,7 @@ use crate::element::RawElement;
 use crate::engine::{Core, KitMsg, TimerUse};
 use crate::hash::hash_of;
 use crate::layout::{Rect, Size, Vec2};
-use crate::platform::{OpenKind, OpenSpec, Placement, Platform, Waker, WinId};
+use crate::platform::{LayerChange, OpenKind, OpenSpec, Placement, Platform, Waker, WinId};
 use crate::program::Program;
 use crate::shell::ShellLink;
 use crate::theme::{Appearance, ThemeChoice};
@@ -208,6 +208,31 @@ impl<P: Program> Runtime<P> {
         self.flush(platform);
     }
 
+    pub fn outputs_changed(&mut self, platform: &mut dyn Platform) {
+        let mut cx = Cx { core: &mut self.core, platform, pool: &mut self.pool, _m: PhantomData };
+        self.program.outputs_changed(&mut cx);
+        self.flush(platform);
+    }
+
+    pub fn session_locked(&mut self, platform: &mut dyn Platform) {
+        let mut cx = Cx { core: &mut self.core, platform, pool: &mut self.pool, _m: PhantomData };
+        self.program.session_locked(&mut cx);
+        self.flush(platform);
+    }
+
+    pub fn session_lock_finished(&mut self, platform: &mut dyn Platform) {
+        self.core.close_lock_windows(platform);
+        let mut cx = Cx { core: &mut self.core, platform, pool: &mut self.pool, _m: PhantomData };
+        self.program.session_lock_finished(&mut cx);
+        self.flush(platform);
+    }
+
+    pub fn activation_token(&mut self, request: u64, token: Option<String>, platform: &mut dyn Platform) {
+        let mut cx = Cx { core: &mut self.core, platform, pool: &mut self.pool, _m: PhantomData };
+        self.program.activation_token(crate::program::ActivationRequest(request), token, &mut cx);
+        self.flush(platform);
+    }
+
     /// Auto follows the clock: look again (each hour, and when the desktop
     /// changes its look).
     pub fn recheck_auto(&mut self, platform: &mut dyn Platform) {
@@ -228,6 +253,8 @@ struct Maps {
     tokens: HashMap<u64, TimerId>,
     next_token: u64,
     waker: Option<Waker>,
+    activations: HashMap<sidestep_ui::ActivationRequest, u64>,
+    next_activation: u64,
 }
 
 struct Glue<P: Program> {
@@ -265,6 +292,11 @@ impl Platform for SidestepPlatform<'_> {
                 }
                 o
             }
+            OpenKind::Layer(o) => WindowOptions::layer(o.clone())
+                .size(spec.size.width, spec.size.height)
+                .close_on_request(false)
+                .background(background),
+            OpenKind::Lock { output } => WindowOptions::lock(*output).background(background),
             OpenKind::Popup { parent, anchor, placement, grab } => {
                 let Some(&p) = self.maps.to_side.get(parent) else { return };
                 let position = match placement {
@@ -387,6 +419,53 @@ impl Platform for SidestepPlatform<'_> {
     fn waker(&self) -> Waker {
         self.maps.waker.clone().unwrap_or_else(|| Arc::new(|| {}))
     }
+
+    fn set_layer(&mut self, id: WinId, change: LayerChange) {
+        let Some(mut w) = self.maps.to_side.get(&id).and_then(|s| self.sx.window(*s)) else { return };
+        match change {
+            LayerChange::Size(s) => w.set_layer_size(s),
+            LayerChange::Layer(l) => w.set_layer(l),
+            LayerChange::Anchors(a) => w.set_layer_anchors(a),
+            LayerChange::ExclusiveZone(z) => w.set_layer_exclusive_zone(z),
+            LayerChange::Margins(m) => w.set_layer_margins(m),
+            LayerChange::Keyboard(k) => w.set_layer_keyboard(k),
+        }
+    }
+
+    fn set_input_region(&mut self, id: WinId, region: Option<Vec<Rect>>) {
+        if let Some(mut w) = self.maps.to_side.get(&id).and_then(|s| self.sx.window(*s)) {
+            w.set_input_region(region.as_deref());
+        }
+    }
+
+    fn set_opaque_region(&mut self, id: WinId, region: Option<Vec<Rect>>) {
+        if let Some(mut w) = self.maps.to_side.get(&id).and_then(|s| self.sx.window(*s)) {
+            w.set_opaque_region(region.as_deref());
+        }
+    }
+
+    fn outputs(&self) -> Vec<crate::program::Output> {
+        self.sx.outputs()
+    }
+
+    fn lock_session(&mut self) {
+        self.sx.lock_session();
+    }
+
+    fn unlock_session(&mut self) {
+        self.sx.unlock_session();
+    }
+
+    fn is_session_locked(&self) -> bool {
+        self.sx.is_session_locked()
+    }
+
+    fn request_activation_token(&mut self, app_id: Option<&str>) -> u64 {
+        let request = self.sx.request_activation_token(app_id);
+        self.maps.next_activation += 1;
+        self.maps.activations.insert(request, self.maps.next_activation);
+        self.maps.next_activation
+    }
 }
 
 impl<P: Program> Glue<P> {
@@ -484,6 +563,27 @@ impl<P: Program> sidestep_ui::Handler for Glue<P> {
         let (rt, mut p) = self.split(cx);
         let _ = appearance;
         rt.recheck_auto(&mut p);
+    }
+
+    fn outputs_changed(&mut self, cx: &mut sidestep_ui::Cx) {
+        let (rt, mut p) = self.split(cx);
+        rt.outputs_changed(&mut p);
+    }
+
+    fn session_locked(&mut self, cx: &mut sidestep_ui::Cx) {
+        let (rt, mut p) = self.split(cx);
+        rt.session_locked(&mut p);
+    }
+
+    fn session_lock_finished(&mut self, cx: &mut sidestep_ui::Cx) {
+        let (rt, mut p) = self.split(cx);
+        rt.session_lock_finished(&mut p);
+    }
+
+    fn activation_token(&mut self, cx: &mut sidestep_ui::Cx, request: sidestep_ui::ActivationRequest, token: Option<String>) {
+        let Some(id) = self.maps.activations.remove(&request) else { return };
+        let (rt, mut p) = self.split(cx);
+        rt.activation_token(id, token, &mut p);
     }
 
     fn drag_moved(&mut self, cx: &mut sidestep_ui::Cx, window: WindowId, drag: &Drag) -> DropResponse {

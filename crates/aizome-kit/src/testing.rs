@@ -30,8 +30,8 @@ use sidestep_ui::{Appearance as Look, Cursor, Image, Key, KeyEvent, Modifiers, N
 use crate::app::Runtime;
 use crate::engine::WinKind;
 use crate::layout::{Point, Rect, Size, Vec2};
-use crate::platform::{OpenKind, OpenSpec, Placement, Platform, Waker, WinId};
-use crate::program::{Program, WindowKey};
+use crate::platform::{LayerChange, OpenKind, OpenSpec, Placement, Platform, Waker, WinId};
+use crate::program::{Output, Program, WindowKey};
 use crate::theme::Appearance;
 use crate::widget::Semantics;
 
@@ -57,6 +57,15 @@ pub struct TestPlatform {
     pub text_input: HashMap<WinId, (bool, Option<Rect>)>,
     pub requested_sizes: HashMap<WinId, Size>,
     pub minimized: Vec<WinId>,
+    /// Layer surfaces' changes, in order.
+    pub layer_changes: Vec<(WinId, LayerChange)>,
+    pub input_regions: HashMap<WinId, Option<Vec<Rect>>>,
+    pub opaque_regions: HashMap<WinId, Option<Vec<Rect>>>,
+    /// The outputs the test says there are.
+    pub outputs: Vec<Output>,
+    pub locked: bool,
+    pub lock_asked: bool,
+    pub activation_requests: Vec<(u64, Option<String>)>,
 }
 
 impl TestPlatform {
@@ -73,6 +82,13 @@ impl TestPlatform {
             text_input: HashMap::new(),
             requested_sizes: HashMap::new(),
             minimized: Vec::new(),
+            layer_changes: Vec::new(),
+            input_regions: HashMap::new(),
+            opaque_regions: HashMap::new(),
+            outputs: Vec::new(),
+            locked: false,
+            lock_asked: false,
+            activation_requests: Vec::new(),
         }
     }
 
@@ -157,6 +173,43 @@ impl Platform for TestPlatform {
 
     fn waker(&self) -> Waker {
         Arc::new(|| {})
+    }
+
+    fn set_layer(&mut self, id: WinId, change: LayerChange) {
+        if let (LayerChange::Size(s), Some(w)) = (&change, self.windows.get_mut(&id)) {
+            w.spec.size = *s;
+        }
+        self.layer_changes.push((id, change));
+    }
+
+    fn set_input_region(&mut self, id: WinId, region: Option<Vec<Rect>>) {
+        self.input_regions.insert(id, region);
+    }
+
+    fn set_opaque_region(&mut self, id: WinId, region: Option<Vec<Rect>>) {
+        self.opaque_regions.insert(id, region);
+    }
+
+    fn outputs(&self) -> Vec<Output> {
+        self.outputs.clone()
+    }
+
+    fn lock_session(&mut self) {
+        self.lock_asked = true;
+    }
+
+    fn unlock_session(&mut self) {
+        self.lock_asked = false;
+        self.locked = false;
+    }
+
+    fn is_session_locked(&self) -> bool {
+        self.locked
+    }
+
+    fn request_activation_token(&mut self, app_id: Option<&str>) -> u64 {
+        self.activation_requests.push((self.activation_requests.len() as u64 + 1, app_id.map(str::to_owned)));
+        self.activation_requests.len() as u64
     }
 }
 
@@ -500,6 +553,38 @@ impl<P: Program> Harness<P> {
 
     pub fn theme(&self) -> &crate::theme::Theme {
         &self.rt.core.theme
+    }
+
+    /// The compositor describing `outputs` (the program hears
+    /// `outputs_changed`).
+    pub fn set_outputs(&mut self, outputs: Vec<Output>) {
+        self.platform.outputs = outputs;
+        self.rt.outputs_changed(&mut self.platform);
+    }
+
+    /// The compositor confirming the lock the program asked for.
+    pub fn confirm_lock(&mut self) {
+        if self.platform.lock_asked {
+            self.platform.locked = true;
+            self.rt.session_locked(&mut self.platform);
+        }
+    }
+
+    /// The compositor refusing (or ending) the lock.
+    pub fn finish_lock(&mut self) {
+        self.platform.lock_asked = false;
+        self.platform.locked = false;
+        self.rt.session_lock_finished(&mut self.platform);
+    }
+
+    /// An activation token arriving for request `n` (counting from 1).
+    pub fn activation_token(&mut self, n: u64, token: Option<&str>) {
+        self.rt.activation_token(n, token.map(str::to_owned), &mut self.platform);
+    }
+
+    /// Kit windows by their engine id (for popups' pictures).
+    pub fn render_popup(&mut self, popup: u32, scale: f64) -> Image {
+        self.render_win(popup, scale)
     }
 
     /// Change the appearance, as Settings would.

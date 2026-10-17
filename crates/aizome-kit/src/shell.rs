@@ -198,6 +198,8 @@ pub(crate) fn handle<P: Program>(rt: &mut Runtime<P>, msg: proto::ShellMessage, 
                 s.send(&proto::AppMessage::ServicesText { serial, text });
             }
         }
+        // Answers to requests, which apps don't make.
+        _ => {}
     }
 }
 

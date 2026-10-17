@@ -9,7 +9,7 @@ use std::sync::Arc;
 use std::sync::mpsc::{Receiver, Sender};
 use std::time::{Duration, Instant};
 
-use sidestep_ui::{Canvas, Color, Cursor, Ime, Key, KeyEvent, Modifiers, NamedKey, PointerButton, ScrollPhase};
+use sidestep_ui::{Canvas, Cursor, Ime, Key, KeyEvent, Modifiers, NamedKey, PointerButton, ScrollPhase};
 
 use crate::element::{AnyMsg, Common, Mapper, MsgFn, RawElement};
 use crate::layout::{Length, Point, Rect, Size, Vec2};
@@ -22,21 +22,27 @@ use crate::theme::{Appearance, Theme};
 use crate::tree::{NodeId, PaintEnv, Snapshot, Tree};
 use crate::widget::{EditCommand, Env, Event, EventCx, FocusRequest, Focusable, Out, StateMap, Status, Vacant};
 use crate::widgets::chrome::{FloatingPanel, Root, SheetLayer};
-use crate::widgets::menus::{MenuBarStrip, MenuView, TooltipView};
+use crate::widgets::menus::{MenuBarStrip, MenuLook, MenuView, TooltipView};
 
 /// The kit's own messages, handled before the program's.
 #[derive(Clone, Debug)]
 pub(crate) enum KitMsg {
-    /// Item `item` of menu popup `popup` was chosen.
-    Activate { popup: WinId, item: usize },
-    /// Close the submenus open from a menu popup.
-    CloseSubmenus { popup: WinId },
+    /// An item of the menu at `node` in `window` was chosen (its path:
+    /// its index, and its submenus' when the menu was filtered).
+    MenuChoose { window: WinId, node: NodeId, path: Vec<usize> },
+    /// Open the submenu at `path` of the menu at `node`, beside `anchor`.
+    MenuSub { window: WinId, node: NodeId, path: Vec<usize>, anchor: Rect },
+    /// Close the submenus open from the menu in `window`.
+    MenuCloseSubs { window: WinId },
+    /// Give the keyboard to the submenu just opened from `window`.
+    MenuFocusSub { window: WinId },
+    /// ← in a menu: close it if it's a submenu.
+    MenuBack { window: WinId },
     /// Close every menu over `window` (an item was chosen).
     CloseMenus { window: WinId },
     /// Open the menu bar's menu `index` under its title (in-window bar).
     OpenBarMenu { window: WinId, index: usize, anchor: Rect },
-    /// Open a submenu of a menu popup.
-    OpenSubmenu { popup: WinId, path: Vec<usize>, anchor: Rect },
+
     /// An alert's button was chosen.
     AlertChoice { alert: u64, index: usize },
     /// A file panel's own message.
@@ -72,10 +78,10 @@ pub(crate) enum WinKind {
 
 pub(crate) enum PopupKind {
     /// A menu (a pop-up button's, a context menu, a bar menu, a submenu).
-    Menu { spec: MenuSpec, opener: Option<NodeId>, bar: Option<usize> },
+    Menu { spec: MenuSpec, look: MenuLook, bar: Option<usize> },
     /// A popover element's content, from the owner's tree.
     Popover { node: NodeId, on_dismiss: Option<MsgFn> },
-    Tooltip { node: NodeId },
+    Tooltip,
 }
 
 pub(crate) struct Win {
@@ -235,9 +241,15 @@ impl Core {
         self.next_key += 1;
         let id = self.next_win;
         self.next_win += 1;
-        let parent = match spec.kind {
-            WindowKind::Dialog { parent } => self.window_of(parent),
-            _ => None,
+        let (kind, background) = match &spec.kind {
+            WindowKind::Dialog { parent } => {
+                (OpenKind::Toplevel { parent: self.window_of(*parent), utility: false }, Some(self.theme.surface()))
+            }
+            WindowKind::Normal => (OpenKind::Toplevel { parent: None, utility: false }, Some(self.theme.surface())),
+            WindowKind::Utility => (OpenKind::Toplevel { parent: None, utility: true }, Some(self.theme.surface())),
+            // Desktop surfaces draw what they like, shadows and all.
+            WindowKind::Layer(o) => (OpenKind::Layer(o.clone()), None),
+            WindowKind::Lock { output } => (OpenKind::Lock { output: *output }, None),
         };
         let open = OpenSpec {
             title: spec.title.clone(),
@@ -245,8 +257,8 @@ impl Core {
             min_size: spec.min_size,
             max_size: spec.max_size,
             resizable: spec.resizable,
-            kind: OpenKind::Toplevel { parent, utility: spec.kind == WindowKind::Utility },
-            background: Some(self.theme.surface()),
+            kind,
+            background,
             app_id: self.info.app_id.clone(),
         };
         let mut w = Win::new(id, WinKind::App { key, spec: spec.clone() }, spec.size);
@@ -327,6 +339,21 @@ impl Core {
         platform.close_window(win);
     }
 
+    /// Close the lock screen's windows (the lock ended).
+    pub fn close_lock_windows(&mut self, platform: &mut dyn Platform) {
+        let locks: Vec<WindowKey> = self
+            .wins
+            .values()
+            .filter_map(|w| match &w.kind {
+                WinKind::App { key, spec } if matches!(spec.kind, WindowKind::Lock { .. }) => Some(*key),
+                _ => None,
+            })
+            .collect();
+        for k in locks {
+            self.close_key(k, platform);
+        }
+    }
+
     pub fn app_windows(&self) -> Vec<(WinId, WindowKey)> {
         self.wins.values().filter_map(|w| w.key().map(|k| (w.id, k))).collect()
     }
@@ -352,7 +379,8 @@ impl Core {
     pub fn install(&mut self, win: WinId, main: RawElement, sheets: Vec<RawElement>, platform: &mut dyn Platform) {
         let started = Instant::now();
         let Some(w) = self.wins.get(&win) else { return };
-        let is_normal = matches!(&w.kind, WinKind::App { spec, .. } if spec.kind == WindowKind::Normal);
+        let is_normal = matches!(&w.kind, WinKind::App { spec, .. } if spec.has_menu_bar());
+        let opaque = matches!(&w.kind, WinKind::App { spec, .. } if !matches!(spec.kind, WindowKind::Layer(_) | WindowKind::Lock { .. }));
         let mut layers = Vec::new();
         let body = if self.in_window_menus && is_normal && !self.menubar.is_empty() {
             let bar = MenuBarStrip::element(&self.info, &self.menubar, win);
@@ -372,7 +400,7 @@ impl Core {
                 layers.push(SheetLayer::element(el, 1000 + a));
             }
         }
-        let root = RawElement::new(Root, Common::sized(Length::Fill, Length::Fill), layers);
+        let root = RawElement::new(Root { opaque }, Common::sized(Length::Fill, Length::Fill), layers);
         self.build(win, root, platform);
         self.stats.view_layout(started.elapsed());
         self.sync_popovers(win, platform);
@@ -465,10 +493,20 @@ impl Core {
         let Some(w) = self.wins.get(&win) else { return };
         let WinKind::Popup { kind, .. } = &w.kind else { return };
         let root = match kind {
-            PopupKind::Menu { spec, bar, .. } => MenuView::element(spec.clone(), win, bar.is_some()),
+            PopupKind::Menu { spec, look, .. } => MenuView::element(spec.clone(), look.clone()),
             _ => return,
         };
-        self.build_popup(win, root, platform);
+        // Popups keep their size: what's filtered out leaves room.
+        let Some(w) = self.wins.get_mut(&win) else { return };
+        let mut tree = Tree::new(root, NodeId::ROOT.child("popup"));
+        let mut env = Env { theme: &self.theme, text: &mut self.text, states: &mut w.states, now: Instant::now() };
+        tree.layout_window(w.size, &mut env);
+        for r in tree.diff(&w.snapshot) {
+            platform.invalidate(win, r);
+        }
+        w.snapshot = tree.snapshot();
+        w.tree = tree;
+        w.dirty = false;
     }
 
     // Popups.
@@ -568,14 +606,31 @@ impl Core {
 
     /// The menu requested by a widget: a pop-up button's, a context menu.
     fn open_menu_request(&mut self, win: WinId, req: crate::widget::MenuRequest, platform: &mut dyn Platform) {
-        let Some(w) = self.wins.get(&win) else { return };
-        let opener = w.tree.nodes.get(req.opener).map(|n| n.id);
+        if !self.wins.contains_key(&win) {
+            return;
+        }
         let mapper = self.mapper_chain(win, req.opener);
-        let mut spec = req.menu;
-        self.settle_menu(&mut spec);
-        let root = MenuView::element_min(spec.clone(), self.next_win, false, req.min_width);
+        let look = MenuLook { min_width: req.min_width, ..MenuLook::default() };
         let placement = if req.at_point { Placement::AtPoint } else { Placement::Below };
-        self.open_popup(win, req.anchor, placement, true, PopupKind::Menu { spec, opener, bar: None }, root, mapper, platform);
+        self.show_menu(win, req.anchor, req.menu, look, placement, mapper, platform);
+    }
+
+    /// Open `spec` as a menu popup over `win` at `anchor`.
+    #[allow(clippy::too_many_arguments)]
+    pub fn show_menu(
+        &mut self,
+        win: WinId,
+        anchor: Rect,
+        mut spec: MenuSpec,
+        look: MenuLook,
+        placement: Placement,
+        mapper: Option<Mapper>,
+        platform: &mut dyn Platform,
+    ) -> WinId {
+        self.close_menus(win, platform);
+        self.settle_menu(&mut spec);
+        let root = MenuView::element(spec.clone(), look.clone());
+        self.open_popup(win, anchor, placement, true, PopupKind::Menu { spec, look, bar: None }, root, mapper, platform)
     }
 
     /// Open the in-window menu bar's menu `index`.
@@ -583,8 +638,8 @@ impl Core {
         self.close_menus(win, platform);
         let Some(mut spec) = self.menubar.get(index).cloned() else { return };
         self.settle_menu(&mut spec);
-        let root = MenuView::element(spec.clone(), self.next_win, true);
-        self.open_popup(win, anchor, Placement::Below, true, PopupKind::Menu { spec, opener: None, bar: Some(index) }, root, None, platform);
+        let root = MenuView::element(spec.clone(), MenuLook::default());
+        self.open_popup(win, anchor, Placement::Below, true, PopupKind::Menu { spec, look: MenuLook::default(), bar: Some(index) }, root, None, platform);
         // Closing the last menu put the bar's title back; this one's open.
         if let Some(w) = self.wins.get_mut(&win)
             && let Some(n) = w.tree.nodes.iter().find(|n| !n.dead && n.widget.name() == "menu-bar")
@@ -595,25 +650,100 @@ impl Core {
         }
     }
 
-    fn open_submenu(&mut self, popup: WinId, path: Vec<usize>, anchor: Rect, platform: &mut dyn Platform) {
-        let Some(w) = self.wins.get(&popup) else { return };
-        let WinKind::Popup { kind: PopupKind::Menu { spec, opener, .. }, .. } = &w.kind else { return };
-        let mut sub = spec.clone();
+    /// The menu (and its look) of the widget `node` in `win`.
+    fn menu_at(&self, win: WinId, node: NodeId) -> Option<(MenuSpec, MenuLook)> {
+        let w = self.wins.get(&win)?;
+        let i = w.tree.get(node)?;
+        let spec = w.tree.nodes[i].widget.menu()?.clone();
+        let look = match &w.kind {
+            WinKind::Popup { kind: PopupKind::Menu { look, .. }, .. } => look.clone(),
+            _ => MenuLook { title: w.tree.nodes[i].widget.menu_title().map(str::to_owned), ..MenuLook::default() },
+        };
+        Some((spec, look))
+    }
+
+    /// The menu popups opened from `win` (its submenus).
+    fn menu_popups_of(&self, win: WinId) -> Vec<WinId> {
+        self.wins
+            .get(&win)
+            .map(|w| {
+                w.popups
+                    .iter()
+                    .copied()
+                    .filter(|p| matches!(self.wins.get(p).map(|w| &w.kind), Some(WinKind::Popup { kind: PopupKind::Menu { .. }, .. })))
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    fn menu_sub(&mut self, win: WinId, node: NodeId, path: Vec<usize>, anchor: Rect, platform: &mut dyn Platform) {
+        let Some((spec, look)) = self.menu_at(win, node) else { return };
+        let mut items = &spec.items;
+        let mut sub = None;
         for &i in &path {
-            match sub.items.get(i) {
-                Some(ItemSpec::Submenu(m)) => sub = m.clone(),
+            match items.get(i) {
+                Some(ItemSpec::Submenu(m)) => {
+                    items = &m.items;
+                    sub = Some(m);
+                }
                 _ => return,
             }
         }
-        let opener = *opener;
-        let mapper = w.mapper.clone();
+        let Some(mut sub) = sub.cloned() else { return };
+        let idx = self.wins.get(&win).and_then(|w| w.tree.get(node)).unwrap_or(0);
+        let mapper = self.mapper_chain(win, idx);
         // One submenu open at a time.
-        let others: Vec<WinId> = w.popups.clone();
-        for o in others {
+        for o in self.menu_popups_of(win) {
             self.close_win(o, platform);
         }
-        let root = MenuView::element(sub.clone(), self.next_win, false);
-        self.open_popup(popup, anchor, Placement::Beside, true, PopupKind::Menu { spec: sub, opener, bar: None }, root, mapper, platform);
+        let look = look.sub(&sub.title);
+        self.settle_menu(&mut sub);
+        let root = MenuView::element(sub.clone(), look.clone());
+        self.open_popup(win, anchor, Placement::Beside, true, PopupKind::Menu { spec: sub, look, bar: None }, root, mapper, platform);
+    }
+
+    /// An item of the menu at `node` in `win` was chosen: close the menus,
+    /// then carry it out (its message through the menu's mappers).
+    fn menu_choose(&mut self, win: WinId, node: NodeId, path: Vec<usize>, platform: &mut dyn Platform) {
+        let Some((spec, _)) = self.menu_at(win, node) else { return };
+        let mut items = &spec.items;
+        let mut action = None;
+        for (n, &i) in path.iter().enumerate() {
+            match items.get(i) {
+                Some(ItemSpec::Submenu(m)) if n + 1 < path.len() => items = &m.items,
+                Some(ItemSpec::Action(a)) if n + 1 == path.len() => action = Some(a.clone()),
+                _ => return,
+            }
+        }
+        let Some(a) = action else { return };
+        let idx = self.wins.get(&win).and_then(|w| w.tree.get(node)).unwrap_or(0);
+        let mapper = self.mapper_chain(win, idx);
+        let app = self.app_window_for(win);
+        if self.wins.get(&win).is_some_and(|w| w.is_popup()) {
+            self.close_menus(win, platform);
+        } else {
+            for o in self.menu_popups_of(win) {
+                self.close_win(o, platform);
+            }
+        }
+        if let Some(role) = a.role {
+            if let Some(cmd) = role.edit_command()
+                && self.command(app, cmd, platform)
+            {
+                return;
+            }
+            if a.msg.is_none() {
+                self.role(role, app, a.id, platform);
+                return;
+            }
+        }
+        if let Some(m) = &a.msg {
+            let msg = m.make();
+            self.queue.push_back(match &mapper {
+                Some(map) => map(msg),
+                None => msg,
+            });
+        }
     }
 
     /// Enabled states the kit knows: Edit items by the focused widget,
@@ -744,6 +874,7 @@ impl Core {
             let mut cx = EventCx {
                 tree: &w.tree,
                 node: idx,
+                win,
                 env: &mut env,
                 out: &mut out,
                 platform,
@@ -784,8 +915,12 @@ impl Core {
                 platform.invalidate(win, r);
             }
         }
+        let menu_popup = matches!(self.wins.get(&win).map(|w| &w.kind), Some(WinKind::Popup { kind: PopupKind::Menu { .. }, .. }));
+        if rebuild && menu_popup {
+            self.relayout_popup(win, platform);
+        }
         if let Some(w) = self.wins.get_mut(&win) {
-            if rebuild {
+            if rebuild && !menu_popup {
                 w.dirty = true;
             }
             match capture {
@@ -869,6 +1004,7 @@ impl Core {
                 let mut cx = EventCx {
                     tree: &w.tree,
                     node: i,
+                    win,
                     env: &mut env,
                     out: &mut out,
                     platform: &mut *platform,
@@ -1279,6 +1415,7 @@ impl Core {
             let mut cx = EventCx {
                 tree: &w.tree,
                 node: idx,
+                win,
                 env: &mut env,
                 out: &mut out,
                 platform: &mut *platform,
@@ -1309,35 +1446,6 @@ impl Core {
         }
         if let Some(m) = &a.msg {
             self.queue.push_back(m.make());
-        }
-    }
-
-    /// Item `item` of menu popup `popup` was chosen: close the menus, then
-    /// carry it out (its message through the opener's mappers).
-    fn activate_item(&mut self, popup: WinId, item: usize, platform: &mut dyn Platform) {
-        let Some(w) = self.wins.get(&popup) else { return };
-        let WinKind::Popup { kind: PopupKind::Menu { spec, .. }, .. } = &w.kind else { return };
-        let Some(ItemSpec::Action(a)) = spec.items.get(item) else { return };
-        let (a, mapper) = (a.clone(), w.mapper.clone());
-        let app = self.app_window_for(popup);
-        self.close_menus(popup, platform);
-        if let Some(role) = a.role {
-            if let Some(cmd) = role.edit_command()
-                && self.command(app, cmd, platform)
-            {
-                return;
-            }
-            if a.msg.is_none() {
-                self.role(role, app, a.id, platform);
-                return;
-            }
-        }
-        if let Some(m) = &a.msg {
-            let msg = m.make();
-            self.queue.push_back(match &mapper {
-                Some(map) => map(msg),
-                None => msg,
-            });
         }
     }
 
@@ -1378,12 +1486,9 @@ impl Core {
     }
 
     /// A context menu at `at` in `win`, from the program.
-    pub fn open_context_menu(&mut self, win: WinId, at: Point, mut spec: MenuSpec, platform: &mut dyn Platform) {
-        self.close_menus(win, platform);
-        self.settle_menu(&mut spec);
-        let root = MenuView::element(spec.clone(), self.next_win, false);
+    pub fn open_context_menu(&mut self, win: WinId, at: Point, spec: MenuSpec, platform: &mut dyn Platform) {
         let anchor = Rect::from_origin_size(at, (1.0, 1.0));
-        self.open_popup(win, anchor, Placement::AtPoint, true, PopupKind::Menu { spec, opener: None, bar: None }, root, None, platform);
+        self.show_menu(win, anchor, spec, MenuLook::default(), Placement::AtPoint, None, platform);
     }
 
     /// An Edit command to the focused widget of `win` (or of the key
@@ -1400,6 +1505,7 @@ impl Core {
             let mut cx = EventCx {
                 tree: &w.tree,
                 node: idx,
+                win,
                 env: &mut env,
                 out: &mut out,
                 platform: &mut *platform,
@@ -1449,16 +1555,41 @@ impl Core {
     /// A kit message.
     pub fn kit(&mut self, msg: KitMsg, platform: &mut dyn Platform) {
         match msg {
-            KitMsg::Activate { popup, item } => self.activate_item(popup, item, platform),
-            KitMsg::CloseSubmenus { popup } => {
-                let subs = self.wins.get(&popup).map(|w| w.popups.clone()).unwrap_or_default();
-                for s in subs {
+            KitMsg::MenuChoose { window, node, path } => self.menu_choose(window, node, path, platform),
+            KitMsg::MenuSub { window, node, path, anchor } => self.menu_sub(window, node, path, anchor, platform),
+            KitMsg::MenuCloseSubs { window } => {
+                for s in self.menu_popups_of(window) {
                     self.close_win(s, platform);
+                }
+            }
+            KitMsg::MenuFocusSub { window } => {
+                if let Some(&sub) = self.menu_popups_of(window).last()
+                    && let Some(root) = self.wins.get(&sub).and_then(|w| w.tree.root)
+                {
+                    let down = KeyEvent {
+                        key: Key::Named(NamedKey::ArrowDown),
+                        text: None,
+                        pressed: true,
+                        repeat: false,
+                        code: 0,
+                        modifiers: Modifiers::NONE,
+                        composing: None,
+                    };
+                    self.send(sub, root, &Event::Key(down), platform);
+                }
+            }
+            KitMsg::MenuBack { window } => {
+                let owner = match self.wins.get(&window).map(|w| &w.kind) {
+                    Some(WinKind::Popup { owner, kind: PopupKind::Menu { .. } }) => Some(*owner),
+                    _ => None,
+                };
+                if owner.is_some_and(|o| matches!(self.wins.get(&o).map(|w| &w.kind), Some(WinKind::Popup { kind: PopupKind::Menu { .. }, .. }))) {
+                    self.close_win(window, platform);
                 }
             }
             KitMsg::CloseMenus { window } => self.close_menus(window, platform),
             KitMsg::OpenBarMenu { window, index, anchor } => self.open_bar_menu(window, index, anchor, platform),
-            KitMsg::OpenSubmenu { popup, path, anchor } => self.open_submenu(popup, path, anchor, platform),
+
             KitMsg::AlertChoice { alert, index } => crate::dialogs::alert_chosen(self, alert, index),
             KitMsg::Panel { panel, msg } => crate::dialogs::panel_message(self, panel, msg, platform),
             // The runtime handles these (they need the program).
@@ -1505,7 +1636,7 @@ impl Core {
         let Some(text) = w.tree.nodes[i].common.tooltip.clone() else { return };
         let anchor = w.tree.nodes[i].rect;
         let root = TooltipView::element(&text);
-        let id = self.open_popup(win, anchor, Placement::Below, false, PopupKind::Tooltip { node }, root, None, platform);
+        let id = self.open_popup(win, anchor, Placement::Below, false, PopupKind::Tooltip, root, None, platform);
         if let Some(w) = self.wins.get_mut(&win) {
             w.popups.retain(|p| *p != id);
             w.tooltip_shown = Some(id);
@@ -1575,7 +1706,7 @@ impl Core {
         let popups: Vec<WinId> = self.wins.values().filter(|w| w.is_popup()).map(|w| w.id).collect();
         for p in popups {
             if let Some(w) = self.wins.get(&p)
-                && matches!(w.kind, WinKind::Popup { kind: PopupKind::Menu { .. } | PopupKind::Tooltip { .. }, .. })
+                && matches!(w.kind, WinKind::Popup { kind: PopupKind::Menu { .. } | PopupKind::Tooltip, .. })
             {
                 self.close_win(p, platform);
             }
@@ -1613,7 +1744,4 @@ fn fill(mut el: RawElement) -> RawElement {
     el
 }
 
-/// A colour for the window's background where nothing draws.
-pub(crate) fn window_background(theme: &Theme) -> Color {
-    theme.surface()
-}
+

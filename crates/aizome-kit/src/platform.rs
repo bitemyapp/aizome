@@ -9,6 +9,8 @@ use std::time::Duration;
 use sidestep_ui::{Color, Cursor};
 
 use crate::layout::{Rect, Size};
+use crate::program::Output;
+use sidestep_ui::layer_shell::{Anchors, KeyboardInteractivity, Layer, LayerOptions, Margins};
 
 /// The engine's name for a window (an app's, or a popup).
 pub type WinId = u32;
@@ -36,6 +38,10 @@ pub enum OpenKind {
     /// A popup over `parent`, at `anchor` (the parent's coordinates).
     /// With `grab` it takes the keyboard and pointer while open.
     Popup { parent: WinId, anchor: Rect, placement: Placement, grab: bool },
+    /// A desktop surface (wlr-layer-shell).
+    Layer(LayerOptions),
+    /// The session lock's surface on an output.
+    Lock { output: u32 },
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -75,4 +81,27 @@ pub trait Platform {
     /// Whether the desktop is dark (for the Auto theme).
     fn desktop_dark(&self) -> bool;
     fn waker(&self) -> Waker;
+    fn set_layer(&mut self, id: WinId, change: LayerChange);
+    /// Where the window takes the pointer (none: everywhere).
+    fn set_input_region(&mut self, id: WinId, region: Option<Vec<Rect>>);
+    /// Where the window is opaque (none: nowhere).
+    fn set_opaque_region(&mut self, id: WinId, region: Option<Vec<Rect>>);
+    fn outputs(&self) -> Vec<Output>;
+    fn lock_session(&mut self);
+    fn unlock_session(&mut self);
+    fn is_session_locked(&self) -> bool;
+    /// Ask for an activation token: the engine hears it under the id
+    /// returned.
+    fn request_activation_token(&mut self, app_id: Option<&str>) -> u64;
+}
+
+/// A layer surface's placement, changed while it shows.
+#[derive(Clone, Debug, PartialEq)]
+pub enum LayerChange {
+    Size(Size),
+    Layer(Layer),
+    Anchors(Anchors),
+    ExclusiveZone(i32),
+    Margins(Margins),
+    Keyboard(KeyboardInteractivity),
 }
