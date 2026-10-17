@@ -419,7 +419,7 @@ pub fn dye_for(seed: &str) -> usize {
     (h % 5) as usize
 }
 
-const AVATAR_DYES: [u32; 5] = [0x3d59a1, 0x7aa2f7, 0x24283b, 0x9a6a12, 0x4f7a28];
+const AVATAR_DYES: [u32; 5] = [0x3d59a1, 0x5a7fd6, 0x7247c9, 0x9a6a12, 0x4f7a28];
 
 struct AvatarWidget {
     picture: Option<Image>,

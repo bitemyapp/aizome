@@ -116,6 +116,14 @@ impl Accounts {
         }
     }
 
+    /// Ask for a new password at the account's next login.
+    pub fn require_password_change(&self, user: &User) -> Task<()> {
+        match self {
+            Accounts::Live(u) => u.require_password_change(user),
+            _ => self.sample_update(&user.name, |u| u.password_mode = PasswordMode::SetAtLogin),
+        }
+    }
+
     pub fn set_automatic_login(&self, user: &User, on: bool) -> Task<()> {
         match self {
             Accounts::Live(u) => u.set_automatic_login(user, on),

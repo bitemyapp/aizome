@@ -14,6 +14,7 @@
 //! - [`system`]: the live system and the sample one.
 
 pub mod app;
+pub mod extra;
 pub mod form;
 pub mod instance;
 pub mod listing;

@@ -335,6 +335,13 @@ pub trait Pane: 'static {
         let _ = (entry, cx);
     }
 
+    /// A service the window shares, or one the pane keeps with
+    /// [`PaneCx::wake`], changed: the window views again anyway; this is for
+    /// a pane that keeps something derived from a snapshot.
+    fn system_changed(&mut self, cx: &mut PaneCx<Self::Msg>) {
+        let _ = cx;
+    }
+
     /// Whether the sidebar lists it (a pane for hardware that's absent can
     /// hide; it still opens by `--pane`).
     fn listed(&self, vcx: &ViewCx) -> bool {
@@ -389,6 +396,7 @@ pub trait AnyPane {
     fn focus_entry_any(&mut self, entry: &str, cx: &mut Cx<AppMsg>, shared: &mut Shared);
     fn back_any(&mut self, cx: &mut Cx<AppMsg>, shared: &mut Shared) -> bool;
     fn crumb_any(&self) -> Option<&'static str>;
+    fn system_changed_any(&mut self, cx: &mut Cx<AppMsg>, shared: &mut Shared);
 }
 
 fn wrap<M: Send + Sync + 'static>(pane: &'static str, msg: M) -> AppMsg {
@@ -469,6 +477,11 @@ impl<P: Pane> AnyPane for P {
 
     fn crumb_any(&self) -> Option<&'static str> {
         self.crumb()
+    }
+
+    fn system_changed_any(&mut self, cx: &mut Cx<AppMsg>, shared: &mut Shared) {
+        let id = Pane::id(self);
+        self.system_changed(&mut PaneCx::new(cx, shared, id));
     }
 }
 

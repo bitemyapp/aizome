@@ -278,14 +278,16 @@ impl Shitsurae {
             column![text(name).weight(650.0), text("Account").size(11.0).role(Role::Text3)].spacing(2.0),
         ]
         .spacing(10.0)
-        .align(Align::Center);
+        .align(Align::Center)
+        .width(Fill);
         let users = self.find_pane("users");
         container(
             press(line)
                 .padding([6.0, 8.0])
                 .selected(selected)
                 .on_press_maybe(users.map(AppMsg::Show))
-                .named("Your account"),
+                .named("Your account")
+                .width(Fill),
         )
         .padding([0.0, 8.0, 8.0, 8.0])
         .width(Fill)
@@ -523,7 +525,12 @@ impl Program for Shitsurae {
                     p.update_any(m, cx, &mut self.shared);
                 }
             }
-            AppMsg::SystemChanged => self.refresh_picture(),
+            AppMsg::SystemChanged => {
+                self.refresh_picture();
+                if self.started {
+                    self.panes[self.current].system_changed_any(cx, &mut self.shared);
+                }
+            }
             AppMsg::SettingsOnDisk => self.shared.reread(cx),
             AppMsg::Reload => self.shared.reload(cx),
             AppMsg::ClearStatus(g) => self.shared.clear_status(g),

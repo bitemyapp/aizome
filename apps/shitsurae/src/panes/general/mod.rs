@@ -12,6 +12,7 @@ use crate::widgets::{PressStyle, press, tile};
 
 mod about;
 mod datetime;
+pub use datetime::clock_text;
 mod defaults;
 mod language;
 mod login;
