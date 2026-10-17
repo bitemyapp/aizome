@@ -563,7 +563,7 @@ fn volume_control(io: Io, d: &AudioDevice) -> Element<Msg> {
     };
     let max = if d.volume > 1.0 { MAX_VOLUME as f64 } else { 1.0 };
     row![
-        icon_button(glyph).plain().compact().on_press(Msg::Mute(io, index, !muted)).tooltip(if muted { "Unmute" } else { "Mute" }),
+        icon_button(glyph).plain().compact().on_press(Msg::Mute(io, index, !muted)).tooltip(if muted { "Unmute" } else { "Mute" }).label(if muted { "Unmute" } else { "Mute" }),
         slider(d.volume as f64, 0.0..=max).step(0.01).on_change(move |v| Msg::Volume(io, index, v as f32)).enabled(!muted).width(220.0),
         text(if muted { "Muted".to_owned() } else { percent(d.volume) }).mono().size(11.0).role(Role::Text3).width(44.0),
     ]
@@ -667,7 +667,7 @@ fn app_row(state: &AudioState, s: &AudioStream, rec: bool) -> Row<Msg> {
         line = line.push(dropdown(labels, at).compact().on_select(move |i| Msg::AppDevice(rec, index, ids[i.min(ids.len() - 1)])).width(150.0));
     }
     let muted = s.muted;
-    line = line.push(icon_button(if muted { Icon::VolumeX } else { Icon::Volume2 }).plain().compact().on_press(Msg::AppMute(rec, index, !muted)).tooltip(if muted { "Unmute" } else { "Mute" }));
+    line = line.push(icon_button(if muted { Icon::VolumeX } else { Icon::Volume2 }).plain().compact().on_press(Msg::AppMute(rec, index, !muted)).tooltip(if muted { "Unmute" } else { "Mute" }).label(if muted { "Unmute" } else { "Mute" }));
     line = line.push(slider(s.volume as f64, 0.0..=1.0).step(0.01).on_change(move |v| Msg::AppVolume(rec, index, v as f32)).enabled(s.volume_writable && !muted).width(120.0));
     form::whole(container(line).padding([7.0, 12.0]).width(Fill))
 }

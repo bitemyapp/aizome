@@ -122,7 +122,7 @@ fn main(n: &Network, vcx: &ViewCx, state: &NetworkState) -> Element<Msg> {
         let tail: Element<Msg> = if n.is_scanning() {
             spinner(14.0)
         } else {
-            icon_button(Icon::RefreshCw).plain().compact().on_press(Msg::Scan).tooltip("Look for networks").into()
+            icon_button(Icon::RefreshCw).plain().compact().on_press(Msg::Scan).tooltip("Look for networks").label("Look for networks").into()
         };
         sections.push(section_with_tail(vcx, "Other Networks", tail, mark_first(rows, "networks")));
     }
@@ -209,7 +209,7 @@ fn mark_first(mut rows: Vec<Row<Msg>>, entry: &str) -> Vec<Row<Msg>> {
 }
 
 fn details_button(uuid: &str) -> Element<Msg> {
-    icon_button(Icon::Info).plain().compact().on_press(Msg::Open(Page::Details(uuid.to_owned()))).tooltip("Details").into()
+    icon_button(Icon::Info).plain().compact().on_press(Msg::Open(Page::Details(uuid.to_owned()))).tooltip("Details").label("Details").into()
 }
 
 fn current_row(state: &NetworkState, w: &WifiNetwork) -> Row<Msg> {

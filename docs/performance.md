@@ -370,3 +370,32 @@ older than ten minutes.
   with the desktop colour, 106 ms with a wallpaper (its JPEG decoded on the
   render thread, once per output size). It happens once, at start (or when
   the output changes); the desktop redraws only an icon's rectangle after.
+
+## Shitsurae: Network, Bluetooth, Sound, Displays, Printers
+
+Each pane's typical interaction, over the sample, headlessly at 2× (the
+pane's update, the window's view, layout and diff, and rasterising the
+damage): `apps/shitsurae/tests/budget_hw.rs`, debug build, on a laptop
+busy with other builds (a second run's p95s were up to twice these).
+
+| Interaction | p50 | p95 | max | Redrawn |
+|---|---|---|---|---|
+| Network: the Wi-Fi switch (the networks go, or come back) | 2.94 ms | 3.56 ms | 4.05 ms | 70% |
+| Displays: dragging a display, per pointer move | 0.27 ms | 0.39 ms | 1.20 ms | 5% |
+| Sound: the input meter's tick (12.5 a second while the pane shows) | 0.58 ms | 0.64 ms | 0.95 ms | under 1% |
+| Bluetooth: a device's options opened or closed | 1.91 ms | 2.20 ms | 2.26 ms | 51% |
+
+A drag in the arrangement doesn't view the window again: the widget
+moves the tile itself and redraws only the old and new places of the
+tile and of the dashed outline where it will land (5% of the window
+instead of the whole well, 18%, which took 1.5/4.4 ms p50/p95). The
+input meter is one keyed element, so its tick redraws only itself.
+
+Live, under Aizome's headless compositor at 2× (`aizome --backend
+headless`), `aizome-shitsurae --sample --pane displays` with
+`SIDESTEP_FRAME_STATS=1`, a display dragged with `aizomectl input`:
+total p50 2.2 ms, p95 3.5 ms, max 3.5 ms over the drag and the drop (the
+drop redraws the pane, 31% damage on average).
+
+No exceptions: the Wi-Fi switch and a device's options change much of
+the page, and still fit.

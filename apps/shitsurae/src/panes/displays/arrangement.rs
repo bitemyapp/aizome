@@ -125,6 +125,9 @@ struct Drag {
     moved: bool,
     /// The arrangement's fit when it started (kept while dragging).
     fit: Fit,
+    /// What the last frame drew for the drag (the tile and its landing),
+    /// to redraw only that and what replaces it.
+    shown: Vec<Rect>,
 }
 
 #[derive(Default)]
@@ -330,7 +333,7 @@ impl Widget for Arrangement {
                 let Some(tile) = self.hit(&fit, *pos).cloned() else { return Status::Handled };
                 let r = fit.to_widget(tile.rect);
                 cx.state::<State>().drag =
-                    Some(Drag { name: tile.name.clone(), grab: Point::new(pos.x - r.x0, pos.y - r.y0), at: r.origin(), from: *pos, moved: false, fit });
+                    Some(Drag { name: tile.name.clone(), grab: Point::new(pos.x - r.x0, pos.y - r.y0), at: r.origin(), from: *pos, moved: false, fit, shown: Vec::new() });
                 cx.request_focus();
                 cx.capture_pointer();
                 cx.set_cursor(Cursor::Grabbing);
@@ -347,12 +350,27 @@ impl Widget for Arrangement {
                 if !d.moved && (pos.x - d.from.x).hypot(pos.y - d.from.y) < 4.0 {
                     return Status::Handled;
                 }
+                let home = self.tiles.iter().find(|t| t.name == d.name).map(|t| d.fit.to_widget(t.rect)).unwrap_or_default();
+                let mut old = std::mem::take(&mut d.shown);
+                if !d.moved {
+                    // The tile leaves its place.
+                    old.push(home);
+                }
                 d.moved = true;
-                let tile = self.tiles.iter().find(|t| t.name == d.name).map(|t| d.fit.to_widget(t.rect).size()).unwrap_or_default();
-                let x = (pos.x - d.grab.x).clamp(0.0, (size.width - tile.width).max(0.0));
-                let y = (pos.y - d.grab.y).clamp(0.0, (size.height - tile.height).max(0.0));
+                let x = (pos.x - d.grab.x).clamp(0.0, (size.width - home.width()).max(0.0));
+                let y = (pos.y - d.grab.y).clamp(0.0, (size.height - home.height()).max(0.0));
                 d.at = Point::new(x.round(), y.round());
-                cx.invalidate();
+                let (name, at, fit) = (d.name.clone(), d.at, d.fit);
+                let mut new = vec![Rect::from_origin_size(at, home.size())];
+                if let Some(land) = self.landing(&fit, &name, at) {
+                    new.push(fit.to_widget(land));
+                }
+                cx.state::<State>().drag.as_mut().expect("dragging").shown = new.clone();
+                // Only what moved redraws: the old and new tile and outline,
+                // with room for the shadow, the ring and the dashes.
+                for r in old.into_iter().chain(new) {
+                    cx.invalidate_rect(r.inflate(5.0, 5.0));
+                }
                 Status::Handled
             }
             Event::PointerUp { button: PointerButton::Left, .. } => {

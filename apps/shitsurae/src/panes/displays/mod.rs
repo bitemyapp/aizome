@@ -257,6 +257,10 @@ impl Displays {
 
     /// Write the displays named (and the main display) to `[[outputs]]`.
     fn persist(&mut self, names: &[String], cx: &mut PaneCx<Msg>) {
+        // The sample's displays are made up: they don't go in the file.
+        if cx.sample() {
+            return;
+        }
         let keys = model::config_keys(&self.displays);
         let entries: Vec<(model::ConfigKey, Settings)> = self
             .displays

@@ -652,7 +652,7 @@ fn device_row(p: &Bluetooth, d: &Device) -> Row<Msg> {
         line = line.push(button("Connect").compact().on_press(Msg::Connect(d.path.clone())));
     }
     let open = p.expanded.as_deref() == Some(d.path.as_str());
-    line = line.push(icon_button(if open { Icon::ChevronUp } else { Icon::Info }).plain().compact().on_press(Msg::Expand(Some(d.path.clone()))).tooltip("Options"));
+    line = line.push(icon_button(if open { Icon::ChevronUp } else { Icon::Info }).plain().compact().on_press(Msg::Expand(Some(d.path.clone()))).tooltip("Options").label(format!("Options for {}", d.name)));
     form::whole(press(line).style(PressStyle::Plain).padding([8.0, 12.0]).named(d.name.clone()).width(Fill))
 }
 
