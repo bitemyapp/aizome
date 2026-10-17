@@ -12,6 +12,7 @@ use aizome_kit::{EditorAction, EditorContent, FindRequest, LineStyle};
 struct Sumi {
     content: EditorContent,
     finds: Vec<FindRequest>,
+    clicked: Vec<usize>,
     numbers: bool,
 }
 
@@ -21,11 +22,13 @@ enum Msg {
     Find(FindRequest),
     /// The program moves the caret (found text, Go to Line).
     Goto(usize),
+    /// A click on a `[` (a task's box).
+    Clicked(usize),
 }
 
 impl Sumi {
     fn new(text: &str) -> Sumi {
-        Sumi { content: EditorContent::new(text), finds: Vec::new(), numbers: true }
+        Sumi { content: EditorContent::new(text), finds: Vec::new(), clicked: Vec::new(), numbers: true }
     }
 }
 
@@ -62,11 +65,14 @@ impl Program for Sumi {
             }
             Msg::Find(f) => self.finds.push(f),
             Msg::Goto(at) => self.content.set_selection(aizome_kit::Selection::caret(at)),
+            Msg::Clicked(at) => self.clicked.push(at),
         }
     }
     fn view(&self, _w: WindowKey) -> Element<Msg> {
+        let rope = self.content.rope().clone();
         column![
             text_editor(&self.content)
+                .on_click(move |at, _| (rope.get_char(at) == Some('[')).then_some(Msg::Clicked(at)))
                 .on_action(Msg::Edit)
                 .on_find(Msg::Find)
                 .line_numbers(self.numbers)
@@ -231,4 +237,19 @@ fn the_programs_jumps_are_shown_with_what_comes_before() {
     h.send(Msg::Goto(at));
     h.click(w, Point::new(e.x0 + 60.0, e.y0 + 12.0 + 4.0));
     assert_eq!(h.program().content.cursor_position().0, top);
+}
+
+#[test]
+fn clicks_the_program_takes_leave_the_caret() {
+    let (mut h, w) = open("- [ ] milk\n- [x] eggs");
+    let before = h.program().content.selection();
+    let e = h.find_id(w, "editor").unwrap();
+    // The text starts 44pt in (the gutter); "- " is two characters.
+    let char_w = 7.8;
+    h.click(w, Point::new(e.x0 + 44.0 + 2.0 * char_w + 2.0, e.y0 + 12.0 + 10.0));
+    assert_eq!(h.program().clicked, [2]);
+    assert_eq!(h.program().content.selection(), before, "the caret stayed");
+    h.click(w, Point::new(e.x0 + 44.0 + 6.0 * char_w + 2.0, e.y0 + 12.0 + 10.0));
+    assert_eq!(h.program().clicked, [2], "elsewhere a click places the caret");
+    assert_eq!(h.program().content.selection().head, 6);
 }

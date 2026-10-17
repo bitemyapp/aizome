@@ -18,11 +18,11 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use ropey::Rope;
-use sidestep_ui::{Cursor, Ime, Key, NamedKey, PointerButton, TextLayout, Wrap};
+use sidestep_ui::{Color, Cursor, Ime, Key, Modifiers, NamedKey, PointerButton, TextLayout, Wrap};
 
 use crate::editing::{next_word, prev_word, word_at};
 use crate::editor::{EditorAction, EditorContent, EditorSnapshot, Granularity, Highlighter, Selection};
-use crate::element::{Common, Element, MsgMap, RawElement};
+use crate::element::{AnyMsg, Common, Element, MsgMap, RawElement};
 use crate::hash::{Fx, PaintHasher};
 use crate::layout::{Constraints, Length, Point, Rect, Size, Vec2};
 use crate::text::{Span, TextCache, TextSpec};
@@ -50,12 +50,16 @@ pub enum FindRequest {
     Replace,
 }
 
+/// What a click on a character asks of the program, if anything.
+type ClickFn = std::rc::Rc<dyn Fn(usize, Modifiers) -> Option<AnyMsg>>;
+
 /// Many lines of text: `text_editor(&self.content).on_action(Msg::Edit).line_numbers(true)`.
 pub struct TextEditor<Msg> {
     pub(crate) common: Common,
     snapshot: EditorSnapshot,
     on_action: Option<MsgMap<EditorAction>>,
     on_find: Option<MsgMap<FindRequest>>,
+    on_click: Option<ClickFn>,
     opts: Options,
     _m: PhantomData<fn() -> Msg>,
 }
@@ -79,6 +83,9 @@ struct Options {
     /// Bumped by the program when its highlighter's output changes.
     styles_version: u64,
     padding: f64,
+    /// The text's colour, and the caret's (an editor on a coloured ground).
+    text_color: Option<Color>,
+    caret_color: Option<Color>,
 }
 
 pub fn text_editor<Msg>(content: &EditorContent) -> TextEditor<Msg> {
@@ -87,6 +94,7 @@ pub fn text_editor<Msg>(content: &EditorContent) -> TextEditor<Msg> {
         snapshot: content.snapshot(),
         on_action: None,
         on_find: None,
+        on_click: None,
         opts: Options {
             line_numbers: false,
             wrap: true,
@@ -101,6 +109,8 @@ pub fn text_editor<Msg>(content: &EditorContent) -> TextEditor<Msg> {
             placeholder: None,
             styles_version: 0,
             padding: 12.0,
+            text_color: None,
+            caret_color: None,
         },
         _m: PhantomData,
     }
@@ -117,6 +127,14 @@ impl<Msg: Send + 'static> TextEditor<Msg> {
     /// Sent by the Edit menu's Find items.
     pub fn on_find(mut self, f: impl Fn(FindRequest) -> Msg + 'static) -> Self {
         self.on_find = Some(MsgMap::new(f));
+        self
+    }
+
+    /// A click on a character the program cares about (a task's box, a
+    /// link with ❖): `f(character, modifiers)` gives a message to send
+    /// instead of placing the caret, or `None` to let it place the caret.
+    pub fn on_click(mut self, f: impl Fn(usize, Modifiers) -> Option<Msg> + 'static) -> Self {
+        self.on_click = Some(std::rc::Rc::new(move |at, mods| f(at, mods).map(|m| Box::new(m) as AnyMsg)));
         self
     }
 }
@@ -188,6 +206,19 @@ impl<Msg> TextEditor<Msg> {
         self.opts.padding = points;
         self
     }
+
+    /// The text's colour (else `text2`), for an editor on a ground of its
+    /// own colour (a sticky note).
+    pub fn text_color(mut self, c: Color) -> Self {
+        self.opts.text_color = Some(c);
+        self
+    }
+
+    /// The caret's colour (else `focus`).
+    pub fn caret_color(mut self, c: Color) -> Self {
+        self.opts.caret_color = Some(c);
+        self
+    }
 }
 
 impl<Msg> From<TextEditor<Msg>> for Element<Msg> {
@@ -196,6 +227,7 @@ impl<Msg> From<TextEditor<Msg>> for Element<Msg> {
             snap: e.snapshot,
             on_action: e.on_action,
             on_find: e.on_find,
+            on_click: e.on_click,
             opts: e.opts,
             lines: Vec::new(),
             gutter: 0.0,
@@ -261,6 +293,7 @@ struct EditorWidget {
     snap: EditorSnapshot,
     on_action: Option<MsgMap<EditorAction>>,
     on_find: Option<MsgMap<FindRequest>>,
+    on_click: Option<ClickFn>,
     opts: Options,
     lines: Vec<Laid>,
     gutter: f64,
@@ -302,7 +335,7 @@ impl EditorWidget {
         TextSpec {
             wrap: if self.opts.wrap { Wrap::Words } else { Wrap::None },
             line_height: (spec.size * self.opts.line_height / natural).max(0.5),
-            ..TextSpec::new(spec, t.text2())
+            ..TextSpec::new(spec, self.opts.text_color.unwrap_or(t.text2()))
         }
     }
 
@@ -391,6 +424,10 @@ impl EditorWidget {
                         span.weight = s.weight;
                     }
                     span.italic |= s.italic;
+                    span.mono |= s.mono;
+                    if s.size.is_some() {
+                        span.size = s.size;
+                    }
                     span.underline |= s.underline;
                     span.strikethrough |= s.strikethrough;
                     if s.background.is_some() {
@@ -415,7 +452,7 @@ impl EditorWidget {
         text.hash(&mut fx);
         (selection.clone(), pre.clone(), selects_break, focused).hash(&mut fx);
         for (r, s) in &styled {
-            (r.start, r.end, s.role, s.weight.map(f32::to_bits), s.italic, s.underline, s.strikethrough, s.alpha.map(f32::to_bits)).hash(&mut fx);
+            (r.start, r.end, s.role, s.weight.map(f32::to_bits), s.italic, s.underline, s.strikethrough, s.alpha.map(f32::to_bits), s.mono, s.size.map(f64::to_bits)).hash(&mut fx);
         }
         let key = fx.finish();
         Laid { line, start, y: 0.0, h, layout, text: text.into(), preedit: pre, selection, selects_break, key }
@@ -926,7 +963,7 @@ impl Widget for EditorWidget {
             && let Some(c) = self.caret
             && c.x0 >= self.gutter
         {
-            cx.canvas.fill_rect(c, t.focus());
+            cx.canvas.fill_rect(c, self.opts.caret_color.unwrap_or(t.focus()));
         }
     }
 
@@ -986,6 +1023,14 @@ impl Widget for EditorWidget {
             }
             Event::PointerDown { pos, button: PointerButton::Left, clicks, mods } => {
                 let at = self.hit(*pos);
+                // A click the program takes (a task's box, a link with ❖).
+                if *clicks == 1
+                    && let Some(f) = &self.on_click
+                    && let Some(msg) = f(at, *mods)
+                {
+                    cx.emit_any(msg);
+                    return Status::Handled;
+                }
                 let text = &self.snap.rope;
                 let r = match clicks {
                     2 => {

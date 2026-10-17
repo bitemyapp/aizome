@@ -187,7 +187,10 @@ gutter is the board's: numbers in `faint` right-aligned in a 30pt column,
 14pt from the text, the caret's line's number in `text3` on a 10% `focus`
 band (with a selection too). A selection the program sets (found text, a
 line gone to) is scrolled into view, a third of the way down if it was far
-out of sight.
+out of sight. `.on_click(|char, mods| Option<Msg>)` takes the clicks the program
+cares about (a task's `[ ]`, a link with ❖) instead of placing the caret;
+`.text_color(c)` and `.caret_color(c)` are for an editor on a ground of
+its own colour (a sticky note).
 
 ### Collections
 
