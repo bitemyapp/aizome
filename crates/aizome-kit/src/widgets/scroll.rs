@@ -57,9 +57,27 @@ pub(crate) struct ScrollState {
     /// A bar being dragged (vertical?) and where in its thumb it was taken.
     drag: Option<(bool, f64)>,
     hover_bar: bool,
+    /// What a program last asked to show (`.reveal(..)`).
+    revealed: Option<u64>,
 }
 
 impl ScrollState {
+    /// Scroll so `top..bottom` (down the content) shows, if `what` isn't
+    /// what was shown so before.
+    pub fn reveal_once(&mut self, what: u64, top: f64, bottom: f64) {
+        if self.revealed == Some(what) {
+            return;
+        }
+        self.revealed = Some(what);
+        let v = self.viewport.height;
+        if top < self.offset.y {
+            self.offset.y = top;
+        } else if bottom > self.offset.y + v {
+            self.offset.y = bottom - v;
+        }
+        self.clamp();
+    }
+
     fn max(&self) -> Vec2 {
         Vec2::new((self.content.width - self.viewport.width).max(0.0), (self.content.height - self.viewport.height).max(0.0))
     }
@@ -431,6 +449,7 @@ pub struct List<Msg> {
     type_select: Option<Rc<dyn Fn(usize) -> String>>,
     context: Option<Rc<dyn Fn(usize) -> MenuSpec>>,
     inset: f64,
+    reveal: Option<usize>,
     _m: PhantomData<fn() -> Msg>,
 }
 
@@ -451,6 +470,7 @@ pub fn virtual_list<Msg: 'static, E: Into<Element<Msg>>>(count: usize, row_heigh
         type_select: None,
         context: None,
         inset: 0.0,
+        reveal: None,
         _m: PhantomData,
     }
 }
@@ -470,6 +490,7 @@ pub fn list<Msg>(items: Vec<Element<Msg>>) -> List<Msg> {
         type_select: None,
         context: None,
         inset: 0.0,
+        reveal: None,
         _m: PhantomData,
     }
 }
@@ -515,6 +536,14 @@ impl<Msg> List<Msg> {
     }
 
     /// Room left and right of the rows' selection fills.
+    /// Scroll to show row `row` whenever the row given here changes (a
+    /// search's match, a file just made). The user's scrolling is theirs
+    /// until then.
+    pub fn reveal(mut self, row: usize) -> Self {
+        self.reveal = Some(row);
+        self
+    }
+
     pub fn inset(mut self, points: f64) -> Self {
         self.inset = points;
         self
@@ -538,6 +567,7 @@ impl<Msg> From<List<Msg>> for Element<Msg> {
             type_select: l.type_select,
             context: l.context,
             inset: l.inset,
+            reveal: l.reveal,
             shown: 0..0,
             width: 0.0,
         };
@@ -564,6 +594,7 @@ struct ListWidget {
     type_select: Option<Rc<dyn Fn(usize) -> String>>,
     context: Option<Rc<dyn Fn(usize) -> MenuSpec>>,
     inset: f64,
+    reveal: Option<usize>,
     shown: std::ops::Range<usize>,
     width: f64,
 }
@@ -654,6 +685,9 @@ impl Widget for ListWidget {
         st.viewport = size;
         st.content = Size::new(width, content_h);
         st.clamp();
+        if let Some(r) = self.reveal {
+            st.reveal_once(r as u64, r as f64 * rh, (r + 1) as f64 * rh);
+        }
         let off = st.offset.y;
         let first = ((off / rh).floor().max(0.0) as usize).min(n);
         let last = (((off + size.height) / rh).ceil().max(0.0) as usize).min(n);

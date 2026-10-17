@@ -200,6 +200,7 @@ pub struct Table<Msg> {
     multi: bool,
     type_select: Option<Rc<dyn Fn(usize) -> String>>,
     context: Option<Rc<dyn Fn(usize) -> MenuSpec>>,
+    reveal: Option<usize>,
     _m: PhantomData<fn() -> Msg>,
 }
 
@@ -220,11 +221,18 @@ pub fn table<Msg: 'static, E: Into<Element<Msg>>>(columns: Vec<Column>, rows: us
         multi: false,
         type_select: None,
         context: None,
+        reveal: None,
         _m: PhantomData,
     }
 }
 
 impl<Msg: Send + 'static> Table<Msg> {
+    /// Scroll to show row `row` whenever the row given here changes.
+    pub fn reveal(mut self, row: usize) -> Self {
+        self.reveal = Some(row);
+        self
+    }
+
     pub fn selected(mut self, rows: impl IntoIterator<Item = usize>) -> Self {
         self.selected = rows.into_iter().collect();
         self.selected.sort_unstable();
@@ -292,6 +300,7 @@ impl<Msg> From<Table<Msg>> for Element<Msg> {
             multi: t.multi,
             type_select: t.type_select,
             context: t.context,
+            reveal: t.reveal,
             widths: Vec::new(),
             shown: 0..0,
             size: Size::ZERO,
@@ -325,6 +334,7 @@ struct TableWidget {
     widths: Vec<f64>,
     shown: std::ops::Range<usize>,
     size: Size,
+    reveal: Option<usize>,
 }
 
 const CELL_PAD: f64 = 8.0;
@@ -391,6 +401,9 @@ impl Widget for TableWidget {
         st.viewport = Size::new(size.width, body_h);
         st.content = Size::new(content_w, self.count as f64 * rh);
         st.clamp();
+        if let Some(r) = self.reveal {
+            st.reveal_once(r as u64, r as f64 * rh, (r + 1) as f64 * rh);
+        }
         let (offx, offy) = (st.offset.x, st.offset.y);
         let first = ((offy / rh).floor().max(0.0) as usize).min(self.count);
         let last = (((offy + body_h) / rh).ceil().max(0.0) as usize).min(self.count);
@@ -660,6 +673,7 @@ pub struct TreeView<Msg> {
     multi: bool,
     row_height: Option<f64>,
     context: Option<Rc<dyn Fn(u64) -> MenuSpec>>,
+    reveal: Option<u64>,
     _m: PhantomData<fn() -> Msg>,
 }
 
@@ -677,6 +691,7 @@ pub fn tree<Msg>(roots: impl Into<Arc<Vec<TreeItem>>>) -> TreeView<Msg> {
         multi: false,
         row_height: None,
         context: None,
+        reveal: None,
         _m: PhantomData,
     }
 }
@@ -727,6 +742,13 @@ impl<Msg> TreeView<Msg> {
         self.row_height = Some(h);
         self
     }
+
+    /// Scroll to show the item `id` (if its branches are open) whenever
+    /// the id given here changes.
+    pub fn reveal(mut self, id: u64) -> Self {
+        self.reveal = Some(id);
+        self
+    }
 }
 
 impl<Msg> From<TreeView<Msg>> for Element<Msg> {
@@ -741,6 +763,7 @@ impl<Msg> From<TreeView<Msg>> for Element<Msg> {
             multi: t.multi,
             row_height: t.row_height.unwrap_or(0.0),
             context: t.context,
+            reveal: t.reveal,
             rows: Vec::new(),
             selected_rows: Vec::new(),
             shown: 0..0,
@@ -776,6 +799,7 @@ struct TreeWidget {
     multi: bool,
     row_height: f64,
     context: Option<Rc<dyn Fn(u64) -> MenuSpec>>,
+    reveal: Option<u64>,
     rows: Vec<Row>,
     selected_rows: Vec<usize>,
     shown: std::ops::Range<usize>,
@@ -890,6 +914,11 @@ impl Widget for TreeWidget {
         st.viewport = size;
         st.content = Size::new(size.width, self.rows.len() as f64 * rh);
         st.clamp();
+        if let Some(id) = self.reveal
+            && let Some(r) = self.rows.iter().position(|r| r.id == id)
+        {
+            st.reveal_once(id, r as f64 * rh, (r + 1) as f64 * rh);
+        }
         let off = st.offset.y;
         let first = ((off / rh).floor().max(0.0) as usize).min(self.rows.len());
         let last = (((off + size.height) / rh).ceil().max(0.0) as usize).min(self.rows.len());

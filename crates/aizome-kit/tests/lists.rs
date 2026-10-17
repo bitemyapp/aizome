@@ -13,17 +13,19 @@ struct Files {
     selected: Vec<usize>,
     opened: Vec<usize>,
     views: Cell<usize>,
+    reveal: Option<usize>,
 }
 
 #[derive(Clone, Debug)]
 enum Msg {
     Select(Vec<usize>),
     Open(usize),
+    Reveal(usize),
 }
 
 impl Files {
     fn new(n: usize) -> Files {
-        Files { names: std::rc::Rc::new((0..n).map(|i| format!("file-{i:05}.txt")).collect()), selected: Vec::new(), opened: Vec::new(), views: Cell::new(0) }
+        Files { names: std::rc::Rc::new((0..n).map(|i| format!("file-{i:05}.txt")).collect()), selected: Vec::new(), opened: Vec::new(), views: Cell::new(0), reveal: None }
     }
 }
 
@@ -39,15 +41,21 @@ impl Program for Files {
         match msg {
             Msg::Select(s) => self.selected = s,
             Msg::Open(i) => self.opened.push(i),
+            Msg::Reveal(i) => self.reveal = Some(i),
         }
     }
     fn view(&self, _w: WindowKey) -> Element<Msg> {
         self.views.set(self.views.get() + 1);
         let names = self.names.clone();
         let types = self.names.clone();
-        virtual_list(self.names.len(), 24.0, move |i| {
+        let list = virtual_list(self.names.len(), 24.0, move |i| {
             aizome_kit::row![icon(Icon::File).size(14.0), text(names[i].clone())].spacing(8.0).padding([0.0, 10.0])
-        })
+        });
+        let list = match self.reveal {
+            Some(r) => list.reveal(r),
+            None => list,
+        };
+        list
         .selected(self.selected.iter().copied())
         .on_select(Msg::Select)
         .on_activate(Msg::Open)
@@ -210,4 +218,18 @@ fn a_selection_without_the_focus_keeps_its_text_readable() {
     h.focus_window(w, true);
     let (_, light) = extremes(&mut h, w, row);
     assert!(light > 235, "focused again, the marks are light again ({light})");
+}
+
+#[test]
+fn a_program_reveals_a_row_when_it_names_another() {
+    let mut h = Harness::new(Files::new(10_000));
+    let w = h.window();
+    h.send(Msg::Reveal(5000));
+    assert!(h.texts(w).iter().any(|t| t == "file-05000.txt"), "scrolled to it");
+    // The user scrolls away; viewing again with the same row leaves them be.
+    h.scroll(w, Point::new(100.0, 100.0), Vec2::new(0.0, -2000.0));
+    h.send(Msg::Select(vec![]));
+    assert!(!h.texts(w).iter().any(|t| t == "file-05000.txt"), "still where the user scrolled");
+    h.send(Msg::Reveal(20));
+    assert!(h.texts(w).iter().any(|t| t == "file-00020.txt"), "scrolled back up to it");
 }
