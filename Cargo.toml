@@ -1,7 +1,8 @@
 [workspace]
 resolver = "3"
-members = ["crates/*"]
-# Add "apps/*" once the first app exists (an empty glob is an error).
+# Apps join by name once they have a manifest: an app directory without
+# Cargo.toml would break an "apps/*" glob, and every build, for everyone.
+members = ["crates/*", "apps/yukimi", "apps/kura"]
 
 [workspace.package]
 version = "0.1.0"
