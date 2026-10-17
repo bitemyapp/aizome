@@ -148,3 +148,21 @@ fn adding_a_user_in_the_sample() {
     assert_eq!(kei.real_name, "Kei Tanaka");
     assert!(h.texts(w).iter().any(|t| t == "Kei Tanaka"));
 }
+
+#[test]
+fn a_command_of_ones_own_gets_keys() {
+    use aizome_kit::sidestep_ui::{Key, Modifiers};
+    let (mut h, path) = common::open("command", "keyboard.commands");
+    let w = h.window();
+    assert!(h.click_text(w, "Add a Command…"));
+    let s = h.program().sheet_window().expect("the sheet");
+    h.type_text(s, "foot -e htop");
+    let keys = h.find_id(s, "command-keys").expect("the keys field");
+    h.click(s, keys.center());
+    h.key(s, Key::Character("t".into()), Modifiers::SUPER | Modifiers::ALT);
+    h.save_png(w, common::shots_dir().join("command-sheet.png"), 1.0);
+    assert!(h.click_text(s, "Add"));
+    h.program().shared.flush();
+    let saved = std::fs::read_to_string(&path).unwrap();
+    assert!(saved.contains("\"Alt+Super+T\" = \"spawn foot -e htop\""), "{saved}");
+}

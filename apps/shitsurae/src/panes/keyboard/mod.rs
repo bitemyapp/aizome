@@ -79,6 +79,14 @@ pub enum Tab {
     Shortcuts,
 }
 
+/// A command of the user's own being given keys.
+#[derive(Clone, Debug, Default)]
+pub struct CommandSheet {
+    pub command: String,
+    pub chord: Option<Chord>,
+    pub error: Option<String>,
+}
+
 #[derive(Default)]
 pub struct Keyboard {
     tab: Tab,
@@ -88,6 +96,8 @@ pub struct Keyboard {
     picker: Option<(String, Option<usize>)>,
     /// The action whose shortcut is being recorded.
     recording: Option<String>,
+    /// The sheet for a command of the user's own, while it's open.
+    command: Option<CommandSheet>,
     trial: String,
 }
 
@@ -117,6 +127,13 @@ pub enum Msg {
     Reset(String),
     RestoreDefaults,
     RestoreConfirmed,
+    AddCommand,
+    CommandText(String),
+    CommandChord(Chord),
+    CommandClear,
+    CommandCancel,
+    CommandSave,
+    RemoveCommand(String),
 }
 
 /// What Caps Lock can be, and the option that makes it so.
@@ -334,19 +351,26 @@ impl Keyboard {
             out.push(vcx.section(sec.title, rows));
         }
         let custom: Vec<(Chord, String)> = map.iter().filter(|(_, a)| a.starts_with("spawn ")).map(|(c, a)| (c.clone(), a.clone())).collect();
-        if !custom.is_empty() {
-            let rows = custom
-                .into_iter()
-                .map(|(c, a)| {
-                    let mut caps = row![].spacing(3.0);
-                    for g in c.glyphs() {
-                        caps = caps.push(keycap(g));
-                    }
-                    form::row(a.trim_start_matches("spawn ").to_owned(), caps).compact().help("A command of your own, from settings.toml")
-                })
-                .collect();
-            out.push(vcx.section("Your Commands", rows));
-        }
+        let mut rows: Vec<form::Row<Msg>> = custom
+            .into_iter()
+            .map(|(c, a)| {
+                let mut caps = row![].spacing(3.0).align(Align::Center);
+                for g in c.glyphs() {
+                    caps = caps.push(keycap(g));
+                }
+                caps = caps.push(space(6.0)).push(icon_button(Icon::Minus).toolbar().on_press(Msg::RemoveCommand(c.to_config())).tooltip("Remove"));
+                form::row(a.trim_start_matches("spawn ").to_owned(), caps).leading(icon(Icon::SquareTerminal).size(16.0).role(Role::Text3)).compact()
+            })
+            .collect();
+        rows.push(
+            form::whole(
+                container(row![button("Add a Command…").icon(Icon::Plus).on_press(Msg::AddCommand), spacer()].width(Fill))
+                    .padding([8.0, form::INSET])
+                    .width(Fill),
+            )
+            .entry("commands"),
+        );
+        out.push(vcx.section_with("Your Commands", rows, Some("Programs of your own on keys of their own: a terminal on ❖⌥T, a screenshot tool, a script.".into())));
         out.push(
             row![
                 spacer(),
@@ -356,6 +380,35 @@ impl Keyboard {
             .into(),
         );
         out
+    }
+
+    fn command_view(&self, c: &CommandSheet) -> Element<Msg> {
+        let mut caps = row![].spacing(3.0).align(Align::Center);
+        match &c.chord {
+            Some(ch) => {
+                for g in ch.glyphs() {
+                    caps = caps.push(keycap(g));
+                }
+            }
+            None => caps = caps.push(text("No keys yet").role(Role::Text3)),
+        }
+        column![
+            text("A Command on Keys of Its Own").size(15.0).weight(650.0),
+            form::note("What to run, as you would type it in a terminal, and the keys that run it."),
+            text_field(&c.command).mono().placeholder("foot -e htop").on_change(Msg::CommandText).id("command-text").width(Fill),
+            row![record::recorder(Msg::CommandChord, Msg::CommandCancel, Msg::CommandClear).id("command-keys"), caps].spacing(10.0).align(Align::Center),
+            text(c.error.clone().unwrap_or_default()).size(11.0).role(Role::Danger),
+            row![
+                spacer(),
+                button("Cancel").cancel().on_press(Msg::CommandCancel),
+                button("Add").primary().default().enabled(!c.command.trim().is_empty() && c.chord.is_some()).on_press(Msg::CommandSave),
+            ]
+            .spacing(8.0)
+            .width(Fill),
+        ]
+        .spacing(10.0)
+        .width(420.0)
+        .into()
     }
 
     fn picker_view(&self) -> Element<Msg> {
@@ -439,6 +492,7 @@ impl Pane for Keyboard {
             SettingEntry::new("compose", "Compose key").keywords(&["accents", "special characters", "multi key"]),
             SettingEntry::new("numlock", "Num Lock on at start").keywords(&["numpad", "keypad"]),
             SettingEntry::new("shortcuts", "Keyboard shortcuts").keywords(&["hotkeys", "bindings", "keys"]),
+            SettingEntry::new("commands", "Commands on keys of your own").keywords(&["custom shortcut", "launch", "run a program", "spawn"]),
         ];
         for s in keys::sections(4) {
             for (a, label) in s.actions {
@@ -467,7 +521,7 @@ impl Pane for Keyboard {
     }
 
     fn focus_entry(&mut self, entry: &str, _cx: &mut PaneCx<Msg>) {
-        self.tab = if entry.starts_with("shortcut") { Tab::Shortcuts } else { Tab::Typing };
+        self.tab = if entry.starts_with("shortcut") || entry == "commands" { Tab::Shortcuts } else { Tab::Typing };
     }
 
     fn update(&mut self, msg: Msg, cx: &mut PaneCx<Msg>) {
@@ -607,6 +661,64 @@ impl Pane for Keyboard {
                 .destructive(),
             ),
             Msg::RestoreConfirmed => cx.change(|s| s.keys.bindings.clear()),
+            Msg::AddCommand => {
+                self.command = Some(CommandSheet::default());
+                cx.open_sheet();
+                cx.focus("command-text");
+            }
+            Msg::CommandText(t) => {
+                if let Some(c) = &mut self.command {
+                    c.command = t;
+                    c.error = None;
+                }
+            }
+            Msg::CommandChord(chord) => {
+                if let Some(c) = &mut self.command {
+                    c.chord = Some(chord);
+                    c.error = None;
+                }
+            }
+            Msg::CommandClear => {
+                if let Some(c) = &mut self.command {
+                    c.chord = None;
+                }
+            }
+            Msg::CommandCancel => {
+                self.command = None;
+                cx.close_sheet();
+            }
+            Msg::CommandSave => {
+                let Some(c) = &mut self.command else { return };
+                let command = c.command.trim().to_owned();
+                let Some(chord) = c.chord.clone() else {
+                    c.error = Some("Press the keys for it in the field".into());
+                    return;
+                };
+                if !chord.has_modifier() && !chord.stands_alone() {
+                    c.error = Some("A shortcut needs ❖, ⌃ or ⌥ (or a function key)".into());
+                    return;
+                }
+                let map = keys::effective(&cx.settings().keys.bindings);
+                if let Some(other) = map.get(&chord) {
+                    c.error = Some(format!("{} is taken ({other}): choose other keys", chord.glyphs().concat()));
+                    return;
+                }
+                self.command = None;
+                cx.close_sheet();
+                cx.change(|s| {
+                    let mut map = keys::effective(&s.keys.bindings);
+                    map.insert(chord, format!("spawn {command}"));
+                    s.keys.bindings = keys::overrides_for(&map);
+                });
+            }
+            Msg::RemoveCommand(chord) => {
+                let Some(chord) = Chord::parse(&chord) else { return };
+                cx.change(|s| {
+                    let mut map = keys::effective(&s.keys.bindings);
+                    map.remove(&chord);
+                    s.keys.bindings = keys::overrides_for(&map);
+                });
+            }
         }
     }
 
@@ -627,6 +739,9 @@ impl Pane for Keyboard {
     }
 
     fn sheet(&self, _vcx: &ViewCx) -> Option<Element<Msg>> {
-        self.picker.as_ref().map(|_| self.picker_view())
+        if self.picker.is_some() {
+            return Some(self.picker_view());
+        }
+        self.command.as_ref().map(|c| self.command_view(c))
     }
 }
