@@ -132,3 +132,25 @@ On the udev backend frames are paced by vblank: a frame waits for the
 previous one's scan-out rather than being dropped, and the CPU cost per
 frame is the same as above (DrmCompositor also puts suitable buffers on
 planes for direct scan-out, which only lowers it).
+
+## Tokei (Clock)
+
+A clock's tick is the typical interaction: once a second the program
+reads the time, views the window again and diffs it, and only the digits
+that changed redraw, because every character of a clock is its own
+keyed element in tabular IBM Plex Mono (`widgets::digits`): 21:42:08 →
+21:42:09 damages one 31 × 69pt cell, and a new minute the big clock's
+last four cells and each city's minute (under 8% of the window; checked
+by `a_tick_redraws_only_the_digits_that_changed`).
+
+| Interaction | p50 | p95 | max | |
+|---|---|---|---|---|
+| World clock tick (4 cities) | 0.22 ms | 0.41 ms | 0.63 ms | `tests/tokei.rs`, `a_tick_fits_the_frame_budget`, at 2×, 117 ticks |
+| Stopwatch frame (25 a second, while it runs and shows) | 0.16 ms | 0.28 ms | 0.32 ms | ″, 97 frames |
+
+Live, under headless sway at 2× with `SIDESTEP_FRAME_STATS=1`, the world
+clock idling: a frame a second, total p50 0.14 ms (the first frame, the
+whole window, took 5.4 ms; that's opening, not a tick).
+
+The timer's ring is drawn in a thousand steps, so it redraws when a step
+passes rather than on every tick. No exceptions.

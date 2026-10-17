@@ -217,7 +217,7 @@ impl Tokei {
             now: clock.now(),
             mono: clock.mono(),
             clock,
-            local: TimeZone::system(),
+            local: crate::clock::local_zone(),
             h24,
             places: saved.places,
             selected_place: None,
@@ -269,7 +269,7 @@ impl Tokei {
 
     /// The local zone's city: `Berlin` for Europe/Berlin.
     pub fn local_name(&self) -> String {
-        self.local.iana_name().map(|n| n.rsplit('/').next().unwrap_or(n).replace('_', " ")).unwrap_or_else(|| "Local".into())
+        crate::clock::zone_city(&self.local).unwrap_or_else(|| "Here".into())
     }
 
     /// Read the clock, and ask for the next tick on the next second.

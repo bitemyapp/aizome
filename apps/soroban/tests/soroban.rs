@@ -225,8 +225,12 @@ fn pictures(h: &mut Harness<Soroban>, name: &str) {
     let w = h.window();
     // Typed keys' flashes over.
     h.advance(Duration::from_millis(300));
-    assert_golden(h, w, golden(name), 1.0);
     h.save_png(w, Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("{name}@2x.png")), 2.0);
+    if !h.theme().has_ui_font() {
+        eprintln!("skipping the golden {name}: Archivo isn't installed (set AIZOME_FONT_DIR=~/work/.aizome-fonts)");
+        return;
+    }
+    assert_golden(h, w, golden(name), 1.0);
 }
 
 #[test]

@@ -35,7 +35,7 @@ fn main() {
         Some("--sync") => {
             let list = alarms::load(&alarms::alarms_path());
             let mut s = scheduler();
-            let errors = alarms::sync(s.as_mut(), &list, jiff::Timestamp::now(), &jiff::tz::TimeZone::system());
+            let errors = alarms::sync(s.as_mut(), &list, jiff::Timestamp::now(), &aizome_tokei::clock::local_zone());
             for e in &errors {
                 eprintln!("{e}");
             }

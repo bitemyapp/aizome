@@ -56,6 +56,32 @@ pub fn advance(cell: &Rc<Cell<(Timestamp, Duration)>>, d: Duration) {
     cell.set((t.checked_add(span).unwrap_or(t), m + d));
 }
 
+/// The zone here, with its IANA name where it can be found: `$TZ`, then
+/// the zone `/etc/localtime` links to (NixOS links it into the store,
+/// where jiff doesn't know the name), then the system's as jiff reads it.
+pub fn local_zone() -> TimeZone {
+    let named = |name: &str| TimeZone::get(name.trim_start_matches(':')).ok();
+    if let Some(tz) = std::env::var("TZ").ok().filter(|v| !v.is_empty()).and_then(|v| named(&v)) {
+        return tz;
+    }
+    if let Ok(target) = std::fs::read_link("/etc/localtime").or_else(|_| std::fs::canonicalize("/etc/localtime")) {
+        let t = target.to_string_lossy();
+        if let Some(tz) = t.split_once("zoneinfo/").and_then(|(_, name)| named(name)) {
+            return tz;
+        }
+    }
+    TimeZone::system()
+}
+
+/// The city a zone is named for: `Berlin` for `Europe/Berlin`.
+pub fn zone_city(tz: &TimeZone) -> Option<String> {
+    let name = tz.iana_name()?;
+    if name == "UTC" || name.starts_with("Etc/") {
+        return Some(name.to_owned());
+    }
+    Some(name.rsplit('/').next().unwrap_or(name).replace('_', " "))
+}
+
 /// How light it is somewhere.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Daylight {
