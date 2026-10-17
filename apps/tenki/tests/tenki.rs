@@ -352,6 +352,16 @@ fn goldens() {
         h.type_text(w, "Chicago");
         h.advance(Duration::from_millis(300));
         pictures(&mut h, &format!("search-{tname}"));
+        // A place being dragged up the list.
+        h.named(w, NamedKey::Escape, Modifiers::NONE);
+        let from = h.find(w, "Reykjavík").unwrap().center();
+        h.press(w, from, aizome_kit::sidestep_ui::PointerButton::Left, 1);
+        for dy in [10.0, 30.0, 52.0, 64.0] {
+            h.move_to(w, Point::new(from.x, from.y - dy));
+        }
+        pictures(&mut h, &format!("drag-{tname}"));
+        h.release(w, Point::new(from.x, from.y - 64.0), aizome_kit::sidestep_ui::PointerButton::Left);
+        assert_eq!(names(&h), ["Tokyo", "Reykjavík", "Chicago"]);
         // Settings, over the window.
         h.named(w, NamedKey::Escape, Modifiers::NONE);
         h.command(w, ',');

@@ -238,7 +238,7 @@ fn location_banner() -> Element<Msg> {
     .width(Fill);
     container(
         row![
-            icon(Icon::LocateFixed).size(22.0).role(Role::Focus),
+            icon(Icon::LocateFixed).size(22.0).role(Role::Warning),
             words,
             button("Not Now").on_press(Msg::DeclineLocation),
             button("Use My Location").primary().on_press(Msg::AllowLocation),
