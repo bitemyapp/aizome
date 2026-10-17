@@ -12,6 +12,7 @@ pub mod launch;
 pub mod look;
 pub mod menubar;
 pub mod menus;
+pub mod mpris;
 pub mod notifications;
 pub mod palette;
 pub mod pam;

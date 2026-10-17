@@ -23,7 +23,7 @@ use crate::apps::server::{Server, ServerEvent};
 use crate::clock::Local;
 use crate::ipc::{Ipc, IpcEvent};
 use crate::launch::Launch;
-use crate::menubar::{BarModel, BarMsg, Slot, Tray};
+use crate::menubar::{BarModel, BarMsg, Slot, Tray, TrayWidget};
 use crate::menus::build;
 use crate::menus::model::Menu as ShellMenu;
 use crate::systray::meters::Reading;
@@ -49,6 +49,9 @@ pub enum Msg {
     Bar(WindowKey, BarMsg),
     Deskbar(crate::deskbar::DeskbarMsg),
     Palette(crate::palette::PaletteEvent),
+    Panel(crate::systray::panels::PanelMsg),
+    /// What's playing, read on a thread.
+    Media(Option<crate::systray::panels::Media>),
     Note(crate::notifications::server::NoteEvent),
     /// The bar's notification line has shown long enough.
     BannerDone(u32),
@@ -73,6 +76,7 @@ pub enum Surface {
     Desktop { output: u32 },
     Deskbar,
     Palette,
+    Panel,
 }
 
 /// An output and the shell's surfaces on it.
@@ -142,6 +146,11 @@ pub struct Shell {
     pub theme_day: bool,
     /// The text selected in the focused app, for Services.
     pub selection: Option<String>,
+    pub panel: Option<crate::systray::glue::OpenPanel>,
+    pub panel_ui: crate::systray::glue::PanelUi,
+    /// Panels to show instead of the system's (tests and pictures).
+    pub panels_fixture: Option<crate::systray::glue::Fixture>,
+    pub media: Option<crate::systray::panels::Media>,
     pub(crate) deskbar_size: Option<aizome_kit::Size>,
     pub(crate) icons: HashMap<String, Option<aizome_kit::Image>>,
     /// The primary bar's Desks, by where they are across it.
@@ -190,6 +199,10 @@ impl Shell {
             settings_list: Vec::new(),
             theme_day: false,
             selection: None,
+            panel: None,
+            panel_ui: Default::default(),
+            panels_fixture: None,
+            media: None,
             deskbar_size: None,
             icons: HashMap::new(),
             desk_strip: Vec::new(),
@@ -265,6 +278,9 @@ impl Shell {
                 None => self.screens.push(Screen { output: o, bar: None, desktop: None }),
             }
         }
+        // The Deskbar first: surfaces of one layer stack in the order they
+        // open, and the bar's menus and panels show over what's under it.
+        self.sync_deskbar(cx);
         for i in 0..self.screens.len() {
             let id = self.screens[i].output.id;
             if self.screens[i].bar.is_none() {
@@ -313,7 +329,7 @@ impl Shell {
         BarModel {
             app_name,
             menus: menus.iter().map(|m| m.title.clone()).collect(),
-            open: None,
+            open: self.panel.as_ref().filter(|p| Some(p.bar) == screen.bar).map(|p| Slot::Tray(p.widget)),
             desks: self.wm.desks.clone(),
             renaming: self.renaming.clone(),
             tray: self.tray.clone(),
@@ -360,7 +376,13 @@ impl Shell {
                 let anchor = Rect::new(rect.x0, rect.y0, rect.x1, crate::menubar::HEIGHT - 1.0);
                 self.show_menu(win, anchor, menu, MenuStyle::below(), cx);
             }
-            Slot::Tray(_) | Slot::Apps => {}
+            Slot::Tray(w) => {
+                if w == TrayWidget::Sound && self.opts.live {
+                    cx.spawn(|| Msg::Media(crate::mpris::fetch()));
+                }
+                self.toggle_panel(win, w, rect, cx);
+            }
+            Slot::Apps => self.run(Action::SetDeskbarCollapsed(false), cx),
         }
     }
 
@@ -762,6 +784,8 @@ impl Program for Shell {
             Msg::Bar(w, m) => self.bar(w, m, cx),
             Msg::Deskbar(m) => self.deskbar_msg(m, cx),
             Msg::Palette(e) => self.palette_event(e, cx),
+            Msg::Panel(m) => self.panel_msg(m, cx),
+            Msg::Media(m) => self.media = m,
             Msg::Note(e) => self.take_note(e, cx),
             Msg::BannerDone(id) => self.banner_done(id, cx),
             Msg::Nothing => {}
@@ -789,6 +813,10 @@ impl Program for Shell {
                 }
                 _ => aizome_kit::space(0.0),
             },
+            Some(Surface::Panel) => match &self.panel {
+                Some(p) => crate::systray::panels::view(&self.panel_data(p.widget)).map(Msg::Panel),
+                None => aizome_kit::space(0.0),
+            },
             None => aizome_kit::space(0.0),
         }
     }
@@ -809,6 +837,9 @@ impl Program for Shell {
     }
 
     fn close_requested(&mut self, window: WindowKey, _cx: &mut Cx<Msg>) -> bool {
+        if self.panel.as_ref().is_some_and(|p| p.window == window) {
+            self.panel = None;
+        }
         // A layer the compositor took away (its output went): forget it; it's
         // opened again when the outputs change.
         if let Some(s) = self.surfaces.remove(&window) {
@@ -865,6 +896,7 @@ impl Shell {
     /// geometry drags need.
     pub fn after_update(&mut self, cx: &mut Cx<Msg>) {
         self.sync_deskbar(cx);
+        self.sync_panel(cx);
         if let Some(screen) = self.primary().cloned() {
             let model = self.bar_model(&screen);
             let theme = cx.theme().clone();
