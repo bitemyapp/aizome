@@ -167,7 +167,7 @@ impl Program for Annai {
     }
 
     fn view(&self, _window: WindowKey) -> Element<Msg> {
-        let scene = canvas(self.art(), |c, b, art, theme| art::paint(c, b, art, theme))
+        let scene = canvas(self.art(), art::paint)
             .on_event(scene_event)
             .focusable()
             .focus_ring(FocusRing::Never)

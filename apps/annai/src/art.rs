@@ -455,7 +455,7 @@ fn tabs(c: &mut Canvas, theme: &Theme, t: f64) {
     frame(c, theme, a, true, true);
     tab(c, theme, a.x0, a.y0, "notes.md", false);
     tab(c, theme, (b_dest.x + slide).round(), a.y0, "Terminal", true);
-    let shift = t >= 3000.0 && t < 5300.0;
+    let shift = (3000.0..5300.0).contains(&t);
     let p = Point::new(b_dest.x + slide + 30.0, a.y0 - TAB / 2.0);
     if shift {
         keycap(c, theme, Rect::new(p.x + 16.0, p.y + 16.0, p.x + 42.0, p.y + 42.0), "⇧", true);
@@ -475,7 +475,7 @@ fn menus(c: &mut Canvas, theme: &Theme, t: f64) {
     let start = Point::new(470.0, 220.0);
     let at = Point::new(232.0, 58.0);
     let p = lerp_pt(start, at, seg(t, 0.0, 900.0));
-    let open = t >= 1250.0 && t < 4200.0;
+    let open = (1250.0..4200.0).contains(&t);
     let view_lit = t >= 1800.0;
     let sub_open = t >= 2000.0;
     let tear = seg(t, 3300.0, 4200.0);
@@ -549,7 +549,7 @@ fn palette(c: &mut Canvas, theme: &Theme, t: f64) {
     } else {
         text_mid(c, theme, typed, qx, qy, ui(16.0, 400.0), theme.text())
     };
-    if (t / 500.0) as u32 % 2 == 0 || typed.len() < 3 {
+    if ((t / 500.0) as u32).is_multiple_of(2) || typed.len() < 3 {
         c.fill_rect(Rect::new(qx + tw + 1.0, qy - 9.0, qx + tw + 2.5, qy + 9.0), theme.focus());
     }
     let ctx = "in Shashin · IMG_2.jpg";
@@ -641,7 +641,8 @@ fn desks(c: &mut Canvas, theme: &Theme, t: f64) {
     shadow(c, theme, db);
     c.fill_rect(db, theme.chrome());
     draw::border(c, db, theme.bevel_lo(), 1.0);
-    let apps: [(&str, &str, &[(&str, &str)]); 2] = [
+    type App<'a> = (&'a str, &'a str, &'a [(&'a str, &'a str)]);
+    let apps: [App; 2] = [
         ("Hako", "2", &[("Pictures", ""), ("Downloads", "desk 2")]),
         ("Terminal", "2", &[("cargo test", "stack"), ("sekka", "hidden")]),
     ];
@@ -692,8 +693,7 @@ fn desks(c: &mut Canvas, theme: &Theme, t: f64) {
     } else {
         // Desks, by the keys.
         let lit = [3500.0, 5000.0, 6500.0].iter().any(|k| (k - 400.0..k + 500.0).contains(&t));
-        let keys = if t >= 6500.0 { ["⌃", "❖", "→"] } else { ["⌃", "❖", "→"] };
-        chord(c, theme, Point::new(150.0, 110.0), &keys, 34.0, lit);
+        chord(c, theme, Point::new(150.0, 110.0), &["⌃", "❖", "→"], 34.0, lit);
         let label = format!("Desk {}: {}", desk + 1, ["Mail", "Build", "Write"][desk]);
         text(c, theme, &label, Point::new(150.0, 156.0), ui(15.0, 600.0), theme.text2());
         text(c, theme, "⌃❖↑ shows them all", Point::new(150.0, 180.0), ui(12.0, 400.0), theme.text3());

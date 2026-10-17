@@ -129,7 +129,7 @@ fn dots(page: usize) -> Element<Msg> {
         Event::PointerDown { pos, button: PointerButton::Left, .. } => {
             let x0 = ((size.width - STEP * COUNT as f64) / 2.0).round();
             let i = ((pos.x - x0) / STEP).floor();
-            (i >= 0.0 && (i as usize) < COUNT).then(|| Msg::Go(i as usize))
+            (i >= 0.0 && (i as usize) < COUNT).then_some(Msg::Go(i as usize))
         }
         _ => None,
     })

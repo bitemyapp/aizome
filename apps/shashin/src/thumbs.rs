@@ -65,7 +65,7 @@ pub fn cached(dir: &Path, path: &Path) -> Option<RgbaImage> {
     match frame.color_type {
         png::ColorType::Rgba => RgbaImage::from_raw(frame.width, frame.height, buf),
         png::ColorType::GrayscaleAlpha => {
-            let px = buf.chunks_exact(2).flat_map(|p| [p[0], p[0], p[0], p[1]]).collect();
+            let px = buf.as_chunks::<2>().0.iter().flat_map(|p| [p[0], p[0], p[0], p[1]]).collect();
             RgbaImage::from_raw(frame.width, frame.height, px)
         }
         _ => None,

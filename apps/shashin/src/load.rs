@@ -234,7 +234,7 @@ pub fn frames(src: &Source) -> Option<Vec<(RgbaImage, Duration)>> {
     for f in frames {
         let f = f.ok()?;
         let (n, d) = f.delay().numer_denom_ms();
-        let ms = if d == 0 { 100 } else { n / d };
+        let ms = n.checked_div(d).unwrap_or(100);
         // Browsers' rule: delays under 20 ms play as 100 ms.
         let ms = if ms < 20 { 100 } else { ms };
         let buf = f.into_buffer();
@@ -288,7 +288,7 @@ pub fn render_svg(tree: &usvg::Tree, z: f64, region: (u32, u32, u32, u32)) -> Op
     resvg::render(tree, t, &mut pixmap.as_mut());
     // Straight alpha, as `Image::from_rgba` takes it.
     let mut px = pixmap.take();
-    for p in px.chunks_exact_mut(4) {
+    for p in px.as_chunks_mut::<4>().0 {
         let a = u32::from(p[3]);
         if a != 0 && a != 255 {
             for c in &mut p[..3] {

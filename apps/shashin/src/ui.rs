@@ -174,7 +174,7 @@ pub fn stage_of(app: &Shashin) -> Stage {
 
 fn stage_area(app: &Shashin) -> Element<Msg> {
     let st = stage_of(app);
-    let canvas = canvas(st, |c, bounds, st, theme| paint_stage(c, bounds, st, theme))
+    let canvas = canvas(st, paint_stage)
         .on_event(stage_event)
         .focusable()
         .focus_ring(aizome_kit::widget::FocusRing::Never)
@@ -568,7 +568,7 @@ fn group(n: u64) -> String {
     let s = n.to_string();
     let mut out = String::new();
     for (i, c) in s.chars().enumerate() {
-        if i > 0 && (s.len() - i) % 3 == 0 {
+        if i > 0 && (s.len() - i).is_multiple_of(3) {
             out.push(',');
         }
         out.push(c);

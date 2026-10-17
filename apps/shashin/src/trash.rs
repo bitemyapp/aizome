@@ -207,7 +207,7 @@ pub fn local_offset(secs: i64) -> i64 {
     let ok = unsafe { !localtime_r(&secs, tm.as_mut_ptr()).is_null() };
     if ok {
         // SAFETY: localtime_r succeeded, so `tm` is filled.
-        i64::from(unsafe { tm.assume_init() }.gmtoff)
+        unsafe { tm.assume_init() }.gmtoff
     } else {
         0
     }

@@ -67,7 +67,7 @@ pub fn fit(image: (f64, f64), view: (f64, f64)) -> f64 {
     if image.0 <= 0.0 || image.1 <= 0.0 || view.0 <= 0.0 || view.1 <= 0.0 {
         return 1.0;
     }
-    (view.0 / image.0).min(view.1 / image.1).min(1.0).max(MIN_ZOOM)
+    (view.0 / image.0).min(view.1 / image.1).clamp(MIN_ZOOM, 1.0)
 }
 
 /// The next step in from `z`.
