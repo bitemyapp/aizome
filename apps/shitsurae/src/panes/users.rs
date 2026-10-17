@@ -73,16 +73,27 @@ pub fn login_from(full: &str) -> String {
     }
 }
 
-/// The groups this process's user is in, by name.
-pub fn my_groups() -> Vec<String> {
-    // SAFETY: getgroups and getgrgid_r write only into the buffers given.
+/// The groups the account `login` is in, by name, from the group database
+/// (not this process's groups, which a sandbox may change).
+pub fn groups_of(login: &str) -> Vec<String> {
+    let Ok(name) = std::ffi::CString::new(login) else { return Vec::new() };
+    // SAFETY: getpwnam_r, getgrouplist and getgrgid_r write only into the
+    // buffers given.
     unsafe {
-        let n = libc::getgroups(0, std::ptr::null_mut());
-        if n <= 0 {
+        let mut pw: libc::passwd = std::mem::zeroed();
+        let mut pbuf = vec![0 as libc::c_char; 4096];
+        let mut pout: *mut libc::passwd = std::ptr::null_mut();
+        if libc::getpwnam_r(name.as_ptr(), &mut pw, pbuf.as_mut_ptr(), pbuf.len(), &mut pout) != 0 || pout.is_null() {
             return Vec::new();
         }
+        let mut n: libc::c_int = 64;
         let mut ids = vec![0 as libc::gid_t; n as usize];
-        let n = libc::getgroups(n, ids.as_mut_ptr());
+        if libc::getgrouplist(name.as_ptr(), pw.pw_gid, ids.as_mut_ptr(), &mut n) < 0 {
+            ids = vec![0 as libc::gid_t; n.max(0) as usize];
+            if libc::getgrouplist(name.as_ptr(), pw.pw_gid, ids.as_mut_ptr(), &mut n) < 0 {
+                return Vec::new();
+            }
+        }
         ids.truncate(n.max(0) as usize);
         let mut names = Vec::new();
         for id in ids {
@@ -450,7 +461,7 @@ impl Pane for Users {
             let groups = if vcx.sample() {
                 vec!["audio".to_owned(), "networkmanager".into(), "users".into(), "video".into(), "wheel".into()]
             } else {
-                my_groups()
+                groups_of(&me.name)
             };
             sections.push(vcx.section(
                 "You",

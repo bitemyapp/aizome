@@ -35,6 +35,7 @@ pub struct Shared {
     pub status: Option<Status>,
     status_generation: u64,
     reload_pending: bool,
+    writer: Option<Writer>,
     /// Programs launched (in the sample: only recorded), for tests.
     pub launched: Vec<Vec<String>>,
     /// Times the compositor was asked to reload, for tests.
@@ -56,43 +57,76 @@ impl Shared {
             status: None,
             status_generation: 0,
             reload_pending: false,
+            writer: None,
             launched: Vec::new(),
             reloads: 0,
         }
     }
 
-    /// Read the file again (someone else wrote it).
+    /// Read the file again (someone else wrote it), unless writes of ours
+    /// are still on their way to it.
     pub fn reread(&mut self, cx: &mut Cx<AppMsg>) {
-        if let Ok(s) = Settings::load_from(&self.settings_path) {
+        if self.writer.as_ref().is_some_and(|w| w.pending() > 0) {
+            return;
+        }
+        if let Ok(s) = Settings::load_from(&self.settings_path)
+            && s != self.settings
+        {
             self.settings = s;
             cx.set_appearance(aizome_kit::theme::Appearance::from(&self.settings.appearance));
         }
     }
 
-    /// Read the file, apply `f`, write it, and ask the compositor to apply
+    /// Apply `f` to the settings as the file has them (read again, so
+    /// nobody else's edit is lost), show it at once, and write the file off
+    /// the main thread; once it's written the compositor is asked to apply
     /// it. A file that doesn't parse is kept beside the new one.
     pub fn change(&mut self, f: impl FnOnce(&mut Settings), cx: &mut Cx<AppMsg>) {
-        let mut fresh = match Settings::load_from(&self.settings_path) {
-            Ok(s) => s,
-            Err(aizome_config::Error::Parse(e)) => {
-                let keep = self.settings_path.with_extension("toml.broken");
-                let _ = std::fs::copy(&self.settings_path, &keep);
-                self.say(format!("settings.toml didn't parse ({e}); kept it as {}", keep.display()), true, cx);
-                self.settings.clone()
+        // While our own writes are on their way, the newest is ours.
+        let pending = self.writer.as_ref().is_some_and(|w| w.pending() > 0);
+        let mut fresh = if pending {
+            self.settings.clone()
+        } else {
+            match Settings::load_from(&self.settings_path) {
+                Ok(s) => s,
+                Err(aizome_config::Error::Parse(e)) => {
+                    let keep = self.settings_path.with_extension("toml.broken");
+                    let _ = std::fs::copy(&self.settings_path, &keep);
+                    self.say(format!("settings.toml didn't parse ({e}); kept it as {}", keep.display()), true, cx);
+                    self.settings.clone()
+                }
+                Err(_) => self.settings.clone(),
             }
-            Err(_) => self.settings.clone(),
         };
         f(&mut fresh);
-        if let Err(e) = fresh.save_to(&self.settings_path) {
-            self.say(format!("Couldn't save {}: {e}", self.settings_path.display()), true, cx);
-            return;
-        }
+        let text = match fresh.to_toml() {
+            Ok(t) => t,
+            Err(e) => {
+                self.say(format!("Couldn't write the settings: {e}"), true, cx);
+                return;
+            }
+        };
         self.settings = fresh;
         // This window first, without waiting for the file's watcher.
         cx.set_appearance(aizome_kit::theme::Appearance::from(&self.settings.appearance));
+        let writer = self.writer.get_or_insert_with(|| Writer::start(cx.stream()));
+        writer.sent += 1;
+        let _ = writer.tx.send((self.settings_path.clone(), text));
+    }
+
+    /// A write reached the disk: ask the compositor to apply the file, once
+    /// for a burst of changes (a slider dragged).
+    pub fn written(&mut self, cx: &mut Cx<AppMsg>) {
         if !self.reload_pending {
             self.reload_pending = true;
             cx.after(RELOAD_AFTER, AppMsg::Reload);
+        }
+    }
+
+    /// Wait until every change is in the file (tests; quitting).
+    pub fn flush(&self) {
+        if let Some(w) = &self.writer {
+            w.wait();
         }
     }
 
@@ -157,4 +191,63 @@ impl Shared {
             Err(e) => self.say(format!("Couldn't open {program}: {e}"), true, cx),
         }
     }
+}
+/// Writes `settings.toml` off the main thread, in order: replacing a file
+/// can wait on the disk (ext4 flushes a file renamed over another), which
+/// a switch's frame shouldn't.
+pub struct Writer {
+    tx: std::sync::mpsc::Sender<(PathBuf, String)>,
+    /// Writes finished, and a way to wait for them.
+    done: std::sync::Arc<(std::sync::Mutex<u64>, std::sync::Condvar)>,
+    sent: u64,
+}
+
+impl Writer {
+    fn start(report: aizome_kit::MsgSender<AppMsg>) -> Writer {
+        let (tx, rx) = std::sync::mpsc::channel::<(PathBuf, String)>();
+        let done = std::sync::Arc::new((std::sync::Mutex::new(0u64), std::sync::Condvar::new()));
+        let d2 = done.clone();
+        let _ = std::thread::Builder::new().name("shitsurae-settings".into()).spawn(move || {
+            for (path, text) in rx {
+                let written = write_atomically(&path, &text);
+                {
+                    let mut n = d2.0.lock().unwrap_or_else(|e| e.into_inner());
+                    *n += 1;
+                    d2.1.notify_all();
+                }
+                let _ = report.send(match written {
+                    Ok(()) => AppMsg::Written,
+                    Err(e) => AppMsg::Said(format!("Couldn't save {}: {e}", path.display()), true),
+                });
+            }
+        });
+        Writer { tx, done, sent: 0 }
+    }
+
+    fn finished(&self) -> u64 {
+        *self.done.0.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// Writes not on the disk yet.
+    pub fn pending(&self) -> u64 {
+        self.sent.saturating_sub(self.finished())
+    }
+
+    /// Wait until every write sent is on the disk (tests; quitting).
+    pub fn wait(&self) {
+        let mut n = self.done.0.lock().unwrap_or_else(|e| e.into_inner());
+        while *n < self.sent {
+            n = self.done.1.wait(n).unwrap_or_else(|e| e.into_inner());
+        }
+    }
+}
+
+/// Write `text` to `path` through a temporary file beside it.
+pub fn write_atomically(path: &std::path::Path, text: &str) -> std::io::Result<()> {
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    let tmp = path.with_extension("toml.tmp");
+    std::fs::write(&tmp, text)?;
+    std::fs::rename(&tmp, path)
 }

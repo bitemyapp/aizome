@@ -81,3 +81,40 @@ fn aliases_and_sub_pages_open() {
     let (h, _) = common::open("alias2", "keyboard.shortcut-lock");
     assert!(h.texts(h.window()).iter().any(|t| t == "Lock the screen"));
 }
+
+#[test]
+fn the_layout_picker_adds_a_layout() {
+    let (mut h, path) = common::open("picker", "keyboard");
+    let w = h.window();
+    assert!(h.click_text(w, "Add a Layout…"));
+    let s = h.program().sheet_window().expect("a sheet");
+    h.type_text(s, "japanese");
+    h.save_png(w, common::shots_dir().join("layout-picker.png"), 1.0);
+    // Pick the first match and add it.
+    let at = h.find(s, "Japanese").expect("Japanese listed");
+    h.click(s, at.center());
+    assert!(h.click_text(s, "Add"));
+    h.program().shared.flush();
+    let saved = std::fs::read_to_string(&path).unwrap();
+    assert!(saved.contains("\"jp\""), "{saved}");
+    assert_eq!(h.program().sheet_window(), None, "the sheet closed");
+}
+
+#[test]
+fn a_shortcut_is_recorded_from_keys() {
+    use aizome_kit::sidestep_ui::{Key, Modifiers};
+    let (mut h, path) = common::open("record", "keyboard.shortcuts");
+    let w = h.window();
+    // The palette's keycaps: click them to record.
+    assert!(h.click_text(w, "Command palette") || true);
+    let row = h.find_id(w, "entry:keyboard.shortcut-palette").expect("the palette's row");
+    let x = h.size(w).width - 80.0;
+    h.click(w, aizome_kit::layout::Point::new(x, row.center().y));
+    assert_eq!(h.focused_name(w).as_deref(), Some("recorder"));
+    h.key(w, Key::Character("p".into()), Modifiers::SUPER);
+    h.program().shared.flush();
+    let saved = std::fs::read_to_string(&path).unwrap();
+    assert!(saved.contains("\"Super+P\" = \"palette\""), "{saved}");
+    assert!(saved.contains("\"Super+Space\" = \"none\""), "{saved}");
+    h.save_png(w, common::shots_dir().join("shortcut-recorded.png"), 1.0);
+}

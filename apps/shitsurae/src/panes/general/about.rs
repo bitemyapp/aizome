@@ -326,7 +326,7 @@ impl State {
 
         let pretty = self.draft.clone().unwrap_or_else(|| self.computer_name());
         let name_row = if n.pretty_hostname_managed {
-            form::managed("Computer name", self.computer_name(), "The name is in the system configuration's /etc/machine-info.")
+            form::managed("Computer name", self.computer_name(), "Its file, /etc/machine-info, comes from the configuration.")
         } else {
             form::row(
                 "Computer name",

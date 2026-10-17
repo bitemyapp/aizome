@@ -48,6 +48,8 @@ pub enum AppMsg {
     CloseSheet,
     /// A second launch's arguments.
     Launched(Vec<String>),
+    /// A change reached settings.toml.
+    Written,
     Nothing,
 }
 
@@ -156,6 +158,11 @@ impl Shitsurae {
         let (pane, alias_entry) = crate::panes::resolve(&id);
         let i = self.panes.iter().position(|p| p.id() == pane)?;
         Some((i, entry.map(str::to_owned).or(alias_entry)))
+    }
+
+    /// The sheet showing, if one is.
+    pub fn sheet_window(&self) -> Option<WindowKey> {
+        self.sheet.map(|(_, w)| w)
     }
 
     pub fn pane_id(&self) -> &'static str {
@@ -559,6 +566,7 @@ impl Program for Shitsurae {
                 }
                 cx.activate(self.shared.window);
             }
+            AppMsg::Written => self.shared.written(cx),
             AppMsg::Nothing => {}
         }
     }

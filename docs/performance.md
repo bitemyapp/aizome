@@ -399,3 +399,33 @@ drop redraws the pane, 31% damage on average).
 
 No exceptions: the Wi-Fi switch and a device's options change much of
 the page, and still fit.
+
+## Shitsurae (Settings)
+
+Three typical interactions, measured headlessly by `tests/budget.rs`
+(`typical_interactions_fit_the_frame_budget`) over the sample system: the
+update (for a setting: reading `settings.toml` again, changing it, and
+handing the text to the thread that writes it), the view of the whole
+window, layout and diff, and rasterising the damage at 2×.
+
+| Interaction | p50 | p95 | max | |
+|---|---|---|---|---|
+| Flipping a switch (Mouse › Natural scrolling) | 0.10 ms | 0.12 ms | 0.35 ms | `--release`, 37 flips |
+| A key typed in the sidebar's search: the results, and the highlights in the pane | 0.24 ms | 1.16 ms | 1.92 ms | `--release`, 60 keys |
+| Another pane from the sidebar: a whole new form laid out and drawn | 1.79 ms | 2.67 ms | 3.58 ms | `--release`, 30 moves |
+
+Debug builds (Shitsurae and the kit unoptimised) take several times
+longer: a key in search p95 16 ms, another pane p95 27 ms.
+
+Writing `settings.toml` happens on a thread of its own, in order: replacing
+the file by renaming over it can wait on the disk (ext4 flushes the data of
+a file renamed over another), and did, taking a switch's p95 to 12 ms when
+the write was in the update. The window shows the change at once (and
+rethemes itself through `Cx::set_appearance`); the compositor is asked to
+`reload-config` once the file is written, once for a burst of changes.
+
+Live, under the headless compositor (GLES) at 1×, Performance's read-out
+of this window in a debug build: view and layout p95 1.3 ms, recording the
+drawing p95 1.8 ms.
+
+No exceptions.

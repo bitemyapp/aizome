@@ -50,7 +50,14 @@ fn main() {
         Shitsurae::live(start)
     };
     app.listener = listener;
-    aizome_kit::run(app);
+    match aizome_kit::try_run(app) {
+        // Every change in the file before going.
+        Ok(app) => app.shared.flush(),
+        Err(e) => {
+            eprintln!("aizome-shitsurae: {e}");
+            std::process::exit(1);
+        }
+    }
     if !sample {
         instance::release();
     }
