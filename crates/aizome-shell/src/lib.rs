@@ -6,6 +6,7 @@ pub mod actions;
 pub mod apps;
 pub mod auth;
 pub mod clock;
+pub mod confirm;
 pub mod deskbar;
 mod deskbar_glue;
 pub mod desktop;

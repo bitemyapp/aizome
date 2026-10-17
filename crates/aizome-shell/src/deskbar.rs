@@ -63,6 +63,8 @@ pub struct AppRow {
     pub name: String,
     pub glyph: Icon,
     pub hue: Hue,
+    /// The app's own icon, when it has no glyph here.
+    pub image: Option<crate::look::Pic>,
     pub windows: Vec<WindowRow>,
     /// Its windows are folded under "N ▸".
     pub folded: bool,
@@ -119,6 +121,7 @@ fn ui(t: &aizome_kit::Theme, size: f64, weight: f32, c: aizome_kit::Color) -> ai
 
 fn app_row(a: &AppRow) -> Element<DeskbarMsg> {
     let (name, glyph, hue, n, folded, unread) = (a.name.clone(), a.glyph, a.hue, a.windows.len(), a.folded, a.unread);
+    let image = a.image.clone();
     let id = a.app_id.clone();
     let id2 = a.app_id.clone();
     let id3 = a.app_id.clone();
@@ -132,13 +135,16 @@ fn app_row(a: &AppRow) -> Element<DeskbarMsg> {
         String::new()
     };
     let label = name.clone();
-    drawn(WIDTH, APP_ROW, (name.clone(), glyph, hue, right.clone(), unread > 0), move |cx| {
+    drawn(WIDTH, APP_ROW, (name.clone(), glyph, hue, right.clone(), unread > 0, image.as_ref().map(|i| i.0.pixel_size())), move |cx| {
         let t = cx.theme();
         let b = cx.bounds();
         if cx.is_hovered() {
             cx.canvas.fill_rect(b, t.hover(t.chrome()));
         }
-        glyph.draw(cx.canvas, Point::new(8.0, ((APP_ROW - 16.0) / 2.0).round()), 16.0, hue.color(t));
+        match &image {
+            Some(img) => cx.canvas.draw_image(&img.0, Rect::new(8.0, 5.0, 24.0, 21.0)),
+            None => glyph.draw(cx.canvas, Point::new(8.0, ((APP_ROW - 16.0) / 2.0).round()), 16.0, hue.color(t)),
+        }
         let s = ui(t, typeface::BODY, typeface::WEIGHT_TAB, t.text());
         cx.draw_text_in(&name, &s, Rect::new(32.0, 0.0, b.x1 - 48.0, APP_ROW), Align::Start);
         let (spec, x1) = if unread > 0 {
@@ -354,6 +360,7 @@ mod tests {
                 name: "A".into(),
                 glyph: Icon::Folder,
                 hue: Hue::Blue,
+                image: None,
                 windows: vec![WindowRow { id: 1, title: "x".into(), focused: false, note: WindowNote::None, urgent: false }],
                 folded: false,
                 focused: false,

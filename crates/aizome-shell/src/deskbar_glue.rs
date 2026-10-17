@@ -43,6 +43,7 @@ impl Shell {
                 let (name, glyph, hue) = self.app_look(&a.app_id);
                 let folded = self.is_folded(&a.app_id, a.windows.len(), a.focused);
                 AppRow {
+                    image: self.icons.get(&a.app_id).cloned().flatten().map(crate::look::Pic),
                     name,
                     glyph,
                     hue,
@@ -65,7 +66,7 @@ impl Shell {
             if !apps.iter().any(|a| a.app_id == app) {
                 let (name, glyph, hue) = self.app_look(&app);
                 let name = unread.first().map(|n| n.app_name.clone()).filter(|n| !n.is_empty()).unwrap_or(name);
-                apps.push(AppRow { app_id: app.clone(), name, glyph, hue, windows: vec![], folded: true, focused: false, unread: 0, cards: vec![] });
+                apps.push(AppRow { app_id: app.clone(), name, glyph, hue, image: None, windows: vec![], folded: true, focused: false, unread: 0, cards: vec![] });
             }
             let row = apps.iter_mut().find(|a| a.app_id == app).expect("added");
             row.unread = unread.len();
@@ -268,5 +269,28 @@ mod tests {
         assert!(s.is_folded("firefox", 3, false));
         assert!(!s.is_folded("firefox", 3, true));
         assert!(!s.is_folded("foot", 2, false));
+    }
+}
+
+impl Shell {
+    /// Look up the icons of apps in the Deskbar the shell has no glyph
+    /// for (once each; PNGs only, at 16pt on a 2× screen).
+    pub fn find_icons(&mut self) {
+        let Some(lookup) = &self.icon_lookup else { return };
+        let wanted: Vec<String> = self
+            .wm
+            .deskbar(&self.deskbar_cfg.pinned)
+            .into_iter()
+            .map(|a| a.app_id)
+            .filter(|a| !self.icons.contains_key(a) && catalog::glyph_for(a).is_none())
+            .collect();
+        for app in wanted {
+            let name = self.apps.as_deref().and_then(|i| i.match_window(&app)).and_then(|e| e.icon.clone()).unwrap_or_else(|| app.clone());
+            let image = lookup
+                .lookup(&name, 16, 2)
+                .filter(|p| p.extension().is_some_and(|e| e.eq_ignore_ascii_case("png")))
+                .and_then(|p| aizome_kit::Image::open(p).ok());
+            self.icons.insert(app, image);
+        }
     }
 }

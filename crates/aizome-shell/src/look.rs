@@ -174,3 +174,14 @@ pub fn glyph(canvas: &mut Canvas, icon: aizome_kit::Icon, at: Point, size: f64, 
     path.apply_affine(Affine::translate(at.to_vec2()) * Affine::scale(size / 24.0));
     canvas.stroke(&path, &StrokeStyle::new(stroke).with_cap(LineCap::Round).with_join(LineJoin::Round), c);
 }
+
+/// An image in a model that compares (by its size: enough to see a change
+/// of icon).
+#[derive(Clone, Debug)]
+pub struct Pic(pub aizome_kit::Image);
+
+impl PartialEq for Pic {
+    fn eq(&self, other: &Pic) -> bool {
+        self.0.pixel_size() == other.0.pixel_size()
+    }
+}

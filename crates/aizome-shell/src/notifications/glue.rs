@@ -26,6 +26,9 @@ impl Shell {
     /// Invoke one of a notification's actions; it closes unless resident.
     pub fn note_action(&mut self, id: u32, key: &str) {
         let Some(n) = self.notes.get(id).cloned() else { return };
+        if let Some(a) = self.note_actions.remove(&(id, key.to_owned())) {
+            self.pending_actions.push(a);
+        }
         self.note_invoked(id, key);
         if !n.resident {
             self.notes.close(id);
@@ -145,5 +148,35 @@ impl Shell {
         let (_, glyph, hue) = self.app_look(&n.filed_under);
         let glyph = if crate::apps::catalog::glyph_for(&n.filed_under).is_some() { glyph } else { aizome_kit::Icon::Bell };
         Some(crate::menubar::Banner { id: n.id, glyph, hue, summary: n.summary.clone(), body: n.first_line().to_owned() })
+    }
+}
+
+impl Shell {
+    /// A notification of the shell's own, its actions the shell's.
+    pub fn shell_note(&mut self, n: crate::notifications::store::Incoming, actions: Vec<(String, String, crate::actions::Action)>, cx: &mut Cx<Msg>) -> u32 {
+        let id = self.notes.fresh_id();
+        let mut n = n;
+        n.actions = actions.iter().map(|(k, l, _)| (k.clone(), l.clone())).collect();
+        for (k, _, a) in actions {
+            self.note_actions.insert((id, k), a);
+        }
+        self.take_note(crate::notifications::server::NoteEvent::Notify(id, Box::new(n)), cx);
+        id
+    }
+
+    /// The compositor took a screenshot: a notification with its thumbnail
+    /// and "Show in Hako".
+    pub fn screenshot_taken(&mut self, path: std::path::PathBuf, cx: &mut Cx<Msg>) {
+        let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        let n = crate::notifications::store::Incoming {
+            app_name: "Screenshot".into(),
+            summary: "Screenshot saved".into(),
+            body: name,
+            image: Some(crate::notifications::store::NoteImage::File(path.clone())),
+            category: Some("transfer.complete".into()),
+            ..Default::default()
+        };
+        let reveal = crate::actions::Action::Reveal { path: path.clone() };
+        self.shell_note(n, vec![("default".into(), "Show in Hako".into(), reveal.clone()), ("show".into(), "Show in Hako".into(), reveal)], cx);
     }
 }

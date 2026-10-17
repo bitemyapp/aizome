@@ -61,6 +61,8 @@ pub enum Msg {
     Auth(crate::auth::AuthIn),
     AuthUi(crate::auth::AuthMsg),
     Tear(crate::tearoff::TearMsg),
+    Confirm(crate::confirm::ConfirmMsg),
+    Card(crate::notifications::cards::CardMsg),
     /// A menu's strip was dragged: keep it as a palette.
     TearOff { app: String, path: Vec<String>, output: String, at: Point },
     /// The selected text for Services came (from the app or the primary
@@ -95,6 +97,8 @@ pub enum Surface {
     Lock { output: u32 },
     Auth,
     TearOff(usize),
+    Confirm,
+    Cards,
 }
 
 /// An output and the shell's surfaces on it.
@@ -189,8 +193,19 @@ pub struct Shell {
     /// A menu at the pointer waiting for the selected text: its serial and place.
     pub(crate) services_wait: Option<(u64, f64, f64)>,
     pub(crate) serial: u64,
+    pub confirm: Option<crate::confirm::Confirm>,
+    /// The session verb last carried out (tests: nothing happens).
+    pub session_done: Option<SessionVerb>,
+    /// The critical notifications' cards, and how many.
+    pub cards: Option<(WindowKey, usize)>,
+    /// What the shell's own notifications' actions do.
+    pub note_actions: HashMap<(u32, String), Action>,
+    /// Actions to carry out once the update in hand is done.
+    pub(crate) pending_actions: Vec<Action>,
     pub(crate) deskbar_size: Option<aizome_kit::Size>,
+    /// Apps' own icons (PNG), by app id, for apps the shell has no glyph for.
     pub(crate) icons: HashMap<String, Option<aizome_kit::Image>>,
+    pub(crate) icon_lookup: Option<aizome_sys::apps::IconLookup>,
     /// The primary bar's Desks, by where they are across it.
     pub(crate) desk_strip: Vec<(u32, Rect)>,
     pub(crate) text: aizome_kit::text::TextCache,
@@ -257,8 +272,14 @@ impl Shell {
             recent: Vec::new(),
             services_wait: None,
             serial: 0,
+            confirm: None,
+            session_done: None,
+            cards: None,
+            note_actions: HashMap::new(),
+            pending_actions: Vec::new(),
             deskbar_size: None,
             icons: HashMap::new(),
+            icon_lookup: None,
             desk_strip: Vec::new(),
             text: aizome_kit::text::TextCache::default(),
             launches: HashMap::new(),
@@ -401,6 +422,19 @@ impl Shell {
             BarMsg::Run(a) => self.run(a, cx),
             BarMsg::Press(slot, rect) => self.open_slot(win, slot, rect, cx),
             BarMsg::Hover(_) => {}
+            BarMsg::RenameText(t) => {
+                if let Some((_, s)) = &mut self.renaming {
+                    *s = t;
+                }
+            }
+            BarMsg::RenameDone => {
+                if let Some((index, name)) = self.renaming.take()
+                    && !name.trim().is_empty()
+                {
+                    self.ipc.send(Request::RenameDesk { desk: aizome_ipc::DeskSel::Index(index), name: name.trim().to_owned() });
+                }
+            }
+            BarMsg::RenameCancel => self.renaming = None,
             BarMsg::Banner(id) => {
                 self.open_note(id, cx);
                 self.banner_done(id, cx);
@@ -511,23 +545,10 @@ impl Shell {
             Action::RenameDesk { index } => {
                 let name = self.wm.desk(index).map(|d| d.name.clone()).unwrap_or_default();
                 self.renaming = Some((index, name));
+                cx.focus("desk-rename");
             }
-            Action::Session(SessionVerb::LogOut) => self.ipc.send(Request::Quit),
-            Action::Session(SessionVerb::Sleep) => {
-                if let Some(l) = &self.sys.logind {
-                    let _ = l.suspend();
-                }
-            }
-            Action::Session(SessionVerb::Restart) => {
-                if let Some(l) = &self.sys.logind {
-                    let _ = l.reboot();
-                }
-            }
-            Action::Session(SessionVerb::ShutDown) => {
-                if let Some(l) = &self.sys.logind {
-                    let _ = l.power_off();
-                }
-            }
+            Action::Session(SessionVerb::Sleep) => self.do_session(SessionVerb::Sleep),
+            Action::Session(v @ (SessionVerb::LogOut | SessionVerb::Restart | SessionVerb::ShutDown)) => self.confirm(v, cx),
             Action::Session(SessionVerb::Lock) => self.lock(cx),
             Action::Pin { app_id, on } => {
                 self.deskbar_cfg.pinned.retain(|a| *a != app_id);
@@ -655,9 +676,17 @@ impl Shell {
                     let mut s = crate::systray::meters::Sampler::new();
                     // A first reading soon, then every two seconds.
                     std::thread::sleep(Duration::from_millis(250));
+                    // Only what changes the bars wakes the shell: an idle machine
+                    // doesn't redraw.
+                    let mut last = None;
                     loop {
-                        if !tx.send(Msg::Meters(s.read())) {
-                            return;
+                        let r = s.read();
+                        let shown = (r.bar_heights(), r.hot(), r.memory_height());
+                        if last.as_ref() != Some(&shown) {
+                            last = Some(shown);
+                            if !tx.send(Msg::Meters(r)) {
+                                return;
+                            }
                         }
                         std::thread::sleep(Duration::from_secs(2));
                     }
@@ -684,6 +713,7 @@ impl Shell {
             tx2.send(Msg::Sys);
         });
         self.watch_desktop();
+        self.icon_lookup = Some(aizome_sys::apps::IconLookup::from_env());
         self.start_lock();
         self.start_polkit();
     }
@@ -697,6 +727,7 @@ impl Shell {
                     Event::ConfigChanged => self.reload_settings(),
                     Event::Binding { action, pointer, output } => self.binding(&action, pointer, output, cx),
                     Event::Idle { kind } if kind == "lock" => self.lock(cx),
+                    Event::ScreenshotTaken { path } => self.screenshot_taken(PathBuf::from(path), cx),
                     _ => {}
                 }
             }
@@ -890,6 +921,8 @@ impl Program for Shell {
             Msg::Auth(e) => self.auth_in(e, cx),
             Msg::AuthUi(m) => self.auth_msg(m, cx),
             Msg::Tear(m) => self.tear_msg(m, cx),
+            Msg::Confirm(m) => self.confirm_msg(m, cx),
+            Msg::Card(m) => self.card_msg(m, cx),
             Msg::TearOff { app, path, output, at } => self.tear_off(app, path, output, at, cx),
             Msg::Selection(serial, text) => self.selection_came(serial, text, cx),
             Msg::DesktopItems(items, full) => {
@@ -925,6 +958,11 @@ impl Program for Shell {
                 })
             }
             Some(Surface::TearOff(i)) => self.tear_view(*i),
+            Some(Surface::Cards) => crate::notifications::cards::view(&self.card_views()).map(Msg::Card),
+            Some(Surface::Confirm) => match &self.confirm {
+                Some(c) => crate::confirm::view(c.verb, c.left).map(Msg::Confirm),
+                None => aizome_kit::space(0.0),
+            },
             Some(Surface::Auth) => match self.auth_view() {
                 Some(v) => crate::auth::view(&v).map(Msg::AuthUi),
                 None => aizome_kit::space(0.0),
@@ -1023,9 +1061,14 @@ impl Shell {
     /// What every update ends with: surfaces sized to their content, the
     /// geometry drags need.
     pub fn after_update(&mut self, cx: &mut Cx<Msg>) {
+        self.find_icons();
+        for a in std::mem::take(&mut self.pending_actions) {
+            self.run(a, cx);
+        }
         self.sync_deskbar(cx);
         self.sync_panel(cx);
         self.sync_tearoffs(cx);
+        self.sync_cards(cx);
         if let Some(screen) = self.primary().cloned() {
             let model = self.bar_model(&screen);
             let theme = cx.theme().clone();

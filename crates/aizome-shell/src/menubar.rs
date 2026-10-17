@@ -28,6 +28,10 @@ pub enum BarMsg {
     Banner(u32),
     /// A Desk was right-clicked, at.
     DeskMenu(u32, Point),
+    /// Renaming a Desk in place: the text, done, or given up.
+    RenameText(String),
+    RenameDone,
+    RenameCancel,
     Run(Action),
 }
 
@@ -281,6 +285,29 @@ fn desks(model: &BarModel) -> Element<BarMsg> {
         let index = d.index;
         let current = d.current;
         let renaming = model.renaming.as_ref().filter(|(r, _)| *r == index).map(|(_, s)| s.clone());
+        if let Some(text) = &renaming {
+            let num = index.to_string();
+            let f = crate::widgets::field::field(text, |t| ui_spec(t, 12.0, typeface::WEIGHT_TAB, t.on_selection()))
+                .height(18.0)
+                .on_change(BarMsg::RenameText)
+                .on_submit(BarMsg::RenameDone);
+            let keyed = crate::widgets::keys::keys(Element::from(f).id("desk-rename"), |k| {
+                matches!(k.key, aizome_kit::sidestep_ui::Key::Named(aizome_kit::sidestep_ui::NamedKey::Escape)).then_some(BarMsg::RenameCancel)
+            });
+            items.push(
+                around(keyed, [0.0, 9.0, 0.0, 9.0 + 7.5 * num.len() as f64 + 5.0], aizome_kit::Size::new(130.0, 18.0), num.clone(), move |cx| {
+                    let t = cx.theme();
+                    let b = cx.bounds();
+                    cx.canvas.fill_rect(b, t.selection());
+                    let ns = look::mono(12.0 * t.metrics.factor, typeface::WEIGHT_SEMIBOLD, t.on_selection());
+                    cx.draw_text_in(&num, &ns, Rect::new(9.0, 0.0, b.x1, b.y1), Align::Start);
+                    cx.canvas.fill_rect(Rect::new(b.x1 - 1.0, 0.0, b.x1, b.y1), t.line());
+                })
+                .key(("desk", d.id))
+                .into(),
+            );
+            continue;
+        }
         let name = renaming.clone().unwrap_or_else(|| d.name.clone());
         let label_num = index.to_string();
         let show_name = name != label_num || renaming.is_some();
