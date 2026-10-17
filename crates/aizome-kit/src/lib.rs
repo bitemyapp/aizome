@@ -37,6 +37,7 @@ pub mod cx;
 pub mod dialogs;
 pub mod draw;
 pub mod editing;
+pub mod editor;
 pub mod element;
 pub(crate) mod engine;
 pub mod fonts;
@@ -77,6 +78,8 @@ pub use widgets::scroll::{Direction, list, scroll, virtual_list};
 pub use widgets::interact::{DragEvent, Dropped, canvas, context_menu, mouse_area, popover, tooltip};
 pub use widgets::panes::{caption, form_row, form_section, sidebar_item, sidebar_layout, split, status_bar, status_text, toolbar, toolbar_separator};
 pub use widgets::text_field::{search_field, text_field};
+pub use widgets::text_editor::{FindRequest, text_editor};
+pub use editor::{EditorAction, EditorContent, Granularity, Highlighter, LineStyle, Selection};
 pub use program::{Anchors, KeyboardInteractivity, Layer, LayerOptions, Margins, Output, ActivationRequest};
 
 /// Everything an app usually needs: `use aizome_kit::prelude::*;`.
@@ -90,7 +93,7 @@ pub mod prelude {
         rich_text, segmented, segmented_icons, slider, space, spacer, stepper, text, toggle, text_field, search_field,
         menu_view, MenuStyle, MenuPlacement, scroll, list, virtual_list, canvas, context_menu, mouse_area, popover,
         tooltip, caption, form_row, form_section, sidebar_item, sidebar_layout, split, status_bar, status_text,
-        toolbar, toolbar_separator, DragEvent, Dropped,
+        toolbar, toolbar_separator, DragEvent, Dropped, text_editor, EditorAction, EditorContent, FindRequest,
     };
     pub use crate::{column, row, stack};
 }

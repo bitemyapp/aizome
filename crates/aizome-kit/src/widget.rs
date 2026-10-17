@@ -470,6 +470,12 @@ impl LayoutCx<'_, '_> {
         self.tree.ticks.push((id, after));
     }
 
+    /// Redraw `rect` (its own coordinates): what a widget whose drawing
+    /// it diffs itself (an editor's lines) found changed.
+    pub fn invalidate_rect(&mut self, rect: Rect) {
+        self.tree.local_damage.push((self.node, rect));
+    }
+
     /// How much room one line of `text` set as `spec` takes.
     pub fn measure(&mut self, text: &str, spec: &TextSpec) -> Size {
         let theme = self.env.theme;

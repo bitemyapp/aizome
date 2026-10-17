@@ -83,6 +83,9 @@ pub(crate) struct Tree {
     pub root: Option<usize>,
     /// Ticks widgets asked for while laid out (animations starting).
     pub ticks: Vec<(NodeId, std::time::Duration)>,
+    /// What widgets found changed while laid out (their own coordinates):
+    /// an editor's lines.
+    pub local_damage: Vec<(usize, Rect)>,
 }
 
 /// A node's place and drawing, kept from one build to the next for the
@@ -483,4 +486,19 @@ pub(crate) fn narrow(c: &Common, mut bc: Constraints) -> Constraints {
         bc.min.height = bc.min.height.max(m).min(bc.max.height);
     }
     bc
+}
+
+impl Tree {
+    /// The damage widgets found while laid out, in the window.
+    pub(crate) fn take_local_damage(&mut self) -> Vec<Rect> {
+        std::mem::take(&mut self.local_damage)
+            .into_iter()
+            .filter(|(i, _)| !self.nodes[*i].dead)
+            .map(|(i, r)| {
+                let n = &self.nodes[i];
+                (r + n.rect.origin().to_vec2()).intersect(n.clip)
+            })
+            .filter(|r| r.area() > 0.0)
+            .collect()
+    }
 }

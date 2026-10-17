@@ -447,7 +447,8 @@ impl Core {
         let mut tree = Tree::new(root, base);
         let mut env = Env { theme: &self.theme, text: &mut self.text, states: &mut w.states, now: Instant::now(), on_selection: false };
         tree.layout_window(w.size, &mut env);
-        let damage = if w.built { tree.diff(&w.snapshot) } else { vec![Rect::from_origin_size(Point::ZERO, w.size)] };
+        let mut damage = if w.built { tree.diff(&w.snapshot) } else { vec![Rect::from_origin_size(Point::ZERO, w.size)] };
+        damage.extend(tree.take_local_damage());
         w.snapshot = tree.snapshot();
         let ticks = std::mem::take(&mut tree.ticks);
         w.tree = tree;
@@ -506,7 +507,8 @@ impl Core {
         if dead > 256 && dead > w.tree.nodes.len() / 2 {
             w.tree.compact();
         }
-        let damage = w.tree.diff(&w.snapshot);
+        let mut damage = w.tree.diff(&w.snapshot);
+        damage.extend(w.tree.take_local_damage());
         w.snapshot = w.tree.snapshot();
         let ticks = std::mem::take(&mut w.tree.ticks);
         let live = &w.tree.by_id;
@@ -535,7 +537,8 @@ impl Core {
         let size = tree.layout_free(Size::new(1200.0, 900.0), &mut env);
         let size = Size::new(size.width.ceil(), size.height.ceil());
         if w.built && size == w.size {
-            let damage = tree.diff(&w.snapshot);
+            let mut damage = tree.diff(&w.snapshot);
+            damage.extend(tree.take_local_damage());
             for r in damage {
                 platform.invalidate(win, r);
             }
@@ -577,7 +580,9 @@ impl Core {
         let mut tree = Tree::new(root, NodeId::ROOT.child("popup"));
         let mut env = Env { theme: &self.theme, text: &mut self.text, states: &mut w.states, now: Instant::now(), on_selection: false };
         tree.layout_window(w.size, &mut env);
-        for r in tree.diff(&w.snapshot) {
+        let mut damage = tree.diff(&w.snapshot);
+        damage.extend(tree.take_local_damage());
+        for r in damage {
             platform.invalidate(win, r);
         }
         w.snapshot = tree.snapshot();
