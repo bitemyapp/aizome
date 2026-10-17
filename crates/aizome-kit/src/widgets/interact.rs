@@ -387,6 +387,7 @@ impl Widget for MouseWidget {
 
 type DrawFn<S> = Rc<dyn Fn(&mut Canvas, Rect, &S, &Theme)>;
 type EventFn<S> = Rc<dyn Fn(&Event, Size, &S) -> Option<crate::element::AnyMsg>>;
+type PartsFn<S> = Rc<dyn Fn(&S, Size) -> Vec<(Rect, u64)>>;
 
 /// Drawing of one's own, from `state` (whose hash decides when it's
 /// drawn again): `canvas(self.samples.clone(), |c, bounds, samples, theme| …)`.
@@ -395,6 +396,7 @@ pub struct CanvasEl<Msg, S> {
     state: S,
     draw: DrawFn<S>,
     on_event: Option<EventFn<S>>,
+    parts: Option<PartsFn<S>>,
     focusable: bool,
     _m: PhantomData<fn() -> Msg>,
 }
@@ -411,6 +413,7 @@ pub fn canvas<Msg, S: Hash + 'static>(state: S, draw: impl Fn(&mut Canvas, Rect,
         state,
         draw: Rc::new(draw),
         on_event: None,
+        parts: None,
         focusable: false,
         _m: PhantomData,
     }
@@ -429,12 +432,23 @@ impl<Msg: Send + 'static, S: Hash + 'static> CanvasEl<Msg, S> {
         self.focusable = true;
         self
     }
+
+    /// Parts of the drawing that change by themselves (a hovered bar, a
+    /// cursor, a selection): `f` gives each its rectangle (the canvas's
+    /// coordinates) and a hash of how it looks. When parts change and
+    /// `state`'s hash doesn't, only the rectangles of the parts that came,
+    /// went or changed are drawn again, so leave what they show out of
+    /// `state`'s `Hash`.
+    pub fn parts(mut self, f: impl Fn(&S, Size) -> Vec<(Rect, u64)> + 'static) -> Self {
+        self.parts = Some(Rc::new(f));
+        self
+    }
 }
 
 impl<Msg, S: Hash + 'static> From<CanvasEl<Msg, S>> for Element<Msg> {
     fn from(c: CanvasEl<Msg, S>) -> Element<Msg> {
         let hash = hash_of(&c.state);
-        let w = CanvasWidget { state: c.state, hash, draw: c.draw, on_event: c.on_event, focusable: c.focusable };
+        let w = CanvasWidget { state: c.state, hash, draw: c.draw, on_event: c.on_event, parts: c.parts, focusable: c.focusable };
         Element::from_raw(RawElement::new(w, c.common, Vec::new()))
     }
 }
@@ -444,6 +458,7 @@ struct CanvasWidget<S> {
     hash: u64,
     draw: DrawFn<S>,
     on_event: Option<EventFn<S>>,
+    parts: Option<PartsFn<S>>,
     focusable: bool,
 }
 
@@ -452,8 +467,22 @@ impl<S: 'static> Widget for CanvasWidget<S> {
         "canvas"
     }
 
-    fn layout(&mut self, _cx: &mut LayoutCx, bc: Constraints) -> Size {
-        bc.constrain(Size::new(if bc.max.width.is_finite() { bc.max.width } else { 200.0 }, if bc.max.height.is_finite() { bc.max.height } else { 120.0 }))
+    fn layout(&mut self, cx: &mut LayoutCx, bc: Constraints) -> Size {
+        let size = bc.constrain(Size::new(if bc.max.width.is_finite() { bc.max.width } else { 200.0 }, if bc.max.height.is_finite() { bc.max.height } else { 120.0 }));
+        if let Some(f) = &self.parts {
+            let now = f(&self.state, size);
+            let st = cx.state::<CanvasParts>();
+            let before = std::mem::replace(&mut st.parts, now.clone());
+            // A new size redraws it all anyway.
+            if std::mem::replace(&mut st.size, Some(size)) == Some(size) {
+                let gone = before.iter().filter(|p| !now.contains(p));
+                let came = now.iter().filter(|p| !before.contains(p));
+                for (r, _) in gone.chain(came) {
+                    cx.invalidate_rect(*r);
+                }
+            }
+        }
+        size
     }
 
     fn paint(&self, cx: &mut PaintCx) {
@@ -498,4 +527,11 @@ impl<S: 'static> Widget for CanvasWidget<S> {
     fn semantics(&self) -> Option<Semantics> {
         Some(Semantics { role: SemanticRole::Canvas, ..Default::default() })
     }
+}
+
+/// A canvas's parts as last laid out, to see which changed.
+#[derive(Default)]
+struct CanvasParts {
+    parts: Vec<(Rect, u64)>,
+    size: Option<Size>,
 }

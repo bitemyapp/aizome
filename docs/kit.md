@@ -235,7 +235,7 @@ a `bevel_lo` bottom): compact pop-ups, `button(..).toolbar()`,
 | `context_menu(el, Menu)` | The menu on a right click (or ⌃-click). |
 | `tooltip(el, "text")` (or `.tooltip(..)`) | After the pointer rests 650 ms. |
 | `mouse_area(el)` | `.on_press`, `.on_release`, `.on_double_click`, `.on_right_click(\|at\| ..)`, `.on_hover(\|in\| ..)`, `.on_move`, `.on_drag(\|DragEvent\| ..)`, `.on_drop(\|Dropped { urls, text, .. }\| ..)` (files and text from other programs), `.cursor(c)`. |
-| `canvas(state, \|canvas, bounds, &state, theme\| …)` | Drawing of one's own (charts, calendars, disk maps) with Sidestep's `Canvas`; it's drawn again when `state`'s hash changes. `.on_event(\|event, size, &state\| Option<Msg>)`, `.focusable()`. |
+| `canvas(state, \|canvas, bounds, &state, theme\| …)` | Drawing of one's own (charts, calendars, disk maps) with Sidestep's `Canvas`; it's drawn again when `state`'s hash changes. `.on_event(\|event, size, &state\| Option<Msg>)`, `.focusable()`, `.parts(\|&state, size\| vec![(rect, hash)])`: parts that change by themselves (a hovered bar, a cursor), left out of `state`'s `Hash`, so that only the rectangles of parts that came, went or changed are drawn again. |
 
 ### Writing a widget
 
