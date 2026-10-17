@@ -19,6 +19,8 @@ struct Sumi {
 enum Msg {
     Edit(EditorAction),
     Find(FindRequest),
+    /// The program moves the caret (found text, Go to Line).
+    Goto(usize),
 }
 
 impl Sumi {
@@ -59,6 +61,7 @@ impl Program for Sumi {
                 self.content.perform(a);
             }
             Msg::Find(f) => self.finds.push(f),
+            Msg::Goto(at) => self.content.set_selection(aizome_kit::Selection::caret(at)),
         }
     }
     fn view(&self, _w: WindowKey) -> Element<Msg> {
@@ -209,4 +212,23 @@ fn an_editor_as_the_board() {
     let out = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("editor.png");
     h.save_png(w, &out, 2.0);
     assert!(h.selection(w).is_some());
+}
+
+#[test]
+fn the_programs_jumps_are_shown_with_what_comes_before() {
+    let text: String = (0..2_000).map(|i| format!("line {i}\n")).collect();
+    let (mut h, w) = open(&text);
+    // Far down: the line comes a third of the way down the view.
+    let at = h.program().content.rope().line_to_char(1_000);
+    h.send(Msg::Goto(at));
+    let e = h.find_id(w, "editor").unwrap();
+    h.click(w, Point::new(e.x0 + 60.0, e.y0 + 12.0 + 4.0));
+    let (top, _) = h.program().content.cursor_position();
+    let rows = ((e.height() - 24.0) / 21.0) as usize;
+    assert_eq!(top, 1_000 - rows / 3, "the line at the top");
+    // Near: no jump.
+    let at = h.program().content.rope().line_to_char(top + 2);
+    h.send(Msg::Goto(at));
+    h.click(w, Point::new(e.x0 + 60.0, e.y0 + 12.0 + 4.0));
+    assert_eq!(h.program().content.cursor_position().0, top);
 }

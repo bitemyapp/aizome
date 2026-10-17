@@ -168,7 +168,22 @@ command: ←/→ by character, ⌥←/→ by word, ❖←/→ to the ends, ⇧ e
 and ⌦, ⌥ by word, ❖⌫ to the start; ❖A ❖C ❖X ❖V ❖Z ⇧❖Z; double and triple
 clicks select a word and everything. Typing undoes in bursts.
 
-`text_editor` (multi-line, for Sumi and Fusen) is described below.
+`text_editor(&self.content)` is the multi-line editor (Sumi's, Fusen's).
+The program owns an `EditorContent` (a rope, the selection and the undo
+history) and applies what the editor sends: `.on_action(Msg::Edit)`, then
+`self.content.perform(action)` in `update`. `.on_find(Msg::Find)` hears
+the Edit menu's Find items (`FindRequest`); the program draws its own find
+bar and passes the matches back with `.marks(ranges, current)`. Also
+`.line_numbers(b)`, `.wrap(b)`, `.mono(b)`, `.size(p)`, `.line_height(m)`
+(21/13 by default), `.current_line(b)`, `.read_only()`, `.placeholder(t)`,
+`.padding(p)`, and `.highlighter(Arc<dyn Fn(line, &str) -> Vec<LineStyle>>,
+version)`, called for the lines that show. It lays out only those lines,
+each through the text cache, and redraws only the lines that changed. The
+gutter is the board's: numbers in `faint` right-aligned in a 30pt column,
+14pt from the text, the caret's line's number in `text3` on a 10% `focus`
+band (with a selection too). A selection the program sets (found text, a
+line gone to) is scrolled into view, a third of the way down if it was far
+out of sight.
 
 ### Collections
 

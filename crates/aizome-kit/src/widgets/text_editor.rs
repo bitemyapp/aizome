@@ -245,6 +245,8 @@ pub(crate) struct EditorState {
     drawn: Vec<(usize, f64, f64, u64)>,
     caret: Option<Rect>,
     width: f64,
+    /// The selection the last layout showed.
+    shown_selection: Option<Selection>,
 }
 
 struct EditorWidget {
@@ -705,31 +707,46 @@ impl Widget for EditorWidget {
         let font = self.font(t);
         self.line_h = (font.size * self.opts.line_height).round();
         let lines = self.line_count();
+        // The board's gutter: numbers right-aligned in a column 30pt wide
+        // at 13pt (wider for more digits), then 14pt to the text.
+        let em = font.size / 13.0;
         self.gutter = if self.opts.line_numbers {
             let digits = (lines.max(1) as f64).log10().floor() + 1.0;
             let w = cx.measure("0", &TextSpec::new(FontSpec::mono(font.size), t.faint())).width;
-            (digits.max(2.0) * w + 22.0).ceil()
+            (digits.max(2.0) * w + 14.4 * em).ceil()
         } else {
             0.0
         };
-        self.text_x = self.gutter + self.opts.padding;
+        self.text_x = if self.opts.line_numbers { self.gutter + (14.0 * em).round() } else { self.opts.padding };
         let width = self.wrap_width(t, size.width);
         let st = cx.state::<EditorState>();
         let focused = st.focused;
         let preedit = st.preedit.clone();
         let preedit_caret = st.preedit_caret;
-        let reveal = std::mem::take(&mut st.reveal);
+        // Show the caret when the editor moved it (keys, clicks) or the
+        // program did (found text, a line gone to): the program's moves
+        // are new selections the editor didn't send.
+        let own = std::mem::take(&mut st.reveal);
+        let program_moved = st.shown_selection.is_some_and(|s| s != self.snap.selection);
+        st.shown_selection = Some(self.snap.selection);
+        let reveal = own || program_moved;
         let width_changed = (st.width - size.width).abs() > 0.5;
         st.width = size.width;
         let mut top = st.top_line.min(lines.saturating_sub(1));
         let mut off = st.top_offset;
         let mut scroll_x = st.scroll_x;
-        let pad = self.opts.padding.min(8.0);
-        // Show the caret if the keyboard moved it: scroll up to its line,
-        // or down until it's in sight.
+        let pad = self.opts.padding;
+        // Show the caret: scroll up to its line, or down until it's in
+        // sight. A jump the program made far out of sight puts the line a
+        // third of the way down, with what comes before it.
         let head = self.snap.selection.head.min(self.snap.rope.len_chars());
         let caret_line = self.snap.rope.char_to_line(head);
-        if reveal {
+        let rows = ((size.height - 2.0 * pad) / self.line_h.max(1.0)).floor().max(1.0) as usize;
+        let far = |top: usize| caret_line + 1 < top || caret_line > top + rows + 1;
+        if reveal && !own && far(top) {
+            top = caret_line.saturating_sub(rows / 3);
+            off = 0.0;
+        } else if reveal {
             if caret_line < top || (caret_line == top && off > 0.0) {
                 top = caret_line;
                 off = 0.0;
@@ -788,7 +805,7 @@ impl Widget for EditorWidget {
         st.top_line = top;
         st.top_offset = off;
         st.scroll_x = scroll_x;
-        let current = |l: &Laid| self.opts.current_line && l.line == caret_line && self.snap.selection.is_empty();
+        let current = |l: &Laid| self.opts.current_line && l.line == caret_line;
         let drawn: Vec<(usize, f64, f64, u64)> =
             self.lines.iter().map(|l| (l.line, l.y, l.h, l.key ^ (current(l) as u64) ^ (self.gutter.to_bits() << 1))).collect();
         st.drawn = drawn.clone();
@@ -836,7 +853,7 @@ impl Widget for EditorWidget {
             if !cx.canvas.needs(row) {
                 continue;
             }
-            if self.opts.current_line && l.line == caret_line && self.snap.selection.is_empty() && cx.is_focused() {
+            if self.opts.current_line && l.line == caret_line && cx.is_focused() {
                 cx.canvas.fill_rect(row, t.focus().with_alpha(0.10));
             }
             let origin = Point::new(self.text_x - self.scroll_x, l.y);
