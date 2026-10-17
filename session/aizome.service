@@ -1,0 +1,23 @@
+# The compositor, started by aizome-session in the user's systemd manager.
+# It notifies readiness once its Wayland socket and IPC are up and its
+# environment is imported, then starts aizome-session.target (which binds
+# graphical-session.target, so session services follow it).
+[Unit]
+Description=Aizome compositor
+Documentation=https://github.com/bitemyapp/aizome
+BindsTo=graphical-session.target
+Before=graphical-session.target
+Wants=graphical-session-pre.target
+After=graphical-session-pre.target
+Wants=aizome-session.target
+Before=aizome-session.target
+
+[Service]
+Slice=session.slice
+Type=notify
+# Found on the manager's PATH (on NixOS, /run/current-system/sw/bin and
+# the user's profile).
+ExecStart=/usr/bin/env aizome --backend udev
+# A crashed compositor ends the session; the display manager takes over.
+Restart=no
+TimeoutStartSec=60
