@@ -37,6 +37,56 @@ pub enum AppMessage {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         text: Option<String>,
     },
+    /// Not from an app: the compositor or `aizomectl` asks the shell to do
+    /// something. Needs no hello first; answered with
+    /// [`ShellMessage::Reply`]. `{"type":"request","request":"palette"}`.
+    Request {
+        #[serde(flatten)]
+        request: ShellRequest,
+    },
+}
+
+/// What the compositor and `aizomectl` ask of the shell itself.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "request", rename_all = "kebab-case")]
+pub enum ShellRequest {
+    /// Open the command palette (or close it if open), in a scope
+    /// (`commands`, `windows`, `files`, `apps`, `settings`), with text.
+    Palette {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        scope: Option<String>,
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        query: String,
+    },
+    /// Open the Toolchest.
+    Toolchest,
+    /// Open the focused app's menu at a point of the global layout.
+    AppMenu { x: f64, y: f64 },
+    /// Lock the screen.
+    Lock,
+    /// Show the on-screen display: `kind` is `volume`, `mute`,
+    /// `brightness` or `keyboard`, `value` 0.0–1.0.
+    Osd { kind: String, value: f64 },
+    /// Post a notification as an app would.
+    Notify {
+        #[serde(default)]
+        app: String,
+        summary: String,
+        #[serde(default)]
+        body: String,
+    },
+    /// Fold the Deskbar into the bar, or unfold it (toggle when left out).
+    Deskbar {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        collapsed: Option<bool>,
+    },
+    /// Open a systray widget's panel (`network`, `sound`, `bluetooth`,
+    /// `display`, `battery`, `clock`), or a menu of the bar by its title.
+    Open { what: String },
+    /// Close whatever transient surface is open (menus, panels, palette).
+    Dismiss,
+    /// What the shell shows now, as JSON in the reply's message.
+    State,
 }
 
 /// What the shell sends.
@@ -51,6 +101,27 @@ pub enum ShellMessage {
     /// The selected text, please, for a service: answered with
     /// [`AppMessage::ServicesText`] and the same serial.
     ServicesText { serial: u64 },
+    /// The answer to an [`AppMessage::Request`]: whether it was done, and
+    /// what to say (JSON for [`ShellRequest::State`]).
+    Reply {
+        ok: bool,
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        message: String,
+    },
+}
+
+/// Ask the shell at `path` to do something and wait for its answer: what
+/// `aizomectl` and tests use.
+pub fn request(path: impl AsRef<Path>, request: ShellRequest) -> io::Result<(bool, String)> {
+    let mut c = Client::connect(path)?;
+    c.send(&AppMessage::Request { request })?;
+    loop {
+        match c.recv()? {
+            Some(ShellMessage::Reply { ok, message }) => return Ok((ok, message)),
+            Some(_) => continue,
+            None => return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "the shell hung up")),
+        }
+    }
 }
 
 /// A menu of the bar.
@@ -238,6 +309,22 @@ mod tests {
         assert_eq!(decode::<AppMessage>(&line).unwrap(), hello);
         assert_eq!(decode::<ShellMessage>("{\"type\":\"about-to-show\",\"menu\":3}").unwrap(), ShellMessage::AboutToShow { menu: 3 });
         assert_eq!(decode::<ShellMessage>("{\"type\":\"activate\",\"id\":12}\n").unwrap(), ShellMessage::Activate { id: 12 });
+    }
+
+    #[test]
+    fn requests_and_replies_are_flat_lines() {
+        let r = AppMessage::Request { request: ShellRequest::Palette { scope: Some("files".into()), query: String::new() } };
+        let line = encode(&r);
+        assert_eq!(line, "{\"type\":\"request\",\"request\":\"palette\",\"scope\":\"files\"}\n");
+        assert_eq!(decode::<AppMessage>(&line).unwrap(), r);
+        let lock: AppMessage = decode(r#"{"type":"request","request":"lock"}"#).unwrap();
+        assert_eq!(lock, AppMessage::Request { request: ShellRequest::Lock });
+        let osd: AppMessage = decode(r#"{"type":"request","request":"osd","kind":"volume","value":0.5}"#).unwrap();
+        assert_eq!(osd, AppMessage::Request { request: ShellRequest::Osd { kind: "volume".into(), value: 0.5 } });
+        let reply = ShellMessage::Reply { ok: true, message: String::new() };
+        assert_eq!(encode(&reply), "{\"type\":\"reply\",\"ok\":true}\n");
+        // An app built before replies existed skips them.
+        assert!(decode::<AppMessage>("{\"type\":\"what\"}").is_err());
     }
 
     #[test]
