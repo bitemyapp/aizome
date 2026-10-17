@@ -24,6 +24,7 @@ pub struct Sys {
     pub backlight: Option<Backlight>,
     pub profiles: Option<PowerProfiles>,
     pub logind: Option<Logind>,
+    pub disks: Option<aizome_sys::disks::Disks>,
 }
 
 impl Sys {
@@ -38,6 +39,7 @@ impl Sys {
             backlight: Some(Backlight::new(w())),
             profiles: Some(PowerProfiles::new(w())),
             logind: Some(Logind::new(w())),
+            disks: Some(aizome_sys::disks::Disks::new(w())),
         }
     }
 

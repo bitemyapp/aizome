@@ -164,3 +164,13 @@ mod tests {
         assert_eq!(Hue::Focus.color(&night), night.focus());
     }
 }
+
+/// A Lucide glyph stroked `stroke` points wide (the desktop's large icons
+/// draw thinner than the kit's proportional weight).
+pub fn glyph(canvas: &mut Canvas, icon: aizome_kit::Icon, at: Point, size: f64, c: Color, stroke: f64) {
+    use aizome_kit::sidestep_ui::kurbo::Affine;
+    use aizome_kit::sidestep_ui::{LineCap, LineJoin, StrokeStyle};
+    let mut path = (*icon.path()).clone();
+    path.apply_affine(Affine::translate(at.to_vec2()) * Affine::scale(size / 24.0));
+    canvas.stroke(&path, &StrokeStyle::new(stroke).with_cap(LineCap::Round).with_join(LineJoin::Round), c);
+}

@@ -64,6 +64,7 @@ pub fn drawn<Msg>(width: f64, height: f64, hash: impl std::hash::Hash, paint: im
             hovered_msg: None,
             pad: aizome_kit::Padding::default(),
             drop: None,
+            overflow: 0.0,
         },
         common: aizome_kit::element::Common::default(),
         child: None,
@@ -136,6 +137,13 @@ impl<Msg> Drawn<Msg> {
         self
     }
 
+    /// It paints up to `points` outside its rectangle (a label wider than
+    /// its icon).
+    pub fn overflow(mut self, points: f64) -> Self {
+        self.w.overflow = points;
+        self
+    }
+
     /// Its width measured at layout (text and padding), not given.
     pub fn fit(mut self, f: impl Fn(&mut LayoutCx) -> f64 + 'static) -> Self {
         self.w.fit = Some(Rc::new(f));
@@ -192,6 +200,8 @@ struct DrawnWidget {
     hovered_msg: Option<MsgFn>,
     /// Room round its child.
     pad: aizome_kit::Padding,
+    /// How far outside its rectangle it paints.
+    overflow: f64,
     /// Takes drops: files' URLs and text.
     drop: Option<MsgMap<(Vec<String>, Option<String>)>>,
 }
@@ -247,6 +257,10 @@ impl Widget for DrawnWidget {
 
     fn hover_paints(&self) -> bool {
         self.hover
+    }
+
+    fn overflow(&self) -> f64 {
+        self.overflow
     }
 
     fn cursor(&self) -> Option<Cursor> {
@@ -416,5 +430,30 @@ impl Widget for SplitWidget {
         cx.place_child(0, Point::new(self.pad.0, ((h - l.height) / 2.0).round()));
         cx.place_child(1, Point::new(w - self.pad.1 - r.width, ((h - r.height) / 2.0).round()));
         bc.constrain(Size::new(w, h))
+    }
+}
+
+/// Children at points of their own (the desktop's icons), over the room
+/// given.
+pub fn free<Msg>(children: Vec<(Point, Element<Msg>)>) -> Element<Msg> {
+    let (points, els): (Vec<Point>, Vec<Element<Msg>>) = children.into_iter().unzip();
+    Element::new(FreeWidget { points }, els)
+}
+
+struct FreeWidget {
+    points: Vec<Point>,
+}
+
+impl Widget for FreeWidget {
+    fn name(&self) -> &'static str {
+        "free"
+    }
+
+    fn layout(&mut self, cx: &mut LayoutCx, bc: Constraints) -> Size {
+        for i in 0..cx.child_count() {
+            cx.layout_child(i, Constraints::loose(bc.max));
+            cx.place_child(i, self.points.get(i).copied().unwrap_or(Point::ZERO));
+        }
+        bc.constrain(bc.max)
     }
 }

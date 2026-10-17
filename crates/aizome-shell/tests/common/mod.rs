@@ -211,3 +211,39 @@ pub fn with_mail_and_shelf(h: &mut Harness<Shell>) {
     ];
     h.send(Msg::Nothing);
 }
+
+/// The boards' wallpapers.
+pub fn wallpaper(day: bool) -> PathBuf {
+    let name = if day { "tokyo-at-dusk.jpg" } else { "da-nang-at-night.jpg" };
+    PathBuf::from("/home/callen/work/aizome-design/reference/wallpapers").join(name)
+}
+
+/// Windows composited as the compositor would place them: (window, its top
+/// left in points), bottom first, at `scale`.
+pub fn compose(h: &mut Harness<Shell>, layers: &[(WindowKey, Point)], size: Size, scale: f64) -> (u32, u32, Vec<u8>) {
+    let (w, hh) = ((size.width * scale) as u32, (size.height * scale) as u32);
+    let mut out = vec![0u8; (w * hh * 4) as usize];
+    for (k, at) in layers {
+        let (lw, lh, px) = h.render_rgba(*k, scale);
+        let (ox, oy) = ((at.x * scale).round() as i64, (at.y * scale).round() as i64);
+        for y in 0..lh as i64 {
+            for x in 0..lw as i64 {
+                let (dx, dy) = (ox + x, oy + y);
+                if dx < 0 || dy < 0 || dx >= w as i64 || dy >= hh as i64 {
+                    continue;
+                }
+                let s = &px[((y * lw as i64 + x) * 4) as usize..][..4];
+                let d = &mut out[((dy * w as i64 + dx) * 4) as usize..][..4];
+                let sa = f32::from(s[3]) / 255.0;
+                let da = f32::from(d[3]) / 255.0;
+                let oa = sa + da * (1.0 - sa);
+                for i in 0..3 {
+                    let c = (f32::from(s[i]) * sa + f32::from(d[i]) * da * (1.0 - sa)) / oa.max(1e-6);
+                    d[i] = c.round().clamp(0.0, 255.0) as u8;
+                }
+                d[3] = (oa * 255.0).round() as u8;
+            }
+        }
+    }
+    (w, hh, out)
+}

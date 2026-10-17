@@ -52,6 +52,11 @@ pub enum Msg {
     Panel(crate::systray::panels::PanelMsg),
     /// What's playing, read on a thread.
     Media(Option<crate::systray::panels::Media>),
+    /// The OSD of generation `n` has shown long enough.
+    OsdHide(u64),
+    Desktop(u32, crate::desktop::DesktopMsg),
+    /// What's in `~/Desktop`, and whether the Trash is full.
+    DesktopItems(Vec<(PathBuf, bool)>, bool),
     Note(crate::notifications::server::NoteEvent),
     /// The bar's notification line has shown long enough.
     BannerDone(u32),
@@ -77,6 +82,7 @@ pub enum Surface {
     Deskbar,
     Palette,
     Panel,
+    Osd,
 }
 
 /// An output and the shell's surfaces on it.
@@ -151,6 +157,15 @@ pub struct Shell {
     /// Panels to show instead of the system's (tests and pictures).
     pub panels_fixture: Option<crate::systray::glue::Fixture>,
     pub media: Option<crate::systray::panels::Media>,
+    pub osd: Option<crate::osd::OsdState>,
+    pub desktop: crate::desktop::DesktopState,
+    pub(crate) wallpapers: HashMap<PathBuf, aizome_kit::Image>,
+    pub trash_full: bool,
+    /// The user: login and full name.
+    pub user: (String, String),
+    pub(crate) drag_grab: aizome_kit::Vec2,
+    /// Volumes to show when the system has none (tests and pictures).
+    pub volumes_fixture: Vec<aizome_sys::disks::Volume>,
     pub(crate) deskbar_size: Option<aizome_kit::Size>,
     pub(crate) icons: HashMap<String, Option<aizome_kit::Image>>,
     /// The primary bar's Desks, by where they are across it.
@@ -203,6 +218,13 @@ impl Shell {
             panel_ui: Default::default(),
             panels_fixture: None,
             media: None,
+            osd: None,
+            desktop: Default::default(),
+            wallpapers: HashMap::new(),
+            trash_full: false,
+            user: crate::pam::current_user(),
+            drag_grab: aizome_kit::Vec2::ZERO,
+            volumes_fixture: Vec::new(),
             deskbar_size: None,
             icons: HashMap::new(),
             desk_strip: Vec::new(),
@@ -396,7 +418,8 @@ impl Shell {
         let apps: Vec<&aizome_sys::apps::App> = self.apps.as_deref().map(|i| i.apps()).unwrap_or_default();
         let desk_folder = self.wm.current_desk_info().and_then(|d| d.folder.as_deref()).map(aizome_config::expand_home);
         let recent = aizome_search::recent::load(aizome_search::recent::default_path()).into_iter().map(|r| r.path).collect();
-        build::toolchest(&build::ToolchestInput { apps: &apps, desks: &self.wm.desks, desk_folder, disks: Vec::new(), recent })
+        let disks = self.sys.disks.as_ref().map(|d| d.snapshot().volumes()).unwrap_or_default().into_iter().filter_map(|v| Some((v.name, PathBuf::from(v.mount_point?)))).collect();
+        build::toolchest(&build::ToolchestInput { apps: &apps, desks: &self.wm.desks, desk_folder, disks, recent })
     }
 
     /// Tell an app one of its menus is about to show.
@@ -497,11 +520,16 @@ impl Shell {
             Action::Toolchest => self.open_toolchest(None, cx),
             Action::SetTheme { day } => self.set_theme(day),
             Action::ShowInMenu { trail } => self.show_in_menu(&trail, cx),
+            Action::Disk { device, verb } => self.disk(device, verb, cx),
             Action::ToggleDoNotDisturb => {
                 self.notes_cfg.do_not_disturb = !self.notes_cfg.do_not_disturb;
                 self.save_section("notifications");
             }
-            Action::Service(_) | Action::Disk { .. } | Action::ShelfRemove { .. } => {}
+            Action::ShelfRemove { index } => {
+                self.shelf.remove(index);
+                self.save_shelf();
+            }
+            Action::Service(_) => {}
             Action::NewFolderOnDesktop => {
                 let dir = crate::launch::desktop_dir();
                 let mut path = dir.join("New Folder");
@@ -550,6 +578,8 @@ impl Shell {
         self.stream = Some(tx.clone());
         self.frecency = aizome_search::frecency::Frecency::load(aizome_search::frecency::Frecency::default_path());
         self.shelf = crate::shelf::Shelf::load(&crate::shelf::Shelf::default_dir());
+        self.desktop.load_positions(&crate::desktop::DesktopState::path());
+        self.load_wallpapers();
         self.start_palette_threads(cx);
         {
             let tx = tx.clone();
@@ -613,6 +643,7 @@ impl Shell {
         self.sys = crate::sys::Sys::start(move || {
             tx2.send(Msg::Sys);
         });
+        self.watch_desktop();
     }
 
     fn take_ipc(&mut self, e: IpcEvent, cx: &mut Cx<Msg>) {
@@ -640,6 +671,10 @@ impl Shell {
                     self.pointer_menu(x, y, cx);
                 }
             }
+            "play-pause" => crate::mpris::control(crate::systray::panels::MediaVerb::PlayPause),
+            "next" => crate::mpris::control(crate::systray::panels::MediaVerb::Next),
+            "previous" => crate::mpris::control(crate::systray::panels::MediaVerb::Previous),
+            a if self.media_key(a, cx) => {}
             _ => log::debug!("binding {action} at {pointer:?} on {output:?}"),
         }
     }
@@ -658,6 +693,9 @@ impl Shell {
         }
         self.read_settings();
         self.tray = self.sys.tray(&self.bar_cfg);
+        if self.opts.live {
+            self.load_wallpapers();
+        }
         let day = self.settings.appearance.theme.resolve(aizome_kit::theme::local_hour()) == aizome_theme::ThemeName::Day;
         self.theme_changed(day);
     }
@@ -711,6 +749,14 @@ impl Shell {
                 self.take_note(crate::notifications::server::NoteEvent::Notify(id, Box::new(n)), cx);
                 (true, id.to_string())
             }
+            proto::ShellRequest::Osd { kind, value } => match crate::osd::kind_named(&kind) {
+                Some(k) => {
+                    let muted = kind == "mute";
+                    self.show_osd(crate::osd::Osd { kind: k, value: value as f32, muted }, cx);
+                    (true, String::new())
+                }
+                None => (false, format!("no OSD for {kind}")),
+            },
             proto::ShellRequest::Dismiss => {
                 self.close_palette(cx);
                 (true, String::new())
@@ -786,6 +832,12 @@ impl Program for Shell {
             Msg::Palette(e) => self.palette_event(e, cx),
             Msg::Panel(m) => self.panel_msg(m, cx),
             Msg::Media(m) => self.media = m,
+            Msg::OsdHide(g) => self.hide_osd(g, cx),
+            Msg::Desktop(o, m) => self.desktop_msg(o, m, cx),
+            Msg::DesktopItems(items, full) => {
+                self.desktop.items = items;
+                self.trash_full = full;
+            }
             Msg::Note(e) => self.take_note(e, cx),
             Msg::BannerDone(id) => self.banner_done(id, cx),
             Msg::Nothing => {}
@@ -799,12 +851,7 @@ impl Program for Shell {
                 let Some(screen) = self.screens.iter().find(|s| s.output.id == *output) else { return aizome_kit::space(0.0) };
                 crate::menubar::view(&self.bar_model(screen)).map(move |m| Msg::Bar(window, m))
             }
-            Some(Surface::Desktop { .. }) => crate::widgets::drawn::drawn(0.0, 0.0, "desktop", |cx| {
-                let t = cx.theme();
-                let b = cx.bounds();
-                cx.canvas.fill_rect(b, aizome_kit::theme::color(t.palette.desktop));
-            })
-            .into(),
+            Some(Surface::Desktop { output }) => self.desktop_view(*output),
             Some(Surface::Deskbar) => crate::deskbar::view(&self.deskbar_model()).map(Msg::Deskbar),
             Some(Surface::Palette) => match (self.palette_view(), &self.palette) {
                 (Some(v), Some(p)) => {
@@ -812,6 +859,10 @@ impl Program for Shell {
                     crate::widgets::keys::keys(inner, |k| crate::palette::key_event(k).map(Msg::Palette))
                 }
                 _ => aizome_kit::space(0.0),
+            },
+            Some(Surface::Osd) => match &self.osd {
+                Some(o) => crate::osd::view(&o.osd),
+                None => aizome_kit::space(0.0),
             },
             Some(Surface::Panel) => match &self.panel {
                 Some(p) => crate::systray::panels::view(&self.panel_data(p.widget)).map(Msg::Panel),

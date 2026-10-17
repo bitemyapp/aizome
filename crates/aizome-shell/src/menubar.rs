@@ -254,9 +254,18 @@ fn banner(b: &Banner) -> Element<BarMsg> {
         let bounds = cx.bounds();
         b2.glyph.draw(cx.canvas, Point::new(12.0, 4.0), 16.0, b2.hue.color(t));
         let s = ui_spec(t, typeface::BODY, typeface::WEIGHT_SEMIBOLD, t.text());
-        let w = cx.draw_text_in(&b2.summary, &s, Rect::new(36.0, 0.0, bounds.x1 * 0.55, HEIGHT - 1.0), Align::Start);
+        let w = cx.draw_text_in(&b2.summary, &s, Rect::new(36.0, 0.0, (bounds.x1 * 0.6).max(120.0), HEIGHT - 1.0), Align::Start);
         let body = ui_spec(t, typeface::BODY, typeface::WEIGHT_REGULAR, t.text2());
         cx.draw_text_in(&b2.body, &body, Rect::new(36.0 + w + 10.0, 0.0, bounds.x1 - 8.0, HEIGHT - 1.0), Align::Start);
+    })
+    .fit({
+        let (s, body) = (b.summary.clone(), b.body.clone());
+        move |cx| {
+            let t = cx.theme().clone();
+            let w = cx.measure(&s, &ui_spec(&t, typeface::BODY, typeface::WEIGHT_SEMIBOLD, t.text())).width;
+            let bw = cx.measure(&body, &ui_spec(&t, typeface::BODY, typeface::WEIGHT_REGULAR, t.text2())).width;
+            (36.0 + w + 10.0 + bw + 12.0).min(720.0)
+        }
     })
     .on_click(BarMsg::Banner(b.id))
     .text(format!("{} {}", b.summary, b.body), SemanticRole::StatusBar)
