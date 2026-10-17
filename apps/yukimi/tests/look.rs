@@ -37,6 +37,11 @@ fn pictures() {
                 settle(&mut h, |a| a.found.is_some());
             }
             h.save_png(w, dir.join(format!("{}-{name}.png", page.id())), 1.0);
+            if page == Page::Installed {
+                h.send(Msg::ShowAll);
+                h.scroll(w, aizome_kit::layout::Point::new(600.0, 400.0), aizome_kit::layout::Vec2::new(0.0, 4000.0));
+                h.save_png(w, dir.join(format!("installed-all-{name}.png")), 1.0);
+            }
         }
     }
 }

@@ -318,3 +318,24 @@ fn click_last(h: &mut Harness<Yukimi>, w: WindowKey, label: &str) -> bool {
         None => false,
     }
 }
+
+#[test]
+fn the_rest_of_the_system_shows_all_and_filters() {
+    let (mut h, w, _) = sample(WORKS);
+    h.send(Msg::Show(Page::Installed));
+    // 40 more than the groups above show: the first 25, then "Show all".
+    assert!(has(&h, w, "Show all 40"), "{:?}", h.texts(w));
+    // It's further down: scroll to it.
+    h.scroll(w, Point::new(600.0, 400.0), Vec2::new(0.0, 4000.0));
+    assert!(h.click_text(w, "Show all 40"));
+    assert!(h.program().show_all);
+    assert!(!has(&h, w, "Show all 40"));
+    assert!(has(&h, w, "aizome"));
+    // Filtering starts from the first rows again, and says when nothing matches.
+    h.send(Msg::Filter("mes".into()));
+    assert!(!h.program().show_all);
+    assert!(has(&h, w, "mesa"));
+    assert!(!has(&h, w, "aizome"));
+    h.send(Msg::Filter("emacs".into()));
+    assert!(has(&h, w, "Nothing called “emacs” is part of the system."));
+}

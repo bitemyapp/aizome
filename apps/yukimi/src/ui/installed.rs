@@ -16,8 +16,10 @@ use crate::model::SystemPackage;
 
 /// How many of the system's other packages show before "Show all".
 const FIRST_ROWS: usize = 25;
-/// How many show at most, even then: the filter finds the rest.
-const ALL_ROWS: usize = 600;
+/// A row of the system's packages, and how tall the list of all of them
+/// gets before it scrolls.
+const SYSTEM_ROW: f64 = 32.0;
+const ALL_HEIGHT: f64 = 448.0;
 
 fn remove_button(tooltip: &str, msg: Msg) -> Element<Msg> {
     icon_button(Icon::Trash).plain().on_press(msg).tooltip(tooltip.to_owned()).into()
@@ -212,11 +214,19 @@ fn the_rest(app: &Yukimi) -> Element<Msg> {
     let needle = app.filter.trim().to_lowercase();
     let matching: Vec<&SystemPackage> =
         rest.iter().copied().filter(|p| needle.is_empty() || p.name.to_lowercase().contains(&needle)).collect();
-    let limit = if app.show_all { ALL_ROWS } else { FIRST_ROWS };
+    if app.show_all && matching.len() > FIRST_ROWS {
+        // All of them, in a list that builds only the rows in sight.
+        let shown: std::rc::Rc<Vec<SystemPackage>> = std::rc::Rc::new(matching.iter().map(|p| (*p).clone()).collect());
+        let height = (shown.len() as f64 * SYSTEM_ROW).min(ALL_HEIGHT);
+        let all = virtual_list(shown.len(), SYSTEM_ROW, move |i| system_row(&shown[i])).height(height);
+        let description = format!("{} packages your desktops and settings bring. They come and go with those settings.", rest.len());
+        return group("Part of the system", Some(description), Some(filter), vec![all.into()]);
+    }
+    let limit = FIRST_ROWS;
     let mut rows: Vec<Element<Msg>> = matching.iter().take(limit).map(|p| system_row(p)).collect();
     if matching.is_empty() {
         rows.push(empty(&format!("Nothing called “{}” is part of the system.", app.filter.trim())));
-    } else if matching.len() > limit && !app.show_all {
+    } else if matching.len() > limit {
         rows.push(
             tap(
                 row![text(format!("Show all {}", matching.len())).role(Role::Accent), spacer(), icon(Icon::ChevronDown).size(14.0).role(Role::Text3)]
@@ -228,8 +238,6 @@ fn the_rest(app: &Yukimi) -> Element<Msg> {
             .named("Show all")
             .into(),
         );
-    } else if matching.len() > limit {
-        rows.push(empty(&format!("And {} more: filter to find them.", matching.len() - limit)));
     }
     group(
         "Part of the system",
