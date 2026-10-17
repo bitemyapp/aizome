@@ -1,0 +1,484 @@
+//! What the program does for its messages beyond the basics in `app`:
+//! going places, selections, keys, drags and drops, search, disks, the
+//! system's services, and answering jobs' questions.
+
+use std::path::{Path, PathBuf};
+use std::rc::Rc;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+
+use aizome_kit::prelude::*;
+use aizome_kit::sidestep_ui::KeyEvent;
+
+use super::app::{Hako, Msg, Sheet};
+use super::browser::{Drag, Load, Loc, Search};
+use super::dnd::{Dest, DragEvent};
+use super::fileview::ViewKey;
+use super::jobs::{Answer, Work, drop_mode};
+use crate::fsops::is_within;
+use crate::fsops::transfer::Mode;
+use crate::model::entry::{self, Entry};
+use crate::model::uri;
+
+impl Hako {
+    /// Go to a path: a folder, or a file in its folder.
+    pub(crate) fn go_path(&mut self, cx: &mut Cx<Msg>, w: WindowKey, p: &Path) {
+        if p.is_dir() {
+            let loc = self.loc_for(p);
+            self.go(cx, w, loc, None, true);
+        } else if let (Some(dir), Some(name)) = (p.parent(), p.file_name()) {
+            let loc = self.loc_for(dir);
+            self.go(cx, w, loc, Some(name.to_os_string()), true);
+        }
+    }
+
+    pub(crate) fn history_step(&mut self, cx: &mut Cx<Msg>, w: WindowKey, back: bool) {
+        let w = self.owner(w);
+        let Some(b) = self.windows.get_mut(&w) else { return };
+        let here = b.location().cloned().map(|l| (l, b.columns.last().and_then(|c| c.single().map(|e| e.name.clone()))));
+        let next = if back { b.back.pop() } else { b.forward.pop() };
+        let Some((loc, sel)) = next else { return };
+        if let Some(h) = here {
+            if back { b.forward.push(h) } else { b.back.push(h) }
+        }
+        self.go(cx, w, loc, sel, false);
+    }
+
+    /// A folder just made shows: rename it.
+    pub(crate) fn maybe_rename_new(&mut self, cx: &mut Cx<Msg>, w: WindowKey) {
+        let Some((rw, path)) = self.rename_when_loaded.clone() else { return };
+        if rw != w {
+            return;
+        }
+        let Some(b) = self.windows.get(&w) else { return };
+        let ready = b.focused().is_some_and(|c| c.load == Load::Ready && c.single().is_some_and(|e| e.path == path));
+        if ready {
+            self.rename_when_loaded = None;
+            self.start_rename(cx, w);
+        }
+    }
+
+    pub(crate) fn on_select(&mut self, cx: &mut Cx<Msg>, w: WindowKey, col: usize, rows: Vec<usize>) {
+        let g = self.next_gen();
+        let Some(b) = self.windows.get_mut(&w) else { return };
+        if b.rename.as_ref().is_some_and(|r| !(r.column == col && rows == [r.row])) {
+            self.commit_rename(cx, w);
+        }
+        let Some(b) = self.windows.get_mut(&w) else { return };
+        let opened = b.select(col, rows, g);
+        if opened {
+            self.start_loads(cx, w);
+        }
+        self.after_change(cx, w);
+    }
+
+    pub(crate) fn on_view_key(&mut self, cx: &mut Cx<Msg>, w: WindowKey, col: usize, k: ViewKey) {
+        match k {
+            ViewKey::Into => {
+                if let Some(b) = self.windows.get_mut(&w)
+                    && b.into_next(col)
+                {
+                    let f = b.focus;
+                    cx.focus(&format!("col-{f}"));
+                    self.after_change(cx, w);
+                }
+            }
+            ViewKey::Out => {
+                if let Some(b) = self.windows.get_mut(&w)
+                    && b.out_of(col)
+                {
+                    let f = b.focus;
+                    cx.focus(&format!("col-{f}"));
+                    self.after_change(cx, w);
+                }
+            }
+            ViewKey::QuickLook => cx.send(Msg::QuickLook(w)),
+            ViewKey::Rename => self.start_rename(cx, w),
+            ViewKey::ClickAway => {
+                // A click away from a name being edited keeps it.
+                self.commit_rename(cx, w);
+            }
+            ViewKey::Escape => {
+                let renaming = self.windows.get(&w).is_some_and(|b| b.rename.is_some());
+                // A sheet over the window closes first (the view kept the
+                // keyboard under it).
+                let sheet = self.sheets.iter().find(|(_, s)| match s {
+                    Sheet::Info { window, .. } | Sheet::QuickLook { window, .. } | Sheet::Confirm { window, .. } => *window == w,
+                    _ => false,
+                }).map(|(k, _)| *k);
+                if let Some(s) = sheet {
+                    self.sheets.remove(&s);
+                    cx.close_window(s);
+                } else if renaming {
+                    cx.send(Msg::RenameCancel(w));
+                } else if let Some(b) = self.windows.get_mut(&w) {
+                    b.drag = None;
+                }
+            }
+        }
+    }
+
+    /// The paths selected in window `w`.
+    pub(crate) fn selection_of(&self, w: WindowKey) -> Vec<PathBuf> {
+        self.windows.get(&w).map(|b| b.selection()).unwrap_or_default()
+    }
+
+    pub(crate) fn any_window(&self) -> WindowKey {
+        self.windows.keys().next().copied().unwrap_or(WindowKey::NONE)
+    }
+
+    // Drags and drops.
+
+    /// Whether dropping `sources` at `dest` would do anything.
+    pub(crate) fn drop_allowed(&self, sources: &[PathBuf], dest: &Dest) -> bool {
+        match dest {
+            Dest::Trash => !sources.iter().any(|s| self.opts.trash.in_a_can(s)),
+            Dest::Folder(d) => {
+                !sources.is_empty()
+                    && sources.iter().all(|s| !is_within(d, s))
+                    && !sources.iter().all(|s| s.parent() == Some(d.as_path()))
+                    && !self.opts.trash.in_a_can(d)
+            }
+        }
+    }
+
+    pub(crate) fn on_drag(&mut self, cx: &mut Cx<Msg>, w: WindowKey, ev: DragEvent) {
+        match ev {
+            DragEvent::Start => {
+                let sources = self.selection_of(w);
+                if let Some(b) = self.windows.get_mut(&w) {
+                    b.drag = (!sources.is_empty()).then(|| Drag { sources, target: None });
+                }
+            }
+            DragEvent::Over(t) => {
+                let allowed = match (&t, self.windows.get(&w).and_then(|b| b.drag.as_ref())) {
+                    (Some(t), Some(d)) => self.drop_allowed(&d.sources, &t.dest),
+                    _ => false,
+                };
+                if let Some(d) = self.windows.get_mut(&w).and_then(|b| b.drag.as_mut()) {
+                    d.target = if allowed { t } else { None };
+                }
+            }
+            DragEvent::Drop { target, copy } => {
+                let Some(drag) = self.windows.get_mut(&w).and_then(|b| b.drag.take()) else { return };
+                let Some(t) = target else { return };
+                if !self.drop_allowed(&drag.sources, &t.dest) {
+                    return;
+                }
+                match t.dest {
+                    Dest::Trash => self.start_job(cx, w, Work::Trash { paths: drag.sources }),
+                    Dest::Folder(d) => {
+                        let mode = drop_mode(&drag.sources, &d, copy);
+                        self.start_job(cx, w, Work::Transfer { sources: drag.sources, dest: d, mode });
+                    }
+                }
+            }
+            DragEvent::Cancel => {
+                if let Some(b) = self.windows.get_mut(&w) {
+                    b.drag = None;
+                }
+            }
+        }
+    }
+
+    /// Files dropped from another program.
+    pub(crate) fn on_drop_urls(&mut self, cx: &mut Cx<Msg>, w: WindowKey, dest: Dest, urls: Vec<String>) {
+        let sources: Vec<PathBuf> = urls.iter().filter_map(|u| uri::path_of(u)).filter(|p| std::fs::symlink_metadata(p).is_ok()).collect();
+        if sources.is_empty() || !self.drop_allowed(&sources, &dest) {
+            return;
+        }
+        match dest {
+            Dest::Trash => self.start_job(cx, w, Work::Trash { paths: sources }),
+            // What other programs drop is copied, as they may still want it.
+            Dest::Folder(d) => self.start_job(cx, w, Work::Transfer { sources, dest: d, mode: Mode::Copy }),
+        }
+    }
+
+    // Sorting.
+
+    pub(crate) fn resort(&mut self, cx: &mut Cx<Msg>) {
+        let sort = self.settings.sort;
+        let hidden = self.settings.hidden;
+        for b in self.windows.values_mut() {
+            for c in &mut b.columns {
+                if c.load == Load::Ready && c.loc != Loc::Recent {
+                    let mut all = (*c.all).clone();
+                    entry::sort_entries(&mut all, sort);
+                    c.set_entries(Arc::new(all), hidden);
+                }
+            }
+        }
+        self.save_settings();
+        let _ = cx;
+    }
+
+    pub(crate) fn save_settings(&self) {
+        if let Some(p) = &self.opts.settings {
+            self.settings.save(p);
+        }
+    }
+
+    // Search.
+
+    pub(crate) fn search(&mut self, cx: &mut Cx<Msg>, w: WindowKey, q: String) {
+        let g = self.next_gen();
+        let root = self
+            .windows
+            .get(&w)
+            .and_then(|b| b.search.as_ref().map(|s| s.root.clone()).or_else(|| b.target_folder().map(Path::to_path_buf)))
+            .unwrap_or_else(|| self.opts.home.clone());
+        let Some(b) = self.windows.get_mut(&w) else { return };
+        if q.trim().is_empty() {
+            b.search = None;
+            self.after_change(cx, w);
+            return;
+        }
+        match b.search.as_mut() {
+            Some(s) => {
+                s.query = q.clone();
+                s.generation = g;
+                s.running = true;
+            }
+            None => {
+                b.search = Some(Search { query: q.clone(), root: root.clone(), results: Rc::new(Vec::new()), selected: Rc::new(Vec::new()), generation: g, running: true });
+            }
+        }
+        b.rename = None;
+        let index = self.search_index.get(&root).filter(|(at, _)| at.elapsed() < Duration::from_secs(120)).map(|(_, i)| i.clone());
+        let tx = cx.stream();
+        let (services, home) = (self.opts.services, self.opts.home.clone());
+        std::thread::spawn(move || {
+            let index = index.unwrap_or_else(|| Arc::new(build_index(&root, &home, services)));
+            let hits = index.search(&q, 400, &|_| 0);
+            let entries: Vec<Entry> = hits.into_iter().filter(|h| h.path.starts_with(&root)).filter_map(|h| Entry::read(&h.path).ok()).collect();
+            tx.send(Msg::SearchDone(w, g, Arc::new(entries)));
+            tx.send(Msg::SearchIndex(root, super::app::Shared(index)));
+        });
+        self.update_title(cx, w);
+    }
+
+    // Sizes and previews.
+
+    /// Count a folder's items and bytes, in the background.
+    pub(crate) fn measure(&mut self, cx: &mut Cx<Msg>, p: &Path) {
+        let p = p.to_path_buf();
+        cx.spawn(move || {
+            let (n, b) = crate::fsops::delete::measure(&p, &crate::fsops::Control::new(), 2_000_000).unwrap_or((0, 0));
+            Msg::FolderSize(p, n.saturating_sub(1), b)
+        });
+    }
+
+    pub(crate) fn load_full_preview(&mut self, cx: &mut Cx<Msg>, e: &Entry) {
+        self.load_preview(cx, e, true);
+    }
+
+    pub(crate) fn thumb_done(&mut self) {
+        self.thumb_running = self.thumb_running.saturating_sub(1);
+    }
+
+    pub(crate) fn run_thumbs_again(&mut self, cx: &mut Cx<Msg>) {
+        // Only what's still on screen is worth making.
+        let shown: std::collections::HashSet<PathBuf> =
+            self.windows.values().flat_map(|b| b.columns.iter().flat_map(|c| c.rows.iter().map(|e| e.path.clone()))).collect();
+        self.thumb_wanted.retain(|(p, _)| shown.contains(p));
+        self.run_thumbs(cx);
+    }
+
+    // Disks.
+
+    pub(crate) fn disks_changed(&mut self, cx: &mut Cx<Msg>) {
+        if let Some(d) = &self.disks {
+            self.volumes = d.snapshot().volumes();
+        }
+        let mut done = Vec::new();
+        self.mount_tasks.retain(|(block, go, task)| match task.try_result() {
+            Some(r) => {
+                done.push((block.clone(), *go, r));
+                false
+            }
+            None => true,
+        });
+        for (block, go, r) in done {
+            self.mounting.remove(&block);
+            match r {
+                Ok(point) if go => {
+                    let w = self.any_window();
+                    self.go(cx, w, Loc::Folder(PathBuf::from(point)), None, true);
+                }
+                Ok(_) => {}
+                Err(e) => self.message(cx, "The disk couldn't be mounted.", &e.to_string()),
+            }
+        }
+        let mut ejected = Vec::new();
+        self.eject_tasks.retain(|(block, drive, task)| match task.try_result() {
+            Some(r) => {
+                ejected.push((block.clone(), drive.clone(), r));
+                false
+            }
+            None => true,
+        });
+        for (block, drive, r) in ejected {
+            match (r, drive) {
+                (Ok(()), Some(drive)) => {
+                    // Unmounted: now the drive.
+                    if let Some(d) = &self.disks {
+                        let t = d.eject(&drive);
+                        self.eject_tasks.push((block, None, t));
+                    }
+                }
+                (Ok(()), None) => {
+                    self.mounting.remove(&block);
+                }
+                (Err(e), _) => {
+                    self.mounting.remove(&block);
+                    self.message(cx, "The disk couldn't be ejected.", &e.to_string());
+                }
+            }
+        }
+    }
+
+    pub(crate) fn mount(&mut self, block: String, go: bool) {
+        let Some(d) = &self.disks else { return };
+        if let Some(v) = self.volumes.iter().find(|v| v.block == block)
+            && let Some(m) = &v.mount_point
+        {
+            let _ = m;
+            return;
+        }
+        self.mounting.insert(block.clone());
+        let task = d.mount(&block);
+        self.mount_tasks.push((block, go, task));
+    }
+
+    pub(crate) fn eject(&mut self, block: String) {
+        let Some(d) = &self.disks else { return };
+        let Some(v) = self.volumes.iter().find(|v| v.block == block).cloned() else { return };
+        // Windows showing it go home first.
+        let home = self.opts.home.clone();
+        if let Some(m) = &v.mount_point {
+            for b in self.windows.values_mut() {
+                if b.columns.iter().any(|c| c.loc.folder().is_some_and(|f| f.starts_with(m))) {
+                    b.go(Loc::Folder(home.clone()), &Loc::Folder(home.clone()), None, 0);
+                }
+            }
+        }
+        // Unmount, then (once that's done) eject the drive.
+        let drive = v.drive.clone().filter(|_| v.ejectable);
+        let task = if v.mount_point.is_some() {
+            d.unmount(&block, false)
+        } else if let Some(drive) = &drive {
+            let t = d.eject(drive);
+            self.mounting.insert(block.clone());
+            self.eject_tasks.push((block, None, t));
+            return;
+        } else {
+            return;
+        };
+        self.mounting.insert(block.clone());
+        self.eject_tasks.push((block, drive, task));
+    }
+
+    pub(crate) fn message(&mut self, cx: &mut Cx<Msg>, title: &str, body: &str) {
+        let w = self.any_window();
+        if self.windows.contains_key(&w) {
+            self.open_sheet(cx, w, Sheet::Message { title: title.into(), body: body.into() });
+        }
+    }
+
+    // The system.
+
+    pub(crate) fn start_services(&mut self, cx: &mut Cx<Msg>) {
+        // Applications, for Open With.
+        cx.spawn(|| Msg::Apps(Arc::new(aizome_sys::apps::AppIndex::load())));
+        // Disks.
+        let tx = cx.stream();
+        let disks = aizome_sys::disks::Disks::new(aizome_sys::Wake::new(move || {
+            tx.send(Msg::DisksChanged);
+        }));
+        self.volumes = disks.snapshot().volumes();
+        self.disks = Some(disks);
+        self.system_disk = crate::model::places::system_disk();
+        // The Desks, from the compositor.
+        let tx = cx.stream();
+        std::thread::Builder::new()
+            .name("hako-desks".into())
+            .spawn(move || follow_desks(tx))
+            .ok();
+    }
+
+    // Jobs' questions and the operations window.
+
+    /// Answer job `id`'s question (none: cancel it).
+    pub(crate) fn answer(&mut self, cx: &mut Cx<Msg>, id: u64, a: Option<Answer>) {
+        let Some(j) = self.jobs.iter_mut().find(|j| j.id == id) else { return };
+        let Some(q) = j.question.take() else { return };
+        let a = a.unwrap_or(match q {
+            super::jobs::Question::Conflict(_) => Answer::Conflict(crate::fsops::Resolution::Cancel, false),
+            super::jobs::Question::Failure(_) => Answer::Error(crate::fsops::ErrorChoice::Cancel, false),
+        });
+        let _ = j.answers.send(a);
+        if let Some(s) = j.sheet.take() {
+            self.sheets.remove(&s);
+            cx.close_window(s);
+        }
+    }
+
+    pub(crate) fn show_operations(&mut self, cx: &mut Cx<Msg>) {
+        if self.ops_window.is_some() || self.jobs.is_empty() {
+            return;
+        }
+        let w = cx.open_window(WindowSpec::new("Operations").size(440.0, 96.0 + 64.0 * self.jobs.len().min(5) as f64).utility());
+        self.ops_window = Some(w);
+    }
+
+    // Keys nothing else took.
+
+    pub(crate) fn on_key(&mut self, cx: &mut Cx<Msg>, w: WindowKey, k: &KeyEvent) {
+        let _ = (cx, w, k);
+    }
+}
+
+
+/// Follow the compositor's Desks, telling the program the current one.
+fn follow_desks(tx: aizome_kit::MsgSender<Msg>) {
+    use aizome_ipc::{Client, Event, Request, Response};
+    let fetch = |c: &mut Client| match c.request(&Request::Desks) {
+        Ok(Response::Desks { desks, .. }) => Some(desks),
+        _ => None,
+    };
+    let Ok(mut client) = Client::connect() else { return };
+    if let Some(d) = fetch(&mut client) {
+        tx.send(Msg::Desks(d));
+    }
+    let Ok(events) = Client::connect().and_then(|c| c.events()) else { return };
+    for ev in events {
+        match ev {
+            Ok(Event::DeskChanged { .. } | Event::DesksChanged { .. }) => {
+                if let Some(d) = fetch(&mut client)
+                    && !tx.send(Msg::Desks(d))
+                {
+                    return;
+                }
+            }
+            Ok(_) => {}
+            Err(_) => return,
+        }
+    }
+    let _ = Instant::now();
+}
+
+/// An index of `root` for searching: the shared one (the palette's, of
+/// the home folder) where `root` is in the home folder and it's fresh,
+/// else a walk of `root`.
+fn build_index(root: &Path, home: &Path, shared: bool) -> aizome_search::files::FileIndex {
+    use aizome_search::files::{FileIndex, Limits};
+    if shared
+        && root.starts_with(home)
+        && let Some(i) = FileIndex::load(&FileIndex::default_cache_path())
+        && i.age().is_some_and(|a| a < Duration::from_secs(3600))
+        && !i.is_empty()
+    {
+        return i;
+    }
+    FileIndex::build(&[root.to_path_buf()], &Limits { max_entries: 200_000, max_depth: 16, folders: true })
+}

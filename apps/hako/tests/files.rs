@@ -1,0 +1,395 @@
+//! Working with files through Hako's window, headless, in a sandbox of
+//! its own: keys and clicks, renaming, new folders, the clipboard, the
+//! Trash, drags, conflicts, undo, search and the location bar.
+
+mod common;
+
+use std::path::PathBuf;
+
+use aizome_kit::sidestep_ui::{Key, Modifiers, NamedKey, PointerButton};
+use aizome_kit::testing::Harness;
+use aizome_kit::theme::ThemeChoice;
+use aizome_kit::{Point, WindowKey};
+use common::*;
+use hako::ui::app::{Request, Sheet};
+use hako::ui::browser::Loc;
+use hako::ui::fileview::Layout;
+use hako::ui::{Hako, Msg};
+
+fn names(h: &Harness<Hako>, w: WindowKey, col: usize) -> Vec<String> {
+    h.program().browser(w).unwrap().columns.get(col).map(|c| c.rows.iter().map(|e| e.display.clone()).collect()).unwrap_or_default()
+}
+
+fn selected(h: &Harness<Hako>, w: WindowKey) -> Vec<String> {
+    h.program().browser(w).unwrap().selection().iter().map(|p| p.file_name().unwrap().to_string_lossy().into_owned()).collect()
+}
+
+/// The middle of row `row` of column `col`'s view.
+fn row_at(h: &Harness<Hako>, w: WindowKey, col: usize, row: usize) -> Point {
+    let r = h.find_id(w, &format!("col-{col}")).unwrap_or_else(|| panic!("column {col} shows"));
+    let list = h.program().browser(w).unwrap().layout == Layout::List;
+    let top = if list { 24.0 } else { 0.0 };
+    Point::new(r.x0 + 60.0, r.y0 + top + row as f64 * 24.0 + 12.0)
+}
+
+fn click_name(h: &mut Harness<Hako>, w: WindowKey, col: usize, name: &str) {
+    let i = names(h, w, col).iter().position(|n| n == name).unwrap_or_else(|| panic!("{name} in column {col}: {:?}", names(h, w, col)));
+    let p = row_at(h, w, col, i);
+    h.click(w, p);
+}
+
+fn open(s: &Sandbox, rel: &str, layout: Layout) -> (Harness<Hako>, WindowKey) {
+    let mut h = harness(s, ThemeChoice::Night);
+    let w = h.window();
+    h.focus_window(w, true);
+    h.send(Msg::SetLayout(w, layout));
+    h.send(Msg::GoPath(w, s.home().join(rel)));
+    settle(&mut h);
+    (h, w)
+}
+
+#[test]
+fn keys_walk_the_columns() {
+    let s = Sandbox::new("keys");
+    populate(&s);
+    let (mut h, w) = open(&s, "", Layout::Column);
+    assert_eq!(h.program().browser(w).unwrap().focus, 0);
+    // ↓ selects the first, then the next; a folder selected opens.
+    h.named(w, NamedKey::ArrowDown, Modifiers::NONE);
+    settle(&mut h);
+    assert_eq!(selected(&h, w), ["Desktop"]);
+    h.named(w, NamedKey::ArrowDown, Modifiers::NONE);
+    settle(&mut h);
+    assert_eq!(selected(&h, w), ["Documents"]);
+    assert_eq!(names(&h, w, 1), ["architecture.md", "budget.csv", "roadmap.md"]);
+    // → goes in, selecting the first item; its preview shows.
+    h.named(w, NamedKey::ArrowRight, Modifiers::NONE);
+    settle(&mut h);
+    let b = h.program().browser(w).unwrap();
+    assert_eq!(b.focus, 1);
+    assert_eq!(selected(&h, w), ["architecture.md"]);
+    assert_eq!(h.program().preview_entry(w).unwrap().display, "architecture.md");
+    // Typing selects by name.
+    h.type_text(w, "ro");
+    assert_eq!(selected(&h, w), ["roadmap.md"]);
+    // ← comes back out, the column after let go.
+    h.named(w, NamedKey::ArrowLeft, Modifiers::NONE);
+    let b = h.program().browser(w).unwrap();
+    assert_eq!(b.focus, 0);
+    assert!(b.columns[1].selected.is_empty());
+    assert_eq!(selected(&h, w), ["Documents"]);
+    // ❖↑ goes to the enclosing folder; Back and Forward remember.
+    h.send(Msg::GoPath(w, s.home().join("work/sidestep")));
+    settle(&mut h);
+    h.key(w, Key::Named(NamedKey::ArrowUp), Modifiers::SUPER);
+    settle(&mut h);
+    assert_eq!(h.program().browser(w).unwrap().location(), Some(&Loc::Folder(s.home().join("work"))));
+    assert_eq!(selected(&h, w), ["sidestep"]);
+    h.command(w, '[');
+    settle(&mut h);
+    assert_eq!(h.program().browser(w).unwrap().location(), Some(&Loc::Folder(s.home().join("work/sidestep"))));
+    h.command(w, ']');
+    settle(&mut h);
+    assert_eq!(h.program().browser(w).unwrap().location(), Some(&Loc::Folder(s.home().join("work"))));
+}
+
+#[test]
+fn clicks_select_and_double_clicks_open() {
+    let s = Sandbox::new("clicks");
+    populate(&s);
+    let (mut h, w) = open(&s, "Documents", Layout::List);
+    click_name(&mut h, w, 0, "budget.csv");
+    assert_eq!(selected(&h, w), ["budget.csv"]);
+    // ⇧ extends, ❖ toggles.
+    let p = row_at(&h, w, 0, 2);
+    h.press(w, p, PointerButton::Left, 1);
+    h.release(w, p, PointerButton::Left);
+    let p0 = row_at(&h, w, 0, 0);
+    let win = w;
+    h.key(win, Key::Named(NamedKey::Home), Modifiers::SHIFT);
+    assert_eq!(selected(&h, w), ["architecture.md", "budget.csv", "roadmap.md"]);
+    let _ = p0;
+    // A double click on a folder (in the list) goes in.
+    h.send(Msg::GoPath(w, s.home().clone()));
+    settle(&mut h);
+    let i = names(&h, w, 0).iter().position(|n| n == "work").unwrap();
+    let p = row_at(&h, w, 0, i);
+    h.press(w, p, PointerButton::Left, 1);
+    h.release(w, p, PointerButton::Left);
+    h.press(w, p, PointerButton::Left, 2);
+    h.release(w, p, PointerButton::Left);
+    settle(&mut h);
+    assert_eq!(h.program().browser(w).unwrap().location(), Some(&Loc::Folder(s.home().join("work"))));
+    // Return opens too.
+    h.named(w, NamedKey::Home, Modifiers::NONE);
+    h.named(w, NamedKey::Enter, Modifiers::NONE);
+    settle(&mut h);
+    assert_eq!(h.program().browser(w).unwrap().location(), Some(&Loc::Folder(s.home().join("work/sidestep"))));
+}
+
+#[test]
+fn new_folders_are_named_and_renames_undo() {
+    let s = Sandbox::new("rename");
+    populate(&s);
+    let (mut h, w) = open(&s, "work", Layout::Column);
+    h.key(w, Key::Character("n".into()), Modifiers::SUPER | Modifiers::SHIFT);
+    settle(&mut h);
+    assert!(s.home().join("work/untitled folder").is_dir());
+    let b = h.program().browser(w).unwrap();
+    assert!(b.rename.is_some(), "a new folder is named at once");
+    assert_eq!(h.focused_name(w).as_deref(), Some("rename"));
+    // Type a new name over it.
+    h.command(w, 'a');
+    h.type_text(w, "plans\n");
+    settle(&mut h);
+    assert!(s.home().join("work/plans").is_dir());
+    assert!(!s.home().join("work/untitled folder").exists());
+    assert_eq!(selected(&h, w), ["plans"]);
+    // A taken name is refused, in words.
+    h.send(Msg::StartRename(WindowKey::NONE));
+    h.command(w, 'a');
+    h.type_text(w, "notes.txt\n");
+    let r = h.program().browser(w).unwrap().rename.clone().expect("still renaming");
+    assert!(r.error.unwrap().contains("taken"));
+    h.named(w, NamedKey::Escape, Modifiers::NONE);
+    settle(&mut h);
+    // Undo the rename, then the new folder; redo the folder.
+    h.command(w, 'z');
+    settle(&mut h);
+    assert!(s.home().join("work/untitled folder").is_dir());
+    h.command(w, 'z');
+    settle(&mut h);
+    assert!(!s.home().join("work/untitled folder").exists(), "an undone new folder goes to the Trash");
+    h.key(w, Key::Character("z".into()), Modifiers::SUPER | Modifiers::SHIFT);
+    settle(&mut h);
+    assert!(s.home().join("work/untitled folder").is_dir());
+}
+
+#[test]
+fn copy_cut_and_paste() {
+    let s = Sandbox::new("clipboard");
+    populate(&s);
+    let (mut h, w) = open(&s, "Documents/roadmap.md", Layout::Column);
+    h.command(w, 'c');
+    assert_eq!(h.platform.clipboard.as_deref(), Some(s.home().join("Documents/roadmap.md").to_str().unwrap()));
+    h.send(Msg::GoPath(w, s.home().join("work")));
+    settle(&mut h);
+    h.command(w, 'v');
+    settle(&mut h);
+    assert_eq!(std::fs::read_to_string(s.home().join("work/roadmap.md")).unwrap(), "# Roadmap\n");
+    assert!(s.home().join("Documents/roadmap.md").exists(), "a copy");
+    assert_eq!(selected(&h, w), ["roadmap.md"], "what came is selected");
+    // Again: a conflict, answered by the sheet.
+    h.command(w, 'v');
+    assert!(wait_for(&mut h, |p| p.sheets.values().any(|s| matches!(s, Sheet::Ask { .. }))), "a conflict asks");
+    h.save_png(w, out("conflict-night.png"), 2.0);
+    assert!(h.click_text(w, "Keep Both"));
+    settle(&mut h);
+    assert!(s.home().join("work/roadmap 2.md").exists());
+    // Cut and paste moves.
+    h.send(Msg::GoPath(w, s.home().join("Documents/budget.csv")));
+    settle(&mut h);
+    h.command(w, 'x');
+    h.send(Msg::GoPath(w, s.home().join("work")));
+    settle(&mut h);
+    h.command(w, 'v');
+    settle(&mut h);
+    assert!(s.home().join("work/budget.csv").exists() && !s.home().join("Documents/budget.csv").exists());
+    // Undo puts it back.
+    h.command(w, 'z');
+    settle(&mut h);
+    assert!(s.home().join("Documents/budget.csv").exists() && !s.home().join("work/budget.csv").exists());
+    // Another program's paths paste too.
+    h.platform.clipboard = Some(format!("file://{}\n", s.home().join("Music/eighth.flac").display()));
+    h.command(w, 'v');
+    settle(&mut h);
+    assert!(s.home().join("work/eighth.flac").exists());
+}
+
+#[test]
+fn the_trash_takes_and_gives_back() {
+    let s = Sandbox::new("trash");
+    populate(&s);
+    let (mut h, w) = open(&s, "Documents/roadmap.md", Layout::Column);
+    h.key(w, Key::Named(NamedKey::Backspace), Modifiers::SUPER);
+    settle(&mut h);
+    assert!(!s.home().join("Documents/roadmap.md").exists());
+    assert!(s.path().join("data/Trash/files/roadmap.md").exists());
+    assert!(!names(&h, w, 1).contains(&"roadmap.md".to_owned()), "the column follows");
+    // Undo restores; redo trashes again.
+    h.command(w, 'z');
+    settle(&mut h);
+    assert!(s.home().join("Documents/roadmap.md").exists());
+    h.key(w, Key::Character("z".into()), Modifiers::SUPER | Modifiers::SHIFT);
+    settle(&mut h);
+    assert!(!s.home().join("Documents/roadmap.md").exists());
+    // The Trash lists it by its own name, and Put Back puts it back.
+    h.send(Msg::Go(w, Loc::Trash));
+    settle(&mut h);
+    assert_eq!(names(&h, w, 0), ["roadmap.md"]);
+    h.send(Msg::SetLayout(w, Layout::List));
+    h.save_png(w, out("trash-night.png"), 2.0);
+    click_name(&mut h, w, 0, "roadmap.md");
+    h.key(w, Key::Named(NamedKey::Backspace), Modifiers::SUPER);
+    settle(&mut h);
+    assert!(s.home().join("Documents/roadmap.md").exists(), "❖⌫ in the Trash puts back");
+    // Deleting for good asks first.
+    h.send(Msg::GoPath(w, s.home().join("Documents/budget.csv")));
+    settle(&mut h);
+    h.key(w, Key::Named(NamedKey::Backspace), Modifiers::SUPER);
+    settle(&mut h);
+    h.send(Msg::Go(w, Loc::Trash));
+    settle(&mut h);
+    click_name(&mut h, w, 0, "budget.csv");
+    h.key(w, Key::Named(NamedKey::Backspace), Modifiers::SUPER | Modifiers::ALT);
+    assert!(h.texts(w).iter().any(|t| t.contains("for good")), "asked: {:?}", h.texts(w));
+    h.save_png(w, out("erase-night.png"), 2.0);
+    // Return is Cancel there.
+    h.named(w, NamedKey::Enter, Modifiers::NONE);
+    settle(&mut h);
+    assert!(s.path().join("data/Trash/files/budget.csv").exists());
+    h.key(w, Key::Named(NamedKey::Backspace), Modifiers::SUPER | Modifiers::ALT);
+    assert!(h.click_text(w, "Delete"));
+    settle(&mut h);
+    assert!(!s.path().join("data/Trash/files/budget.csv").exists());
+    assert!(names(&h, w, 0).is_empty());
+    // Empty Trash, also asked.
+    h.send(Msg::GoPath(w, s.home().join("Documents/architecture.md")));
+    settle(&mut h);
+    h.key(w, Key::Named(NamedKey::Backspace), Modifiers::SUPER);
+    settle(&mut h);
+    h.key(w, Key::Named(NamedKey::Backspace), Modifiers::SUPER | Modifiers::SHIFT);
+    assert!(h.click_text(w, "Empty Trash"));
+    settle(&mut h);
+    assert!(h.program().trash_is_empty());
+    assert_eq!(std::fs::read_dir(s.path().join("data/Trash/files")).unwrap().count(), 0);
+}
+
+#[test]
+fn drags_move_within_a_disk_and_drops_copy_in() {
+    let s = Sandbox::new("drag");
+    populate(&s);
+    let (mut h, w) = open(&s, "work/notes.txt", Layout::Column);
+    // Drag notes.txt (column 1) onto Documents (column 0). (What takes
+    // drops says where it is when it's drawn.)
+    h.render(w, 1.0);
+    let from = row_at(&h, w, 1, names(&h, w, 1).iter().position(|n| n == "notes.txt").unwrap());
+    let to = row_at(&h, w, 0, names(&h, w, 0).iter().position(|n| n == "Documents").unwrap());
+    h.drag(w, from, to, 6);
+    settle(&mut h);
+    assert!(s.home().join("Documents/notes.txt").exists());
+    assert!(!s.home().join("work/notes.txt").exists(), "moved, on one disk");
+    // A drop on itself does nothing.
+    h.send(Msg::GoPath(w, s.home().join("work/sidestep")));
+    settle(&mut h);
+    h.render(w, 1.0);
+    let p = row_at(&h, w, 0, names(&h, w, 0).iter().position(|n| n == "work").unwrap());
+    h.drag(w, p, Point::new(p.x, p.y + 1.0 + 5.0), 3);
+    settle(&mut h);
+    assert!(s.home().join("work/sidestep").is_dir());
+    // Another program's files dropped on a column are copied there.
+    let docs = h.find_id(w, "col-1").unwrap().center();
+    let url = format!("file://{}", s.home().join("Music/eighth.flac").display());
+    assert!(h.drop(w, docs, vec![url], None));
+    settle(&mut h);
+    assert!(s.home().join("work/eighth.flac").exists() && s.home().join("Music/eighth.flac").exists());
+}
+
+#[test]
+fn hidden_files_show_on_asking() {
+    let s = Sandbox::new("hidden");
+    populate(&s);
+    let (mut h, w) = open(&s, "", Layout::List);
+    assert!(!names(&h, w, 0).contains(&".bashrc".to_owned()));
+    h.send(Msg::ToggleHidden);
+    assert!(names(&h, w, 0).contains(&".bashrc".to_owned()));
+    let k = aizome_kit::sidestep_ui::KeyEvent {
+        key: Key::Character(">".into()),
+        text: None,
+        pressed: true,
+        repeat: false,
+        code: hako::ui::keys::KEY_DOT,
+        modifiers: Modifiers::SUPER | Modifiers::SHIFT,
+        composing: None,
+    };
+    assert!(matches!(hako::ui::view::window_key(&k), Some(Msg::ToggleHidden)));
+}
+
+#[test]
+fn the_location_bar_and_reveal() {
+    let s = Sandbox::new("location");
+    populate(&s);
+    let (mut h, w) = open(&s, "", Layout::Column);
+    h.command(w, 'l');
+    assert_eq!(h.focused_name(w).as_deref(), Some("location"));
+    h.command(w, 'a');
+    h.type_text(w, "~/work/sidestep/Cargo.toml\n");
+    settle(&mut h);
+    assert_eq!(h.program().browser(w).unwrap().location(), Some(&Loc::Folder(s.home().join("work/sidestep"))));
+    assert_eq!(selected(&h, w), ["Cargo.toml"]);
+    // A place that isn't there says so.
+    h.command(w, 'l');
+    h.command(w, 'a');
+    h.type_text(w, "/nowhere/at/all\n");
+    assert!(h.program().browser(w).unwrap().path_error.is_some());
+    h.named(w, NamedKey::Escape, Modifiers::NONE);
+    // `--select FILE` opens a window with it selected.
+    let n = h.windows().len();
+    h.send(Msg::Requests(vec![Request::Reveal(s.home().join("Pictures/mark.png"))]));
+    settle(&mut h);
+    let w2 = *h.windows().last().unwrap();
+    assert_eq!(h.windows().len(), n + 1);
+    assert_eq!(h.program().browser(w2).unwrap().selection(), vec![s.home().join("Pictures/mark.png")]);
+}
+
+#[test]
+fn search_finds_by_name_under_the_folder() {
+    let s = Sandbox::new("search");
+    populate(&s);
+    let (mut h, w) = open(&s, "work", Layout::Column);
+    h.command(w, 'f');
+    assert_eq!(h.focused_name(w).as_deref(), Some("search"));
+    h.type_text(w, "readme");
+    settle(&mut h);
+    let b = h.program().browser(w).unwrap();
+    let results: Vec<PathBuf> = b.search.as_ref().unwrap().results.iter().map(|e| e.path.clone()).collect();
+    assert_eq!(results, vec![s.home().join("work/sidestep/README.md")]);
+    h.save_png(w, out("search-night.png"), 2.0);
+    h.send(Msg::EndSearch(w));
+    assert!(h.program().browser(w).unwrap().search.is_none());
+}
+
+#[test]
+fn quick_look_and_get_info() {
+    let s = Sandbox::new("info");
+    populate(&s);
+    let (mut h, w) = open(&s, "Documents/architecture.md", Layout::Column);
+    h.key(w, Key::Character(" ".into()), Modifiers::NONE);
+    settle(&mut h);
+    assert!(h.program().sheets.values().any(|s| matches!(s, Sheet::QuickLook { .. })));
+    assert!(h.texts(w).iter().any(|t| t.contains("Parts and processes")), "the text shows");
+    h.save_png(w, out("quicklook-night.png"), 2.0);
+    h.named(w, NamedKey::Escape, Modifiers::NONE);
+    assert!(h.program().sheets.is_empty());
+    h.command(w, 'i');
+    settle(&mut h);
+    assert!(h.texts(w).iter().any(|t| t == "Markdown document"));
+    h.save_png(w, out("info-night.png"), 2.0);
+}
+
+#[test]
+fn live_updates_follow_the_disk() {
+    let s = Sandbox::new("live");
+    populate(&s);
+    let mut opts = hako::ui::Options::sandbox(s.path());
+    opts.home = s.home();
+    opts.watch = true;
+    let mut h = Harness::with(Hako::new(opts), appearance(ThemeChoice::Night), false);
+    let w = h.window();
+    settle(&mut h);
+    h.send(Msg::GoPath(w, s.home().join("Documents")));
+    settle(&mut h);
+    std::fs::write(s.home().join("Documents/new.txt"), "fresh").unwrap();
+    assert!(wait_for(&mut h, |p| p.browser(w).unwrap().columns[0].rows.iter().any(|e| e.display == "new.txt")), "a file made outside shows");
+    let _ = &mut h;
+}
