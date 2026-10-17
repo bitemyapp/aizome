@@ -253,6 +253,13 @@ impl Core {
             // Desktop surfaces draw what they like, shadows and all.
             WindowKind::Layer(o) => (OpenKind::Layer(o.clone()), None),
             WindowKind::Lock { output } => (OpenKind::Lock { output: *output }, None),
+            WindowKind::Popup { parent, anchor, placement, grab } => match self.window_of(*parent) {
+                Some(p) => (OpenKind::Popup { parent: p, anchor: *anchor, placement: placement.placement(), grab: *grab }, None),
+                None => {
+                    log::warn!("a popup over a window that isn't open");
+                    return WindowKey::NONE;
+                }
+            },
         };
         let open = OpenSpec {
             title: spec.title.clone(),
@@ -383,7 +390,7 @@ impl Core {
         let started = Instant::now();
         let Some(w) = self.wins.get(&win) else { return };
         let is_normal = matches!(&w.kind, WinKind::App { spec, .. } if spec.has_menu_bar());
-        let opaque = matches!(&w.kind, WinKind::App { spec, .. } if !matches!(spec.kind, WindowKind::Layer(_) | WindowKind::Lock { .. }));
+        let opaque = matches!(&w.kind, WinKind::App { spec, .. } if !matches!(spec.kind, WindowKind::Layer(_) | WindowKind::Lock { .. } | WindowKind::Popup { .. }));
         let mut layers = Vec::new();
         let body = if self.in_window_menus && is_normal && !self.menubar.is_empty() {
             let bar = MenuBarStrip::element(&self.info, &self.menubar, win);
@@ -608,6 +615,14 @@ impl Core {
 
     /// The compositor dismissed popup `win` (it's closed already).
     pub fn popup_dismissed(&mut self, win: WinId, platform: &mut dyn Platform) {
+        // A popup of the program's own is gone: the program hears it as a
+        // close request (whatever it answers).
+        if let Some(WinKind::App { key, .. }) = self.wins.get(&win).map(|w| &w.kind) {
+            let key = *key;
+            self.close_key(key, platform);
+            self.queue.push_back(Box::new(KitMsg::CloseRequest(key)));
+            return;
+        }
         if let Some(w) = self.wins.get(&win)
             && let WinKind::Popup { kind: PopupKind::Popover { on_dismiss: Some(m), .. }, .. } = &w.kind
         {

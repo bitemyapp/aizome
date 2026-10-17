@@ -39,7 +39,8 @@ pub fn run<P: Program>(program: P) {
 pub fn try_run<P: Program>(program: P) -> Result<P, sidestep_ui::Error> {
     crate::fonts::install();
     let info = program.info();
-    let app = sidestep_ui::App::new().app_id(info.app_id.clone()).quit_when_last_window_closes(true);
+    let quit = program.quit_when_last_window_closes();
+    let app = sidestep_ui::App::new().app_id(info.app_id.clone()).quit_when_last_window_closes(quit);
     let glue = Glue { rt: Runtime::new(program, Appearance::load()), maps: Maps::default() };
     app.run(glue).map(|g| g.rt.program)
 }

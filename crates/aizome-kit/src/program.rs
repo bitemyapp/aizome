@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use crate::cx::Cx;
 use crate::element::Element;
 use crate::icons::Icon;
-use crate::layout::Size;
+use crate::layout::{Rect, Size};
 use crate::menu::MenuBar;
 pub use sidestep_ui::layer_shell::{Anchors, KeyboardInteractivity, Layer, LayerOptions, Margins};
 pub use sidestep_ui::Output;
@@ -104,6 +104,12 @@ pub trait Program: Sized + 'static {
     fn activation_token(&mut self, request: ActivationRequest, token: Option<String>, cx: &mut Cx<Self::Msg>) {
         let _ = (request, token, cx);
     }
+
+    /// Whether the app stops when its last window closes: apps do; a
+    /// shell, whose surfaces come and go with the outputs, doesn't.
+    fn quit_when_last_window_closes(&self) -> bool {
+        true
+    }
 }
 
 /// Who an app is.
@@ -151,7 +157,7 @@ impl WindowKey {
 }
 
 /// What kind of window.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub enum WindowKind {
     /// A document or main window.
     #[default]
@@ -168,6 +174,14 @@ pub enum WindowKind {
     /// The session lock's surface on an output (an [`Output`]'s id), while
     /// [`Cx::lock_session`](crate::Cx::lock_session) holds the lock.
     Lock { output: u32 },
+    /// A popup of the program's own over `parent` (a panel under a
+    /// menu bar's button), `anchor` a rectangle of `parent` it opens
+    /// against as `placement` says; with `grab` it takes the keyboard and
+    /// pointer while open and closes when clicked outside, which the
+    /// program hears as [`Program::close_requested`](crate::Program::close_requested)
+    /// (it closes whatever that answers). It is the spec's size and draws
+    /// its own ground, shadow and all.
+    Popup { parent: WindowKey, anchor: Rect, placement: crate::widgets::menus::MenuPlacement, grab: bool },
 }
 
 /// What a window is asked to be: `WindowSpec::new("Soroban").size(320.0, 480.0)`.
