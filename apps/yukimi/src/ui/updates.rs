@@ -11,7 +11,7 @@ use yukimi_system::completion::{Action, Completion};
 use yukimi_system::human_age;
 use yukimi_system::setup::Kind;
 
-use super::widgets::{field, monogram, tap};
+use super::widgets::{monogram, tap};
 use super::{banner, caption, heading, mono, panel, tag};
 use crate::app::{BranchChooser, Msg, Yukimi};
 use crate::checks;
@@ -299,11 +299,11 @@ pub fn branch_sheet(_app: &Yukimi, chooser: &BranchChooser) -> Element<Msg> {
         .wrap()
         .role(Role::Text2),
         row![
-            field(&chooser.typed, "A branch's name")
-                .icon(Icon::GitBranch)
+            text_field(&chooser.typed)
+                .placeholder("A branch's name")
+                .mono()
                 .on_change(Msg::BranchTyped)
                 .on_submit(Msg::Follow(chooser.typed.clone()))
-                .pipe(Element::from)
                 .id("branch")
                 .width(Fill),
             button("Follow").primary().default().on_press_maybe((!chooser.typed.trim().is_empty()).then(|| Msg::Follow(chooser.typed.clone()))),
@@ -340,7 +340,6 @@ pub fn branch_sheet(_app: &Yukimi, chooser: &BranchChooser) -> Element<Msg> {
     container(c).padding(20.0).width(520.0).into()
 }
 
-use super::Pipe;
 
 /// A source's row's right side, in columns that line up from row to row:
 /// its age, how it would move, the branch it follows, a link to see it,
@@ -358,9 +357,9 @@ fn slots(
         container(e.unwrap_or_else(|| space(0.0))).width(w).align_x(align).into()
     };
     vec![
-        slot(Some(age), 150.0, Align::End),
+        slot(Some(age), 166.0, Align::End),
         slot(Some(chip), 104.0, Align::Start),
-        slot(branch, 132.0, Align::Start),
+        slot(branch, 124.0, Align::Start),
         slot(link, 28.0, Align::Center),
         slot(update, 64.0, Align::End),
     ]

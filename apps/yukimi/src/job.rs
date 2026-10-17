@@ -71,6 +71,16 @@ pub fn explain(error: &str, system: bool, stopped: bool) -> String {
     }
 }
 
+impl Snapshot {
+    /// A later snapshot taken in: its state, and its lines after these.
+    fn merge(&mut self, later: Snapshot) {
+        self.current = later.current;
+        self.summary = later.summary;
+        self.fraction = later.fraction.or(self.fraction);
+        self.lines.extend(later.lines);
+    }
+}
+
 /// What to show of the progress, with the lines logged since `seen`.
 fn snapshot(progress: &Progress, seen: &mut u64) -> Snapshot {
     let lines = progress.since(*seen).map(str::to_owned).collect();
@@ -99,12 +109,26 @@ pub fn work(steps: Vec<Step>, stop: nix::Stop, send: impl Fn(JobEvent), finish: 
         stop.signal(!run.as_root);
         send(JobEvent::Started { as_root: run.as_root });
         let (mut last, mut seen) = (Instant::now() - EVERY, 0u64);
+        // What happened since the window last heard: sent now and then, and
+        // whatever is left when the step ends, so the lines before a failure
+        // are never lost.
+        let mut pending: Option<Snapshot> = None;
         let result = nix::stream(run.command, &stop, |progress| {
+            let newer = snapshot(progress, &mut seen);
+            match &mut pending {
+                Some(p) => p.merge(newer),
+                None => pending = Some(newer),
+            }
             if last.elapsed() >= EVERY {
                 last = Instant::now();
-                send(JobEvent::Progress(snapshot(progress, &mut seen)));
+                if let Some(p) = pending.take() {
+                    send(JobEvent::Progress(p));
+                }
             }
         });
+        if let Some(p) = pending.take() {
+            send(JobEvent::Progress(p));
+        }
         match result {
             Ok((output, progress)) => {
                 send(JobEvent::Progress(snapshot(&progress, &mut seen)));
@@ -315,6 +339,20 @@ echo '{{"ok":true}}'"#
         assert!(job.details);
         assert_eq!(explain("Error executing command as another user: Not authorized", true, false), "Cancelled. Nothing was changed.");
         assert!(explain("x", false, true).starts_with("Stopped. Nothing"));
+    }
+
+    #[test]
+    fn the_lines_before_a_failure_are_kept() {
+        let events = run(vec![script(
+            r#"for i in 1 2 3 4 5 6 7 8; do echo "line $i" >&2; done
+echo '@nix {"action":"msg","level":0,"msg":"error: it broke"}' >&2; exit 1"#,
+        )]);
+        let mut job = Job::new(Operation::Rollback { generation: 4 }, 1);
+        for event in events {
+            job.take(event, Instant::now());
+        }
+        let lines: Vec<&str> = job.log.iter().map(String::as_str).collect();
+        assert_eq!(lines, ["line 1", "line 2", "line 3", "line 4", "line 5", "line 6", "line 7", "line 8", "error: it broke"]);
     }
 
     #[test]

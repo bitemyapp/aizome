@@ -9,8 +9,8 @@ use aizome_kit::row;
 use yukimi_config::edit::ListedPackage;
 use yukimi_system::human_size;
 
-use super::widgets::{field, monogram, tap};
-use super::{Pipe, banner, empty, group, item_row, link, mono, pending, tag};
+use super::widgets::{monogram, tap};
+use super::{banner, empty, group, item_row, link, mono, pending, tag};
 use crate::app::{Msg, Page, Removal, Yukimi};
 use crate::model::SystemPackage;
 
@@ -195,7 +195,7 @@ fn system_row(package: &SystemPackage) -> Element<Msg> {
 /// Everything else the running system has.
 fn the_rest(app: &Yukimi) -> Element<Msg> {
     let model = &app.model;
-    let filter = field(&app.filter, "Filter").icon(Icon::Funnel).on_change(Msg::Filter).pipe(Element::from).id("filter").width(220.0);
+    let filter: Element<Msg> = search_field(&app.filter).placeholder("Filter").on_change(Msg::Filter).id("filter").width(220.0).into();
     let Some(store) = &model.store else {
         return group("Part of the system", None, Some(filter), vec![pending("Reading what the system has…")]);
     };

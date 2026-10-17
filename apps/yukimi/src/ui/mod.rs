@@ -3,8 +3,10 @@
 //! an operation's progress).
 //!
 //! Views are drawn from the program's state every time it changes, so each
-//! is a plain function of it; widgets the kit doesn't have are in
-//! [`widgets`].
+//! is a plain function of it. The frame is the kit's (`sidebar_layout`,
+//! `sidebar_item`, `toolbar`, `scroll`, `status_bar`, `search_field`);
+//! what Yukimi draws of its own (dye bars, the generations' chart,
+//! monograms, the snow) is in [`widgets`].
 use aizome_kit::prelude::*;
 use aizome_kit::text::Text;
 use aizome_kit::widgets::layout::Container;
@@ -21,7 +23,7 @@ mod storage;
 mod updates;
 pub mod widgets;
 
-use widgets::{Dye, chip, scroll, tap};
+use widgets::{Dye, chip};
 
 /// The sidebar's width.
 pub const SIDEBAR: f64 = 212.0;
@@ -51,16 +53,10 @@ pub fn view(app: &Yukimi, window: WindowKey) -> Element<Msg> {
         Page::Storage => storage::page(app),
     };
     let content = container(page.max_width(PAGE_WIDTH).width(Fill)).align_x(Align::Center).width(Fill).padding([20.0, 24.0, 28.0, 24.0]);
-    row![
-        sidebar(app),
-        column![toolbar(app), scroll(content).key(app.page).width(Fill).height(Fill), status_line(app)]
-            .width(Fill)
-            .height(Fill),
-    ]
-    .align(Align::Start)
-    .width(Fill)
-    .height(Fill)
-    .into()
+    let main = column![tool_bar(app), scroll(content).key(app.page).width(Fill).height(Fill), status_line(app)]
+        .width(Fill)
+        .height(Fill);
+    sidebar_layout(sidebar(app), main).first_size(SIDEBAR).min_sizes(180.0, 520.0).into()
 }
 
 pub fn menus(app: &Yukimi) -> MenuBar<Msg> {
@@ -95,59 +91,38 @@ pub fn package_counts(app: &Yukimi) -> (usize, usize) {
     (chosen, mine)
 }
 
+/// A place in the sidebar, with a count or a state at its right.
 fn place(app: &Yukimi, page: Page) -> Element<Msg> {
-    let selected = app.page == page;
-    let (icon_role, text_role) = if selected {
-        (Role::OnSelection, Role::OnSelection)
-    } else {
-        let dye = match page {
-            Page::Overview => Role::Cyan,
-            Page::Installed => Role::Accent,
-            Page::Discover => Role::Violet,
-            Page::Updates => Role::Success,
-            Page::History => Role::Warning,
-            Page::Storage => Role::Text2,
-        };
-        (dye, Role::Text)
-    };
-    let count: Option<(String, Role)> = match page {
+    let detail: Option<String> = match page {
         Page::Installed => {
             let (chosen, mine) = package_counts(app);
             let rest = app.model.store.as_ref().map_or(0, |s| s.system_packages.len().saturating_sub(chosen));
-            (!app.loading).then(|| ((chosen + mine + rest).to_string(), Role::Text3))
+            (!app.loading).then(|| (chosen + mine + rest).to_string())
         }
         Page::Updates => {
             let newer = app.movements().map_or(0, |m| crate::checks::newer_count(&m));
             if app.checking {
-                Some(("…".to_owned(), Role::Text3))
+                Some("…".to_owned())
             } else if app.model.completion.action != yukimi_system::completion::Action::None {
-                Some(("restart".to_owned(), Role::Warning))
+                Some("restart".to_owned())
             } else {
-                (newer > 0).then(|| (format!("{newer} new"), Role::Danger))
+                (newer > 0).then(|| format!("{newer} new"))
             }
         }
-        Page::History => (!app.model.generations.is_empty()).then(|| (app.model.generations.len().to_string(), Role::Text3)),
-        Page::Storage => app.model.store.as_ref().map(|s| (short_size(s.composition.total), Role::Text3)),
+        Page::History => (!app.model.generations.is_empty()).then(|| app.model.generations.len().to_string()),
+        Page::Storage => app.model.store.as_ref().map(|s| short_size(s.composition.total)),
         _ => None,
     };
-    let mut line = row![
-        icon(page.icon()).size(16.0).role(icon_role),
-        text(page.title()).weight(if selected { 650.0 } else { 500.0 }).role(text_role),
-        spacer(),
-    ]
-    .spacing(9.0)
-    .width(Fill)
-    .height(26.0);
-    if let Some((count, role)) = count {
-        let role = if selected { Role::OnSelection } else { role };
-        line = line.push(text(count).mono().tabular().size(11.0).role(role));
+    let mut item = sidebar_item(page.icon(), page.title(), app.page == page).on_press(Msg::Show(page));
+    if let Some(d) = detail {
+        item = item.detail(d);
     }
-    tap(line).padding([0.0, 10.0]).selected(selected).on_press(Msg::Show(page)).named(page.title()).into()
+    item.into()
 }
 
 fn sidebar(app: &Yukimi) -> Element<Msg> {
     let brand = row![
-        container(icon(Icon::Snowflake).size(18.0).role(Role::Accent)).padding(5.0).fill(Tone::Sunk).border(Edge::Line),
+        container(icon(Icon::Snowflake).size(18.0).role(Role::Accent)).padding(5.0).fill(Tone::Chrome).border(Edge::Line),
         column![
             text("Yukimi").size(15.0).weight(700.0),
             text("雪見 · Software").size(11.0).role(Role::Text3),
@@ -156,19 +131,11 @@ fn sidebar(app: &Yukimi) -> Element<Msg> {
     ]
     .spacing(10.0)
     .padding([14.0, 12.0, 12.0, 12.0]);
-    let places = column(Page::ALL.iter().map(|p| place(app, *p)).collect()).spacing(2.0).padding([6.0, 6.0]).width(Fill);
-    column![
-        brand,
-        divider().edge(Edge::Line),
-        container(caption("Places")).padding([10.0, 0.0, 2.0, 14.0]),
-        places,
-        spacer(),
-        system_card(app),
-    ]
-    .width(SIDEBAR)
-    .height(Fill)
-    .pipe(|c| container(c).fill(Tone::Chrome).edges(Edge::BevelLo, Sides::RIGHT).height(Fill))
-    .into()
+    let places = column(Page::ALL.iter().map(|p| place(app, *p)).collect()).spacing(1.0).padding([0.0, 6.0]).width(Fill);
+    column![brand, divider().edge(Edge::Line), aizome_kit::caption("Places"), places, spacer(), system_card(app)]
+        .width(Fill)
+        .height(Fill)
+        .into()
 }
 
 /// The sidebar's foot: this computer, at a glance.
@@ -193,22 +160,25 @@ fn system_card(app: &Yukimi) -> Element<Msg> {
         let c = &store.composition;
         lines = lines.push(widgets::bar(storage::segments(c), 6.0).width(Fill));
     }
-    container(lines.width(Fill)).padding(12.0).fill(Tone::Sunk).edges(Edge::Line, Sides::TOP).width(Fill).into()
+    container(lines.width(Fill)).padding(12.0).edges(Edge::Line, Sides::TOP).width(Fill).into()
 }
 
-fn toolbar(app: &Yukimi) -> Element<Msg> {
-    let mut bar = row![text(app.page.title()).size(14.0).weight(650.0)].spacing(8.0).padding([0.0, 8.0, 0.0, 14.0]);
+fn tool_bar(app: &Yukimi) -> Element<Msg> {
+    let mut items: Vec<Element<Msg>> = vec![container(text(app.page.title()).size(14.0).weight(650.0)).padding([0.0, 6.0, 0.0, 6.0]).into()];
     if let Some(sub) = subtitle(app) {
-        bar = bar.push(text(sub).size(12.0).role(Role::Text3));
+        items.push(status_text(sub));
     }
-    bar = bar.push(spacer());
-    for item in page_tools(app) {
-        bar = bar.push(item);
-    }
-    bar = bar.push(divider().vertical().height(16.0)).push(
-        icon_button(Icon::RefreshCw).plain().on_press_maybe((!app.loading).then_some(Msg::Reload)).tooltip("Read everything again (❖R)"),
+    items.push(spacer().into());
+    items.extend(page_tools(app));
+    items.push(toolbar_separator());
+    items.push(
+        icon_button(Icon::RefreshCw)
+            .toolbar()
+            .on_press_maybe((!app.loading).then_some(Msg::Reload))
+            .tooltip("Read everything again (❖R)")
+            .into(),
     );
-    container(bar.width(Fill).height(36.0)).fill(Tone::Chrome).bevel().edges(Edge::BevelLo, Sides::BOTTOM).width(Fill).into()
+    aizome_kit::toolbar(items)
 }
 
 /// A line beside the page's name.
@@ -218,7 +188,7 @@ fn subtitle(app: &Yukimi) -> Option<String> {
         Page::Overview if !model.info.hostname.is_empty() => Some(model.info.hostname.clone()),
         Page::Discover => match (&app.index, app.indexing) {
             (Some(index), _) => Some(format!("{} packages in Nixpkgs", group_digits(index.len()))),
-            (None, true) => Some("Getting to know Nixpkgs…".to_owned()),
+            (None, true) => Some("getting to know Nixpkgs…".to_owned()),
             _ => None,
         },
         Page::History if !model.generations.is_empty() => Some(format!("{} generations", model.generations.len())),
@@ -232,41 +202,48 @@ fn subtitle(app: &Yukimi) -> Option<String> {
 fn page_tools(app: &Yukimi) -> Vec<Element<Msg>> {
     match app.page {
         Page::Discover => vec![
-            widgets::field(&app.query, "Search applications and packages")
-                .icon(Icon::Search)
+            search_field(&app.query)
+                .placeholder("Search applications and packages")
                 .on_change(Msg::Search)
-                .pipe(Element::from)
                 .id("search")
-                .width(300.0),
+                .width(300.0)
+                .into(),
         ],
         Page::Updates => updates::tools(app),
-        Page::Storage => vec![button("Clean Up…").icon(Icon::Trash).on_press_maybe(app.model.store.is_some().then_some(Msg::CleanUp)).into()],
+        Page::Storage => vec![
+            button("Clean Up…")
+                .toolbar()
+                .icon(Icon::Trash)
+                .on_press_maybe(app.model.store.is_some().then_some(Msg::CleanUp))
+                .into(),
+        ],
         _ => Vec::new(),
     }
 }
 
 fn status_line(app: &Yukimi) -> Element<Msg> {
-    let mut line = row![].spacing(8.0).padding([0.0, 12.0]);
+    let mut items: Vec<Element<Msg>> = Vec::new();
     match app.notes.back() {
         Some((_, note)) => {
-            line = line.push(icon(Icon::Info).size(13.0).role(Role::Accent)).push(text(note.clone()).size(12.0).role(Role::Text2));
+            items.push(icon(Icon::Info).size(13.0).role(Role::Accent).into());
+            items.push(text(note.clone()).size(12.0).role(Role::Text2).into());
         }
         None => {
             let ready = if app.loading {
-                "Looking around…".to_owned()
+                "Looking around…"
             } else if app.reading_store {
-                "Reading the store…".to_owned()
+                "Reading the store…"
             } else if app.checking {
-                "Asking each source for its newest version…".to_owned()
+                "Asking each source for its newest version…"
             } else if app.indexing && app.page == Page::Discover {
-                "Making the list of Nixpkgs's packages, at low priority…".to_owned()
+                "Making the list of Nixpkgs's packages, at low priority…"
             } else {
-                "Ready".to_owned()
+                "Ready"
             };
-            line = line.push(text(ready).size(12.0).role(Role::Text3));
+            items.push(text(ready).size(12.0).role(Role::Text3).into());
         }
     }
-    line = line.push(spacer());
+    items.push(spacer().into());
     let model = &app.model;
     let mut facts = Vec::new();
     if let Some(g) = model.current_generation() {
@@ -281,8 +258,8 @@ fn status_line(app: &Yukimi) -> Element<Msg> {
     if model.paths.elsewhere {
         facts.push(format!("looking at {}", model.paths.etc.display()));
     }
-    line = line.push(text(facts.join(" · ")).mono().size(11.0).role(Role::Text3));
-    container(line.width(Fill).height(24.0)).fill(Tone::Chrome).edges(Edge::Line, Sides::TOP).width(Fill).into()
+    items.push(status_text(facts.join(" · ")));
+    status_bar(items)
 }
 
 // Pieces the pages share.
@@ -377,18 +354,7 @@ pub fn empty<Msg: 'static>(what: &str) -> Element<Msg> {
 
 /// A note across the page: an edge in the role's colour and the text.
 pub fn banner<Msg: 'static>(icon_name: Icon, role: Role, words: String) -> Element<Msg> {
-    row![
-        widgets::stripe(role, 3.0),
-        icon(icon_name).size(16.0).role(role),
-        text(words).wrap().role(Role::Text),
-    ]
-    .spacing(10.0)
-    .align(Align::Center)
-    .padding([0.0, 12.0, 0.0, 0.0])
-    .min_height(40.0)
-    .width(Fill)
-    .pipe(|r| container(r).fill(Tone::Sunk).border(Edge::Line).width(Fill))
-    .into()
+    widgets::noted(role, row![icon(icon_name).size(16.0).role(role), text(words).wrap().role(Role::Text).width(Fill)].spacing(10.0).width(Fill))
 }
 
 /// A plain button that goes somewhere: "See what's installed →".

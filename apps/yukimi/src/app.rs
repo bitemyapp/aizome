@@ -225,6 +225,8 @@ pub enum Msg {
     StopJob,
     CloseJob,
     JobDetails(bool),
+    /// Put the log on the clipboard.
+    CopyLog,
     /// A finished job's sheet closes by itself.
     JobLinger(u64),
     /// Nix has been quiet: look whether to say so.
@@ -311,6 +313,9 @@ pub struct Yukimi {
     /// Notes in the status line, newest last.
     pub notes: VecDeque<(u64, String)>,
     notes_made: u64,
+    /// Check for updates by itself when Updates opens and the last check
+    /// is old (as the GTK Yukimi does).
+    pub auto_check: bool,
     /// Where later launches hand over their arguments, until Yukimi
     /// starts listening.
     pub listener: Option<std::os::unix::net::UnixListener>,
@@ -368,6 +373,7 @@ impl Yukimi {
             notes: VecDeque::new(),
             notes_made: 0,
             listener: None,
+            auto_check: true,
             stalls: std::env::var("YUKIMI_STALLS")
                 .ok()
                 .map(|v| Duration::from_millis(v.trim().parse().unwrap_or(50))),
@@ -512,6 +518,9 @@ impl Yukimi {
     /// Check for updates when the last check is older than a few minutes (or
     /// there hasn't been one), as when Updates is opened.
     fn check_if_stale(&mut self, cx: &mut Cx<Msg>) {
+        if !self.auto_check {
+            return;
+        }
         let stale = self.check.as_ref().is_none_or(|c| c.stale(self.now()));
         let has_sources = !self.model.inputs.is_empty() || !self.model.channels.is_empty();
         if stale && !self.loading && has_sources && !matches!(self.source, Source::Sample(_)) {
@@ -1100,6 +1109,13 @@ impl Program for Yukimi {
                 }
             }
             Msg::CloseJob => self.close_job(cx),
+            Msg::CopyLog => {
+                if let Some(job) = &self.job {
+                    let log: Vec<&str> = job.log.iter().map(String::as_str).collect();
+                    cx.set_clipboard_text(&log.join("\n"));
+                    self.note("Nix's log is on the clipboard", cx);
+                }
+            }
             Msg::JobDetails(on) => {
                 if let Some(job) = &mut self.job {
                     job.details = on;
