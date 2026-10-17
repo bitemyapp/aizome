@@ -453,14 +453,8 @@ pub(crate) fn bytes_to_string(bytes: &[u8]) -> String {
     String::from_utf8_lossy(&bytes[..end]).into_owned()
 }
 
-/// A byte string with its trailing NUL, as UDisks expects paths.
-pub(crate) fn nul_terminated(s: &str) -> Vec<u8> {
-    let mut bytes = s.as_bytes().to_vec();
-    bytes.push(0);
-    bytes
-}
-
 /// A value for a call's `a{sv}` options.
+#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn owned<'a>(value: impl Into<Value<'a>>) -> OwnedValue {
     let value: Value<'a> = value.into();
     // Only fd-carrying values fail to convert, and none are built here.
@@ -790,11 +784,6 @@ pub(crate) fn follow_props(
 /// The match rule for every signal `sender` emits.
 pub(crate) fn signals_from(sender: &str) -> String {
     format!("type='signal',sender='{sender}'")
-}
-
-/// The match rule for one interface's signals from `sender`.
-pub(crate) fn signals_of(sender: &str, iface: &str) -> String {
-    format!("type='signal',sender='{sender}',interface='{iface}'")
 }
 
 /// The interface and member of a signal.

@@ -37,6 +37,7 @@ pub mod audio;
 pub mod bluetooth;
 pub mod bus;
 pub mod datetime;
+pub mod disks;
 pub mod error;
 pub mod keyboard;
 pub mod network;

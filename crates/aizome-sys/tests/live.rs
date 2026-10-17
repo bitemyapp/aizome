@@ -163,3 +163,31 @@ fn polkit_helper_is_found() {
     println!("polkit helper: {helper:?}");
     assert!(helper.is_some());
 }
+
+#[test]
+#[ignore = "reads the real system bus"]
+fn disks_reads_udisks() {
+    let disks = aizome_sys::disks::Disks::new(Wake::none());
+    assert!(eventually(|| disks.available() && !disks.snapshot().drives.is_empty()), "UDisks is not running");
+    let state = disks.snapshot();
+    println!("UDisks {} can make {:?}", state.version, state.supported_filesystems);
+    for drive in &state.drives {
+        println!(
+            "drive {} {} serial {} {:?} smart {:?}",
+            drive.display_name(), aizome_sys::disks::format_size(drive.size), drive.serial, drive.rotation,
+            drive.smart.as_ref().map(|s| (s.health(), s.temperature_celsius, s.power_on_hours))
+        );
+        if let Some(disk) = state.drive_block(&drive.path) {
+            for part in state.partitions(&disk.path) {
+                let p = part.partition.as_ref().unwrap();
+                println!(
+                    "  {} #{} {:?} {:?} {} {} {:?}",
+                    part.device, p.number, p.type_name, p.flag_names, aizome_sys::disks::format_size(p.size), part.content(),
+                    part.filesystem.as_ref().map(|f| (&f.mount_points, f.usage.map(|u| u.used_fraction())))
+                );
+            }
+            println!("  free: {:?}", state.free_space(&disk.path));
+        }
+    }
+    println!("volumes for the desktop: {:?}", state.volumes());
+}
