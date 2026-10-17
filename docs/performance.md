@@ -564,3 +564,25 @@ whose pixels land one to one on whole device pixels (a row copy for
 `Copy` or opaque pictures, a straight blend otherwise) would bring these
 frames to about 2 ms, since Shashin already draws every frame at rest
 that way.
+
+## Annai (Welcome)
+
+Headlessly, `apps/annai/tests/budget.rs` (`cargo test --release -p
+aizome-annai --test budget -- --nocapture`), the 760 × 600 window, from the
+clock's tick to the damage rasterised at 2×, release, with Aizome's fonts:
+
+| Interaction | p50 | p95 | max | drawn |
+|---|---|---|---|---|
+| A frame of a scene (any of the seven, 30 a second) | 1.07 ms | 1.56 ms | 7.5 ms | 49% (the scene) |
+| Turning a page | 2.14 ms | 3.31 ms | 5.1 ms | 99% |
+
+A frame views the window again (the scene's moment is its canvas's
+state), but only the scene changes, so only it is drawn: shapes and labels
+from the theme, no images. Under reduced motion the scenes hold still and
+nothing ticks.
+
+Live, the release build under headless sway (pixman) at 2×, Sidestep's
+frame stats over two five-second spans while scenes played: 154–156
+frames each, total p50 0.33–0.53 ms, p95 2.1 ms, max 3.1 ms, damage 48%.
+
+No exceptions.
