@@ -147,6 +147,13 @@ impl<Msg: Clone + Send + 'static> Cx<'_, Msg> {
         self.core.app_windows().into_iter().map(|(_, k)| k).collect()
     }
 
+    /// The window with the keyboard, or the last one that had it: the one
+    /// menu commands are for in an app with a window per document.
+    pub fn key_window(&self) -> Option<WindowKey> {
+        let win = self.core.app_window_for(self.core.key_window?);
+        self.core.wins.get(&win)?.key()
+    }
+
     // Work and time.
 
     /// Run `work` on a background thread; its result comes back as a
