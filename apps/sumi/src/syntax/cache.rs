@@ -245,6 +245,7 @@ mod tests {
         let text: String = (0..1000).map(|i| format!("let x{i} = {i}; // line\n")).collect();
         let mut r = rope(&text);
         let mut h = Highlight::new(Language::Rust);
+        h.budget = Duration::from_secs(60);
         h.advance(999, &r, None);
         let before = h.worked;
         // Type into line 10: one line, then it converges at line 11.
@@ -277,6 +278,7 @@ mod tests {
         let text: String = (0..300).map(|i| format!("line {i}\n")).collect();
         let mut r = rope(&text);
         let mut h = Highlight::new(Language::Rust);
+        h.budget = Duration::from_secs(60);
         h.advance(299, &r, None);
         // Two edits, the later first, with no work between them.
         let at = r.line_to_char(200);
@@ -293,6 +295,7 @@ mod tests {
     fn a_fence_carries_its_language() {
         let r = rope("# Notes\n```rust\nfn a() {}\n```\ntext\n");
         let mut h = Highlight::new(Language::Markdown);
+        h.budget = Duration::from_secs(60);
         let t = h.tokens(2, "fn a() {}", &r);
         assert_eq!(t[0].kind, Kind::Keyword);
         assert!(matches!(h.state_at(2, &r).block, Block::Fence { lang: Language::Rust, .. }));

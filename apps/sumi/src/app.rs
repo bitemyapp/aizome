@@ -133,6 +133,8 @@ pub enum Msg {
     LinkDone(bool),
     GotoText(String),
     GotoDone(bool),
+    /// Open an address (a link ❖-clicked) in its app.
+    OpenUrl(String),
     /// Another launch's arguments.
     Launch(Vec<String>),
     LaunchDone,
@@ -166,6 +168,10 @@ pub struct Sumi {
     seq: u64,
     /// Whether line colours have a time budget (tests can lift it).
     pub highlight_budget: Duration,
+    /// Links ❖-clicked, newest last; opened with xdg-open unless `open_links`
+    /// is off (tests).
+    pub links: Vec<String>,
+    pub open_links: bool,
 }
 
 impl Drop for Sumi {
@@ -199,6 +205,8 @@ impl Sumi {
             closing: HashSet::new(),
             seq: 0,
             highlight_budget: Duration::from_millis(3),
+            links: Vec::new(),
+            open_links: true,
         }
     }
 
@@ -262,9 +270,45 @@ impl Sumi {
         self.docs.values().find(|d| d.path.as_deref() == Some(path)).map(|d| d.window)
     }
 
+    /// An Untitled document holding `text` (in the untouched Untitled
+    /// window if there is one).
+    pub fn new_untitled_with(&mut self, text: &str, cx: &mut Cx<Msg>) -> WindowKey {
+        let reuse = self.target(cx).filter(|w| self.docs.get(w).is_some_and(Doc::pristine));
+        let w = match reuse {
+            Some(w) => w,
+            None => self.new_doc(cx),
+        };
+        if let Some(d) = self.docs.get_mut(&w) {
+            let first = text.lines().next().unwrap_or("");
+            let lang = match Language::detect(None, first) {
+                Language::Plain => Language::Markdown,
+                l => l,
+            };
+            d.content = aizome_kit::EditorContent::new(text);
+            d.content.soft_tabs = self.settings.soft_tabs;
+            d.set_language(lang);
+            d.text_dirty = !text.is_empty();
+            d.autosaved = false;
+            d.autosave_seq += 1;
+        }
+        self.edited(w, cx);
+        cx.activate(w);
+        w
+    }
+
     /// Open `path`: bring its window forward if it's open, else read it
     /// into the untouched Untitled window or a new one.
     pub fn open_path(&mut self, path: &Path, cx: &mut Cx<Msg>) {
+        // The shell's Services hand selected text over in a file of its
+        // own (Open in Sumi): it becomes an untitled document.
+        if let Some(run) = std::env::var_os("XDG_RUNTIME_DIR").filter(|v| !v.is_empty()).map(PathBuf::from)
+            && path.starts_with(run.join("aizome-services"))
+            && let Ok(text) = std::fs::read_to_string(path)
+        {
+            let _ = std::fs::remove_file(path);
+            self.new_untitled_with(&text, cx);
+            return;
+        }
         let path = std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf());
         let path = files::resolve(&path);
         if let Some(w) = self.doc_for_path(&path) {
@@ -1138,6 +1182,12 @@ impl Program for Sumi {
                         cx.activate(w);
                     }
                 }
+            }
+            Msg::OpenUrl(url) => {
+                if self.open_links {
+                    cx.open_url(&url);
+                }
+                self.links.push(url);
             }
             Msg::LaunchDone => {
                 if self.docs.is_empty() {

@@ -91,6 +91,30 @@ pub fn list_marker(t: &str) -> Option<usize> {
     }
 }
 
+/// The address of the link at byte `at` of `line`, if one's there:
+/// `[text](address)`, `<address>`, or an address written out.
+pub fn link_at(line: &str, at: usize) -> Option<String> {
+    let mut v = Vec::new();
+    inline(line, 0, false, &mut Out(Some(&mut v)));
+    let hit = |t: &super::Token| t.range.start <= at && at < t.range.end.max(t.range.start + 1);
+    let i = v.iter().position(|t| matches!(t.kind, Kind::LinkText | Kind::Url) && hit(t))?;
+    let t = &v[i];
+    // [text](address): the address is the Url token after the text.
+    let url = match t.kind {
+        Kind::Url => &line[t.range.clone()],
+        _ => match v.get(i + 1) {
+            Some(u) if u.kind == Kind::Url && u.range.start == t.range.end => &line[u.range.clone()],
+            _ => &line[t.range.clone()],
+        },
+    };
+    let url = url.trim_start_matches(['(', '<']).trim_end_matches([')', '>']);
+    let url = url.split_whitespace().next().unwrap_or("");
+    if url.starts_with('[') || url.is_empty() {
+        return None;
+    }
+    Some(if url.starts_with("www.") { format!("https://{url}") } else { url.to_owned() })
+}
+
 /// Where a task box sits in a line (`- [ ] buy milk`): its byte range
 /// (the brackets) and whether it's ticked.
 pub fn task_box(line: &str) -> Option<(std::ops::Range<usize>, bool)> {
@@ -564,6 +588,11 @@ mod tests {
         assert_eq!(task_box("  - [ ] milk"), Some((4..7, false)));
         assert_eq!(task_box("> * [X] eggs"), Some((4..7, true)));
         assert_eq!(task_box("- [ ]x"), None);
+        assert_eq!(link_at("see [docs](https://a.org/x \"T\") now", 6).as_deref(), Some("https://a.org/x"));
+        assert_eq!(link_at("see [docs](https://a.org/x) now", 15).as_deref(), Some("https://a.org/x"));
+        assert_eq!(link_at("go to https://b.org.", 8).as_deref(), Some("https://b.org"));
+        assert_eq!(link_at("<https://c.org>", 3).as_deref(), Some("https://c.org"));
+        assert_eq!(link_at("plain", 2), None);
     }
 
     #[test]

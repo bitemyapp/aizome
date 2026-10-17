@@ -125,8 +125,21 @@ fn find_bar(doc: &Doc) -> Element<Msg> {
 /// A document's window.
 pub fn window(doc: &Doc, settings: &Settings) -> Element<Msg> {
     let w = doc.window;
+    // ❖-click on a link opens it.
+    let rope = doc.content.rope().clone();
+    let md = doc.language == Language::Markdown;
     let editor = text_editor(&doc.content)
         .on_action(move |a| Msg::Edit(w, a))
+        .on_click(move |at, mods| {
+            if !md || !mods.super_key() || at >= rope.len_chars() {
+                return None;
+            }
+            let line = rope.char_to_line(at);
+            let text = crate::syntax::cache::line_text(&rope, line);
+            let col = at - rope.line_to_char(line);
+            let byte = text.char_indices().nth(col).map_or(text.len(), |(b, _)| b);
+            crate::syntax::markdown::link_at(&text, byte).map(Msg::OpenUrl)
+        })
         .on_find(move |f| Msg::Find(w, f))
         .line_numbers(settings.line_numbers)
         .wrap(settings.wrap)

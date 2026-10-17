@@ -36,6 +36,7 @@ fn scratch(name: &str) -> PathBuf {
 
 fn app(places: Places) -> Sumi {
     let mut s = Sumi::new(places);
+    s.open_links = false;
     // Tests wait for line colours rather than seeing guesses.
     s.highlight_budget = Duration::from_secs(10);
     s
@@ -589,4 +590,21 @@ fn save_and_open_through_the_panels() {
     let other = h.program().docs.values().find(|d| d.path.as_deref() == Some(dir.join("other.txt").as_path())).expect("other.txt open");
     assert_eq!(other.content.text(), "other text\n");
     assert_eq!(other.language, Language::Plain);
+}
+
+#[test]
+fn command_click_opens_links() {
+    let mut h = sumi();
+    let w = h.window();
+    focus_editor(&mut h, w);
+    h.type_text(w, "see [the docs](https://aizome.org/docs) now");
+    let e = h.find_id(w, "editor").unwrap();
+    let on_docs = Point::new(e.x0 + 44.0 + 9.0 * 7.8, e.y0 + 12.0 + 10.0);
+    h.click(w, on_docs);
+    assert!(h.program().links.is_empty(), "a plain click places the caret");
+    // With the command key held (a key with it leaves it held for the click).
+    h.key(w, Key::Named(NamedKey::Insert), Modifiers::SUPER);
+    h.press(w, on_docs, aizome_kit::sidestep_ui::PointerButton::Left, 1);
+    h.release(w, on_docs, aizome_kit::sidestep_ui::PointerButton::Left);
+    assert_eq!(h.program().links, ["https://aizome.org/docs"]);
 }
