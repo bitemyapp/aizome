@@ -332,15 +332,13 @@ pub fn item_row<Msg: 'static>(
     if let Some(s) = subtitle {
         words = words.push(s);
     }
-    let mut r = row![].spacing(12.0).padding([8.0, 12.0]).width(Fill);
+    let mut main = row![].spacing(12.0).width(Fill);
     if let Some(l) = leading {
-        r = r.push(l);
+        main = main.push(l);
     }
-    r = r.push(words);
-    for t in trailing {
-        r = r.push(t);
-    }
-    r.min_height(44.0).into()
+    main = main.push(words);
+    // What's at the right goes under the rest when the window is narrow.
+    container(widgets::adapt(main.into(), trailing, 8.0, 200.0)).padding([8.0, 12.0]).min_height(44.0).width(Fill).into()
 }
 
 /// A row saying something is on its way.

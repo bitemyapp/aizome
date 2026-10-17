@@ -62,15 +62,22 @@ fn status(app: &Yukimi, source: &str, age: Option<String>, movement: Option<&Mov
     }
     match movement {
         Some(Movement::Newer(next)) => {
-            let words = match next.last_modified {
-                Some(t) if !age.is_empty() => format!("{age} → {}", human_age(t, now)),
-                _ => age,
+            // How old it is, and over it, how old the newer version is.
+            let words: Element<Msg> = match next.last_modified {
+                Some(t) if !age.is_empty() => column![
+                    mono(age).role(Role::Text3),
+                    mono(format!("→ {}", human_age(t, now))).role(Role::Accent),
+                ]
+                .spacing(1.0)
+                .align(Align::End)
+                .into(),
+                _ => mono(age).into(),
             };
             let mut chip = tag("newer version", Role::Accent);
             if let Some(rev) = next.short_rev() {
                 chip = chip.tooltip(format!("{source} is now at {rev}"));
             }
-            vec![mono(words).into(), chip]
+            vec![words, chip]
         }
         Some(Movement::Older(next)) => vec![
             mono(age).role(Role::Text3).into(),
@@ -357,9 +364,9 @@ fn slots(
         container(e.unwrap_or_else(|| space(0.0))).width(w).align_x(align).into()
     };
     vec![
-        slot(Some(age), 166.0, Align::End),
-        slot(Some(chip), 104.0, Align::Start),
-        slot(branch, 124.0, Align::Start),
+        slot(Some(age), 140.0, Align::End),
+        slot(Some(chip), 100.0, Align::Start),
+        slot(branch, 110.0, Align::Start),
         slot(link, 28.0, Align::Center),
         slot(update, 64.0, Align::End),
     ]

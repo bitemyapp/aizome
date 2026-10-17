@@ -730,3 +730,64 @@ impl Widget for Noted {
         h.add(&self.0);
     }
 }
+
+// Rows that make room.
+
+/// A row of `main` and the things at its right (`trailing`), which go to a
+/// line of their own under it, at the right, when the window is too
+/// narrow for `main` to keep `min_main` points beside them.
+pub fn adapt<Msg>(main: Element<Msg>, trailing: Vec<Element<Msg>>, spacing: f64, min_main: f64) -> Element<Msg> {
+    let mut children = vec![main];
+    children.extend(trailing);
+    Element::new(Adapt { spacing, min_main }, children)
+}
+
+struct Adapt {
+    spacing: f64,
+    min_main: f64,
+}
+
+impl Widget for Adapt {
+    fn name(&self) -> &'static str {
+        "adapt"
+    }
+
+    fn layout(&mut self, cx: &mut LayoutCx, bc: Constraints) -> Size {
+        let n = cx.child_count();
+        if n == 0 {
+            return bc.min;
+        }
+        let width = if bc.max.width.is_finite() { bc.max.width } else { 640.0 };
+        let loose = Constraints::loose(Size::new(width, f64::INFINITY));
+        let mut sizes = Vec::with_capacity(n);
+        let mut trailing = 0.0;
+        for i in 1..n {
+            let s = cx.layout_child(i, loose);
+            trailing += s.width + self.spacing;
+            sizes.push(s);
+        }
+        let tall = sizes.iter().map(|s| s.height).fold(0.0, f64::max);
+        let beside = width - trailing;
+        if n == 1 || beside >= self.min_main {
+            let main = cx.layout_child(0, Constraints { min: Size::new(beside.max(0.0), 0.0), max: Size::new(beside.max(0.0), f64::INFINITY) });
+            let h = main.height.max(tall);
+            cx.place_child(0, Point::new(0.0, ((h - main.height) / 2.0).round()));
+            let mut x = beside + self.spacing;
+            for (k, s) in sizes.iter().enumerate() {
+                cx.place_child(k + 1, Point::new(x, ((h - s.height) / 2.0).round()));
+                x += s.width + self.spacing;
+            }
+            return bc.constrain(Size::new(width, h));
+        }
+        // Too narrow: the trailing things under the main part, at the right.
+        let main = cx.layout_child(0, Constraints { min: Size::new(width, 0.0), max: Size::new(width, f64::INFINITY) });
+        cx.place_child(0, Point::ZERO);
+        let y = main.height + 6.0;
+        let mut x = (width - (trailing - self.spacing)).max(0.0);
+        for (k, s) in sizes.iter().enumerate() {
+            cx.place_child(k + 1, Point::new(x, y + ((tall - s.height) / 2.0).round()));
+            x += s.width + self.spacing;
+        }
+        bc.constrain(Size::new(width, y + tall))
+    }
+}

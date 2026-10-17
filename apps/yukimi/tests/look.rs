@@ -142,3 +142,18 @@ fn this_computer() {
         h.save_png(w, dir.join(format!("real-{}.png", page.id())), 1.0);
     }
 }
+
+/// The narrowest window Yukimi allows.
+#[test]
+fn narrow_pictures() {
+    let Some(dir) = std::env::var_os("YUKIMI_PICTURES") else { return };
+    let dir = std::path::PathBuf::from(dir);
+    let appearance = Appearance { reduced_motion: true, ..Appearance::default() };
+    let mut h = Harness::with(Yukimi::sample(), appearance, false);
+    let w = h.window();
+    h.resize(w, aizome_kit::layout::Size::new(760.0, 520.0));
+    for page in [Page::Overview, Page::Updates, Page::Installed, Page::Storage] {
+        h.send(Msg::Show(page));
+        h.save_png(w, dir.join(format!("narrow-{}.png", page.id())), 1.0);
+    }
+}
