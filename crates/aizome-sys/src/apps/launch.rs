@@ -45,15 +45,21 @@
 //! never inherited from the launcher; with an activation token both are
 //! set to it.
 //!
-//! Not handled here: D-Bus activation (`DBusActivatable=true` entries are
-//! run through their `Exec`, which the specification requires them to
-//! keep; one without `Exec` is refused with [`Error::Unavailable`]), and
-//! `Type=Link` entries (open their `URL` with the default browser).
+//! **D-Bus activation**: a `DBusActivatable=true` entry is started through
+//! `org.freedesktop.Application` on the session bus ([`activate_dbus`]:
+//! `Activate`, `Open` with the targets as URIs, or `ActivateAction`, the
+//! activation token in the platform data), as the specification asks;
+//! when that fails its `Exec` runs as above (one without `Exec` is then
+//! refused with [`Error::Unavailable`]).
+//!
+//! Not handled here: `Type=Link` entries (open their `URL` with the default
+//! browser).
 
 use super::entry::{DesktopEntry, EntryKind};
 use super::exec::{Exec, ExecContext};
 use super::xdg::find_program;
 use crate::{Error, Result, Task, Wake};
+use std::collections::HashMap;
 use std::io::BufRead;
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
@@ -87,6 +93,10 @@ pub struct LaunchOptions {
     /// Run through `systemd-run --user --scope` when the user manager is
     /// there (default); `false` always spawns directly.
     pub use_systemd: bool,
+    /// Start `DBusActivatable=true` apps through D-Bus activation on the
+    /// session bus (default), as the spec asks; their `Exec` is the
+    /// fallback.
+    pub use_dbus_activation: bool,
 }
 
 impl Default for LaunchOptions {
@@ -98,6 +108,7 @@ impl Default for LaunchOptions {
             working_dir: None,
             terminal: vec!["foot".to_owned(), "--".to_owned()],
             use_systemd: true,
+            use_dbus_activation: true,
         }
     }
 }
@@ -124,9 +135,71 @@ enum Backend {
 /// Launch `entry`: one [`Launched`] per process started (usually one).
 /// Returns once each process has started, which through systemd means a
 /// few milliseconds; use [`launch_in_background`] to not wait at all.
+///
+/// A `DBusActivatable=true` app is activated over the session bus
+/// instead ([`activate_dbus`]), and the result is then empty: the bus
+/// starts the process, or the running instance opens a window.
 pub fn launch(entry: &DesktopEntry, options: &LaunchOptions) -> Result<Vec<Launched>> {
+    if entry.dbus_activatable && options.use_dbus_activation && entry.kind == EntryKind::Application {
+        match crate::Bus::session().and_then(|bus| activate_dbus(entry, options, &bus)) {
+            Ok(()) => return Ok(Vec::new()),
+            Err(error) => log::info!("apps: D-Bus activation of {} failed ({error}); running its Exec", entry.id),
+        }
+    }
     let backend = if options.use_systemd { systemd_backend() } else { None };
     launch_with(entry, options, &backend.unwrap_or(Backend::Plain))
+}
+
+/// The object path `org.freedesktop.Application` lives at for an app ID,
+/// per the Desktop Entry spec: `/` for `.` and `_` for `-`.
+pub fn dbus_object_path(app_id: &str) -> String {
+    format!("/{}", app_id.replace('.', "/").replace('-', "_"))
+}
+
+/// Activate a `DBusActivatable=true` app through `org.freedesktop.Application`
+/// on `bus` (its well-known name is its app ID): `ActivateAction` for an
+/// action, `Open` with targets (as URIs), else `Activate`; the activation
+/// token goes in the platform data. The call waits for the app (up to the
+/// action timeout), which the bus starts if it isn't running.
+pub fn activate_dbus(entry: &DesktopEntry, options: &LaunchOptions, bus: &crate::Bus) -> Result<()> {
+    use zbus::zvariant::Value;
+    let name = entry.app_id();
+    if zbus::names::WellKnownName::try_from(name).is_err() {
+        return Err(Error::InvalidArgument(format!("{name} is not a D-Bus name")));
+    }
+    let path = dbus_object_path(name);
+    let mut platform: HashMap<&str, Value> = HashMap::new();
+    if let Some(token) = options.activation_token.as_deref().filter(|t| !t.is_empty()) {
+        platform.insert("activation-token", Value::from(token));
+        platform.insert("desktop-startup-id", Value::from(token));
+    }
+    let opts = crate::bus::Opts::ACTION;
+    const IFACE: &str = "org.freedesktop.Application";
+    match (&options.action, options.targets.is_empty()) {
+        (Some(action), _) => {
+            let parameter: Vec<Value> = Vec::new();
+            bus.call_with(opts, name, &path, IFACE, "ActivateAction", &(action.as_str(), parameter, platform))
+        }
+        (None, false) => {
+            let uris: Vec<String> = options.targets.iter().map(|t| target_uri(t)).collect();
+            bus.call_with(opts, name, &path, IFACE, "Open", &(uris, platform))
+        }
+        (None, true) => bus.call_with(opts, name, &path, IFACE, "Activate", &(platform,)),
+    }
+}
+
+/// A target as a URI: URIs as they are, paths as `file://` URIs.
+fn target_uri(target: &str) -> String {
+    if target.contains("://") || target.starts_with("mailto:") {
+        return target.to_owned();
+    }
+    let path = Path::new(target);
+    let absolute = if path.is_absolute() {
+        path.to_owned()
+    } else {
+        std::env::current_dir().map(|d| d.join(path)).unwrap_or_else(|_| path.to_owned())
+    };
+    super::path_to_file_uri(&absolute)
 }
 
 /// [`launch`] on a new thread; `wake` is called when the result is ready.

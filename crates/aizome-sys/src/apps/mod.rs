@@ -33,7 +33,10 @@ pub use entry::{Action, DesktopEntry, EntryKind, Locale};
 pub use exec::{Exec, ExecContext, file_uri_to_path, path_to_file_uri};
 pub use icons::{IconLookup, IconTheme};
 pub use index::{App, AppIndex, Watcher};
-pub use launch::{LaunchOptions, Launched, command_lines, launch, launch_in_background, systemd_escape, unit_name};
+pub use launch::{
+    LaunchOptions, Launched, activate_dbus, command_lines, dbus_object_path, launch, launch_in_background, systemd_escape,
+    unit_name,
+};
 pub use mime::DefaultRole;
 pub use xdg::{DESKTOP_NAME, XdgDirs, find_program, parse_desktops};
 
