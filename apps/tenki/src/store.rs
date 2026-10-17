@@ -10,9 +10,16 @@
 //!   location.
 //!
 //! Every file is written to a temporary name and renamed over the old, so
-//! a crash leaves the old file or the new one, never half of one.
+//! a crash leaves the old file or the new one, never half of one. Writes
+//! go to a thread of their own ([`Store::deferred`]): replacing a file can
+//! wait on the disk for a long while when it's busy, and the window must
+//! not; a burst of writes to one file writes it once, and [`flush`] waits
+//! for what's queued (Tenki calls it before exiting).
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::mpsc::{Receiver, Sender, channel};
+use std::sync::{Mutex, OnceLock};
 
 use serde::{Deserialize, Serialize};
 
@@ -26,6 +33,8 @@ pub struct Store {
     pub data: PathBuf,
     pub state: PathBuf,
     pub config: PathBuf,
+    /// Whether writes go to the writer thread (else they're done at once).
+    pub deferred: bool,
 }
 
 fn xdg(var: &str, fallback: &str) -> PathBuf {
@@ -36,9 +45,10 @@ fn xdg(var: &str, fallback: &str) -> PathBuf {
 }
 
 impl Store {
-    /// The XDG directories.
+    /// The XDG directories, written from the writer thread.
     pub fn xdg() -> Store {
         Store {
+            deferred: true,
             cache: xdg("XDG_CACHE_HOME", ".cache").join("aizome/tenki"),
             data: xdg("XDG_DATA_HOME", ".local/share").join("aizome/tenki"),
             state: xdg("XDG_STATE_HOME", ".local/state").join("aizome/tenki"),
@@ -46,9 +56,31 @@ impl Store {
         }
     }
 
-    /// Everything under `root` (tests).
+    /// Everything under `root` (tests), written at once.
     pub fn at(root: &Path) -> Store {
-        Store { cache: root.join("cache"), data: root.join("data"), state: root.join("state"), config: root.join("tenki.toml") }
+        Store {
+            cache: root.join("cache"),
+            data: root.join("data"),
+            state: root.join("state"),
+            config: root.join("tenki.toml"),
+            deferred: false,
+        }
+    }
+
+    /// The same, writing from the writer thread or not.
+    pub fn deferred(mut self, on: bool) -> Store {
+        self.deferred = on;
+        self
+    }
+
+    fn write(&self, path: &Path, text: String) {
+        if !self.deferred {
+            return write(path, &text);
+        }
+        let sent = writer().lock().unwrap_or_else(|e| e.into_inner()).send(Job::Write(path.to_owned(), text));
+        if let Err(std::sync::mpsc::SendError(Job::Write(_, text))) = sent {
+            write(path, &text);
+        }
     }
 
     fn forecast_path(&self, key: &str) -> PathBuf {
@@ -65,7 +97,7 @@ impl Store {
         let Ok(raw) = serde_json::from_str::<serde_json::Value>(&cached.body) else { return };
         let file = CachedFile { fetched_at: cached.fetched_at, response: raw };
         if let Ok(text) = serde_json::to_string(&file) {
-            write(&self.forecast_path(key), &text);
+            self.write(&self.forecast_path(key), text);
         }
     }
 
@@ -91,7 +123,7 @@ impl Store {
     pub fn save_places(&self, places: &[Place]) {
         let file = PlacesFile { places: places.to_vec() };
         if let Ok(text) = serde_json::to_string_pretty(&file) {
-            write(&self.data.join("places.json"), &(text + "\n"));
+            self.write(&self.data.join("places.json"), text + "\n");
         }
     }
 
@@ -104,7 +136,7 @@ impl Store {
 
     pub fn save_state(&self, state: &State) {
         if let Ok(text) = serde_json::to_string_pretty(state) {
-            write(&self.state.join("state.json"), &(text + "\n"));
+            self.write(&self.state.join("state.json"), text + "\n");
         }
     }
 
@@ -114,7 +146,7 @@ impl Store {
 
     pub fn save_settings(&self, settings: &Settings) {
         if let Ok(text) = toml::to_string(settings) {
-            write(&self.config, &text);
+            self.write(&self.config, text);
         }
     }
 }
@@ -167,6 +199,57 @@ pub struct Settings {
     /// None: the locale's.
     pub units: Option<Units>,
     pub location: Consent,
+}
+
+enum Job {
+    Write(PathBuf, String),
+    Flush(Sender<()>),
+}
+
+/// The writer thread's queue, started on first use.
+fn writer() -> &'static Mutex<Sender<Job>> {
+    static WRITER: OnceLock<Mutex<Sender<Job>>> = OnceLock::new();
+    WRITER.get_or_init(|| {
+        let (tx, rx) = channel();
+        let _ = std::thread::Builder::new().name("tenki-writer".into()).spawn(move || write_from(rx));
+        Mutex::new(tx)
+    })
+}
+
+fn write_from(rx: Receiver<Job>) {
+    while let Ok(first) = rx.recv() {
+        // What came meanwhile, the latest text for each file.
+        let mut pending: Vec<PathBuf> = Vec::new();
+        let mut texts: HashMap<PathBuf, String> = HashMap::new();
+        let mut flushes = Vec::new();
+        for job in std::iter::once(first).chain(rx.try_iter()) {
+            match job {
+                Job::Write(p, t) => {
+                    if texts.insert(p.clone(), t).is_none() {
+                        pending.push(p);
+                    }
+                }
+                Job::Flush(done) => flushes.push(done),
+            }
+        }
+        for p in pending {
+            if let Some(t) = texts.remove(&p) {
+                write(&p, &t);
+            }
+        }
+        for done in flushes {
+            let _ = done.send(());
+        }
+    }
+}
+
+/// Wait (a few seconds at most) for the writes queued to be written.
+pub fn flush() {
+    let (done, wait) = channel();
+    let sent = writer().lock().unwrap_or_else(|e| e.into_inner()).send(Job::Flush(done)).is_ok();
+    if sent {
+        let _ = wait.recv_timeout(std::time::Duration::from_secs(5));
+    }
 }
 
 /// Write `text` to `path` through a temporary file.
@@ -225,6 +308,18 @@ mod tests {
         let st = State { selected: Some("current".into()), located: Some((1.0, 2.0)) };
         s.save_state(&st);
         assert_eq!(s.load_state(), st);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn deferred_writes_land_by_the_flush() {
+        let root = temp("deferred");
+        let s = Store::at(&root).deferred(true);
+        for i in 0..20 {
+            s.save_state(&State { selected: Some(format!("place {i}")), located: None });
+        }
+        flush();
+        assert_eq!(s.load_state().selected.as_deref(), Some("place 19"));
         let _ = std::fs::remove_dir_all(&root);
     }
 

@@ -24,6 +24,7 @@ use aizome_tenki::places::{CURRENT_ID, Found, Origin, Place, parse_search};
 use aizome_tenki::services::{Recorded, Services};
 use aizome_tenki::store::{Consent, Settings, State, Store};
 use aizome_tenki::units::Units;
+use aizome_tenki::ui::widgets::PLACE_ROW;
 use aizome_tenki::{Msg, Tenki};
 
 fn fixtures() -> PathBuf {
@@ -149,6 +150,19 @@ fn searching_adds_a_place() {
     h.advance(Duration::from_millis(300));
     assert_eq!(names(&h).len(), 4, "Tokyo is kept once");
     assert_eq!(h.program().selected_place().map(|p| p.name), Some("Tokyo".into()));
+    // And Return once the answer is there; ❖] and ❖[ then go between places,
+    // even from the search field.
+    h.click(w, field.center());
+    h.type_text(w, "Chicago");
+    h.advance(Duration::from_millis(300));
+    assert!(h.find_id(w, "result-0").is_some());
+    h.named(w, NamedKey::Enter, Modifiers::NONE);
+    assert_eq!(h.program().selected_place().map(|p| p.name), Some("Chicago".into()));
+    h.click(w, field.center());
+    h.command(w, '[');
+    assert_eq!(h.program().selected_place().map(|p| p.name), Some("Tokyo".into()), "❖[ from the field");
+    h.command(w, ']');
+    assert_eq!(h.program().selected_place().map(|p| p.name), Some("Chicago".into()));
 }
 
 #[test]
@@ -183,8 +197,8 @@ fn the_keyboard_chooses_moves_and_removes() {
     h.named(w, NamedKey::Backspace, Modifiers::NONE);
     assert_eq!(names(&h), ["Tokyo", "Reykjavík"]);
     assert_eq!(h.program().selected_place().map(|p| p.name), Some("Reykjavík".into()), "the next one shows");
-    // ❖↑ from anywhere.
-    h.key(w, aizome_kit::sidestep_ui::Key::Named(NamedKey::ArrowUp), Modifiers::SUPER);
+    // ❖[ from anywhere.
+    h.command(w, '[');
     assert_eq!(h.program().selected_place().map(|p| p.name), Some("Tokyo".into()));
 }
 
@@ -296,12 +310,13 @@ fn pictures(h: &mut Harness<Tenki>, name: &str) {
 }
 
 /// Tokyo, Chicago and Reykjavík with the clock twelve minutes after the
-/// answers were recorded.
+/// answers were recorded, writing its files from the writer thread as the
+/// app does.
 fn scene(name: &str, theme: ThemeChoice) -> (Harness<Tenki>, Arc<Recorded>) {
     let r = recorded();
     let at = r.recorded_at();
     r.set_now(at);
-    let mut h = launch(&r, Some(three_places(name)), theme);
+    let mut h = launch(&r, Some(three_places(name).deferred(true)), theme);
     r.set_now(at + 12 * 60);
     h.advance(Duration::from_secs(60));
     (h, r)
@@ -369,6 +384,8 @@ fn interactions_fit_the_frame_budget() {
     let w = h.window();
     let _ = h.render(w, 2.0);
     let rows: Vec<_> = ["Tokyo", "Chicago", "Reykjavík"].iter().map(|n| h.find(w, n).unwrap().center()).collect();
+    let window_area = h.size(w).width * h.size(w).height;
+    let drawn = std::cell::Cell::new(0.0f64);
     let frame = |h: &mut Harness<Tenki>, act: &mut dyn FnMut(&mut Harness<Tenki>)| {
         h.take_damage(w);
         let start = Instant::now();
@@ -378,6 +395,7 @@ fn interactions_fit_the_frame_budget() {
             bounds = Some(bounds.map_or(d, |b| b.union(d)));
         }
         if let Some(b) = bounds {
+            drawn.set(drawn.get() + b.area() / window_area);
             let _ = h.render_rect(w, b, 2.0);
         }
         start.elapsed()
@@ -385,7 +403,14 @@ fn interactions_fit_the_frame_budget() {
     let report = |name: &str, mut v: Vec<Duration>| {
         v.sort();
         let p = |q: f64| v[((v.len() - 1) as f64 * q) as usize];
-        eprintln!("tenki {name}: p50 {:?} p95 {:?} max {:?} (n={}, at 2x)", p(0.5), p(0.95), v.last().unwrap(), v.len());
+        let share = drawn.replace(0.0) / v.len() as f64 * 100.0;
+        eprintln!(
+            "tenki {name}: p50 {:?} p95 {:?} max {:?} (n={}, at 2x, {share:.0}% drawn)",
+            p(0.5),
+            p(0.95),
+            v.last().unwrap(),
+            v.len()
+        );
         p(0.95)
     };
     // Choosing another place: the whole main view changes.
@@ -402,6 +427,16 @@ fn interactions_fit_the_frame_budget() {
         hover.push(frame(&mut h, &mut |h| h.move_to(w, at)));
     }
     let p_hover = report("hover the places", hover);
+    // Dragging a place down the list and back: the rows make room.
+    let mut drags = Vec::new();
+    h.press(w, rows[0], aizome_kit::sidestep_ui::PointerButton::Left, 1);
+    for i in 0..60 {
+        let y = rows[0].y + 2.0 * PLACE_ROW * ((i as f64 / 30.0) * std::f64::consts::PI).sin().abs();
+        let at = Point::new(rows[0].x, y);
+        drags.push(frame(&mut h, &mut |h| h.move_to(w, at)));
+    }
+    h.release(w, rows[0], aizome_kit::sidestep_ui::PointerButton::Left);
+    let p_drag = report("drag a place", drags);
     // Scrolling the hours sideways.
     let hours = h.find(w, "Now").expect("the hourly strip").center();
     let mut scrolls = Vec::new();
@@ -417,7 +452,7 @@ fn interactions_fit_the_frame_budget() {
     }
     let p_tick = report("the minute", ticks);
     if !cfg!(debug_assertions) {
-        for (name, p) in [("hover", p_hover), ("scroll", p_scroll), ("tick", p_tick)] {
+        for (name, p) in [("hover", p_hover), ("drag", p_drag), ("scroll", p_scroll), ("tick", p_tick)] {
             assert!(p < Duration::from_millis(4), "{name} p95 {p:?}");
         }
         // Choosing a place redraws the whole main view: see docs/performance.md.

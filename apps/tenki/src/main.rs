@@ -44,4 +44,6 @@ fn main() {
         Claim::Alone => {}
     }
     aizome_kit::run(app);
+    // What the window left to write.
+    aizome_tenki::store::flush();
 }
