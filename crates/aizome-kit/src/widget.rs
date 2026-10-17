@@ -9,7 +9,7 @@
 //! the window's state map under the widget's key path, reached through
 //! `cx.state::<T>()`.
 
-use std::any::Any;
+use std::any::{Any, TypeId};
 use std::time::{Duration, Instant};
 
 use sidestep_ui::{Canvas, Cursor, Ime, KeyEvent, Modifiers, PointerButton, ScrollPhase, TextLayout};
@@ -64,6 +64,8 @@ pub enum Focusable {
     Tab,
     /// By Tab and by a click (text, lists, sliders).
     Click,
+    /// By a click only, not Tab (a scroll view, for its keys).
+    Pointer,
 }
 
 /// What the Edit menu asks of the focused widget.
@@ -248,7 +250,7 @@ pub trait Widget: 'static {
     }
 
     /// Whether it can carry out `command` now (for the menu's state).
-    fn can(&self, state: Option<&dyn Any>, command: EditCommand) -> bool {
+    fn can(&self, state: StateView, command: EditCommand) -> bool {
         let _ = (state, command);
         false
     }
@@ -305,7 +307,7 @@ pub trait Widget: 'static {
     }
 
     /// The text selected in it (for Services and tests).
-    fn selection(&self, state: Option<&dyn Any>) -> Option<String> {
+    fn selection(&self, state: StateView) -> Option<String> {
         let _ = state;
         None
     }
@@ -336,7 +338,24 @@ pub struct PopoverContent {
 }
 
 /// What a window keeps for its widgets between rebuilds.
-pub(crate) type StateMap = FxHashMap<NodeId, Box<dyn Any>>;
+pub(crate) type StateMap = FxHashMap<(NodeId, TypeId), Box<dyn Any>>;
+
+/// A widget's states, to read: [`StateView::get`].
+#[derive(Clone, Copy)]
+pub struct StateView<'a> {
+    pub(crate) map: &'a StateMap,
+    pub(crate) id: NodeId,
+}
+
+impl<'a> StateView<'a> {
+    pub(crate) fn new(map: &'a StateMap, id: NodeId) -> StateView<'a> {
+        StateView { map, id }
+    }
+
+    pub fn get<T: 'static>(&self) -> Option<&'a T> {
+        self.map.get(&(self.id, TypeId::of::<T>())).and_then(|b| b.downcast_ref::<T>())
+    }
+}
 
 /// What layout, painting and events share.
 pub(crate) struct Env<'a> {
@@ -344,13 +363,12 @@ pub(crate) struct Env<'a> {
     pub text: &'a mut TextCache,
     pub states: &'a mut StateMap,
     pub now: Instant,
+    /// Laying out a selected row: text and icons take `on_selection`.
+    pub on_selection: bool,
 }
 
 pub(crate) fn state_of<'s, T: Default + 'static>(states: &'s mut StateMap, id: NodeId) -> &'s mut T {
-    let entry = states.entry(id).or_insert_with(|| Box::new(T::default()));
-    if !entry.is::<T>() {
-        *entry = Box::new(T::default());
-    }
+    let entry = states.entry((id, TypeId::of::<T>())).or_insert_with(|| Box::new(T::default()));
     entry.downcast_mut::<T>().expect("state of its type")
 }
 
@@ -396,6 +414,24 @@ impl LayoutCx<'_, '_> {
         let child = self.tree.mount(element, Some(self.node), i);
         self.tree.nodes[self.node].children.push(child);
         i
+    }
+
+    /// Lay child `i` out as a selected row: its text and icons take the
+    /// colour on the selection.
+    pub fn layout_child_selected(&mut self, i: usize, bc: Constraints, selected: bool) -> Size {
+        let before = std::mem::replace(&mut self.env.on_selection, selected);
+        let child = self.tree.nodes[self.node].children[i];
+        if before != selected {
+            self.tree.uncache(child);
+        }
+        let s = self.tree.layout(child, bc, self.env);
+        self.env.on_selection = before;
+        s
+    }
+
+    /// Whether this is laid out in a selected row.
+    pub fn on_selection(&self) -> bool {
+        self.env.on_selection
     }
 
     /// Drop the children added while laying out before.
@@ -447,7 +483,7 @@ pub struct PaintCx<'a> {
     pub canvas: &'a mut Canvas,
     pub(crate) theme: &'a Theme,
     pub(crate) text: &'a mut TextCache,
-    pub(crate) state: Option<&'a dyn Any>,
+    pub(crate) state: StateView<'a>,
     pub(crate) size: Size,
     pub(crate) hovered: bool,
     pub(crate) pressed: bool,
@@ -495,7 +531,7 @@ impl<'a> PaintCx<'a> {
     }
 
     pub fn state<T: 'static>(&self) -> Option<&'a T> {
-        self.state.and_then(|s| s.downcast_ref::<T>())
+        self.state.get::<T>()
     }
 
     pub fn text_cache(&mut self) -> &mut TextCache {
@@ -542,6 +578,8 @@ pub struct EventCx<'a, 'e> {
     pub(crate) hovered: bool,
     pub(crate) pressed: bool,
     pub(crate) focused: bool,
+    /// Whether anything in the window has the focus.
+    pub(crate) any_focus: bool,
     pub(crate) mods: Modifiers,
 }
 
@@ -551,6 +589,7 @@ pub(crate) struct Out {
     pub msgs: Vec<(usize, AnyMsg)>,
     pub damage: Vec<Rect>,
     pub rebuild: bool,
+    pub relayout: bool,
     pub focus: Option<FocusRequest>,
     pub capture: Option<bool>,
     pub cursor: Option<Cursor>,
@@ -633,6 +672,12 @@ impl EventCx<'_, '_> {
         self.out.rebuild = true;
     }
 
+    /// Lay it out again (and what's around it) without viewing the window
+    /// again: its own state moved its children (a scroll).
+    pub fn relayout(&mut self) {
+        self.out.relayout = true;
+    }
+
     pub fn state<T: Default + 'static>(&mut self) -> &mut T {
         let id = self.id();
         state_of(self.env.states, id)
@@ -660,6 +705,12 @@ impl EventCx<'_, '_> {
 
     pub fn is_focused(&self) -> bool {
         self.focused
+    }
+
+    /// Whether nothing in the window has the focus (keys then go to what's
+    /// under the pointer).
+    pub fn nothing_focused(&self) -> bool {
+        !self.any_focus
     }
 
     /// The modifier keys held.

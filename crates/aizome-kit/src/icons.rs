@@ -151,7 +151,7 @@ impl<Msg> IconEl<Msg> {
 impl<Msg> From<IconEl<Msg>> for Element<Msg> {
     fn from(i: IconEl<Msg>) -> Element<Msg> {
         Element::from_raw(RawElement::new(
-            IconWidget { icon: i.icon, size: i.size, role: i.role, color: i.color },
+            IconWidget { icon: i.icon, size: i.size, role: i.role, color: i.color, selected: false },
             i.common,
             Vec::new(),
         ))
@@ -163,6 +163,7 @@ pub(crate) struct IconWidget {
     pub size: Option<f64>,
     pub role: Role,
     pub color: Option<Color>,
+    pub selected: bool,
 }
 
 impl Widget for IconWidget {
@@ -172,19 +173,24 @@ impl Widget for IconWidget {
 
     fn layout(&mut self, cx: &mut LayoutCx, bc: Constraints) -> Size {
         let s = self.size.unwrap_or(cx.theme().metrics.icon);
+        self.selected = cx.on_selection();
         bc.constrain(Size::new(s, s))
     }
 
     fn paint(&self, cx: &mut PaintCx) {
         let s = self.size.unwrap_or(cx.theme().metrics.icon);
-        let color = self.color.unwrap_or_else(|| cx.theme().role(self.role));
+        let color = match self.color {
+            Some(c) => c,
+            None if self.selected => crate::text::selected_color(cx.theme(), self.role),
+            None => cx.theme().role(self.role),
+        };
         let b = cx.size();
         let at = Point::new(((b.width - s) / 2.0).round(), ((b.height - s) / 2.0).round());
         self.icon.draw(cx.canvas, at, s, color);
     }
 
     fn hash(&self, h: &mut PaintHasher) {
-        h.add(&(self.icon, self.role)).f64(self.size.unwrap_or(0.0));
+        h.add(&(self.icon, self.role, self.selected)).f64(self.size.unwrap_or(0.0));
         if let Some(c) = self.color {
             h.color(c);
         }

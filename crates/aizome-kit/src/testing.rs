@@ -511,7 +511,7 @@ impl<P: Program> Harness<P> {
         let w = self.rt.core.wins.get(&self.win(key))?;
         let i = w.tree.get(w.focused?)?;
         let n = &w.tree.nodes[i];
-        n.widget.selection(w.states.get(&n.id).map(|b| &**b))
+        n.widget.selection(crate::widget::StateView::new(&w.states, n.id))
     }
 
     /// The name (`.id`) of the focused element, if it has one.

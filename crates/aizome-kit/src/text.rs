@@ -309,6 +309,16 @@ fn symbol_style(spec: &TextSpec, theme: &Theme) -> TextStyle {
     TextStyle::new(theme.font(font), spec.color)
 }
 
+/// A role's colour in a selected row: text takes `on_selection`, quieter
+/// text a little less of it; colours that mean something keep theirs.
+pub(crate) fn selected_color(theme: &Theme, role: Role) -> Color {
+    match role {
+        Role::Text | Role::Text2 | Role::Accent => theme.on_selection(),
+        Role::Text3 | Role::Faint => theme.on_selection().with_alpha(0.72),
+        other => theme.role(other),
+    }
+}
+
 // The `text` element.
 
 /// Text in one style: a label, a paragraph.
@@ -544,7 +554,7 @@ pub(crate) struct TextWidget {
 }
 
 impl TextWidget {
-    fn spec(&self, theme: &Theme) -> TextSpec {
+    fn spec(&self, theme: &Theme, selected: bool) -> TextSpec {
         let m = &theme.metrics;
         let mut font = self.font.unwrap_or_else(|| {
             let size = self.size.unwrap_or(if self.mono { m.body } else { m.body });
@@ -556,7 +566,12 @@ impl TextWidget {
         font.italic |= self.italic;
         font.tabular |= self.tabular;
         font.condensed |= self.condensed;
-        let mut spec = TextSpec::new(font, self.color.unwrap_or_else(|| theme.role(self.role)));
+        let color = match self.color {
+            Some(c) => c,
+            None if selected => selected_color(theme, self.role),
+            None => theme.role(self.role),
+        };
+        let mut spec = TextSpec::new(font, color);
         spec.wrap = if self.wrap { Wrap::Words } else { Wrap::Truncate };
         spec.max_lines = self.max_lines;
         if self.wrap && self.max_lines > 0 {
@@ -577,7 +592,7 @@ impl Widget for TextWidget {
     }
 
     fn layout(&mut self, cx: &mut LayoutCx, bc: Constraints) -> Size {
-        let spec = self.spec(cx.theme());
+        let spec = self.spec(cx.theme(), cx.on_selection());
         let theme = cx.env.theme;
         // A line laid out unbounded tells the natural width; text that
         // doesn't fit is laid out again at the width it has.

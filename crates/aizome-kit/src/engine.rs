@@ -112,6 +112,8 @@ pub(crate) struct Win {
     pub built: bool,
     /// Widgets with a tick on its way.
     pub ticking: crate::hash::FxHashSet<NodeId>,
+    /// Widgets whose state moved their children: lay out again.
+    pub relayout: Vec<NodeId>,
 }
 
 impl Win {
@@ -141,6 +143,7 @@ impl Win {
             popups: Vec::new(),
             built: false,
             ticking: Default::default(),
+            relayout: Vec::new(),
         }
     }
 
@@ -417,7 +420,7 @@ impl Core {
             WinKind::Popup { .. } => "popup",
         });
         let mut tree = Tree::new(root, base);
-        let mut env = Env { theme: &self.theme, text: &mut self.text, states: &mut w.states, now: Instant::now() };
+        let mut env = Env { theme: &self.theme, text: &mut self.text, states: &mut w.states, now: Instant::now(), on_selection: false };
         tree.layout_window(w.size, &mut env);
         let damage = if w.built { tree.diff(&w.snapshot) } else { vec![Rect::from_origin_size(Point::ZERO, w.size)] };
         w.snapshot = tree.snapshot();
@@ -426,7 +429,7 @@ impl Core {
         w.built = true;
         w.dirty = false;
         let live = &w.tree.by_id;
-        w.states.retain(|id, _| live.contains_key(id));
+        w.states.retain(|(id, _), _| live.contains_key(id));
         for (node, after) in ticks {
             self.tick_later(win, node, after, platform);
         }
@@ -451,11 +454,59 @@ impl Core {
         }
     }
 
+    /// Windows with widgets to lay out again (and nothing to view again).
+    pub fn relayout_windows(&self) -> Vec<WinId> {
+        self.wins.values().filter(|w| !w.relayout.is_empty() && w.built).map(|w| w.id).collect()
+    }
+
+    /// Lay the widgets that asked out again, and what's around them, with
+    /// the tree as it is: a scroll moving its content, a list showing other
+    /// rows. Then diff and invalidate as a rebuild would.
+    pub fn relayout(&mut self, win: WinId, platform: &mut dyn Platform) {
+        let started = Instant::now();
+        let Some(w) = self.wins.get_mut(&win) else { return };
+        let ids = std::mem::take(&mut w.relayout);
+        if w.dirty || w.tree.root.is_none() {
+            return;
+        }
+        for id in ids {
+            if let Some(i) = w.tree.get(id) {
+                w.tree.uncache_up(i);
+            }
+        }
+        let size = w.size;
+        let mut env = Env { theme: &self.theme, text: &mut self.text, states: &mut w.states, now: Instant::now(), on_selection: false };
+        w.tree.layout_window(size, &mut env);
+        let dead = w.tree.nodes.iter().filter(|n| n.dead).count();
+        if dead > 256 && dead > w.tree.nodes.len() / 2 {
+            w.tree.compact();
+        }
+        let damage = w.tree.diff(&w.snapshot);
+        w.snapshot = w.tree.snapshot();
+        let ticks = std::mem::take(&mut w.tree.ticks);
+        let live = &w.tree.by_id;
+        w.states.retain(|(id, _), _| live.contains_key(id));
+        let mut area = 0.0;
+        for r in &damage {
+            area += r.area();
+            platform.invalidate(win, *r);
+        }
+        let full = w.size.width * w.size.height;
+        self.stats.damage(damage.len(), area, full);
+        for (node, after) in ticks {
+            self.tick_later(win, node, after, platform);
+        }
+        if let Some(p) = self.wins.get(&win).and_then(|w| w.pointer) {
+            self.update_hot(win, p, platform);
+        }
+        self.stats.view_layout(started.elapsed());
+    }
+
     /// Re-lay-out a popup (its content changed) and resize it.
     fn build_popup(&mut self, win: WinId, root: RawElement, platform: &mut dyn Platform) -> Size {
         let Some(w) = self.wins.get_mut(&win) else { return Size::ZERO };
         let mut tree = Tree::new(root, NodeId::ROOT.child("popup"));
-        let mut env = Env { theme: &self.theme, text: &mut self.text, states: &mut w.states, now: Instant::now() };
+        let mut env = Env { theme: &self.theme, text: &mut self.text, states: &mut w.states, now: Instant::now(), on_selection: false };
         let size = tree.layout_free(Size::new(1200.0, 900.0), &mut env);
         let size = Size::new(size.width.ceil(), size.height.ceil());
         if w.built && size == w.size {
@@ -472,7 +523,7 @@ impl Core {
         w.built = true;
         w.dirty = false;
         let live = &w.tree.by_id;
-        w.states.retain(|id, _| live.contains_key(id));
+        w.states.retain(|(id, _), _| live.contains_key(id));
         size
     }
 
@@ -499,7 +550,7 @@ impl Core {
         // Popups keep their size: what's filtered out leaves room.
         let Some(w) = self.wins.get_mut(&win) else { return };
         let mut tree = Tree::new(root, NodeId::ROOT.child("popup"));
-        let mut env = Env { theme: &self.theme, text: &mut self.text, states: &mut w.states, now: Instant::now() };
+        let mut env = Env { theme: &self.theme, text: &mut self.text, states: &mut w.states, now: Instant::now(), on_selection: false };
         tree.layout_window(w.size, &mut env);
         for r in tree.diff(&w.snapshot) {
             platform.invalidate(win, r);
@@ -760,7 +811,7 @@ impl Core {
             }
             Some(focused.is_some_and(|(w, idx)| {
                 let n = &w.tree.nodes[idx];
-                n.widget.can(w.states.get(&n.id).map(|b| &**b), cmd)
+                n.widget.can(crate::widget::StateView::new(&w.states, n.id), cmd)
             }))
         });
         self.expand_window_list(spec);
@@ -870,7 +921,7 @@ impl Core {
         let mut out = Out::default();
         let local = localize(event, origin);
         let status = {
-            let mut env = Env { theme: &self.theme, text: &mut self.text, states: &mut w.states, now: Instant::now() };
+            let mut env = Env { theme: &self.theme, text: &mut self.text, states: &mut w.states, now: Instant::now(), on_selection: false };
             let mut cx = EventCx {
                 tree: &w.tree,
                 node: idx,
@@ -881,6 +932,7 @@ impl Core {
                 hovered: w.hot == Some(id),
                 pressed: w.active == Some(id),
                 focused: w.focused == Some(id),
+                any_focus: w.focused.is_some(),
                 mods: self.mods,
             };
             widget.event(&mut cx, &local)
@@ -905,12 +957,20 @@ impl Core {
 
     /// Carry out what a handler asked for.
     fn apply(&mut self, win: WinId, idx: usize, out: Out, platform: &mut dyn Platform) {
-        let Out { msgs, damage, rebuild, focus, capture, cursor, ime, ticks, menus, close_popup, reveal, begin_move, .. } = out;
+        let Out { msgs, damage, rebuild, relayout, focus, capture, cursor, ime, ticks, menus, close_popup, reveal, begin_move, .. } = out;
+        if relayout
+            && let Some(w) = self.wins.get_mut(&win)
+            && let Some(n) = w.tree.nodes.get(idx)
+        {
+            w.relayout.push(n.id);
+        }
         for (node, msg) in msgs {
             let msg = self.map_up(win, node, msg);
             self.queue.push_back(msg);
         }
+        let bounds = self.wins.get(&win).map(|w| Rect::from_origin_size(Point::ZERO, w.size));
         for r in damage {
+            let r = bounds.map_or(r, |b| r.intersect(b));
             if r.area() > 0.0 {
                 platform.invalidate(win, r);
             }
@@ -1000,7 +1060,7 @@ impl Core {
             let mut widget = std::mem::replace(&mut w.tree.nodes[i].widget, Box::new(Vacant));
             let mut out = Out::default();
             {
-                let mut env = Env { theme: &self.theme, text: &mut self.text, states: &mut w.states, now: Instant::now() };
+                let mut env = Env { theme: &self.theme, text: &mut self.text, states: &mut w.states, now: Instant::now(), on_selection: false };
                 let mut cx = EventCx {
                     tree: &w.tree,
                     node: i,
@@ -1011,6 +1071,7 @@ impl Core {
                     hovered: false,
                     pressed: false,
                     focused: false,
+                    any_focus: true,
                     mods: self.mods,
                 };
                 widget.reveal(&mut cx, rect);
@@ -1208,7 +1269,21 @@ impl Core {
             let path = w.tree.path_at(p, w.modal());
             let Some(&last) = path.last() else { return };
             // A click focuses what takes focus by clicking, else clears it.
-            let target = path.iter().rev().copied().find(|&i| w.tree.nodes[i].widget.focusable() == Focusable::Click);
+            // What takes the focus by a click: the nearest such around the
+            // pointer, unless a control (a button) is nearer, which leaves
+            // the focus where it is.
+            let mut target = None;
+            for &i in path.iter().rev() {
+                let wd = &w.tree.nodes[i].widget;
+                if matches!(wd.focusable(), Focusable::Click | Focusable::Pointer) {
+                    target = Some(i);
+                    break;
+                }
+                if wd.hit() {
+                    target = w.focused.and_then(|f| w.tree.get(f));
+                    break;
+                }
+            }
             let focus = target.map(|i| w.tree.nodes[i].id);
             let ev = Event::PointerDown { pos: p, button, clicks, mods };
             let handled = self.bubble(win, last, &ev, platform);
@@ -1329,7 +1404,9 @@ impl Core {
         }
         let w = &self.wins[&win];
         let focused = w.focused.and_then(|f| w.tree.get(f));
-        let target = focused.or_else(|| if w.is_popup() { w.tree.root } else { None });
+        // With nothing focused, keys go to what's under the pointer.
+        let under = || w.pointer.and_then(|p| w.tree.path_at(p, w.modal()).last().copied());
+        let target = focused.or_else(|| if w.is_popup() { w.tree.root } else { under() });
         let handled = match target {
             Some(i) => self.bubble(win, i, &Event::Key(ev.clone()), platform).is_some(),
             None => false,
@@ -1411,7 +1488,7 @@ impl Core {
         let id = w.tree.nodes[idx].id;
         let mut out = Out::default();
         let done = {
-            let mut env = Env { theme: &self.theme, text: &mut self.text, states: &mut w.states, now: Instant::now() };
+            let mut env = Env { theme: &self.theme, text: &mut self.text, states: &mut w.states, now: Instant::now(), on_selection: false };
             let mut cx = EventCx {
                 tree: &w.tree,
                 node: idx,
@@ -1422,6 +1499,7 @@ impl Core {
                 hovered: w.hot == Some(id),
                 pressed: false,
                 focused: w.focused == Some(id),
+                any_focus: w.focused.is_some(),
                 mods: self.mods,
             };
             widget.activate(&mut cx)
@@ -1454,7 +1532,7 @@ impl Core {
         let w = self.wins.get(&self.key_window?)?;
         let i = w.tree.get(w.focused?)?;
         let n = &w.tree.nodes[i];
-        n.widget.selection(w.states.get(&n.id).map(|b| &**b))
+        n.widget.selection(crate::widget::StateView::new(&w.states, n.id))
     }
 
     /// A drag over `win` at `p`: whether something there takes it.
@@ -1501,7 +1579,7 @@ impl Core {
         let id = w.tree.nodes[idx].id;
         let mut out = Out::default();
         let done = {
-            let mut env = Env { theme: &self.theme, text: &mut self.text, states: &mut w.states, now: Instant::now() };
+            let mut env = Env { theme: &self.theme, text: &mut self.text, states: &mut w.states, now: Instant::now(), on_selection: false };
             let mut cx = EventCx {
                 tree: &w.tree,
                 node: idx,
@@ -1512,6 +1590,7 @@ impl Core {
                 hovered: w.hot == Some(id),
                 pressed: false,
                 focused: true,
+                any_focus: true,
                 mods: self.mods,
             };
             widget.command(&mut cx, cmd)

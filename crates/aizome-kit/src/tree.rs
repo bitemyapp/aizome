@@ -146,6 +146,54 @@ impl Tree {
         idx
     }
 
+    /// Forget the layout of `idx` and what's under it.
+    pub fn uncache(&mut self, idx: usize) {
+        self.nodes[idx].cache = None;
+        for k in self.nodes[idx].children.clone() {
+            self.uncache(k);
+        }
+    }
+
+    /// Forget the layout of `idx` and of everything around it up to the
+    /// root, so the next layout places it anew (and what it moved).
+    pub fn uncache_up(&mut self, mut idx: usize) {
+        loop {
+            self.nodes[idx].cache = None;
+            match self.nodes[idx].parent {
+                Some(p) => idx = p,
+                None => return,
+            }
+        }
+    }
+
+    /// Drop the dead nodes, renumbering the live ones.
+    pub fn compact(&mut self) {
+        let live = self.nodes.iter().filter(|n| !n.dead).count();
+        if live == self.nodes.len() {
+            return;
+        }
+        let mut map = vec![usize::MAX; self.nodes.len()];
+        let mut next = 0;
+        for (i, n) in self.nodes.iter().enumerate() {
+            if !n.dead {
+                map[i] = next;
+                next += 1;
+            }
+        }
+        let old = std::mem::take(&mut self.nodes);
+        for mut n in old.into_iter().filter(|n| !n.dead) {
+            n.parent = n.parent.map(|p| map[p]);
+            n.children = n.children.iter().map(|c| map[*c]).filter(|c| *c != usize::MAX).collect();
+            self.nodes.push(n);
+        }
+        self.by_id = self.nodes.iter().enumerate().map(|(i, n)| (n.id, i)).collect();
+        self.root = self.root.map(|r| map[r]);
+        self.popovers.retain_mut(|p| {
+            p.node = map[p.node];
+            p.node != usize::MAX
+        });
+    }
+
     /// Take a node and its children out.
     pub fn kill(&mut self, idx: usize) {
         let n = &mut self.nodes[idx];
@@ -304,7 +352,7 @@ impl Tree {
         if n.dead {
             return;
         }
-        if n.widget.focusable() != Focusable::No && n.rect.width() > 0.0 && n.rect.height() > 0.0 {
+        if matches!(n.widget.focusable(), Focusable::Tab | Focusable::Click) && n.rect.width() > 0.0 && n.rect.height() > 0.0 {
             out.push(idx);
         }
         for &k in &n.children {
@@ -354,7 +402,7 @@ impl Tree {
                 canvas,
                 theme: env.theme,
                 text: env.text,
-                state: env.states.get(&n.id).map(|b| &**b),
+                state: crate::widget::StateView::new(env.states, n.id),
                 size: n.size,
                 hovered: env.hot == Some(n.id),
                 pressed: env.active == Some(n.id) && env.hot == Some(n.id),

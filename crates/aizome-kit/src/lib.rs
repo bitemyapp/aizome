@@ -73,6 +73,7 @@ pub use widgets::controls::{
 };
 pub use widgets::layout::{Edge, Sides, Tone, column, container, divider, row, space, spacer, stack};
 pub use widgets::menus::{MenuPlacement, MenuStyle, menu_view};
+pub use widgets::scroll::{Direction, list, scroll, virtual_list};
 pub use widgets::text_field::{search_field, text_field};
 pub use program::{Anchors, KeyboardInteractivity, Layer, LayerOptions, Margins, Output, ActivationRequest};
 
@@ -85,7 +86,7 @@ pub mod prelude {
         Span, Theme, TimerHandle, Tone, WindowKey, WindowKind, WindowSpec, badge, button, checkbox, container,
         divider, dropdown, icon, icon_button, image, keycap, meter, progress, progress_indeterminate, radio,
         rich_text, segmented, segmented_icons, slider, space, spacer, stepper, text, toggle, text_field, search_field,
-        menu_view, MenuStyle, MenuPlacement,
+        menu_view, MenuStyle, MenuPlacement, scroll, list, virtual_list,
     };
     pub use crate::{column, row, stack};
 }

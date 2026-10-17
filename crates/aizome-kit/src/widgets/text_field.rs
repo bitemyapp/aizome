@@ -697,8 +697,8 @@ impl Widget for FieldWidget {
         }
     }
 
-    fn can(&self, state: Option<&dyn std::any::Any>, command: EditCommand) -> bool {
-        let st = state.and_then(|s| s.downcast_ref::<FieldState>());
+    fn can(&self, state: crate::widget::StateView, command: EditCommand) -> bool {
+        let st = state.get::<FieldState>();
         let sel = st.is_some_and(|s| s.caret != s.anchor);
         match command {
             EditCommand::Copy => sel && !self.password,
@@ -712,8 +712,8 @@ impl Widget for FieldWidget {
         }
     }
 
-    fn selection(&self, state: Option<&dyn std::any::Any>) -> Option<String> {
-        let st = state?.downcast_ref::<FieldState>()?;
+    fn selection(&self, state: crate::widget::StateView) -> Option<String> {
+        let st = state.get::<FieldState>()?;
         let r = st.caret.min(st.anchor)..st.caret.max(st.anchor);
         (!self.password && !r.is_empty() && r.end <= self.value.len()).then(|| self.value[r].to_owned())
     }

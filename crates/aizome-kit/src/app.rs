@@ -114,6 +114,9 @@ impl<P: Program> Runtime<P> {
             for win in self.core.dirty_windows() {
                 self.rebuild(win, platform);
             }
+            for win in self.core.relayout_windows() {
+                self.core.relayout(win, platform);
+            }
             if self.core.queue.is_empty() && self.core.dirty_windows().is_empty() {
                 break;
             }
