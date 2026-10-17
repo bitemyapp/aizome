@@ -755,6 +755,10 @@ pub(crate) fn wait_until_serving(bus: &Bus, path: &str) -> Result<()> {
     loop {
         match bus.call_with::<_, ()>(ping, &me, path, "org.freedesktop.DBus.Peer", "Ping", &()) {
             Err(Error::Timeout) if tries < 50 => tries += 1,
+            // The system bus's policy forbids a connection calling itself
+            // (dbus-broker denies the polkit agent's ping), so there is no
+            // way to check there; carry on, as the object is served by now.
+            Err(Error::NotAuthorized(_)) => return Ok(()),
             other => return other,
         }
     }

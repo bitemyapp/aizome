@@ -81,7 +81,8 @@ pkgs.testers.runNixOSTest {
 
     with subtest("the session is up: compositor, shell, outputs"):
         machine.wait_until_succeeds(
-            "su - alice -c 'systemctl --user is-active aizome.service'", timeout=60
+            "su - alice -c 'XDG_RUNTIME_DIR=/run/user/1000 systemctl --user is-active aizome.service'",
+            timeout=60,
         )
         machine.wait_until_succeeds("pgrep -u alice -x aizome-shell", timeout=60)
         outputs = ipc("outputs")
@@ -92,7 +93,7 @@ pkgs.testers.runNixOSTest {
     with subtest("a terminal opens with a focused tab"):
         as_alice("aizomectl spawn foot")
         machine.wait_until_succeeds(
-            "su - alice -c 'export XDG_RUNTIME_DIR=/run/user/1000; aizomectl windows' | grep -q foot",
+            "su - alice -c 'export XDG_RUNTIME_DIR=/run/user/1000 AIZOME_SOCKET=$(ls /run/user/1000/aizome.wayland-*.sock); aizomectl windows' | grep -q foot",
             timeout=30,
         )
         capture("02-terminal")
