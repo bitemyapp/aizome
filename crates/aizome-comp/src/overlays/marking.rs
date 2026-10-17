@@ -118,6 +118,9 @@ pub fn open(state: &mut State, win: WinId, at: (f64, f64), shown: bool) {
     if let Some(o) = output {
         state.az.queue_redraw(&o);
     }
+    if shown {
+        keep_on_output(state);
+    }
     if !shown {
         // Show after the pause, if still held and not flicked.
         let _ = state.az.lh.insert_source(Timer::from_duration(PAUSE), move |_, _, state: &mut State| {
@@ -127,6 +130,7 @@ pub fn open(state: &mut State, win: WinId, at: (f64, f64), shown: bool) {
                     if let Some(o) = m.output.clone() {
                         state.az.queue_redraw(&o);
                     }
+                    keep_on_output(state);
                 }
             }
             TimeoutAction::Drop
@@ -444,4 +448,27 @@ pub fn click(state: &mut State, x: f64, y: f64) {
     } else {
         close(state);
     }
+}
+
+/// A menu opened near an output's edge (a tab under the menu bar) moves
+/// in so all its verbs show, and the pointer moves with it.
+fn keep_on_output(state: &mut State) {
+    let Some(o) = state.az.overlays.marking.as_ref().and_then(|m| m.output.clone()) else { return };
+    let g = state.az.output_geometry(&o).to_f64();
+    let Some(m) = state.az.overlays.marking.as_mut() else { return };
+    let reach = RADIUS + 48.0;
+    let cx = m.center.0.clamp(g.loc.x + reach, (g.loc.x + g.size.w - reach).max(g.loc.x + reach));
+    let cy = m.center.1.clamp(g.loc.y + reach, (g.loc.y + g.size.h - reach).max(g.loc.y + reach));
+    if (cx, cy) == m.center {
+        return;
+    }
+    let (dx, dy) = (cx - m.center.0, cy - m.center.1);
+    m.center = (cx, cy);
+    m.pos = (m.pos.0 + dx, m.pos.1 + dy);
+    let p = Point::from(m.pos);
+    state.az.pointer_pos = p;
+    if let Some(pointer) = state.az.seat.get_pointer() {
+        pointer.set_location(p);
+    }
+    state.az.queue_redraw(&o);
 }

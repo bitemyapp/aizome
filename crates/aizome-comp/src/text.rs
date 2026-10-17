@@ -89,6 +89,7 @@ impl Default for Labels {
 
 impl Labels {
     pub fn new() -> Labels {
+        install_fonts();
         Labels { cache: HashMap::new(), widths: HashMap::new(), fonts: HashMap::new(), last_gc: Instant::now() }
     }
 
@@ -110,9 +111,12 @@ impl Labels {
                     Face::Mono | Face::MonoBold => Font::monospace(size),
                     _ => Font::system(size),
                 });
-                // Archivo narrows to 87.5% in tabs once Sidestep's fonts take a
-                // width; until then the tab's own face stands in.
-                base.with_weight(weight)
+                let font = base.with_weight(weight);
+                // Tabs set Archivo semi-condensed (87.5%).
+                match face {
+                    Face::Tab | Face::TabLight => font.with_width(typeface::TAB_WIDTH),
+                    _ => font,
+                }
             })
             .clone()
     }
@@ -239,4 +243,50 @@ impl Labels {
     pub fn len(&self) -> usize {
         self.cache.len()
     }
+}
+
+/// Installs Aizome's fonts for this process where fontconfig lacks them:
+/// from `$AIZOME_FONT_DIR`, else `../share/aizome/fonts` beside the
+/// executable (as the kit does), so tabs are set in Archivo and captions
+/// in IBM Plex Mono even before the system has them.
+fn install_fonts() {
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(|| {
+        let mut dirs: Vec<std::path::PathBuf> = Vec::new();
+        if let Some(d) = std::env::var_os("AIZOME_FONT_DIR") {
+            dirs.push(d.into());
+        }
+        if let Some(bin) = std::env::current_exe().ok().and_then(|e| e.parent().map(|p| p.to_path_buf())) {
+            dirs.push(bin.join("../share/aizome/fonts"));
+        }
+        let families: [(&str, &[&str]); 3] = [
+            (typeface::UI, &["Archivo[wdth,wght]", "Archivo-VF"]),
+            (typeface::MONO, &["IBMPlexMono-Regular", "IBMPlexMono-Medium", "IBMPlexMono-SemiBold", "IBMPlexMono-Bold"]),
+            (typeface::SYMBOLS, &["NotoSansSymbols2-Regular"]),
+        ];
+        for (family, stems) in families {
+            if Font::named(family, 13.0).is_some_and(|f| f.family_name().eq_ignore_ascii_case(family)) {
+                continue;
+            }
+            'dirs: for dir in dirs.iter().filter(|d| d.is_dir()) {
+                let mut any = false;
+                for stem in stems {
+                    for ext in ["ttf", "otf"] {
+                        let p = dir.join(format!("{stem}.{ext}"));
+                        if p.is_file() && Font::install_file(&p).is_ok_and(|f| !f.is_empty()) {
+                            any = true;
+                            // One variable Archivo file holds every face.
+                            if family == typeface::UI {
+                                break 'dirs;
+                            }
+                            break;
+                        }
+                    }
+                }
+                if any {
+                    break;
+                }
+            }
+        }
+    });
 }
