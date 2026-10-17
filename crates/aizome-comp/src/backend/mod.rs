@@ -263,7 +263,7 @@ pub fn send_frames(az: &Aizome, output: &Output) {
     }
 }
 
-fn take_feedback(az: &Aizome, output: &Output, states: &RenderElementStates) -> OutputPresentationFeedback {
+pub fn take_feedback(az: &Aizome, output: &Output, states: &RenderElementStates) -> OutputPresentationFeedback {
     let mut feedback = OutputPresentationFeedback::new(output);
     for m in az.windows.values() {
         if az.wm.is_shown(m.id) {

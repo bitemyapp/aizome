@@ -65,6 +65,12 @@ impl SeatHandler for State {
             self.az.queue_redraw(&o);
         }
     }
+
+    fn led_state_changed(&mut self, _seat: &Seat<Self>, leds: smithay::input::keyboard::LedState) {
+        if let crate::backend::Backend::Udev(u) = &mut self.backend {
+            u.update_leds(leds);
+        }
+    }
 }
 
 impl TabletSeatHandler for State {
