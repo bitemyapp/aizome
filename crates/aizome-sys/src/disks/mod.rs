@@ -32,6 +32,7 @@
 
 pub mod confirm;
 mod model;
+mod smart;
 pub mod types;
 
 pub use confirm::{Confirm, DeletePartition, Destructive, Format, NewPartitionTable, Repair, Resize};
@@ -39,6 +40,7 @@ pub use model::{
     BlockDevice, DisksState, Drive, Encrypted, Filesystem, FreeSpace, Health, Job, LoopDevice, Partition,
     PartitionTable, Rotation, Smart, Swap, Usage, Volume, VolumeChanges, format_size, usage,
 };
+pub use smart::SmartAttribute;
 
 use crate::bus::{self, Bus, Event, Objects, Opts, signals_from};
 use crate::error::{Error, Result};
@@ -433,6 +435,24 @@ impl Disks {
         self.task(move |bus| {
             let iface = if nvme { IFACE_NVME } else { IFACE_ATA };
             bus.call_with(Opts::ACTION, UDISKS, &drive, iface, "SmartUpdate", &(empty(),))
+        })
+    }
+
+    /// A drive's SMART attributes: ATA's numbered attributes, or NVMe's
+    /// health log. Reading them changes nothing on the drive.
+    pub fn smart_attributes(&self, drive: &str) -> Task<Vec<SmartAttribute>> {
+        let drive = drive.to_owned();
+        let nvme = self.snapshot().drive(&drive).and_then(|d| d.smart.as_ref()).is_some_and(|s| s.bad_sectors.is_none());
+        self.task(move |bus| {
+            if nvme {
+                let log: HashMap<String, zbus::zvariant::OwnedValue> =
+                    bus.call_with(Opts::ACTION, UDISKS, &drive, IFACE_NVME, "SmartGetAttributes", &(empty(),))?;
+                Ok(smart::nvme(&log))
+            } else {
+                let rows: Vec<smart::AtaRow> =
+                    bus.call_with(Opts::ACTION, UDISKS, &drive, IFACE_ATA, "SmartGetAttributes", &(empty(),))?;
+                Ok(smart::ata(rows))
+            }
         })
     }
 
