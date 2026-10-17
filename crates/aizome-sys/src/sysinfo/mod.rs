@@ -44,6 +44,9 @@
 //! | [`temperatures`] | `/sys/class/hwmon/hwmon*/{name,temp*_input,temp*_label,temp*_max,temp*_crit}` |
 //! | [`gpus`] | `/sys/class/drm/card*/device/{vendor,device,driver,boot_vga,mem_info_vram_total}`; `pci.ids` |
 //! | [`hardware()`] | `/proc/cpuinfo`, CPU topology, `/sys/block`, `/etc/os-release`, `/sys/class/dmi/id`, kernel release, `uname`, hostname, `/etc/machine-info` |
+//! | [`detail`] | `/proc/PID/{status,smaps_rollup,io,cwd,fd,fdinfo}`, `/proc/pressure/*` |
+//! | [`drm`] | `/sys/class/drm/card*/device/{gpu_busy_percent,mem_info_vram_*,hwmon}`; DRM usage statistics in `fdinfo` |
+//! | [`power`] | `/sys/class/powercap/intel-rapl:N` (root only), `/sys/class/power_supply/*` |
 //!
 //! # What the system must provide
 //!
@@ -62,13 +65,16 @@
 //!   root; nothing here reads them.
 
 mod cpu;
+pub mod detail;
 mod dmi;
+pub mod drm;
 mod gpu;
 mod hardware;
 mod io;
 mod load;
 mod memory;
 mod os_release;
+pub mod power;
 mod process;
 mod sensors;
 mod signal;
