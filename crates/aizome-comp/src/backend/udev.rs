@@ -519,16 +519,28 @@ fn device_added(state: &mut State, node: DrmNode, path: &Path) -> Result<(), Str
         })
         .map_err(|e| e.to_string())?;
     let crate::backend::Backend::Udev(u) = &mut state.backend else { unreachable!() };
+    // GLES needs a hardware GPU. Without one on the first device (a virtual
+    // GPU without 3D, or software EGL) the session renders with pixman.
+    let mut gles_node: Option<(GbmDevice<DrmDeviceFd>, Option<DrmNode>)> = None;
+    if let Renderers::Gles(gpus) = &mut u.renderers {
+        let gbm = GbmDevice::new(fd.clone()).map_err(|e| format!("GBM: {e}"))?;
+        // Safety: the GBM device outlives the display.
+        let render_node = unsafe { EGLDisplay::new(gbm.clone()) }
+            .ok()
+            .and_then(|d| EGLDevice::device_for_display(&d).ok())
+            .filter(|d| !d.is_software())
+            .map(|d| d.try_get_render_node().ok().flatten().unwrap_or(node))
+            .filter(|rn| AsMut::<GbmGlesBackend<GlesRenderer, DrmDeviceFd>>::as_mut(&mut **gpus).add_node(*rn, gbm.clone()).is_ok());
+        gles_node = Some((gbm, render_node));
+    }
+    if matches!(gles_node, Some((_, None))) && u.devices.is_empty() {
+        warn!("no hardware rendering on {}; rendering with pixman", path.display());
+        u.renderers = Renderers::Pixman(PixmanRenderer::new().map_err(|e| e.to_string())?);
+        gles_node = None;
+    }
     let (manager, render_node) = match &mut u.renderers {
         Renderers::Gles(gpus) => {
-            let gbm = GbmDevice::new(fd.clone()).map_err(|e| format!("GBM: {e}"))?;
-            // Safety: the GBM device outlives the display.
-            let render_node = unsafe { EGLDisplay::new(gbm.clone()) }
-                .ok()
-                .and_then(|d| EGLDevice::device_for_display(&d).ok())
-                .filter(|d| !d.is_software())
-                .map(|d| d.try_get_render_node().ok().flatten().unwrap_or(node))
-                .filter(|rn| AsMut::<GbmGlesBackend<GlesRenderer, DrmDeviceFd>>::as_mut(&mut **gpus).add_node(*rn, gbm.clone()).is_ok());
+            let (gbm, render_node) = gles_node.ok_or("no GBM device")?;
             let allocator = GbmAllocator::new(gbm.clone(), GbmBufferFlags::RENDERING | GbmBufferFlags::SCANOUT);
             let exporter = GbmFramebufferExporter::new(gbm.clone(), render_node);
             let target = render_node.unwrap_or(u.primary_gpu);

@@ -152,3 +152,10 @@ nix develop --command cargo test -p aizome-comp
 
 Screenshots the tests keep are in `target/tmp/aizome-shots/`; examples
 are in `docs/screenshots/`. Frame times: `docs/performance.md`.
+
+The udev backend is tested in a VM: `crates/aizome-comp/vm/udev.nix`
+boots NixOS with a virtio GPU without 3D, logs a user in on tty1, starts a
+development build there (libseat through logind, libinput, KMS), and
+checks the output, ❖Return opening foot, typing into it and the frame
+statistics; `docs/screenshots/compositor-udev-vm.png` is its scan-out.
+Without a hardware GPU the backend renders with pixman into dumb buffers.
