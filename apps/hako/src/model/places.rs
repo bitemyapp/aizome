@@ -117,11 +117,17 @@ pub fn kind_of(path: &Path, places: &[Place]) -> Option<PlaceKind> {
 }
 
 /// The disk the system runs from, named as the desktop names it
-/// ("nvme0", "sda"), at `/`.
-pub fn system_disk() -> Option<Place> {
+/// ("nvme0", "sda"): the one at `/`, or, where `/` is no disk (a
+/// container's tmpfs), the one holding `home`.
+pub fn system_disk(home: &Path) -> Option<Place> {
     let text = std::fs::read_to_string("/proc/self/mountinfo").ok()?;
-    let root = trash::parse_mountinfo(&text).into_iter().find(|m| m.mount_point == Path::new("/"))?;
-    Some(Place { name: disk_name(&root.source).unwrap_or_else(|| "System".into()), path: PathBuf::from("/"), kind: PlaceKind::Disk })
+    let mounts = trash::parse_mountinfo(&text);
+    let root = mounts.iter().find(|m| m.mount_point == Path::new("/"));
+    let chosen = match root {
+        Some(r) if r.source.starts_with("/dev/") => r,
+        _ => mounts.iter().filter(|m| home.starts_with(&m.mount_point) && m.source.starts_with("/dev/")).max_by_key(|m| m.mount_point.as_os_str().len())?,
+    };
+    Some(Place { name: disk_name(&chosen.source).unwrap_or_else(|| "System".into()), path: chosen.mount_point.clone(), kind: PlaceKind::Disk })
 }
 
 /// A device's short name: `/dev/nvme0n1p2` → `nvme0`, `/dev/sda2` →

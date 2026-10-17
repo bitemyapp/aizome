@@ -90,18 +90,19 @@ impl<Msg: Clone + Send + 'static> Widget for Strip<Msg> {
         if st.follow {
             // Show the column asked for and everything after it, or as
             // much of it as fits from its left edge.
+            // Whole columns only: the strip starts at a column's edge, and
+            // the last column takes what's left over.
             let from = reveal.min(n.saturating_sub(1)) as f64 * self.width;
             let end = content;
-            if end - st.offset > size.width {
-                st.offset = (end - size.width).min(from);
-            }
-            if from < st.offset {
-                st.offset = from;
-            }
+            let need = if end > size.width { ((end - size.width) / self.width).ceil() * self.width } else { 0.0 };
+            let max_whole = n.saturating_sub(1) as f64 * self.width;
+            st.offset = need.min(from).min(max_whole);
         }
         // Keep the last column's right edge at most at the right edge
         // (columns going away pull the strip back).
-        st.offset = st.offset.clamp(0.0, (content - size.width).max(0.0)).round();
+        if !st.follow {
+            st.offset = st.offset.clamp(0.0, (content - size.width).max(0.0)).round();
+        }
         let off = st.offset;
         for i in 0..n {
             let w = if i + 1 == n { last.max(size.width - self.x_of(i) + off) } else { self.width };

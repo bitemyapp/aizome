@@ -397,7 +397,7 @@ impl Hako {
         }));
         self.volumes = disks.snapshot().volumes();
         self.disks = Some(disks);
-        self.system_disk = crate::model::places::system_disk();
+        self.system_disk = crate::model::places::system_disk(&self.opts.home);
         // The Desks, from the compositor.
         let tx = cx.stream();
         std::thread::Builder::new()

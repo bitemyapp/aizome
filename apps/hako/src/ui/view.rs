@@ -146,7 +146,7 @@ fn crumbs(h: &Hako, b: &Browser) -> Vec<(String, Option<Icon>, Option<PathBuf>)>
                 out.push(("Home".to_owned(), Some(Icon::House), Some(home.clone())));
                 (home.clone(), p.strip_prefix(home).unwrap_or(Path::new("")).to_path_buf())
             } else {
-                let name = h.system_disk.as_ref().map(|d| d.name.clone()).unwrap_or_else(|| "Computer".into());
+                let name = h.system_disk.as_ref().filter(|d| d.path == Path::new("/")).map(|d| d.name.clone()).unwrap_or_else(|| "Computer".into());
                 out.push((name, Some(Icon::HardDrive), Some(PathBuf::from("/"))));
                 (PathBuf::from("/"), p.strip_prefix("/").unwrap_or(p).to_path_buf())
             };
