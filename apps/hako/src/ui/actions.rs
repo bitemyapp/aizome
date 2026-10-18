@@ -204,8 +204,15 @@ impl Hako {
     /// `on_drop_urls`).
     pub(crate) fn drag_out(&mut self, cx: &mut Cx<Msg>, w: WindowKey, sources: Vec<PathBuf>) {
         let urls: Vec<String> = sources.iter().map(|p| uri::file_uri(p)).collect();
-        self.outbound = Some(sources);
-        let _ = (cx, w, urls);
+        // The chip under the pointer: the item (or how many), drawn a
+        // pixel a point, as the desktop shows a drag's icon.
+        let first = sources.first().and_then(|p| Entry::read(p).ok());
+        let chip = super::dragout::chip(cx.theme(), first.as_ref(), sources.len(), 1.0);
+        let hotspot = Point::new(12.0, (super::dragout::HEIGHT / 2.0).round());
+        let source = DragSource::new().urls(urls).actions(true, false).icon(chip, hotspot);
+        if cx.start_drag(w, source).is_some() {
+            self.outbound = Some(sources);
+        }
     }
 
     /// A drag waited over a folder: open it in the next column.
