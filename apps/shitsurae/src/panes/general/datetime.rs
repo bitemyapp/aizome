@@ -48,6 +48,15 @@ pub struct State {
     query: String,
     now: i64,
     tick: Option<TimerHandle>,
+    /// The system configuration enables network time (NixOS links its
+    /// units into the store, so timedated can't switch it).
+    ntp_managed: bool,
+}
+
+/// Whether systemd's units are the system configuration's (NixOS keeps
+/// them in the store): timedated then can't turn network time on or off.
+pub fn units_managed(units: &std::path::Path) -> bool {
+    std::fs::canonicalize(units).is_ok_and(|p| p.starts_with("/nix/store"))
 }
 
 #[derive(Clone, Debug)]
@@ -194,6 +203,7 @@ impl State {
             });
         }
         self.now = if sample { SAMPLE_NOW } else { unix_now() };
+        self.ntp_managed = !sample && units_managed(std::path::Path::new("/etc/systemd/system"));
         if !sample && self.tick.is_none() {
             self.tick = Some(cx.every(Duration::from_secs(1), G::Time(Msg::Tick)));
         }
@@ -313,7 +323,13 @@ impl State {
         ]
         .spacing(4.0);
 
-        let auto = if s.can_ntp || !s.available {
+        let auto = if self.ntp_managed && s.available {
+            form::managed(
+                "Set the time automatically",
+                if s.ntp { "On" } else { "Off" },
+                "Change services.timesyncd.enable and rebuild.",
+            )
+        } else if s.can_ntp || !s.available {
             form::row("Set the time automatically", toggle(s.ntp).on_toggle(Msg::Ntp).enabled(s.available)).help(
                 if !s.available {
                     "systemd-timedated isn't answering.".to_owned()
@@ -532,5 +548,29 @@ impl Widget for ZoneMap {
 
     fn semantics(&self) -> Option<Semantics> {
         Some(Semantics { role: SemanticRole::Image, label: Some("Time zone map".into()), ..Default::default() })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::units_managed;
+
+    #[test]
+    fn units_in_the_store_are_the_configurations() {
+        let dir = std::env::temp_dir().join(format!("shitsurae-units-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        // A unit directory of one's own is changeable.
+        assert!(!units_managed(&dir));
+        // One that's a link into the store is NixOS's (the store exists
+        // where these tests run under Nix; elsewhere there's nothing to link).
+        let store = std::path::Path::new("/nix/store");
+        if store.is_dir() {
+            let link = dir.join("system");
+            let _ = std::fs::remove_file(&link);
+            std::os::unix::fs::symlink(store, &link).unwrap();
+            assert!(units_managed(&link));
+        }
+        assert!(!units_managed(&dir.join("missing")));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
