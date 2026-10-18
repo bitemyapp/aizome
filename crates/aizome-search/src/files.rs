@@ -55,11 +55,13 @@ pub struct Limits {
     pub max_depth: usize,
     /// Include folders as results, not just files.
     pub folders: bool,
+    /// Folders not walked, nor anything in them (the user's "skip these").
+    pub skip: Vec<PathBuf>,
 }
 
 impl Default for Limits {
     fn default() -> Limits {
-        Limits { max_entries: 300_000, max_depth: 24, folders: true }
+        Limits { max_entries: 300_000, max_depth: 24, folders: true, skip: Vec::new() }
     }
 }
 
@@ -108,6 +110,10 @@ impl FileIndex {
         let started = Instant::now();
         let found: Mutex<Vec<(u16, String, u32, bool)>> = Mutex::new(Vec::new());
         for (r, root) in roots.iter().enumerate() {
+            if limits.skip.iter().any(|s| root.starts_with(s)) {
+                continue;
+            }
+            let skip = limits.skip.clone();
             let mut builder = ignore::WalkBuilder::new(root);
             builder
                 .hidden(true)
@@ -120,9 +126,9 @@ impl FileIndex {
                 .parents(false)
                 .follow_links(false)
                 .max_depth(Some(limits.max_depth))
-                .filter_entry(|e| {
+                .filter_entry(move |e| {
                     !(e.file_type().is_some_and(|t| t.is_dir())
-                        && e.file_name().to_str().is_some_and(|n| SKIPPED_DIRS.contains(&n)))
+                        && (e.file_name().to_str().is_some_and(|n| SKIPPED_DIRS.contains(&n)) || skip.iter().any(|s| e.path() == s)))
                 });
             builder.build_parallel().run(|| {
                 let found = &found;
@@ -391,6 +397,14 @@ mod tests {
                 "work/sidestep/crates/sidestep-engine/src/trace/replay.rs",
             ]
         );
+        // Folders the user skips aren't walked, nor what's in them.
+        let skip = vec![root.join("work"), root.join("Pictures/")];
+        let index = FileIndex::build(&[root.clone()], &Limits { folders: false, skip, ..Default::default() });
+        let mut rels: Vec<&str> = index.entries.iter().map(|e| index.rel(e)).collect();
+        rels.sort_unstable();
+        assert_eq!(rels, ["Documents/replay notes.md", "naïve/résumé.md"]);
+        let none = FileIndex::build(&[root.clone()], &Limits { skip: vec![root.clone()], ..Default::default() });
+        assert!(none.entries.is_empty(), "a skipped root isn't walked");
         let _ = fs::remove_dir_all(root);
     }
 
