@@ -40,7 +40,6 @@ use smithay::wayland::xdg_activation::{
     XdgActivationHandler, XdgActivationState, XdgActivationToken, XdgActivationTokenData,
 };
 use smithay::wayland::xdg_foreign::{XdgForeignHandler, XdgForeignState};
-use smithay::wayland::xdg_toplevel_icon::XdgToplevelIconHandler;
 use tracing::{info, warn};
 
 use crate::focus::Focus;
@@ -342,8 +341,6 @@ impl XdgDialogHandler for State {
     }
 }
 
-impl XdgToplevelIconHandler for State {}
-
 impl ForeignToplevelListHandler for State {
     fn foreign_toplevel_list_state(&mut self) -> &mut ForeignToplevelListState {
         &mut self.az.foreign_toplevel_list
@@ -402,7 +399,6 @@ smithay::delegate_virtual_keyboard_manager!(State);
 smithay::delegate_security_context!(State);
 smithay::delegate_content_type!(State);
 smithay::delegate_xdg_dialog!(State);
-smithay::delegate_xdg_toplevel_icon!(State);
 smithay::delegate_xdg_system_bell!(State);
 
 /// xdg-system-bell: the shell rings it (flashes the screen edge or plays

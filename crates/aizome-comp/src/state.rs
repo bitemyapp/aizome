@@ -59,7 +59,6 @@ use smithay::wayland::viewporter::ViewporterState;
 use smithay::wayland::virtual_keyboard::VirtualKeyboardManagerState;
 use smithay::wayland::xdg_activation::XdgActivationState;
 use smithay::wayland::xdg_foreign::XdgForeignState;
-use smithay::wayland::xdg_toplevel_icon::XdgToplevelIconManager;
 use tracing::{info, warn};
 
 use crate::anim::Animations;
@@ -86,7 +85,20 @@ pub struct ClientState {
 
 impl ClientData for ClientState {
     fn initialized(&self, _client_id: ClientId) {}
-    fn disconnected(&self, _client_id: ClientId, _reason: DisconnectReason) {}
+    fn disconnected(&self, client_id: ClientId, reason: DisconnectReason) {
+        // A client cut off for a protocol error sees only a broken pipe:
+        // say here what it was.
+        if let DisconnectReason::ProtocolError(e) = reason {
+            warn!(
+                client = ?client_id,
+                "client disconnected for a protocol error: {}@{} error {}: {}",
+                e.object_interface,
+                e.object_id,
+                e.code,
+                e.message
+            );
+        }
+    }
 }
 
 /// Whether a client may use privileged protocols (screencopy, foreign
@@ -241,7 +253,6 @@ pub struct Aizome {
     pub security_context: SecurityContextState,
     pub content_type: ContentTypeState,
     pub tablet: TabletManagerState,
-    pub toplevel_icon: XdgToplevelIconManager,
     pub system_bell: smithay::wayland::xdg_system_bell::XdgSystemBellState,
     pub alpha_modifier: AlphaModifierState,
     pub fifo: FifoManagerState,
@@ -394,7 +405,7 @@ impl State {
         let security_context = SecurityContextState::new::<State, _>(&dh, client_is_privileged);
         let content_type = ContentTypeState::new::<State>(&dh);
         let tablet = TabletManagerState::new::<State>(&dh);
-        let toplevel_icon = XdgToplevelIconManager::new::<State>(&dh);
+        crate::protocols::toplevel_icon::create_global(&dh);
         let system_bell = smithay::wayland::xdg_system_bell::XdgSystemBellState::new::<State>(&dh);
         let alpha_modifier = AlphaModifierState::new::<State>(&dh);
         let fifo = FifoManagerState::new::<State>(&dh);
@@ -471,7 +482,6 @@ impl State {
             security_context,
             content_type,
             tablet,
-            toplevel_icon,
             system_bell,
             alpha_modifier,
             fifo,
