@@ -6,14 +6,14 @@ use std::rc::Rc;
 use aizome_kit::element::{Element, MsgFn};
 use aizome_kit::sidestep_ui::KeyEvent;
 use aizome_kit::widget::{Event, EventCx, LayoutCx, Status, Widget};
-use aizome_kit::{Constraints, Layoutable, Length, Point, Size};
+use aizome_kit::{Constraints, Point, Size};
 
 /// The evdev code of the full stop key.
 pub const KEY_DOT: u32 = 52;
 
 /// `child`, with `on_key` hearing the keys nothing inside took.
 pub fn catcher<Msg: Clone + Send + 'static>(child: Element<Msg>, on_key: impl Fn(&KeyEvent) -> Option<Msg> + 'static) -> Element<Msg> {
-    Element::new(Catcher { on_key: Rc::new(on_key) }, vec![child]).width(Length::Fill).height(Length::Fill)
+    Element::new(Catcher { on_key: Rc::new(on_key) }, vec![child])
 }
 
 struct Catcher<Msg> {

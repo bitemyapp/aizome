@@ -459,7 +459,53 @@ impl Hako {
     // Keys nothing else took.
 
     pub(crate) fn on_key(&mut self, cx: &mut Cx<Msg>, w: WindowKey, k: &KeyEvent) {
-        let _ = (cx, w, k);
+        use aizome_kit::sidestep_ui::{Key, NamedKey};
+        let w = self.owner(w);
+        let Some(sheet) = self.sheets.iter().find(|(_, s)| matches!(s, Sheet::QuickLook { window, .. } if *window == w)).map(|(k, _)| *k) else {
+            return;
+        };
+        let step: isize = match k.key {
+            Key::Named(NamedKey::ArrowDown | NamedKey::ArrowRight) => 1,
+            Key::Named(NamedKey::ArrowUp | NamedKey::ArrowLeft) => -1,
+            _ => return,
+        };
+        // Move the selection of what's shown, and show the next item.
+        let g = self.next_gen();
+        let Some(b) = self.windows.get_mut(&w) else { return };
+        let next = if let Some(s) = b.search.as_mut() {
+            let n = s.results.len();
+            let cur = s.selected.last().copied().unwrap_or(0);
+            let i = (cur as isize + step).clamp(0, n as isize - 1) as usize;
+            s.selected = Rc::new(vec![i]);
+            s.results.get(i).cloned()
+        } else {
+            let col = b.focus;
+            let Some(c) = b.columns.get(col) else { return };
+            let n = c.rows.len();
+            if n == 0 {
+                return;
+            }
+            let cur = c.selected.last().copied().unwrap_or(0);
+            let i = (cur as isize + step).clamp(0, n as isize - 1) as usize;
+            let e = c.rows.get(i).cloned();
+            if b.select(col, vec![i], g) {
+                self.start_loads(cx, w);
+            }
+            if let Some(c) = self.windows.get_mut(&w).and_then(|b| b.columns.get_mut(col)) {
+                c.scroll = Some((i, g));
+            }
+            e
+        };
+        let Some(e) = next else { return };
+        if e.is_folder() {
+            self.measure(cx, &e.path);
+        } else {
+            self.load_full_preview(cx, &e);
+        }
+        if let Some(Sheet::QuickLook { entry, .. }) = self.sheets.get_mut(&sheet) {
+            **entry = e;
+        }
+        self.after_change(cx, w);
     }
 }
 

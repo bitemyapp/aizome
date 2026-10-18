@@ -369,6 +369,14 @@ fn quick_look_and_get_info() {
     assert!(h.program().sheets.values().any(|s| matches!(s, Sheet::QuickLook { .. })));
     assert!(h.texts(w).iter().any(|t| t.contains("Parts and processes")), "the text shows");
     h.save_png(w, out("quicklook-night.png"), 2.0);
+    // ↓ goes on to the next item, in the sheet and the column.
+    h.named(w, NamedKey::ArrowDown, Modifiers::NONE);
+    settle(&mut h);
+    assert_eq!(selected(&h, w), ["budget.csv"]);
+    assert!(h.texts(w).iter().any(|t| t == "budget.csv"), "{:?}", h.texts(w));
+    h.named(w, NamedKey::ArrowUp, Modifiers::NONE);
+    settle(&mut h);
+    assert_eq!(selected(&h, w), ["architecture.md"]);
     h.named(w, NamedKey::Escape, Modifiers::NONE);
     assert!(h.program().sheets.is_empty());
     h.command(w, 'i');

@@ -25,7 +25,15 @@ pub fn window(h: &Hako, w: WindowKey, b: &Browser) -> Element<Msg> {
     b.spots.retain(|id| id < n || (dnd::SIDEBAR..dnd::SIDEBAR + 64).contains(&id) || (dnd::PATHBAR..dnd::PATHBAR + 64).contains(&id));
     let main = sidebar_layout(sidebar(h, w, b), content(h, w, b)).first_size(h.settings.sidebar).on_resize(Msg::SidebarWidth);
     let body = column![toolbar(h, w, b), pathbar(h, w, b), main, status(h, w, b)].width(Length::Fill).height(Length::Fill);
-    keys::catcher(body.into(), window_key)
+    keys::catcher(body.into(), window_key).width(Length::Fill).height(Length::Fill)
+}
+
+/// The arrows, when nothing took them (Quick Look's sheet is up): they
+/// move through the items it shows.
+pub(crate) fn quick_look_key(w: WindowKey, k: &aizome_kit::sidestep_ui::KeyEvent) -> Option<Msg> {
+    use aizome_kit::sidestep_ui::{Key, NamedKey};
+    let arrow = matches!(k.key, Key::Named(NamedKey::ArrowUp | NamedKey::ArrowDown | NamedKey::ArrowLeft | NamedKey::ArrowRight));
+    (arrow && k.modifiers.is_empty()).then(|| Msg::Key(w, k.clone()))
 }
 
 /// What a key no control took means to the window: ⇧❖. (by the key's

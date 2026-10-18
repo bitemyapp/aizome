@@ -148,7 +148,8 @@ fn quick_look(h: &Hako, key: WindowKey, e: &Entry) -> Element<Msg> {
     ]
     .spacing(10.0)
     .width(Length::Fill);
-    frame(body.into(), 620.0)
+    // The arrows move through the items shown (the sheet has the keyboard).
+    super::keys::catcher(frame(body.into(), 620.0), move |k| super::view::quick_look_key(key, k))
 }
 
 fn when(t: Option<std::time::SystemTime>, now: i64) -> String {
