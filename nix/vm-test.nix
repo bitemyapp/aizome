@@ -139,6 +139,11 @@ pkgs.testers.runNixOSTest {
         capture("05-unlocked")
 
     with subtest("Settings can change the time zone and the computer's name"):
+        # A link left from time.timeZone (absolute, NixOS's) becomes the
+        # relative kind timedated writes, which Settings reads as its own.
+        machine.succeed("ln -sfn /etc/zoneinfo/Europe/Paris /etc/localtime")
+        machine.succeed("/run/current-system/activate")
+        assert machine.succeed("readlink /etc/localtime").strip() == "../etc/zoneinfo/Europe/Paris"
         machine.succeed("timedatectl set-timezone Asia/Tokyo")
         machine.succeed("readlink /etc/localtime | grep -q Asia/Tokyo")
         machine.succeed("hostnamectl set-hostname --pretty 'Aizome Test'")
