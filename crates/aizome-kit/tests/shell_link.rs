@@ -15,6 +15,7 @@ struct Notes {
     log: Vec<String>,
     dirty: bool,
     dropped: Vec<String>,
+    text: String,
 }
 
 #[derive(Clone, Debug)]
@@ -22,6 +23,7 @@ enum Msg {
     New,
     Save,
     Dropped(Vec<String>),
+    Typed(String),
 }
 
 impl Program for Notes {
@@ -40,13 +42,15 @@ impl Program for Notes {
             }
             Msg::Save => self.log.push("save".into()),
             Msg::Dropped(u) => self.dropped = u,
+            Msg::Typed(t) => self.text = t,
         }
     }
     fn view(&self, _w: WindowKey) -> Element<Msg> {
         column![
             aizome_kit::mouse_area(container(text("Drop here")).padding(40.0).width(Fill))
                 .on_drop(|d: aizome_kit::Dropped| Msg::Dropped(d.urls))
-                .id("drop")
+                .id("drop"),
+            text_field(&self.text).on_change(Msg::Typed).id("note"),
         ]
         .into()
     }
@@ -165,14 +169,22 @@ fn a_shell_that_comes_late_gets_the_menus_and_one_that_goes_gives_them_back() {
     let proto::AppMessage::Menus { menus } = read(&mut lines) else { panic!("menus") };
     assert!(menus.iter().any(|m| m.title == "File"));
     assert!(!bar_in(&h, w), "the window's bar has gone to the shell");
+    h.focus_window(w, true);
+    let field = h.find_id(w, "note").expect("the field");
+    h.click(w, field.center());
+    h.type_text(w, "a");
 
-    // The shell goes: the menus come back into the window.
+    // The shell goes: the menus come back into the window, and the field
+    // keeps the focus (the shell restarting doesn't take it).
     drop(lines);
     drop(stream);
     drop(listener);
     let _ = std::fs::remove_file(&path);
     assert!(h.wait_for_shell(false, Duration::from_secs(5)));
     assert!(bar_in(&h, w), "the menu bar is back in the window");
+    assert_eq!(h.focused_name(w).as_deref(), Some("note"));
+    h.type_text(w, "b");
+    assert_eq!(h.program().text, "ab");
 
     // And it comes back once more.
     let listener = UnixListener::bind(&path).expect("a socket again");

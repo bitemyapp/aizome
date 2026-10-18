@@ -464,15 +464,22 @@ impl Core {
         let mut layers = Vec::new();
         let bar = self.in_window_menus && is_normal && !self.menubar.is_empty();
         let top = if bar { self.theme.metrics.target } else { 0.0 };
-        let body = if bar {
-            let bar = MenuBarStrip::element(&self.info, &self.menubar, win);
-            let mut c = Common::sized(Length::Fill, Length::Fill);
-            c.key = Some(1);
-            RawElement::new(crate::widgets::layout::FlexWidget::column(0.0), c, vec![bar, fill(main)])
-        } else {
-            fill(main)
-        };
-        layers.push(body);
+        // The same tree with or without the bar (the shell can go and
+        // come back): the view keeps its place, so its focus and its
+        // widgets' state live through the bar coming and going.
+        let mut content = Common::sized(Length::Fill, Length::Fill);
+        content.key = Some(2);
+        let content = RawElement::new(crate::widgets::layout::FlexWidget::column(0.0), content, vec![fill(main)]);
+        let mut items = Vec::with_capacity(2);
+        if bar {
+            let mut bar = MenuBarStrip::element(&self.info, &self.menubar, win);
+            bar.common.key = Some(3);
+            items.push(bar);
+        }
+        items.push(content);
+        let mut c = Common::sized(Length::Fill, Length::Fill);
+        c.key = Some(1);
+        layers.push(RawElement::new(crate::widgets::layout::FlexWidget::column(0.0), c, items));
         for (i, s) in sheets.into_iter().enumerate() {
             layers.push(SheetLayer::element(s, 100 + i as u64, top));
         }
