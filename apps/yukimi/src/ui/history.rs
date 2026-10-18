@@ -152,8 +152,7 @@ pub fn page(app: &Yukimi) -> Element<Msg> {
                 .padding([8.0, 12.0])
                 .on_press(Msg::ToggleGeneration(generation.number))
                 .named(label)
-                .pipe_key(generation.number)
-                .into(),
+                .pipe_key(generation.number),
         );
         if open {
             rows.extend(opened(app, generation.number, generation.active));

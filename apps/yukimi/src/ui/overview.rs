@@ -343,7 +343,8 @@ fn recent(app: &Yukimi) -> Option<Element<Msg>> {
             c = c.push(text(format!("{}{more}", names.join(", "))).mono().size(12.0).role(Role::Text2).wrap());
         }
         c.into()
-    } else if let Some(only) = model.generations.last() {
+    } else {
+        let only = model.generations.last()?;
         text(format!(
             "Generation {} was built {}. Each change you make becomes a new generation, and what it changed shows up \
              here.",
@@ -353,8 +354,6 @@ fn recent(app: &Yukimi) -> Option<Element<Msg>> {
         .wrap()
         .role(Role::Text2)
         .into()
-    } else {
-        return None;
     };
     Some(
         column![

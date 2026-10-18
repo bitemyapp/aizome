@@ -99,8 +99,11 @@ pub enum Source {
 #[derive(Clone)]
 pub enum Runner {
     Real,
-    Mock(Arc<dyn Fn(&Operation) -> Vec<Step> + Send + Sync>),
+    Mock(MockSteps),
 }
+
+/// A stand-in for Nix and the helper: the steps an operation would run.
+pub type MockSteps = Arc<dyn Fn(&Operation) -> Vec<Step> + Send + Sync>;
 
 /// What time it is, for "3 days ago": now, or a sample's fixed moment.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

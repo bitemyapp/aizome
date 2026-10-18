@@ -130,7 +130,7 @@ fn install_for_everyone_asks_first_then_runs_the_helper() {
         what: "gimp2".into(),
         adding: true,
     };
-    assert_eq!(ran.lock().unwrap().as_slice(), [expected.clone()]);
+    assert_eq!(ran.lock().unwrap().as_slice(), std::slice::from_ref(&expected));
     // What the helper is asked, as the GTK Yukimi asks it.
     assert_eq!(expected.helper_args(None), ["change", "--packages", "gimp,inkscape,ripgrep,gimp2", "--mode", "auto"]);
     settle(&mut h, |a| a.job.as_ref().is_some_and(|j| j.outcome.is_some()));
@@ -313,7 +313,8 @@ fn nothing_is_changed_when_looking_at_another_system() {
 /// Click the last button called `label`: an alert's, over a page that
 /// has one of the same name.
 fn click_last(h: &mut Harness<Yukimi>, w: WindowKey, label: &str) -> bool {
-    let found = h.semantics(w).into_iter().filter(|(s, _)| s.label.as_deref() == Some(label)).map(|(_, r)| r).last();
+    let found =
+        h.semantics(w).into_iter().filter(|(s, _)| s.label.as_deref() == Some(label)).map(|(_, r)| r).next_back();
     match found {
         Some(r) => {
             h.click(w, r.center());

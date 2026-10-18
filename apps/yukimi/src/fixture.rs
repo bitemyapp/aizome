@@ -130,7 +130,7 @@ fn graph() -> (Graph, Vec<String>) {
     let mut edges = Vec::new();
     let mut systems = Vec::new();
     for i in 0..5usize {
-        let system = add(&format!("nixos-system-ganymede-26.11.202610{:02}.7fd4004", 4 + i * 2), 1 * MB);
+        let system = add(&format!("nixos-system-ganymede-26.11.202610{:02}.7fd4004", 4 + i * 2), MB);
         systems.push(system);
         let newest = i == 4;
         // Older systems lack a little of what newer ones have.
