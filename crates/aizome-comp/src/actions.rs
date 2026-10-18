@@ -39,6 +39,12 @@ impl State {
             if self.az.popup_grab.as_ref().is_some_and(|g| g.live() && surface.as_ref() != Some(&g.root)) {
                 self.dismiss_popup_grab();
             }
+            // And takes the keys from a layer surface clicked earlier (the
+            // bar, the Deskbar): a window that opens or is switched to gets
+            // what's typed next.
+            if now.is_some() {
+                self.az.layer_focus = None;
+            }
         }
         if let Some(w) = now {
             // Raising changes what overlaps what.
@@ -66,6 +72,10 @@ impl State {
             self.desk_switched(before, after);
         }
         self.az.window_changed(id);
+        // Asked for (the switcher, a Deskbar row, IPC): the keys go to it,
+        // even from a layer surface clicked to ask, and even when it had
+        // the focus already.
+        self.az.layer_focus = None;
         self.focus_window(Some(id));
         self.az.window_outputs_dirty = true;
         self.az.queue_redraw_all();
@@ -123,6 +133,12 @@ impl State {
         }
         let Some(g) = self.az.popup_grab.take() else { return };
         tracing::debug!(target: "aizome::focus", "popup grab ended");
+        // A layer surface clicked to open its menu (the bar, for a menu or
+        // a systray panel) doesn't keep the keys once the menu has gone:
+        // they go back to the focused window.
+        if self.az.layer_focus.as_ref() == Some(&g.root) {
+            self.az.layer_focus = None;
+        }
         if let Some(keyboard) = self.az.seat.get_keyboard()
             && keyboard.is_grabbed()
             && g.owns_serial(|s| keyboard.has_grab(s))

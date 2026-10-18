@@ -117,6 +117,49 @@ fn a_grabbing_menu_of_a_layer_surface_gets_the_keys_and_gives_them_back() {
 }
 
 #[test]
+fn a_menu_opened_by_clicking_the_bar_gives_the_keys_to_the_window_after() {
+    let (c, a, shell) = setup();
+    shell.layer(bar());
+    c.settle();
+    // A click on the bar (a systray widget) that opens its menu.
+    click(&c, 300.0, 10.0);
+    shell.wait("the bar has the keyboard", |s| s.focus.as_deref() == Some("bar"));
+    shell.send(menu("panel", "bar", true));
+    shell.wait("the panel has the keyboard", |s| s.focus.as_deref() == Some("panel"));
+    // Escape closed it: the keys go to the window, not back to the bar.
+    shell.send(ShellCmd::Destroy("panel"));
+    a.wait_seen("the window has the keyboard again", |s| s.keyboard_focus);
+    shell.wait("the bar let go", |s| s.focus.is_none());
+    tap(&c, "f");
+    a.wait_seen("f in the window", |s| s.keys.iter().any(|(k, _)| *k == KEY_F));
+    assert!(shell.seen().keys_to("bar").is_empty(), "the bar got keys: {:?}", shell.seen().keys_to("bar"));
+}
+
+#[test]
+fn a_window_that_opens_takes_the_keys_from_a_clicked_layer_surface() {
+    let (c, a, shell) = setup();
+    shell.layer(bar());
+    c.settle();
+    click(&c, 300.0, 10.0);
+    shell.wait("the bar has the keyboard", |s| s.focus.as_deref() == Some("bar"));
+    // A window opening (launched from the bar, say) takes the focus and
+    // the keys with it.
+    let b = c.client(Spec::new("org.example.viewer", 0x22cc22));
+    c.wait_window("org.example.viewer");
+    b.wait_seen("the new window has the keyboard", |s| s.keyboard_focus);
+    shell.wait("the bar let go", |s| s.focus.is_none());
+    tap(&c, "o");
+    b.wait_seen("o in the new window", |s| s.keys.iter().any(|(k, _)| *k == KEY_O));
+    // Focusing a window by asking (a Deskbar row, the switcher) does too.
+    click(&c, 300.0, 10.0);
+    shell.wait("the bar has the keyboard", |s| s.focus.as_deref() == Some("bar"));
+    let id = c.window("org.example.editor").unwrap().id;
+    c.ok(Request::Focus { id });
+    a.wait_seen("the editor has the keyboard", |s| s.keyboard_focus);
+    shell.wait("the bar let go", |s| s.focus.is_none());
+}
+
+#[test]
 fn an_exclusive_layer_surface_closes_open_menus_and_keeps_new_ones_shut() {
     let (c, _a, shell) = setup();
     shell.layer(bar());
