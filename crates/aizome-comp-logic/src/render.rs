@@ -138,7 +138,10 @@ fn shift_layout(l: &Layout, offset: (f64, f64)) -> Layout {
 /// A layout's tabs, frame and shadow, with titles and glyphs.
 pub fn decoration_items(st: &mut State, layout: &Layout, origin: (f64, f64), scale: f64, alpha: f32, out: &mut Scene) {
     let shadows = st.az.settings.appearance.effects.shadows();
-    let palette = st.az.palette;
+    let mut palette = st.az.palette;
+    if crate::VARIANT == Some("red") {
+        palette.focus = aizome_theme::Rgba::hex(0xff0000);
+    }
     let l = st.lg.m();
     // Tabs sliding into a group draw at their animated place.
     let mut layout = layout.clone();

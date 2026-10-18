@@ -51,6 +51,11 @@ use serde::{Deserialize, Serialize};
 
 pub use aizome_comp_core::{Rect, State, WinId};
 
+/// A variant of this logic built for tests (`AIZOME_LOGIC_VARIANT` at
+/// build time): `red` draws the focus colour pure red and takes the
+/// `test-panic` action, which panics.
+pub const VARIANT: Option<&str> = option_env!("AIZOME_LOGIC_VARIANT");
+
 /// What logic modules use everywhere.
 pub mod prelude {
     pub use crate::actions::Actions;

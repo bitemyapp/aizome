@@ -231,46 +231,54 @@ impl State {
         let everything = !args.logic && !args.shell && args.from.is_none();
         let mut report = ReloadReport::default();
 
-        // The core can't be reloaded: the installed one may differ.
-        let installed = crate::logic::installed_logic(args.from.as_deref());
-        report.core = match installed.as_ref().map(|p| crate::logic::read_abi(p)) {
-            Some(Ok(abi)) if abi == crate::ABI => ReloadPart::new("same", "the installed core is the one running"),
+        // The core can't be reloaded: the installed one (after an update)
+        // may differ from the one running.
+        let installed = crate::logic::installed_logic(None);
+        let installed_abi = installed.as_ref().map(|p| crate::logic::read_abi(p));
+        report.core = match &installed_abi {
+            Some(Ok(abi)) if abi == crate::ABI => ReloadPart::new("same", ""),
             Some(Ok(_)) => ReloadPart::new(
                 "needs-restart",
                 "the installed compositor core differs from the running one: log out and in to use it",
             ),
-            Some(Err(e)) => ReloadPart::new("skipped", e),
+            Some(Err(e)) => ReloadPart::new("skipped", e.clone()),
             None => ReloadPart::new("same", ""),
         };
 
-        // The logic.
+        // The logic: the one asked for, else the installed one.
+        let candidate = args.from.clone().or(installed);
         report.logic = if args.logic || args.from.is_some() || everything {
-            match installed {
+            match candidate {
                 None => ReloadPart::new("skipped", "no logic library found"),
-                Some(path) => {
-                    let unchanged = everything && self.logic_is(&path);
-                    if unchanged {
-                        ReloadPart::new("unchanged", format!("{} is the one running", path.display()))
-                    } else if report.core.action == "needs-restart" {
-                        ReloadPart::new("refused", "it was built for the new core, which needs a restart")
-                    } else if args.check {
-                        match crate::logic::read_abi(&path) {
-                            Ok(abi) if abi == crate::ABI => {
-                                ReloadPart::new("would-reload", format!("from {}", path.display()))
-                            }
-                            Ok(_) => ReloadPart::new("refused", "built against another compositor core"),
-                            Err(e) => ReloadPart::new("refused", e),
-                        }
-                    } else {
-                        match self.load_logic(&path, true) {
-                            Ok(o) => ReloadPart::new(
-                                "reloaded",
-                                format!("logic {} from {} in {} ms", o.build, o.path.display(), o.millis),
-                            ),
-                            Err(e) => ReloadPart::new("failed", e),
-                        }
+                Some(path) => match crate::logic::read_abi(&path) {
+                    Err(e) => ReloadPart::new("refused", e),
+                    Ok(abi) if abi != crate::ABI => {
+                        let why = if args.from.is_none() {
+                            "the installed logic was built against another compositor core; it loads at the next login"
+                                .to_string()
+                        } else {
+                            format!(
+                                "{} was built against another compositor core (its ABI {}…, the running core's {}…); \
+                                 build it as the session was built (aizome-dev)",
+                                path.display(),
+                                &abi[..12.min(abi.len())],
+                                &crate::ABI[..12]
+                            )
+                        };
+                        ReloadPart::new("refused", why)
                     }
-                }
+                    Ok(_) if everything && self.logic_is(&path) => {
+                        ReloadPart::new("unchanged", format!("{} is the one running", path.display()))
+                    }
+                    Ok(_) if args.check => ReloadPart::new("would-reload", format!("from {}", path.display())),
+                    Ok(_) => match self.load_logic(&path, true) {
+                        Ok(o) => ReloadPart::new(
+                            "reloaded",
+                            format!("logic {} from {} in {} ms", o.build, o.path.display(), o.millis),
+                        ),
+                        Err(e) => ReloadPart::new("failed", e),
+                    },
+                },
             }
         } else {
             ReloadPart::new("skipped", "")

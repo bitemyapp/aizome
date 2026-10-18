@@ -226,6 +226,9 @@ fn wm_request(st: &mut State, req: Request) -> Result<Option<Response>, String> 
             }
             Response::Ok
         }
+        Request::Action { action } if action == "test-panic" && crate::VARIANT.is_some() => {
+            panic!("the test variant panics on purpose")
+        }
         Request::Action { action } => {
             let a = crate::bindings::Action::parse(&action).ok_or_else(|| format!("unknown action {action}"))?;
             st.run_action(a);
