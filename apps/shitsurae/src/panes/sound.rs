@@ -175,6 +175,16 @@ fn input_changed(default: Option<&str>, following: Option<&str>) -> bool {
     default != following
 }
 
+/// Whether a device is in use: an output playing, an input that an app
+/// records from. An input runs while this pane's own level meter reads it,
+/// so its state alone would always say "In use".
+fn in_use(state: &AudioState, d: &AudioDevice, io: Io) -> bool {
+    match io {
+        Io::Output => d.state == DeviceState::Running,
+        Io::Input => state.recording.iter().any(|s| s.device == d.index && !s.corked),
+    }
+}
+
 fn percent(v: f32) -> String {
     format!("{:.0}%", v * 100.0)
 }
@@ -572,7 +582,8 @@ pub fn device_name(d: &AudioDevice, all: &[&AudioDevice]) -> String {
     }
 }
 
-fn device_row(d: &AudioDevice, io: Io, all: &[&AudioDevice]) -> Row<Msg> {
+/// A device to pick; `busy`: something plays to it, or records from it.
+fn device_row(d: &AudioDevice, io: Io, all: &[&AudioDevice], busy: bool) -> Row<Msg> {
     let name = device_name(d, all);
     let detail = {
         let mut parts: Vec<String> = Vec::new();
@@ -586,7 +597,7 @@ fn device_row(d: &AudioDevice, io: Io, all: &[&AudioDevice]) -> Row<Msg> {
         {
             parts.push(p.description.trim_end_matches(" Output").trim_end_matches(" Input").to_owned());
         }
-        if d.state == DeviceState::Running {
+        if busy {
             parts.push(if io == Io::Output { "Playing".into() } else { "In use".into() });
         }
         parts.join(" · ")
@@ -656,7 +667,7 @@ fn devices(vcx: &ViewCx, state: &AudioState, io: Io, (level, peak): (f32, f32)) 
     }
     let all: Vec<&AudioDevice> = state.sinks.iter().chain(&state.sources).collect();
     for (i, d) in list.iter().enumerate() {
-        let r = device_row(d, io, &all);
+        let r = device_row(d, io, &all, in_use(state, d, io));
         rows.push(if i == 0 { r.entry(entry) } else { r });
     }
     let default = match io {
@@ -940,5 +951,19 @@ mod tests {
         assert!(!input_changed(Some("alsa_input.mic"), Some("alsa_input.mic")));
         assert!(input_changed(Some("bluez_input.headset"), Some("alsa_input.mic")));
         assert!(input_changed(None, Some("alsa_input.mic")));
+    }
+
+    #[test]
+    fn an_input_is_in_use_when_an_app_records_not_when_the_meter_reads() {
+        let mut state = sample();
+        let mic = state.sources[0].clone();
+        assert_eq!(mic.state, DeviceState::Running);
+        assert!(in_use(&state, &mic, Io::Input), "Signal records from it");
+        // Only the pane's own level meter reads it: the source still runs,
+        // but nobody is recording.
+        state.recording.clear();
+        assert!(!in_use(&state, &mic, Io::Input));
+        let speakers = state.sinks[0].clone();
+        assert!(in_use(&state, &speakers, Io::Output));
     }
 }
