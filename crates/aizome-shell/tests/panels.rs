@@ -4,6 +4,7 @@
 mod common;
 
 use aizome_kit::prelude::*;
+use aizome_shell::agenda::{EventRow, ZoneRow};
 use aizome_shell::clock::Local;
 use aizome_shell::menubar::{BarMsg, Slot, TrayWidget};
 use aizome_shell::shell::Msg;
@@ -59,7 +60,15 @@ fn fixture() -> aizome_shell::systray::glue::Fixture {
         Panel::Clock(ClockPanel {
             now: Local { year: 2026, month: 10, day: 17, hour: 21, minute: 42, second: 0, weekday: 6 },
             dnd: false,
-            zones: vec![("Tokyo".into(), "11:42".into()), ("Lisbon".into(), "03:42".into())],
+            events: Some(vec![
+                EventRow { when: "Now".into(), title: "Release review".into(), color: Some(0x7aa2f7), now: true, date: "2026-10-17".into() },
+                EventRow { when: "Sun 09:30".into(), title: "Dentist".into(), color: Some(0xe0af68), now: false, date: "2026-10-18".into() },
+                EventRow { when: "Sun".into(), title: "Mum's birthday".into(), color: Some(0xe0af68), now: false, date: "2026-10-18".into() },
+            ]),
+            zones: vec![
+                ZoneRow { name: "Tokyo".into(), time: "11:42".into(), note: "+14h, tomorrow".into() },
+                ZoneRow { name: "Lisbon".into(), time: "03:42".into(), note: "+6h, tomorrow".into() },
+            ],
         }),
     );
     f
@@ -100,6 +109,50 @@ fn a_secured_network_asks_its_password_inline() {
     h.type_text(p, "hunter22");
     assert_eq!(h.program().panel_ui.asking.as_ref().map(|a| a.1.as_str()), Some("hunter22"));
     assert!(!h.texts(p).iter().any(|t| t.contains("hunter22")), "the password doesn't show");
+}
+
+#[test]
+fn the_clock_lists_whats_next_and_the_world_clocks() {
+    let mut h = scene(false);
+    h.program_mut().panels_fixture = Some(fixture());
+    let p = open(&mut h, TrayWidget::Clock);
+    let texts = h.texts(p);
+    for want in ["Now Release review", "Sun 09:30 Dentist", "Tokyo 11:42", "Lisbon 03:42"] {
+        assert!(texts.iter().any(|t| t == want), "{want} in {texts:?}");
+    }
+    // The panel is as tall as its rows.
+    let data = h.program().panel_data(TrayWidget::Clock);
+    assert_eq!(h.size(p).height, aizome_shell::systray::panels::size(&data).height);
+    // An event opens Koyomi at its day (the panel makes way).
+    h.click_text(p, "Sun 09:30 Dentist");
+    assert!(h.program().panel.is_none());
+}
+
+#[test]
+fn the_clock_panel_reads_the_agenda() {
+    // From the shell's own reading (not a fixture): Koyomi's rows and
+    // Tokei's places, as the panel shows them.
+    let mut h = scene(false);
+    h.program_mut().agenda = aizome_shell::agenda::Agenda {
+        events: Some(vec![aizome_shell::agenda::Event {
+            title: "Standup".into(),
+            start: "2026-10-17T09:30:00-05:00".into(),
+            date: "2026-10-17".into(),
+            color: "#3a6ea5".into(),
+            ..Default::default()
+        }]),
+        places: vec![aizome_shell::agenda::Place { name: "Tokyo".into(), zone: "Asia/Tokyo".into() }],
+    };
+    h.program_mut().now = Local { year: 2026, month: 10, day: 17, hour: 8, minute: 0, second: 0, weekday: 6 };
+    let Panel::Clock(c) = h.program().panel_data(TrayWidget::Clock) else { panic!("the clock's") };
+    let events = c.events.expect("Koyomi's");
+    assert_eq!((events[0].when.as_str(), events[0].title.as_str()), ("09:30", "Standup"));
+    assert_eq!(c.zones.len(), 1);
+    assert_eq!(c.zones[0].name, "Tokyo");
+    // No Koyomi: no events section at all.
+    h.program_mut().agenda.events = None;
+    let Panel::Clock(c) = h.program().panel_data(TrayWidget::Clock) else { panic!("the clock's") };
+    assert!(c.events.is_none());
 }
 
 #[test]

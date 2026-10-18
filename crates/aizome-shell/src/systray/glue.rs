@@ -147,7 +147,13 @@ impl Shell {
                 }
                 Panel::Battery(p)
             }
-            TrayWidget::Clock => Panel::Clock(ClockPanel { now: self.now, dnd: self.notes_cfg.do_not_disturb, zones: Vec::new() }),
+            TrayWidget::Clock => {
+                let format = self.bar_cfg.clock;
+                let today = format!("{:04}-{:02}-{:02}", self.now.year, self.now.month, self.now.day);
+                let events = self.agenda.events.as_ref().map(|e| crate::agenda::event_rows(e, &today, format, panels::EVENTS));
+                let zones = crate::agenda::zone_rows(&self.agenda.places, jiff::Timestamp::now(), &jiff::tz::TimeZone::system(), format);
+                Panel::Clock(ClockPanel { now: self.now, dnd: self.notes_cfg.do_not_disturb, events, zones })
+            }
         }
     }
 
@@ -159,6 +165,9 @@ impl Shell {
             return;
         }
         self.panel_ui = PanelUi::default();
+        if w == TrayWidget::Clock {
+            self.refresh_agenda(cx);
+        }
         let data = self.panel_data(w);
         let size = panels::size(&data);
         // Its right edge under the widget's (the compositor slides it in
@@ -171,6 +180,14 @@ impl Shell {
         self.surfaces.insert(window, Surface::Panel);
         self.panel = Some(OpenPanel { window, widget: w, bar, size });
         cx.focus("panel");
+    }
+
+    /// Read Koyomi's next events and Tokei's world clocks again, on a
+    /// thread (the clock's panel opened, or a minute passed with it open).
+    pub fn refresh_agenda(&mut self, cx: &mut Cx<Msg>) {
+        if self.opts.live {
+            cx.spawn(|| Msg::Agenda(crate::agenda::read()));
+        }
     }
 
     pub fn close_panel(&mut self, cx: &mut Cx<Msg>) {
@@ -199,6 +216,14 @@ impl Shell {
             PanelMsg::Settings(pane) => {
                 self.close_panel(cx);
                 self.run(crate::actions::Action::Settings { pane, anchor: None }, cx);
+            }
+            PanelMsg::OpenDay(date) => {
+                self.close_panel(cx);
+                self.run(crate::actions::Action::Spawn { argv: vec!["aizome-koyomi".into(), "--show".into(), date] }, cx);
+            }
+            PanelMsg::OpenClocks => {
+                self.close_panel(cx);
+                self.run(crate::actions::Action::Launch { app_id: "org.aizome.Tokei".into() }, cx);
             }
             PanelMsg::Wifi(on) => {
                 if let Some(n) = &sys.network {

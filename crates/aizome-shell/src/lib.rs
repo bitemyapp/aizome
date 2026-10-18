@@ -3,6 +3,7 @@
 //! isn't a window's frame or an app (see `docs/shell.md`).
 
 pub mod actions;
+pub mod agenda;
 pub mod apps;
 pub mod auth;
 pub mod barmenus;

@@ -69,6 +69,8 @@ pub enum Msg {
     /// selection), for a menu waiting on it.
     Selection(u64, Option<String>),
     Note(crate::notifications::server::NoteEvent),
+    /// Koyomi's events and Tokei's world clocks, read.
+    Agenda(crate::agenda::Agenda),
     /// The bar's menu of generation `n` closed.
     MenuClosed(u64),
     /// ← (-1) or → (1) past the bar's open menu.
@@ -219,6 +221,8 @@ pub struct Shell {
     pub(crate) menu_gen: u64,
     /// The bar menu that closed last, and when (a press on its title closed it).
     pub(crate) just_closed: Option<(WindowKey, Slot, std::time::Instant)>,
+    /// Koyomi's next events and Tokei's world clocks, for the clock's panel.
+    pub agenda: crate::agenda::Agenda,
     pub(crate) text: aizome_kit::text::TextCache,
     launches: HashMap<ActivationRequest, (Launch, Option<PathBuf>)>,
     stream: Option<MsgSender<Msg>>,
@@ -295,6 +299,7 @@ impl Shell {
             bar_menu: None,
             menu_gen: 0,
             just_closed: None,
+            agenda: Default::default(),
             text: aizome_kit::text::TextCache::default(),
             launches: HashMap::new(),
             stream: None,
@@ -984,6 +989,9 @@ impl Program for Shell {
             Msg::Tick => {
                 self.now = Local::now();
                 self.arm_clock(cx);
+                if self.panel.as_ref().is_some_and(|p| p.widget == TrayWidget::Clock) {
+                    self.refresh_agenda(cx);
+                }
             }
             Msg::SettingsChanged => self.reload_settings(),
             Msg::Run(a) => self.run(a, cx),
@@ -1009,6 +1017,7 @@ impl Program for Shell {
             Msg::Note(e) => self.take_note(e, cx),
             Msg::BannerDone(id) => self.banner_done(id, cx),
             Msg::MenuClosed(n) => self.menu_closed(n),
+            Msg::Agenda(a) => self.agenda = a,
             Msg::BarSide(d) => self.bar_side(d, cx),
             Msg::ToolchestTyped(text) => self.toolchest_typed(text, cx),
             Msg::Nothing => {}

@@ -45,6 +45,10 @@ pub enum PanelMsg {
     Size(usize),
     PowerMode(String),
     DoNotDisturb(bool),
+    /// Open Koyomi at a day (`YYYY-MM-DD`).
+    OpenDay(String),
+    /// Open Tokei's world clocks.
+    OpenClocks,
     /// Open Shitsurae at a pane.
     Settings(String),
     Close,
@@ -136,9 +140,14 @@ pub struct ClockPanel {
     pub now: Local,
     /// Do Not Disturb is on.
     pub dnd: bool,
-    /// Other places' times: name and time.
-    pub zones: Vec<(String, String)>,
+    /// The next events from Koyomi (`None` without Koyomi).
+    pub events: Option<Vec<crate::agenda::EventRow>>,
+    /// Tokei's world clocks.
+    pub zones: Vec<crate::agenda::ZoneRow>,
 }
+
+/// The most events the clock's panel lists.
+pub const EVENTS: usize = 4;
 
 /// What each panel shows.
 #[derive(Clone, Debug, PartialEq)]
@@ -495,15 +504,88 @@ fn clock(p: &ClockPanel) -> Vec<Element<PanelMsg>> {
     );
     v.push(sep());
     v.push(labelled("Do Not Disturb", typeface::WEIGHT_REGULAR, Some(toggle(p.dnd).on_toggle(PanelMsg::DoNotDisturb).into()), ROW));
+    if let Some(events) = &p.events {
+        v.push(sep());
+        if events.is_empty() {
+            v.push(faint_row("Nothing more today or tomorrow"));
+        }
+        for e in events.iter().take(EVENTS) {
+            v.push(event_row(e));
+        }
+    }
     if !p.zones.is_empty() {
         v.push(sep());
-        for (name, time) in &p.zones {
-            v.push(item_row(Some((Icon::Globe, Hue::Cyan)), name.clone(), Some(time.clone()), false, false, None, format!("zone-{name}")));
+        for z in &p.zones {
+            v.push(zone_row(z));
         }
     }
     v.push(sep());
     v.push(settings_row("Date & Time Settings…", "datetime"));
     v
+}
+
+/// A row that only says something, in `faint`.
+fn faint_row(text: &str) -> Element<PanelMsg> {
+    let s = text.to_owned();
+    drawn(WIDTH, ROW, s.clone(), move |cx| {
+        let t = cx.theme();
+        let spec = ui(t, typeface::BODY, typeface::WEIGHT_REGULAR, t.faint());
+        cx.draw_text_in(&s, &spec, Rect::new(PAD, 0.0, WIDTH - PAD, ROW), Align::Start);
+    })
+    .text(text.to_owned(), SemanticRole::Label)
+    .into()
+}
+
+/// An event coming up: its calendar's colour, when, and what; it opens
+/// Koyomi at its day.
+fn event_row(e: &crate::agenda::EventRow) -> Element<PanelMsg> {
+    let e2 = e.clone();
+    drawn(WIDTH, ROW, (&e.when, &e.title, e.color, e.now), move |cx| {
+        let t = cx.theme();
+        let b = cx.bounds();
+        let hot = cx.is_hovered();
+        if hot {
+            cx.canvas.fill_rect(b, t.selection());
+        }
+        let fg = if hot { t.on_selection() } else { t.text() };
+        let dye = e2.color.map_or(t.text3(), |c| aizome_kit::theme::color(aizome_theme::Rgba::hex(c)));
+        cx.canvas.fill_rect(Rect::new(PAD, (ROW - 16.0) / 2.0, PAD + 3.0, (ROW + 16.0) / 2.0), dye);
+        let when_color = if hot || e2.now { fg } else { t.text3() };
+        let ws = look::mono(11.5, if e2.now { typeface::WEIGHT_SEMIBOLD } else { typeface::WEIGHT_REGULAR }, when_color);
+        cx.draw_text_in(&e2.when, &ws, Rect::new(PAD + 10.0, 0.0, PAD + 84.0, ROW), Align::Start);
+        let ts = ui(t, typeface::BODY, typeface::WEIGHT_REGULAR, fg);
+        cx.draw_text_in(&e2.title, &ts, Rect::new(PAD + 88.0, 0.0, b.x1 - PAD, ROW), Align::Start);
+    })
+    .on_click(PanelMsg::OpenDay(e.date.clone()))
+    .text(format!("{} {}", e.when, e.title), SemanticRole::MenuItem)
+    .key(("event", e.date.as_str(), e.when.as_str(), e.title.as_str()))
+    .into()
+}
+
+/// A world clock: the place, how it stands to here, and its time; it
+/// opens Tokei.
+fn zone_row(z: &crate::agenda::ZoneRow) -> Element<PanelMsg> {
+    let z2 = z.clone();
+    drawn(WIDTH, ROW, (&z.name, &z.time, &z.note), move |cx| {
+        let t = cx.theme();
+        let b = cx.bounds();
+        let hot = cx.is_hovered();
+        if hot {
+            cx.canvas.fill_rect(b, t.selection());
+        }
+        let fg = if hot { t.on_selection() } else { t.text() };
+        Icon::Globe.draw(cx.canvas, Point::new(PAD, ((ROW - 16.0) / 2.0).round()), 16.0, if hot { fg } else { Hue::Cyan.color(t) });
+        let ns = ui(t, typeface::BODY, typeface::WEIGHT_REGULAR, fg);
+        cx.draw_text_in(&z2.name, &ns, Rect::new(PAD + 24.0, 0.0, b.x1 - PAD - 150.0, ROW), Align::Start);
+        let ds = look::digits(12.5, typeface::WEIGHT_SEMIBOLD, fg);
+        let w = cx.draw_text_in(&z2.time, &ds, Rect::new(b.x1 - PAD - 80.0, 0.0, b.x1 - PAD, ROW), Align::End);
+        let ss = ui(t, typeface::SMALL, typeface::WEIGHT_REGULAR, if hot { fg } else { t.text3() });
+        cx.draw_text_in(&z2.note, &ss, Rect::new(b.x1 - PAD - 160.0, 0.0, b.x1 - PAD - w - 8.0, ROW), Align::End);
+    })
+    .on_click(PanelMsg::OpenClocks)
+    .text(format!("{} {}", z.name, z.time), SemanticRole::MenuItem)
+    .key(("zone", z.name.as_str()))
+    .into()
 }
 
 /// A panel's content.
@@ -570,7 +652,8 @@ pub fn height(p: &Panel) -> f64 {
         Panel::Battery(b) => HEAD + 34.0 + if b.modes.is_empty() { 0.0 } else { 24.0 + 30.0 } + sep + ROW,
         Panel::Clock(c) => {
             let weeks = crate::clock::month_grid(c.now.year, c.now.month).len();
-            HEAD + 40.0 + weeks as f64 * 26.0 + 6.0 + sep + ROW + if c.zones.is_empty() { 0.0 } else { sep + c.zones.len() as f64 * ROW } + sep + ROW
+            let events = c.events.as_ref().map_or(0.0, |e| sep + e.len().clamp(1, EVENTS) as f64 * ROW);
+            HEAD + 40.0 + weeks as f64 * 26.0 + 6.0 + sep + ROW + events + if c.zones.is_empty() { 0.0 } else { sep + c.zones.len() as f64 * ROW } + sep + ROW
         }
     };
     (rows + 10.0 + 2.0 + SHADOW).ceil()
