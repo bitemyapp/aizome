@@ -23,7 +23,7 @@ use crate::theme::{FontSpec, Role};
 use crate::widget::{
     Event, EventCx, FocusRing, Focusable, LayoutCx, PaintCx, SemanticRole, Semantics, StateView, Status, Widget,
 };
-use crate::widgets::scroll::{Direction, ScrollState, Scroller};
+use crate::widgets::scroll::{Direction, DragOutFn, ScrollState, Scroller, drag_moved, drag_pressed, drag_released};
 
 /// Which rows are selected, and how the keyboard and pointer change it:
 /// shared by tables and outlines. Rows are numbered as they show.
@@ -201,6 +201,7 @@ pub struct Table<Msg> {
     type_select: Option<Rc<dyn Fn(usize) -> String>>,
     context: Option<Rc<dyn Fn(usize) -> MenuSpec>>,
     reveal: Option<usize>,
+    drag_out: Option<DragOutFn>,
     _m: PhantomData<fn() -> Msg>,
 }
 
@@ -222,11 +223,19 @@ pub fn table<Msg: 'static, E: Into<Element<Msg>>>(columns: Vec<Column>, rows: us
         type_select: None,
         context: None,
         reveal: None,
+        drag_out: None,
         _m: PhantomData,
     }
 }
 
 impl<Msg: Send + 'static> Table<Msg> {
+    /// Let rows be dragged out of the window, as a list's
+    /// [`drag_out`](crate::widgets::scroll::List::drag_out).
+    pub fn drag_out(mut self, f: impl Fn(&[usize]) -> sidestep_ui::DragSource + 'static) -> Self {
+        self.drag_out = Some(Rc::new(f));
+        self
+    }
+
     /// Scroll to show row `row` whenever the row given here changes.
     pub fn reveal(mut self, row: usize) -> Self {
         self.reveal = Some(row);
@@ -301,6 +310,7 @@ impl<Msg> From<Table<Msg>> for Element<Msg> {
             type_select: t.type_select,
             context: t.context,
             reveal: t.reveal,
+            drag_out: t.drag_out,
             widths: Vec::new(),
             shown: 0..0,
             size: Size::ZERO,
@@ -331,6 +341,7 @@ struct TableWidget {
     multi: bool,
     type_select: Option<Rc<dyn Fn(usize) -> String>>,
     context: Option<Rc<dyn Fn(usize) -> MenuSpec>>,
+    drag_out: Option<DragOutFn>,
     widths: Vec<f64>,
     shown: std::ops::Range<usize>,
     size: Size,
@@ -518,6 +529,15 @@ impl Widget for TableWidget {
                 cx.invalidate();
                 Status::Ignored
             }
+            Event::PointerMove { pos, .. } if self.drag_out.as_ref().is_some_and(|f| drag_moved(cx, *pos, &self.selected, f)) => Status::Handled,
+            Event::PointerUp { button: PointerButton::Left, .. } if self.drag_out.is_some() && cx.state::<TableState>().resizing.is_none() => {
+                if let Some(i) = drag_released(cx) {
+                    cx.state::<PickState>().anchor = Some(i);
+                    cx.state::<PickState>().cursor = Some(i);
+                    self.select(cx, vec![i]);
+                }
+                Status::Handled
+            }
             Event::PointerMove { pos, .. } => {
                 if let Some((c, from, w0)) = cx.state::<TableState>().resizing {
                     let w = (w0 + pos.x - from).max(self.columns[c].min);
@@ -574,6 +594,11 @@ impl Widget for TableWidget {
                 };
                 match button {
                     PointerButton::Left => {
+                        let mods = cx.modifiers();
+                        if *clicks < 2 && self.drag_out.is_some() && drag_pressed(cx, *pos, i, &self.selected, !mods.super_key() && !mods.shift()) {
+                            cx.state::<PickState>().cursor = Some(i);
+                            return Status::Handled;
+                        }
                         let rows = self.picker().click(cx, i);
                         cx.state::<PickState>().cursor = Some(i);
                         self.select(cx, rows);

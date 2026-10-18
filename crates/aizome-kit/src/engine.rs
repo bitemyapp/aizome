@@ -1088,7 +1088,14 @@ impl Core {
 
     /// Carry out what a handler asked for.
     fn apply(&mut self, win: WinId, idx: usize, out: Out, platform: &mut dyn Platform) {
-        let Out { msgs, damage, rebuild, relayout, focus, capture, cursor, ime, ticks, menus, close_popup, reveal, begin_move, .. } = out;
+        let Out { msgs, damage, rebuild, relayout, focus, capture, cursor, ime, ticks, menus, close_popup, reveal, begin_move, drag, .. } = out;
+        if let Some(source) = drag {
+            // The pointer is the compositor's now: nothing here is pressed.
+            if let Some(w) = self.wins.get_mut(&win) {
+                w.active = None;
+            }
+            platform.start_drag(win, source);
+        }
         if relayout
             && let Some(w) = self.wins.get_mut(&win)
             && let Some(n) = w.tree.nodes.get(idx)

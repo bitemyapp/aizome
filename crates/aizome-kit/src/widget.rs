@@ -629,6 +629,7 @@ pub(crate) struct Out {
     pub close_popup: bool,
     pub reveal: Option<(usize, Rect)>,
     pub begin_move: bool,
+    pub drag: Option<sidestep_ui::DragSource>,
     pub handled_by: Option<usize>,
 }
 
@@ -826,6 +827,13 @@ impl EventCx<'_, '_> {
     /// Move the window with the pointer, from the press under way.
     pub fn begin_window_move(&mut self) {
         self.out.begin_move = true;
+    }
+
+    /// Start dragging `source` out of the window, from the press under
+    /// way (see [`Cx::start_drag`](crate::Cx::start_drag)): the program
+    /// hears how it ended in `drag_ended`.
+    pub fn start_drag(&mut self, source: sidestep_ui::DragSource) {
+        self.out.drag = Some(source);
     }
 }
 

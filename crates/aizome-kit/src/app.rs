@@ -309,6 +309,19 @@ impl<P: Program> Runtime<P> {
         self.flush(platform);
     }
 
+    pub fn provide_drag_data(&mut self, drag: u64, mime: &str, platform: &mut dyn Platform) -> Option<Vec<u8>> {
+        let mut cx = Cx { core: &mut self.core, platform, pool: &mut self.pool, _m: PhantomData };
+        let data = self.program.provide_drag_data(crate::program::DragId(drag), mime, &mut cx);
+        self.flush(platform);
+        data
+    }
+
+    pub fn drag_ended(&mut self, drag: u64, action: sidestep_ui::DropAction, platform: &mut dyn Platform) {
+        let mut cx = Cx { core: &mut self.core, platform, pool: &mut self.pool, _m: PhantomData };
+        self.program.drag_ended(crate::program::DragId(drag), action, &mut cx);
+        self.flush(platform);
+    }
+
     /// Auto follows the clock: look again (each hour, and when the desktop
     /// changes its look).
     pub fn recheck_auto(&mut self, platform: &mut dyn Platform) {
@@ -331,6 +344,8 @@ struct Maps {
     waker: Option<Waker>,
     activations: HashMap<sidestep_ui::ActivationRequest, u64>,
     next_activation: u64,
+    drags: HashMap<sidestep_ui::DragId, u64>,
+    next_drag: u64,
 }
 
 struct Glue<P: Program> {
@@ -538,6 +553,14 @@ impl Platform for SidestepPlatform<'_> {
         }
     }
 
+    fn start_drag(&mut self, id: WinId, source: sidestep_ui::DragSource) -> Option<u64> {
+        let side = *self.maps.to_side.get(&id)?;
+        let drag = self.sx.start_drag(side, source)?;
+        self.maps.next_drag += 1;
+        self.maps.drags.insert(drag, self.maps.next_drag);
+        Some(self.maps.next_drag)
+    }
+
     fn outputs(&self) -> Vec<crate::program::Output> {
         self.sx.outputs()
     }
@@ -694,6 +717,18 @@ impl<P: Program> sidestep_ui::Handler for Glue<P> {
         let Some(id) = self.maps.activations.remove(&request) else { return };
         let (rt, mut p) = self.split(cx);
         rt.activation_token(id, token, &mut p);
+    }
+
+    fn provide_drag_data(&mut self, cx: &mut sidestep_ui::Cx, drag: sidestep_ui::DragId, mime: &str) -> Option<Vec<u8>> {
+        let id = *self.maps.drags.get(&drag)?;
+        let (rt, mut p) = self.split(cx);
+        rt.provide_drag_data(id, mime, &mut p)
+    }
+
+    fn drag_ended(&mut self, cx: &mut sidestep_ui::Cx, drag: sidestep_ui::DragId, action: sidestep_ui::DropAction) {
+        let Some(id) = self.maps.drags.remove(&drag) else { return };
+        let (rt, mut p) = self.split(cx);
+        rt.drag_ended(id, action, &mut p);
     }
 
     fn drag_moved(&mut self, cx: &mut sidestep_ui::Cx, window: WindowId, drag: &Drag) -> DropResponse {

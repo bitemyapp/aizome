@@ -65,7 +65,7 @@ pub use layout::{Align, Constraints, Length, Padding, Point, Rect, Size, Vec2};
 pub use menu::{Menu, MenuBar, MenuItem, MenuRole, Shortcut, ShortcutKey};
 pub use program::{AppInfo, Program, WindowKey, WindowKind, WindowSpec, WindowState};
 pub use sidestep_ui;
-pub use sidestep_ui::{Color, Image};
+pub use sidestep_ui::{Color, DragSource, DropAction, Image};
 pub use text::{Span, rich_text, text};
 pub use theme::{Appearance, FontSpec, Role, Theme};
 pub use widgets::controls::{
@@ -81,7 +81,7 @@ pub use widgets::panes::{caption, form_row, form_section, sidebar_item, sidebar_
 pub use widgets::text_field::{search_field, text_field};
 pub use widgets::text_editor::{FindRequest, text_editor};
 pub use editor::{EditorAction, EditorContent, Granularity, Highlighter, LineStyle, Selection};
-pub use program::{Anchors, KeyboardInteractivity, Layer, LayerOptions, Margins, Output, ActivationRequest};
+pub use program::{Anchors, KeyboardInteractivity, Layer, LayerOptions, Margins, Output, ActivationRequest, DragId};
 
 /// Everything an app usually needs: `use aizome_kit::prelude::*;`.
 pub mod prelude {
@@ -95,7 +95,7 @@ pub mod prelude {
         menu_view, MenuStyle, MenuPlacement, scroll, list, virtual_list, canvas, context_menu, mouse_area, popover,
         tooltip, caption, form_row, form_section, sidebar_item, sidebar_layout, split, status_bar, status_text,
         toolbar, toolbar_separator, DragEvent, Dropped, text_editor, EditorAction, EditorContent, FindRequest,
-        table, Column, tree, TreeItem,
+        table, Column, tree, TreeItem, DragId, DragSource, DropAction,
     };
     pub use crate::{column, row, stack};
 }

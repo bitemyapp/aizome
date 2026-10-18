@@ -12,7 +12,7 @@ use std::marker::PhantomData;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
-use sidestep_ui::{Key, NamedKey, PointerButton};
+use sidestep_ui::{DragSource, Key, NamedKey, PointerButton};
 
 use crate::element::{Common, Element, MsgMap, RawElement};
 use crate::hash::PaintHasher;
@@ -473,7 +473,57 @@ pub struct List<Msg> {
     context: Option<Rc<dyn Fn(usize) -> MenuSpec>>,
     inset: f64,
     reveal: Option<usize>,
+    drag_out: Option<DragOutFn>,
     _m: PhantomData<fn() -> Msg>,
+}
+
+/// What a list's or table's rows carry when dragged out of the window.
+pub(crate) type DragOutFn = Rc<dyn Fn(&[usize]) -> DragSource>;
+
+/// How far the pointer goes, pressed on a row, before it drags.
+const DRAG_SLOP: f64 = 4.0;
+
+/// A press on rows that may become a drag out.
+#[derive(Default)]
+struct DragPress {
+    /// Where, and on which row.
+    at: Option<(Point, usize)>,
+    /// The row to select alone if the press ends without a drag: it fell
+    /// on a selection of several, which a drag would take whole.
+    collapse: Option<usize>,
+}
+
+/// A press on row `i` at `pos`, noted for a drag out: whether to hold off
+/// selecting it (a plain press on a selection of several).
+pub(crate) fn drag_pressed(cx: &mut EventCx, pos: Point, i: usize, selected: &[usize], plain: bool) -> bool {
+    let defer = plain && selected.len() > 1 && selected.contains(&i);
+    let st = cx.state::<DragPress>();
+    st.at = Some((pos, i));
+    st.collapse = defer.then_some(i);
+    defer
+}
+
+/// The pointer moved with the button down: once it's gone far enough
+/// from the press, the rows (the selection, if the press was on it) go
+/// out as `f` says. Whether it started.
+pub(crate) fn drag_moved(cx: &mut EventCx, pos: Point, selected: &[usize], f: &DragOutFn) -> bool {
+    let st = cx.state::<DragPress>();
+    let Some((at, i)) = st.at else { return false };
+    if (pos - at).hypot() < DRAG_SLOP {
+        return false;
+    }
+    st.at = None;
+    st.collapse = None;
+    let rows: Vec<usize> = if selected.contains(&i) { selected.to_vec() } else { vec![i] };
+    cx.start_drag(f(&rows));
+    true
+}
+
+/// The button came up: the row to select alone, if the press held off.
+pub(crate) fn drag_released(cx: &mut EventCx) -> Option<usize> {
+    let st = cx.state::<DragPress>();
+    st.at = None;
+    st.collapse.take()
 }
 
 crate::builder!(List);
@@ -494,6 +544,7 @@ pub fn virtual_list<Msg: 'static, E: Into<Element<Msg>>>(count: usize, row_heigh
         context: None,
         inset: 0.0,
         reveal: None,
+        drag_out: None,
         _m: PhantomData,
     }
 }
@@ -514,6 +565,7 @@ pub fn list<Msg>(items: Vec<Element<Msg>>) -> List<Msg> {
         context: None,
         inset: 0.0,
         reveal: None,
+        drag_out: None,
         _m: PhantomData,
     }
 }
@@ -567,6 +619,17 @@ impl<Msg> List<Msg> {
         self
     }
 
+    /// Let rows be dragged out of the window, to other programs, the
+    /// desktop, the Shelf: pressed on a row and moved a few points, the
+    /// selection (or the row, if it isn't selected) goes as `f` makes it,
+    /// e.g. `DragSource::new().urls(..)` for files. A press on a
+    /// selection of several selects its row alone on release, if it
+    /// didn't drag.
+    pub fn drag_out(mut self, f: impl Fn(&[usize]) -> DragSource + 'static) -> Self {
+        self.drag_out = Some(Rc::new(f));
+        self
+    }
+
     pub fn inset(mut self, points: f64) -> Self {
         self.inset = points;
         self
@@ -591,6 +654,7 @@ impl<Msg> From<List<Msg>> for Element<Msg> {
             context: l.context,
             inset: l.inset,
             reveal: l.reveal,
+            drag_out: l.drag_out,
             shown: 0..0,
             width: 0.0,
         };
@@ -618,6 +682,7 @@ struct ListWidget {
     context: Option<Rc<dyn Fn(usize) -> MenuSpec>>,
     inset: f64,
     reveal: Option<usize>,
+    drag_out: Option<DragOutFn>,
     shown: std::ops::Range<usize>,
     width: f64,
 }
@@ -799,6 +864,14 @@ impl Widget for ListWidget {
             return Status::Handled;
         }
         match event {
+            Event::PointerMove { pos, .. } if self.drag_out.as_ref().is_some_and(|f| drag_moved(cx, *pos, &self.selected, f)) => Status::Handled,
+            Event::PointerUp { button: PointerButton::Left, .. } if self.drag_out.is_some() => {
+                if let Some(i) = drag_released(cx) {
+                    cx.state::<ListState>().anchor = Some(i);
+                    self.select(cx, vec![i], i);
+                }
+                Status::Handled
+            }
             Event::Focus(_) | Event::WindowFocus(_) => {
                 cx.invalidate();
                 Status::Ignored
@@ -816,6 +889,9 @@ impl Widget for ListWidget {
                             if let Some(f) = &self.on_activate {
                                 cx.emit_any(f.make(i));
                             }
+                            return Status::Handled;
+                        }
+                        if self.drag_out.is_some() && drag_pressed(cx, *pos, i, &self.selected, !mods.super_key() && !mods.shift()) {
                             return Status::Handled;
                         }
                         let rows = if self.multi && mods.super_key() {

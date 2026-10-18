@@ -193,6 +193,7 @@ struct Handlers {
     drag: Option<MsgMap<DragEvent>>,
     drop: Option<MsgMap<Dropped>>,
     cursor: Option<Cursor>,
+    drag_out: Option<Rc<dyn Fn() -> sidestep_ui::DragSource>>,
 }
 
 crate::builder!(MouseArea);
@@ -231,6 +232,17 @@ impl<Msg: Clone + Send + 'static> MouseArea<Msg> {
 
     pub fn on_move(mut self, f: impl Fn(Point) -> Msg + 'static) -> Self {
         self.h.moved = Some(MsgMap::new(f));
+        self
+    }
+
+    /// Let what's here be dragged out of the window: pressed here and
+    /// moved a few points, it goes as `f` makes it
+    /// (`DragSource::new().urls(..).icon(..)`), to other programs, the
+    /// desktop, the Shelf or another window; drops on this program's
+    /// windows come back through `on_drop`. `on_drag` hears no more of
+    /// that press once it goes.
+    pub fn drag_out(mut self, f: impl Fn() -> sidestep_ui::DragSource + 'static) -> Self {
+        self.h.drag_out = Some(Rc::new(f));
         self
     }
 
@@ -316,11 +328,20 @@ impl Widget for MouseWidget {
                 if let Some(f) = &h.moved {
                     cx.emit_any(f.make(*pos));
                 }
+                if let (Some(out), Some(start)) = (&h.drag_out, cx.state::<MouseState>().start)
+                    && (*pos - start).hypot() >= 4.0
+                {
+                    let st = cx.state::<MouseState>();
+                    st.start = None;
+                    st.last = None;
+                    cx.start_drag(out());
+                    return Status::Handled;
+                }
                 if let (Some(f), Some(start)) = (&h.drag, cx.state::<MouseState>().start) {
                     let last = cx.state::<MouseState>().last.replace(*pos).unwrap_or(start);
                     cx.emit_any(f.make(DragEvent::Move { start, at: *pos, delta: *pos - last }));
                 }
-                if h.moved.is_some() || h.drag.is_some() || h.hover.is_some() { Status::Handled } else { Status::Ignored }
+                if h.moved.is_some() || h.drag.is_some() || h.hover.is_some() || h.drag_out.is_some() { Status::Handled } else { Status::Ignored }
             }
             Event::PointerLeave => {
                 let st = cx.state::<MouseState>();
@@ -350,6 +371,12 @@ impl Widget for MouseWidget {
                     cx.emit_any(f.make(DragEvent::Start(*pos)));
                     used = true;
                 }
+                if h.drag_out.is_some() {
+                    let st = cx.state::<MouseState>();
+                    st.start = Some(*pos);
+                    st.last = Some(*pos);
+                    used = true;
+                }
                 if used || h.release.is_some() { Status::Handled } else { Status::Ignored }
             }
             Event::PointerUp { pos, button: PointerButton::Left, .. } => {
@@ -361,7 +388,7 @@ impl Widget for MouseWidget {
                 if let Some(m) = &h.release {
                     cx.emit(m);
                 }
-                if h.release.is_some() || h.drag.is_some() { Status::Handled } else { Status::Ignored }
+                if h.release.is_some() || h.drag.is_some() || h.drag_out.is_some() { Status::Handled } else { Status::Ignored }
             }
             Event::PointerDown { pos, button: PointerButton::Right, .. } => match &h.right {
                 Some(f) => {

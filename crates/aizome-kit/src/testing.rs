@@ -70,6 +70,9 @@ pub struct TestPlatform {
     pub fullscreen: HashMap<WinId, bool>,
     /// Regions moved since the test last took them, by window.
     pub scrolls: HashMap<WinId, Vec<(Rect, Vec2)>>,
+    /// Drags started out of the windows, in order (the drag's number is
+    /// its place plus one).
+    pub drags: Vec<(WinId, sidestep_ui::DragSource)>,
     /// Each window's last frame as [`Harness::check_frame`] composed it.
     frames: HashMap<WinId, (u32, u32, Vec<u8>)>,
 }
@@ -97,6 +100,7 @@ impl TestPlatform {
             activation_requests: Vec::new(),
             fullscreen: HashMap::new(),
             scrolls: HashMap::new(),
+            drags: Vec::new(),
             frames: HashMap::new(),
         }
     }
@@ -237,6 +241,11 @@ impl Platform for TestPlatform {
         }
     }
 
+    fn start_drag(&mut self, id: WinId, source: sidestep_ui::DragSource) -> Option<u64> {
+        self.drags.push((id, source));
+        Some(self.drags.len() as u64)
+    }
+
     fn set_popup_anchor(&mut self, id: WinId, to: Rect) {
         if let Some(w) = self.windows.get_mut(&id)
             && let OpenKind::Popup { anchor, .. } = &mut w.spec.kind
@@ -317,6 +326,22 @@ impl<P: Program> Harness<P> {
         let mut platform = TestPlatform::new();
         rt.launch(&mut platform, Vec::new());
         Harness { rt, platform }
+    }
+
+    /// The drags started out of the windows, with what they carry, in
+    /// order.
+    pub fn drags(&self) -> Vec<(crate::program::DragId, &sidestep_ui::DragSource)> {
+        self.platform.drags.iter().enumerate().map(|(i, (_, s))| (crate::program::DragId(i as u64 + 1), s)).collect()
+    }
+
+    /// A destination asking for drag `drag`'s data promised as `mime`.
+    pub fn drag_data(&mut self, drag: crate::program::DragId, mime: &str) -> Option<Vec<u8>> {
+        self.rt.provide_drag_data(drag.0, mime, &mut self.platform)
+    }
+
+    /// Drag `drag` ending: dropped to copy or move, or cancelled.
+    pub fn end_drag(&mut self, drag: crate::program::DragId, action: sidestep_ui::DropAction) {
+        self.rt.drag_ended(drag.0, action, &mut self.platform);
     }
 
     /// Whether the menus go to a shell now (not into the windows).

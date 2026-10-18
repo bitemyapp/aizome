@@ -97,6 +97,8 @@ pub trait Platform {
     /// before drawing the damage (which the move takes along): what a
     /// scroll does. Uncovered strips are damaged.
     fn scroll(&mut self, id: WinId, rect: Rect, delta: Vec2);
+    /// Start dragging `source` out of window `id`: the drag's number.
+    fn start_drag(&mut self, id: WinId, source: sidestep_ui::DragSource) -> Option<u64>;
     fn outputs(&self) -> Vec<Output>;
     fn lock_session(&mut self);
     fn unlock_session(&mut self);

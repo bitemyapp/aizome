@@ -14,6 +14,11 @@ pub use sidestep_ui::Output;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ActivationRequest(pub(crate) u64);
 
+/// A drag out of one of the program's windows: [`Cx::start_drag`]'s, or
+/// a list's, table's or mouse area's `drag_out`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct DragId(pub(crate) u64);
+
 /// An Aizome app, Elm's way: state that [`update`](Program::update)
 /// changes with messages, and a [`view`](Program::view) of each window
 /// drawn from it.
@@ -109,6 +114,21 @@ pub trait Program: Sized + 'static {
     /// desktop's ⌃❖F), maximised. The kit views the window again after.
     fn window_state(&mut self, window: WindowKey, state: WindowState, cx: &mut Cx<Self::Msg>) {
         let _ = (window, state, cx);
+    }
+
+    /// A destination asks for the data of drag `drag` promised as `mime`
+    /// ([`DragSource::promise`](sidestep_ui::DragSource::promise)): it, or
+    /// none (the default).
+    fn provide_drag_data(&mut self, drag: DragId, mime: &str, cx: &mut Cx<Self::Msg>) -> Option<Vec<u8>> {
+        let _ = (drag, mime, cx);
+        None
+    }
+
+    /// Drag `drag` out of a window is over: dropped to copy or to move
+    /// what it carries (a move is the program's to finish, by removing
+    /// what moved), or cancelled ([`DropAction::None`](sidestep_ui::DropAction::None)).
+    fn drag_ended(&mut self, drag: DragId, action: sidestep_ui::DropAction, cx: &mut Cx<Self::Msg>) {
+        let _ = (drag, action, cx);
     }
 
     /// Whether the app stops when its last window closes: apps do; a
