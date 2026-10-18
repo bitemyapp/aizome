@@ -648,3 +648,18 @@ Live, the debug build under headless sway (pixman) at 2×, `wtype` pressing
    2880 × 1800 PNG's two thumbnails take 170 ms; `perf.rs`,
    `listing_and_thumbnails_take_what_they_take`), never in a frame; their
    arrival is one frame of the rows that show.
+
+## Fusen (Notes)
+
+Typing in a note, measured headlessly at 2× (`tests/fusen.rs`,
+`typing_fits_the_frame_budget`): update (the list's title and preview
+follow the typing), view, layout, diff and rasterising the damage.
+
+| | p50 | p95 | max | |
+|---|---|---|---|---|
+| Typing in a note | 0.08 ms | 0.11 ms | 0.20 ms | release, n=66 |
+| Typing in a note | 0.40 ms | 3.1 ms | 14 ms | debug |
+
+The notes folder is read again every 3 s (a few hundred small files cost
+a few milliseconds), and stickies' places are asked of the compositor on
+a thread of the kit's. No exceptions.

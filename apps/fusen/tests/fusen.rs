@@ -287,3 +287,37 @@ fn goldens() {
         }
     }
 }
+
+/// Typing in a note and moving through the list, measured as Sumi's
+/// typing is: update, view, layout, diff and rasterising the damage at 2×.
+#[test]
+fn typing_fits_the_frame_budget() {
+    let dir = scratch("budget");
+    fill(&dir);
+    let mut h = Harness::new(app(&dir, Request::default()));
+    let w = open(&mut h);
+    let e = h.find_id(w, "editor").unwrap();
+    h.click(w, Point::new(e.x1 - 20.0, e.y1 - 20.0));
+    let _ = h.render(w, 2.0);
+    let mut frames = Vec::new();
+    for round in 0..4 {
+        for c in "a few words in a note ".chars() {
+            h.take_damage(w);
+            let t = Instant::now();
+            h.type_text(w, &c.to_string());
+            if let Some(b) = h.take_damage(w).into_iter().reduce(|a, b| a.union(b)) {
+                let _ = h.render_rect(w, b, 2.0);
+            }
+            if round > 0 {
+                frames.push(t.elapsed());
+            }
+        }
+        h.advance(Duration::from_secs(1));
+    }
+    frames.sort();
+    let p = |q: f64| frames[((frames.len() - 1) as f64 * q) as usize];
+    eprintln!("fusen typing: p50 {:?} p95 {:?} max {:?} (n={}, at 2x)", p(0.5), p(0.95), frames.last().unwrap(), frames.len());
+    if !cfg!(debug_assertions) {
+        assert!(p(0.95) < Duration::from_millis(4), "p95 {:?}", p(0.95));
+    }
+}
