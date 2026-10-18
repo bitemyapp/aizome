@@ -94,6 +94,8 @@ pub fn glyph_for(app_id: &str) -> Option<(Icon, Hue)> {
         "tansu" => (Icon::HardDrive, Hue::Text2),
         "kura" => (Icon::ChartPie, Hue::Violet),
         "myaku" => (Icon::Activity, Hue::Red),
+        "shashin" => (Icon::Image, Hue::Violet),
+        "annai" => (Icon::Compass, Hue::Amber),
         "foot" | "footclient" | "alacritty" | "kitty" | "wezterm" | "ghostty" | "konsole" | "terminal" | "xterm" => {
             (Icon::SquareTerminal, Hue::Green)
         }
