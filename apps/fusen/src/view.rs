@@ -72,16 +72,18 @@ pub fn highlighter(open: &Open, ink: Option<Color>) -> Highlighter {
         }
         for t in tokens {
             let mut span = syntax::span(t.kind);
-            if matches!(t.kind, Kind::Code | Kind::FenceMark | Kind::FenceInfo) {
+            if matches!(t.kind, Kind::Code | Kind::FenceMark | Kind::FenceInfo | Kind::TaskBox) {
                 span = span.mono();
             }
             // On a sticky's paper, the ink is the note's, kept dark.
             if let Some(c) = ink
                 && span.role.is_some()
-                && !matches!(t.kind, Kind::TaskDone | Kind::EmphasisMark | Kind::HeadingMark | Kind::Url | Kind::Rule | Kind::FenceMark)
             {
                 span.role = None;
                 span.color = Some(c);
+                if matches!(t.kind, Kind::TaskDone | Kind::EmphasisMark | Kind::HeadingMark | Kind::Url | Kind::Rule | Kind::FenceMark | Kind::Comment) {
+                    span.alpha = Some(0.5);
+                }
             }
             out.push(LineStyle { range: t.range, span });
         }

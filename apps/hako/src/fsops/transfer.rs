@@ -282,6 +282,13 @@ fn is_cancel(e: &io::Error) -> bool {
     e.get_ref().is_some_and(|i| i.is::<Cancelled>())
 }
 
+/// Whether `path` (with `meta`, not followed) is where a filesystem is
+/// mounted: on another device than the folder it's in.
+pub fn is_mount_point(path: &Path, meta: &fs::Metadata) -> bool {
+    let parent = path.parent().unwrap_or(Path::new("/"));
+    meta.is_dir() && fs::metadata(parent).is_ok_and(|p| p.dev() != meta.dev())
+}
+
 fn same_file(a: &fs::Metadata, b: &fs::Metadata) -> bool {
     a.dev() == b.dev() && a.ino() == b.ino()
 }
@@ -357,6 +364,10 @@ impl Worker<'_, '_> {
         }
         if smeta.is_dir() && is_within(&target, &src_n) {
             return Err(Stop::Skip("a folder can't go inside itself".into()));
+        }
+        if self.mode == Mode::Move && smeta.is_dir() && is_mount_point(source, &smeta) {
+            // Its files live on another disk: moving them would empty it.
+            return Err(Stop::Skip("it's where a disk is mounted; unmount it, or copy what's on it".into()));
         }
         let mut replace = false;
         if let Ok(tmeta) = fs::symlink_metadata(&target) {
@@ -1025,6 +1036,20 @@ mod tests {
         assert_eq!(last.items_done, 7);
         assert!(seen.iter().any(|p| p.preparing));
         assert_eq!(last.fraction(), 1.0);
+    }
+
+    #[test]
+    fn knows_mount_points() {
+        let t = TempDir::new("mounts");
+        let d = t.dir("plain");
+        assert!(!is_mount_point(&d, &fs::symlink_metadata(&d).unwrap()));
+        // Read only: /dev/shm is its own filesystem where it's mounted.
+        let shm = Path::new("/dev/shm");
+        if let (Ok(m), Ok(p)) = (fs::symlink_metadata(shm), fs::metadata("/dev"))
+            && m.dev() != p.dev()
+        {
+            assert!(is_mount_point(shm, &m));
+        }
     }
 
     #[test]

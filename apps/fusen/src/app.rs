@@ -905,10 +905,11 @@ impl Program for Fusen {
                         changed = true;
                     }
                 }
-                if changed && let Some(dir) = &self.places.state {
-                    if let Ok(json) = serde_json::to_string_pretty(&self.saved) {
-                        let _ = aizome_sumi::files::save_atomic(&dir.join("stickies.json"), json.as_bytes());
-                    }
+                if changed
+                    && let Some(dir) = &self.places.state
+                    && let Ok(json) = serde_json::to_string_pretty(&self.saved)
+                {
+                    let _ = aizome_sumi::files::save_atomic(&dir.join("stickies.json"), json.as_bytes());
                 }
             }
             Msg::Highlight => {

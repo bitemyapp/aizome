@@ -102,3 +102,25 @@ fn walking_and_scrolling_a_big_folder_fit_the_budget() {
         }
     }
 }
+
+#[test]
+fn listing_and_thumbnails_take_what_they_take() {
+    let s = Sandbox::new("perf-bg");
+    let big = s.dir("big");
+    for i in 0..10_000 {
+        std::fs::write(big.join(format!("file-{i:05}.txt")), "").unwrap();
+    }
+    let start = Instant::now();
+    let mut es = hako::model::entry::read_folder(&big).unwrap();
+    hako::model::entry::sort_entries(&mut es, Default::default());
+    eprintln!("hako: listing and sorting 10,000 entries took {:?}", start.elapsed());
+    let board = std::path::Path::new("/home/callen/work/aizome-design/boards/aizome-desktop-night@2x.png");
+    if board.exists() {
+        let pic = s.dir("pics").join("board.png");
+        std::fs::copy(board, &pic).unwrap();
+        let cache = hako::model::thumbs::Thumbnails { root: s.0.join("thumbs") };
+        let start = Instant::now();
+        assert!(hako::model::thumbs::make(&cache, &pic, "image/png").is_some());
+        eprintln!("hako: thumbnails of a 2880 × 1800 PNG took {:?}", start.elapsed());
+    }
+}

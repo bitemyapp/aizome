@@ -625,6 +625,7 @@ Live, the debug build under headless sway (pixman) at 2×, `wtype` pressing
    load) at the budget. In the list and icon views, which have no
    preview, ↓ redraws two rows and the status line.
 2. **Listings and thumbnails** are read and made in the background (a
-   folder of 10,000 lists in about 40 ms; a 2880 × 1800 PNG's thumbnails
-   in about 150 ms), never in a frame; their arrival is one frame of the
-   rows that show.
+   folder of 10,000 lists and sorts in 22 ms (release), 53 ms (debug); a
+   2880 × 1800 PNG's two thumbnails take 170 ms; `perf.rs`,
+   `listing_and_thumbnails_take_what_they_take`), never in a frame; their
+   arrival is one frame of the rows that show.

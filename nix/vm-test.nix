@@ -17,6 +17,8 @@ pkgs.testers.runNixOSTest {
     {
       imports = [ self.nixosModules.default ];
       programs.aizome.enable = true;
+      # Settings takes the time zone over from here (programs.aizome.mutableTimeZone).
+      time.timeZone = "Europe/Paris";
 
       users.users.alice = {
         isNormalUser = true;
@@ -113,6 +115,12 @@ pkgs.testers.runNixOSTest {
         machine.send_chars("aizome\n")
         machine.sleep(3)
         capture("05-unlocked")
+
+    with subtest("Settings can change the time zone and the computer's name"):
+        machine.succeed("timedatectl set-timezone Asia/Tokyo")
+        machine.succeed("readlink /etc/localtime | grep -q Asia/Tokyo")
+        machine.succeed("hostnamectl set-hostname --pretty 'Aizome Test'")
+        assert "Aizome Test" in machine.succeed("hostnamectl --pretty")
 
     with subtest("frame times stay inside the budget"):
         print(as_alice("aizomectl stats"))

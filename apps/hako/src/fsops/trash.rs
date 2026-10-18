@@ -142,8 +142,10 @@ impl Trash {
         if home_trash.starts_with(&real) {
             return Some("it holds the Trash".into());
         }
-        if fs::symlink_metadata(path).is_err() {
-            return Some("it isn't there".into());
+        match fs::symlink_metadata(path) {
+            Err(_) => return Some("it isn't there".into()),
+            Ok(m) if super::transfer::is_mount_point(path, &m) => return Some("it's where a disk is mounted".into()),
+            Ok(_) => {}
         }
         None
     }
