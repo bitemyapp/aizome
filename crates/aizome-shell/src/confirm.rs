@@ -89,7 +89,7 @@ pub fn view(verb: SessionVerb, left: u32, power: bool) -> Element<ConfirmMsg> {
         aizome_kit::sidestep_ui::Key::Named(aizome_kit::sidestep_ui::NamedKey::Enter) => Some(ConfirmMsg::Now),
         _ => None,
     });
-    aizome_kit::container(Element::from(keyed).id("confirm")).padding([0.0, 3.0, 3.0, 0.0]).into()
+    aizome_kit::container(keyed.id("confirm")).padding([0.0, 3.0, 3.0, 0.0]).into()
 }
 
 impl Shell {

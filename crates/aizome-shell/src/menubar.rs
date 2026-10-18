@@ -618,22 +618,6 @@ pub fn view(model: &BarModel) -> Element<BarMsg> {
     stack(vec![ground.into(), bar.into()]).height(HEIGHT).into()
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn glyphs_follow_levels() {
-        assert_eq!(sound_icon(0.5, true), Icon::VolumeX);
-        assert_eq!(sound_icon(0.9, false), Icon::Volume2);
-        assert_eq!(battery_icon(84.0, false), Icon::BatteryFull);
-        assert_eq!(battery_icon(5.0, false), Icon::BatteryWarning);
-        assert_eq!(battery_icon(5.0, true), Icon::BatteryCharging);
-        assert_eq!(NetGlyph::Wifi(4).icon(), Icon::Wifi);
-        assert_eq!(TrayWidget::named("battery"), Some(TrayWidget::Battery));
-    }
-}
-
 /// Measures one line of text set as a spec: the kit's text cache.
 pub type Measure<'a> = dyn FnMut(&str, &aizome_kit::text::TextSpec) -> f64 + 'a;
 
@@ -719,4 +703,20 @@ pub fn title_rects(t: &aizome_kit::Theme, m: &mut Measure, model: &BarModel) -> 
             (s, r)
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn glyphs_follow_levels() {
+        assert_eq!(sound_icon(0.5, true), Icon::VolumeX);
+        assert_eq!(sound_icon(0.9, false), Icon::Volume2);
+        assert_eq!(battery_icon(84.0, false), Icon::BatteryFull);
+        assert_eq!(battery_icon(5.0, false), Icon::BatteryWarning);
+        assert_eq!(battery_icon(5.0, true), Icon::BatteryCharging);
+        assert_eq!(NetGlyph::Wifi(4).icon(), Icon::Wifi);
+        assert_eq!(TrayWidget::named("battery"), Some(TrayWidget::Battery));
+    }
 }

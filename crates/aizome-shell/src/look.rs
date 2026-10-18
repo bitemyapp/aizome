@@ -131,7 +131,7 @@ pub fn close_box(canvas: &mut Canvas, r: Rect, c: Color) {
 
 /// The pin of a menu's title strip (tear off / keep).
 pub fn pin(canvas: &mut Canvas, at: Point, size: f64, c: Color, pinned: bool) {
-    let icon = if pinned { aizome_kit::Icon::Pin } else { aizome_kit::Icon::Pin };
+    let icon = if pinned { aizome_kit::Icon::Pin } else { aizome_kit::Icon::PinOff };
     icon.draw(canvas, at, size, c);
 }
 

@@ -85,7 +85,7 @@ pub fn incoming(
     let urgency = hints.get("urgency").and_then(|v| u8::try_from(&**v).ok()).map(Urgency::from_u8).unwrap_or_default();
     let image = ["image-data", "image_data", "icon_data"]
         .iter()
-        .find_map(|k| hints.get(*k).and_then(|v| image_data(v)))
+        .find_map(|k| hints.get(*k).and_then(image_data))
         .or_else(|| s("image-path").or_else(|| s("image_path")).map(|p| NoteImage::File(path_of(&p))))
         .or_else(|| (app_icon.starts_with('/') || app_icon.starts_with("file://")).then(|| NoteImage::File(path_of(&app_icon))));
     let pid = hints

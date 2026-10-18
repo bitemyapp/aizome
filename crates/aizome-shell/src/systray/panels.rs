@@ -614,7 +614,7 @@ pub fn view(p: &Panel) -> Element<PanelMsg> {
         matches!(k.key, aizome_kit::sidestep_ui::Key::Named(aizome_kit::sidestep_ui::NamedKey::Escape)).then_some(PanelMsg::Close)
     });
     // The keys widget itself takes the focus (and so Escape).
-    aizome_kit::container(Element::from(keyed).id("panel")).padding([0.0, SHADOW, SHADOW, 0.0]).into()
+    aizome_kit::container(keyed.id("panel")).padding([0.0, SHADOW, SHADOW, 0.0]).into()
 }
 
 /// The panel's height, for its popup: the rows', its edges and shadow.

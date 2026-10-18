@@ -315,7 +315,7 @@ fn drop_row() -> Element<DeskbarMsg> {
         let s = ui(t, 11.5, typeface::WEIGHT_REGULAR, t.text3());
         cx.draw_text_in("Drop to park", &s, b, Align::Center);
     })
-    .on_drop(|urls, text| DeskbarMsg::Park(urls, text))
+    .on_drop(DeskbarMsg::Park)
     .text("Drop to park", SemanticRole::Group)
     .key("drop")
     .into()

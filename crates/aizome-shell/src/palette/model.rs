@@ -325,6 +325,23 @@ pub fn settings_cache_path() -> PathBuf {
         .join("aizome/settings-list.json")
 }
 
+/// A lift for titles that are what was typed, or start with it: "bold"
+/// finds Bold before Undo Bold.
+pub fn exactness(title: &str, q: &str) -> i64 {
+    if q.is_empty() {
+        return 0;
+    }
+    let t = title.trim_end_matches('…').to_lowercase();
+    let q = q.to_lowercase();
+    if t == q {
+        120
+    } else if t.starts_with(&q) {
+        40
+    } else {
+        0
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -438,22 +455,5 @@ mod tests {
         assert_eq!(pane.action, Action::Settings { pane: "keyboard".into(), anchor: None });
         assert!(parse_settings(r#"{"settings":[]}"#).unwrap().is_empty());
         assert!(builtin_settings().iter().any(|s| s.id == "network"));
-    }
-}
-
-/// A lift for titles that are what was typed, or start with it: "bold"
-/// finds Bold before Undo Bold.
-pub fn exactness(title: &str, q: &str) -> i64 {
-    if q.is_empty() {
-        return 0;
-    }
-    let t = title.trim_end_matches('…').to_lowercase();
-    let q = q.to_lowercase();
-    if t == q {
-        120
-    } else if t.starts_with(&q) {
-        40
-    } else {
-        0
     }
 }

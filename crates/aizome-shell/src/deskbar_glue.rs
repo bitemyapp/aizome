@@ -269,19 +269,6 @@ impl Shell {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn apps_fold_by_default_from_three_windows() {
-        let s = Shell::new(crate::shell::Options::default());
-        assert!(s.is_folded("firefox", 3, false));
-        assert!(!s.is_folded("firefox", 3, true));
-        assert!(!s.is_folded("foot", 2, false));
-    }
-}
-
 impl Shell {
     /// Look up the icons of apps in the Deskbar the shell has no glyph
     /// for (once each; PNGs only, at 16pt on a 2× screen).
@@ -302,5 +289,18 @@ impl Shell {
                 .and_then(|p| aizome_kit::Image::open(p).ok());
             self.icons.insert(app, image);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn apps_fold_by_default_from_three_windows() {
+        let s = Shell::new(crate::shell::Options::default());
+        assert!(s.is_folded("firefox", 3, false));
+        assert!(!s.is_folded("firefox", 3, true));
+        assert!(!s.is_folded("foot", 2, false));
     }
 }

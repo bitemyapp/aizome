@@ -70,7 +70,7 @@ impl Local {
         let (h, suffix) = match format {
             ClockFormat::H24 => (format!("{:02}", self.hour), ""),
             ClockFormat::H12 => {
-                let h = if self.hour % 12 == 0 { 12 } else { self.hour % 12 };
+                let h = if self.hour.is_multiple_of(12) { 12 } else { self.hour % 12 };
                 (h.to_string(), if self.hour < 12 { " AM" } else { " PM" })
             }
         };
