@@ -69,6 +69,12 @@ pub enum Msg {
     /// selection), for a menu waiting on it.
     Selection(u64, Option<String>),
     Note(crate::notifications::server::NoteEvent),
+    /// The bar's menu of generation `n` closed.
+    MenuClosed(u64),
+    /// ← (-1) or → (1) past the bar's open menu.
+    BarSide(i32),
+    /// Typed in the Toolchest: the palette takes over.
+    ToolchestTyped(String),
     /// The bar's notification line has shown long enough.
     BannerDone(u32),
     /// Nothing: a message to wake the loop.
@@ -208,6 +214,11 @@ pub struct Shell {
     pub(crate) icon_lookup: Option<aizome_sys::apps::IconLookup>,
     /// The primary bar's Desks, by where they are across it.
     pub(crate) desk_strip: Vec<(u32, Rect)>,
+    /// The bar menu open (its title lit).
+    pub bar_menu: Option<crate::barmenus::BarMenu>,
+    pub(crate) menu_gen: u64,
+    /// The bar menu that closed last, and when (a press on its title closed it).
+    pub(crate) just_closed: Option<(WindowKey, Slot, std::time::Instant)>,
     pub(crate) text: aizome_kit::text::TextCache,
     launches: HashMap<ActivationRequest, (Launch, Option<PathBuf>)>,
     stream: Option<MsgSender<Msg>>,
@@ -281,6 +292,9 @@ impl Shell {
             icons: HashMap::new(),
             icon_lookup: None,
             desk_strip: Vec::new(),
+            bar_menu: None,
+            menu_gen: 0,
+            just_closed: None,
             text: aizome_kit::text::TextCache::default(),
             launches: HashMap::new(),
             stream: None,
@@ -404,7 +418,11 @@ impl Shell {
         BarModel {
             app_name,
             menus: menus.iter().map(|m| m.title.clone()).collect(),
-            open: self.panel.as_ref().filter(|p| Some(p.bar) == screen.bar).map(|p| Slot::Tray(p.widget)),
+            open: self
+                .bar_menu
+                .filter(|m| Some(m.bar) == screen.bar)
+                .map(|m| m.slot)
+                .or_else(|| self.panel.as_ref().filter(|p| Some(p.bar) == screen.bar).map(|p| Slot::Tray(p.widget))),
             desks: self.wm.desks.clone(),
             renaming: self.renaming.clone(),
             tray: self.tray.clone(),
@@ -420,8 +438,14 @@ impl Shell {
     fn bar(&mut self, win: WindowKey, msg: BarMsg, cx: &mut Cx<Msg>) {
         match msg {
             BarMsg::Run(a) => self.run(a, cx),
-            BarMsg::Press(slot, rect) => self.open_slot(win, slot, rect, cx),
-            BarMsg::Hover(_) => {}
+            BarMsg::Press(slot, rect) => {
+                // Pressing the open menu's title closes it (the press closed
+                // the menus before it got here).
+                if !self.pressed_to_close(win, slot) {
+                    self.open_slot(win, slot, rect, false, cx);
+                }
+            }
+            BarMsg::Hover(slot) => self.hover_title(win, slot, cx),
             BarMsg::RenameText(t) => {
                 if let Some((_, s)) = &mut self.renaming {
                     *s = t;
@@ -447,8 +471,9 @@ impl Shell {
         }
     }
 
-    /// Open what a slot of the bar opens.
-    fn open_slot(&mut self, win: WindowKey, slot: Slot, rect: Rect, cx: &mut Cx<Msg>) {
+    /// Open what a slot of the bar opens (from the keyboard: the menu's
+    /// first row lit).
+    pub(crate) fn open_slot(&mut self, win: WindowKey, slot: Slot, rect: Rect, keyboard: bool, cx: &mut Cx<Msg>) {
         match slot {
             Slot::Toolchest => {
                 if self.opts.live {
@@ -458,7 +483,8 @@ impl Shell {
                 let anchor = Rect::new(rect.x0, rect.y0, rect.x1, crate::menubar::HEIGHT - 1.0);
                 let output = self.screen_of(win).map(|s| s.name()).unwrap_or_default();
                 let tear = Msg::TearOff { app: crate::tearoff::TOOLCHEST.into(), path: vec![], output, at: Point::new(rect.x0 + 12.0, crate::menubar::HEIGHT + 12.0) };
-                let style = MenuStyle::below().titled("Toolchest").mark().min_width(rect.width()).on_tear_off(tear);
+                let style = MenuStyle::below().titled("Toolchest").mark().min_width(rect.width()).on_tear_off(tear).on_type(Msg::ToolchestTyped);
+                let style = self.as_bar_menu(style, win, slot, keyboard);
                 self.show_menu(win, anchor, &menu, style, cx);
             }
             Slot::Menu(i) => {
@@ -468,7 +494,8 @@ impl Shell {
                     self.about_to_show(pid, id);
                 }
                 let anchor = Rect::new(rect.x0, rect.y0, rect.x1, crate::menubar::HEIGHT - 1.0);
-                self.show_menu(win, anchor, menu, MenuStyle::below(), cx);
+                let style = self.as_bar_menu(MenuStyle::below(), win, slot, keyboard);
+                self.show_menu(win, anchor, menu, style, cx);
             }
             Slot::Tray(w) => {
                 if w == TrayWidget::Sound && self.opts.live {
@@ -739,6 +766,9 @@ impl Shell {
     fn binding(&mut self, action: &str, pointer: Option<(f64, f64)>, output: Option<String>, cx: &mut Cx<Msg>) {
         match action {
             "toolchest" => self.open_toolchest(output.as_deref(), cx),
+            "menu-bar" => {
+                self.focus_menu_bar(output.as_deref(), cx);
+            }
             "palette" => self.toggle_palette(None, String::new(), cx),
             "lock" => self.lock(cx),
             "app-menu" => {
@@ -758,8 +788,9 @@ impl Shell {
     pub fn open_toolchest(&mut self, output: Option<&str>, cx: &mut Cx<Msg>) {
         let screen = output.and_then(|n| self.screen_named(n)).or(self.focused_screen());
         let Some(bar) = screen.and_then(|s| s.bar) else { return };
-        // The Toolchest button's place: the bar's left.
-        self.open_slot(bar, Slot::Toolchest, Rect::new(0.0, 0.0, 92.0, crate::menubar::HEIGHT), cx);
+        // Under the Toolchest button, its first row lit (a key opened it).
+        let rect = self.titles(bar, cx).first().map_or(Rect::new(0.0, 0.0, 92.0, crate::menubar::HEIGHT), |t| t.1);
+        self.open_slot(bar, Slot::Toolchest, rect, true, cx);
     }
 
     fn reload_settings(&mut self) {
@@ -868,6 +899,10 @@ impl Shell {
                 }
                 (true, String::new())
             }
+            proto::ShellRequest::MenuBar { output } => {
+                let ok = self.focus_menu_bar(output.as_deref(), cx);
+                (ok, if ok { String::new() } else { "no menu bar there".into() })
+            }
             other => (false, format!("not yet: {other:?}")),
         }
     }
@@ -906,6 +941,10 @@ impl Program for Shell {
     }
 
     fn update(&mut self, msg: Msg, cx: &mut Cx<Msg>) {
+        // A menu's closing counts as a press's doing only right before it.
+        if !matches!(msg, Msg::Bar(_, BarMsg::Press(..))) {
+            self.just_closed = None;
+        }
         match msg {
             Msg::Ipc(e) => self.take_ipc(e, cx),
             Msg::Server(e) => self.take_server(e, cx),
@@ -958,6 +997,9 @@ impl Program for Shell {
             }
             Msg::Note(e) => self.take_note(e, cx),
             Msg::BannerDone(id) => self.banner_done(id, cx),
+            Msg::MenuClosed(n) => self.menu_closed(n),
+            Msg::BarSide(d) => self.bar_side(d, cx),
+            Msg::ToolchestTyped(text) => self.toolchest_typed(text, cx),
             Msg::Nothing => {}
         }
         self.after_update(cx);
@@ -1139,8 +1181,8 @@ impl Shell {
         let (_, menus) = self.focused_menus();
         let Some(i) = menus.iter().position(|m| m.title == first) else { return };
         let Some(bar) = self.focused_screen().and_then(|s| s.bar) else { return };
-        let x = 92.0 + 40.0 * i as f64;
-        self.open_slot(bar, Slot::Menu(i), Rect::new(x, 0.0, x + 40.0, crate::menubar::HEIGHT), cx);
+        let Some((_, rect)) = self.titles(bar, cx).into_iter().find(|(s, _)| *s == Slot::Menu(i)) else { return };
+        self.open_slot(bar, Slot::Menu(i), rect, false, cx);
     }
 
     /// Night or Day: written to the settings, which the compositor and every

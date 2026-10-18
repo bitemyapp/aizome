@@ -94,3 +94,101 @@ fn pictures_of_menus() {
         aizome_kit::testing::assert_golden(&mut h, p, golden(&name), 2.0);
     }
 }
+
+/// The bar's titles, as laid out, and the one lit.
+fn titles(h: &mut aizome_kit::testing::Harness<aizome_shell::shell::Shell>, bar: WindowKey) -> Vec<(Slot, Rect)> {
+    let theme = h.theme().clone();
+    h.program_mut().title_rects(bar, &theme)
+}
+
+fn lit(h: &aizome_kit::testing::Harness<aizome_shell::shell::Shell>) -> Option<Slot> {
+    let screen = h.program().screens[0].clone();
+    h.program().bar_model(&screen).open
+}
+
+fn center_of(titles: &[(Slot, Rect)], slot: Slot) -> Point {
+    titles.iter().find(|(s, _)| *s == slot).expect("the title").1.center()
+}
+
+#[test]
+fn a_title_stays_lit_while_its_menu_is_open_and_the_pointer_slides_along() {
+    use aizome_kit::sidestep_ui::{Modifiers, NamedKey};
+    let mut h = scene(false);
+    let bar = window_titled(&h, "Menu bar");
+    let t = titles(&mut h, bar);
+    // The geometry is the bar's: the titles are where the bar draws them.
+    let format = t.iter().find(|(s, _)| *s == Slot::Menu(4)).unwrap().1;
+    assert_eq!(h.find(bar, "Format").map(|r| (r.x0, r.x1)), Some((format.x0, format.x1)));
+
+    h.click(bar, center_of(&t, Slot::Menu(4)));
+    assert_eq!(h.popups(bar).len(), 1);
+    assert_eq!(lit(&h), Some(Slot::Menu(4)), "Format is lit");
+    // Escape closes it; the title goes back.
+    h.named(bar, NamedKey::Escape, Modifiers::NONE);
+    assert!(h.popups(bar).is_empty());
+    assert_eq!(lit(&h), None);
+
+    // With a menu open (a moment later: a press right as a menu closes
+    // is taken for the press that closed it), the pointer onto another
+    // title opens that one's.
+    std::thread::sleep(Duration::from_millis(60));
+    h.click(bar, center_of(&t, Slot::Menu(4)));
+    h.move_to(bar, center_of(&t, Slot::Menu(2)));
+    assert_eq!(lit(&h), Some(Slot::Menu(2)), "Edit's menu now");
+    let (_, at) = h.popups(bar)[0];
+    assert_eq!(at.x0, t.iter().find(|(s, _)| *s == Slot::Menu(2)).unwrap().1.x0);
+    // Pressing its title again closes it, and it stays closed.
+    h.click(bar, center_of(&t, Slot::Menu(2)));
+    assert!(h.popups(bar).is_empty());
+    assert_eq!(lit(&h), None);
+    // Without a menu open, the pointer passing over titles opens nothing.
+    h.move_to(bar, center_of(&t, Slot::Menu(5)));
+    assert!(h.popups(bar).is_empty());
+}
+
+#[test]
+fn f10_gives_the_bar_the_keyboard_and_the_arrows_go_across_it() {
+    use aizome_kit::sidestep_ui::{Modifiers, NamedKey};
+    let mut h = scene(false);
+    let bar = window_titled(&h, "Menu bar");
+    let binding = |a: &str| Msg::Ipc(IpcEvent::Event(Event::Binding { action: a.into(), pointer: None, output: None }));
+    h.send(binding("menu-bar"));
+    assert_eq!(lit(&h), Some(Slot::Menu(0)), "the app's menu, under its name");
+    // → on a row without a submenu: File; ← twice: back past Sumi to the
+    // Toolchest; once more round to Help at the end.
+    h.named(bar, NamedKey::ArrowRight, Modifiers::NONE);
+    assert_eq!(lit(&h), Some(Slot::Menu(1)));
+    h.named(bar, NamedKey::ArrowLeft, Modifiers::NONE);
+    h.named(bar, NamedKey::ArrowLeft, Modifiers::NONE);
+    assert_eq!(lit(&h), Some(Slot::Toolchest));
+    h.named(bar, NamedKey::ArrowLeft, Modifiers::NONE);
+    assert_eq!(lit(&h), Some(Slot::Menu(6)));
+    assert_eq!(h.popups(bar).len(), 1, "one menu at a time");
+    // Its first row is lit already: Return chooses it, and the menu goes.
+    h.named(bar, NamedKey::Enter, Modifiers::NONE);
+    assert!(h.popups(bar).is_empty());
+    assert_eq!(lit(&h), None);
+    // A notification's line gives way to the menus.
+    h.send(Msg::Note(aizome_shell::notifications::server::NoteEvent::Notify(
+        70,
+        Box::new(aizome_shell::notifications::store::Incoming { app_name: "Mail".into(), summary: "Lunch?".into(), ..Default::default() }),
+    )));
+    assert!(h.program().banner.is_some());
+    h.send(binding("menu-bar"));
+    assert!(h.program().banner.is_none());
+    assert_eq!(lit(&h), Some(Slot::Menu(0)));
+}
+
+#[test]
+fn typing_in_the_toolchest_turns_it_into_the_palette() {
+    let mut h = scene(false);
+    let bar = window_titled(&h, "Menu bar");
+    let t = titles(&mut h, bar);
+    h.click(bar, center_of(&t, Slot::Toolchest));
+    assert_eq!(lit(&h), Some(Slot::Toolchest));
+    h.type_text(bar, "w");
+    assert!(h.popups(bar).is_empty(), "the Toolchest made way");
+    let p = window_titled(&h, "Palette");
+    assert_eq!(h.program().palette.as_ref().map(|p| p.query.as_str()), Some("w"));
+    let _ = p;
+}

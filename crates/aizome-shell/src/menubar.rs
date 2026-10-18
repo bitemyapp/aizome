@@ -220,7 +220,7 @@ fn title(label: String, weight: f32, pad_l: f64, pad_r: f64, open: bool, slot: S
 
 /// The Toolchest button: the mark and "Toolchest" condensed, a `line`
 /// rule at its right.
-fn toolchest(open: bool) -> Element<BarMsg> {
+fn toolchest(open: bool, menu_open: bool) -> Element<BarMsg> {
     drawn(0.0, HEIGHT, open, move |cx| {
         let t = cx.theme();
         let b = cx.bounds();
@@ -245,6 +245,7 @@ fn toolchest(open: bool) -> Element<BarMsg> {
         32.0 + cx.measure("Toolchest", &spec).width + 10.0 + 1.0
     })
     .on_press(|p: Press| BarMsg::Press(Slot::Toolchest, p.rect))
+    .on_hover_if(menu_open, BarMsg::Hover(Slot::Toolchest))
     .text("Toolchest", SemanticRole::MenuItem)
     .into()
 }
@@ -576,7 +577,7 @@ fn header(model: &BarModel) -> Element<BarMsg> {
 /// The menu bar of one output.
 pub fn view(model: &BarModel) -> Element<BarMsg> {
     let menu_open = matches!(model.open, Some(Slot::Menu(_) | Slot::Toolchest));
-    let mut left: Vec<Element<BarMsg>> = vec![toolchest(model.open == Some(Slot::Toolchest))];
+    let mut left: Vec<Element<BarMsg>> = vec![toolchest(model.open == Some(Slot::Toolchest), menu_open)];
     match &model.banner {
         Some(b) => left.push(banner(b)),
         None => {
@@ -692,6 +693,30 @@ pub fn desk_rects(t: &aizome_kit::Theme, m: &mut Measure, model: &BarModel, widt
             let r = Rect::new(x, 0.0, x + w, HEIGHT);
             x += w;
             (i, r)
+        })
+        .collect()
+}
+
+/// Where the bar's titles are, as `view` lays them out: the Toolchest
+/// button, then (unless a notification has the line) the app's name and
+/// its menus.
+pub fn title_rects(t: &aizome_kit::Theme, m: &mut Measure, model: &BarModel) -> Vec<(Slot, Rect)> {
+    let mut widths = vec![(Slot::Toolchest, (32.0 + m("Toolchest", &look::condensed(12.0 * t.metrics.factor, typeface::WEIGHT_SEMIBOLD, t.text())) + 10.0 + 1.0).ceil())];
+    if model.banner.is_none() {
+        if !model.app_name.is_empty() {
+            widths.push((Slot::Menu(0), (12.0 + 9.0 + m(&model.app_name, &ui_spec(t, typeface::BODY, typeface::WEIGHT_BOLD, t.text()))).ceil()));
+        }
+        for (i, title) in model.menus.iter().enumerate().skip(1) {
+            widths.push((Slot::Menu(i), (9.0 + 9.0 + m(title, &ui_spec(t, typeface::BODY, typeface::WEIGHT_REGULAR, t.text()))).ceil()));
+        }
+    }
+    let mut x = 0.0;
+    widths
+        .into_iter()
+        .map(|(s, w)| {
+            let r = Rect::new(x, 0.0, x + w, HEIGHT);
+            x += w;
+            (s, r)
         })
         .collect()
 }
