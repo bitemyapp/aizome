@@ -439,7 +439,28 @@ impl Udev {
         }
     }
 
-    /// Night Light: a temperature through every CRTC's gamma ramp.
+    fn crtc_of(&self, output: &Output) -> Option<(&DrmDevice, crtc::Handle)> {
+        let id = output.user_data().get::<UdevOutputId>()?;
+        let d = self.devices.get(&id.node)?;
+        d.surfaces.contains_key(&id.crtc).then_some(())?;
+        let drm = match &d.manager {
+            Manager::Gles(m) => m.device(),
+            Manager::Pixman(m) => m.device(),
+        };
+        Some((drm, id.crtc))
+    }
+
+    pub fn gamma_size(&self, output: &Output) -> usize {
+        self.crtc_of(output).and_then(|(drm, crtc)| drm.get_crtc(crtc).ok()).map(|c| c.gamma_length() as usize).unwrap_or(0)
+    }
+
+    pub fn set_gamma(&mut self, output: &Output, r: &[u16], g: &[u16], b: &[u16]) -> Result<(), String> {
+        let (drm, crtc) = self.crtc_of(output).ok_or("not a driven output")?;
+        drm.set_gamma(crtc, r, g, b).map_err(|e| e.to_string())
+    }
+
+    /// Night Light: a temperature through every CRTC's gamma ramp (but
+    /// those a wlr-gamma-control client holds).
     pub fn set_temperature(&mut self, az: &mut Aizome, kelvin: u32) {
         for d in self.devices.values() {
             let drm = match &d.manager {
@@ -447,6 +468,9 @@ impl Udev {
                 Manager::Pixman(m) => m.device(),
             };
             for (crtc, s) in &d.surfaces {
+                if az.out.get(&s.output).is_some_and(|o| o.gamma_client) {
+                    continue;
+                }
                 let size = drm.get_crtc(*crtc).map(|c| c.gamma_length() as usize).unwrap_or(0);
                 let ok = size > 1 && {
                     let (r, g, b) = crate::night::ramps(kelvin, size);

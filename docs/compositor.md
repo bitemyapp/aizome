@@ -70,10 +70,11 @@ idle-notify, idle-inhibit, keyboard-shortcuts-inhibit, pointer-constraints,
 relative-pointer, pointer-gestures, text-input-v3, input-method-v2,
 virtual-keyboard, security-context, content-type, tablet, alpha-modifier,
 fifo, commit-timing, xdg-toplevel-icon, ext-foreign-toplevel-list,
-wlr-foreign-toplevel-management (3), wlr-output-management (4) and
-wlr-screencopy (3). Privileged ones (layer shell, session lock, data
-control, input method, virtual keyboard, screencopy, foreign toplevel
-management, output management, foreign toplevel list) aren't offered
+wlr-foreign-toplevel-management (3), wlr-output-management (4),
+wlr-screencopy (3) and wlr-gamma-control (1). Privileged ones (layer shell,
+session lock, data control, input method, virtual keyboard, screencopy,
+foreign toplevel management, output management, foreign toplevel list,
+gamma control) aren't offered
 inside a security context.
 
 Notes for client authors:
@@ -131,7 +132,10 @@ Notes for client authors:
   for the session. It goes through the CRTC's gamma LUT (legacy gamma
   ioctl), the same under GLES and pixman, and re-applies after a VT
   switch; outputs without gamma (headless, winit, virtio-gpu) can't show
-  it, and the IPC says which can. Screenshots are untinted.
+  it, and the IPC says which can. Screenshots are untinted. A
+  wlr-gamma-control client (gammastep, wlsunset) holding an output's ramps
+  takes it over from Night Light until it lets go; outputs without gamma
+  answer it `failed`.
 - **Renderer**: `[performance] renderer` (`auto`, `gpu`, `software`) picks
   GLES or pixman at start-up unless `--renderer` or `AIZOME_RENDERER` say
   otherwise; `stats` reports when it differs from the running one.

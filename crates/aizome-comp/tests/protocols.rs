@@ -356,3 +356,51 @@ impl Dispatch<wl_data_source::WlDataSource, ()> for Probe {
         }
     }
 }
+
+// ---- wlr-gamma-control --------------------------------------------------------
+
+use wayland_client::protocol::wl_output;
+use wayland_protocols_wlr::gamma_control::v1::client::{zwlr_gamma_control_manager_v1, zwlr_gamma_control_v1};
+
+#[derive(Default)]
+struct Gamma {
+    size: Option<u32>,
+    failed: bool,
+}
+
+impl Dispatch<wl_registry::WlRegistry, GlobalListContents> for Gamma {
+    fn event(_: &mut Self, _: &wl_registry::WlRegistry, _: wl_registry::Event, _: &GlobalListContents, _: &Connection, _: &QueueHandle<Self>) {}
+}
+
+impl Dispatch<wl_output::WlOutput, ()> for Gamma {
+    fn event(_: &mut Self, _: &wl_output::WlOutput, _: wl_output::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {}
+}
+
+impl Dispatch<zwlr_gamma_control_manager_v1::ZwlrGammaControlManagerV1, ()> for Gamma {
+    fn event(_: &mut Self, _: &zwlr_gamma_control_manager_v1::ZwlrGammaControlManagerV1, _: zwlr_gamma_control_manager_v1::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {}
+}
+
+impl Dispatch<zwlr_gamma_control_v1::ZwlrGammaControlV1, ()> for Gamma {
+    fn event(g: &mut Self, _: &zwlr_gamma_control_v1::ZwlrGammaControlV1, event: zwlr_gamma_control_v1::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
+        match event {
+            zwlr_gamma_control_v1::Event::GammaSize { size } => g.size = Some(size),
+            zwlr_gamma_control_v1::Event::Failed => g.failed = true,
+            _ => {}
+        }
+    }
+}
+
+#[test]
+fn gamma_control_is_offered_and_refused_where_there_is_no_gamma() {
+    let c = Compositor::start(Options::default());
+    let conn = Connection::from_socket(UnixStream::connect(c.dir.join(&c.socket)).unwrap()).unwrap();
+    let (globals, mut queue) = registry_queue_init::<Gamma>(&conn).unwrap();
+    let qh = queue.handle();
+    let manager: zwlr_gamma_control_manager_v1::ZwlrGammaControlManagerV1 = globals.bind(&qh, 1..=1, ()).expect("the gamma control global");
+    let output: wl_output::WlOutput = globals.bind(&qh, 1..=4, ()).unwrap();
+    let _control = manager.get_gamma_control(&output, &qh, ());
+    let mut g = Gamma::default();
+    queue.roundtrip(&mut g).unwrap();
+    // Headless outputs have no CRTC to take ramps.
+    assert!(g.failed && g.size.is_none());
+}

@@ -148,6 +148,8 @@ pub struct OutputState {
     pub refresh: Duration,
     /// The display takes gamma ramps (Night Light).
     pub gamma: bool,
+    /// A wlr-gamma-control client holds its ramps.
+    pub gamma_client: bool,
 }
 
 impl OutputState {
@@ -167,6 +169,7 @@ impl OutputState {
             last_frame: None,
             refresh,
             gamma: false,
+            gamma_client: false,
         }
     }
 }
@@ -395,6 +398,7 @@ impl State {
         let foreign_toplevel_list = ForeignToplevelListState::new_with_filter::<State>(&dh, client_is_privileged);
         let foreign_toplevel_mgmt = ForeignToplevelManagerState::new::<State, _>(&dh, client_is_privileged);
         let screencopy = ScreencopyManagerState::new::<State, _>(&dh, client_is_privileged);
+        crate::protocols::gamma_control::create_global(&dh, client_is_privileged);
         let output_management = OutputManagementState::new::<State, _>(&dh, client_is_privileged);
 
         let mut seat = seat_state.new_wl_seat(&dh, backend.seat_name());

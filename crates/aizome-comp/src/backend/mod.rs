@@ -144,6 +144,22 @@ impl Backend {
         }
     }
 
+    /// How many entries an output's gamma ramps have (0: none).
+    pub fn gamma_size(&self, output: &Output) -> usize {
+        match self {
+            Backend::Udev(u) => u.gamma_size(output),
+            _ => 0,
+        }
+    }
+
+    /// Sets an output's gamma ramps (wlr-gamma-control).
+    pub fn set_gamma(&mut self, output: &Output, r: &[u16], g: &[u16], b: &[u16]) -> Result<(), String> {
+        match self {
+            Backend::Udev(u) => u.set_gamma(output, r, g, b),
+            _ => Err("no gamma here".into()),
+        }
+    }
+
     /// Night Light's temperature on the displays that take gamma ramps.
     pub fn set_temperature(&mut self, az: &mut Aizome, kelvin: u32) {
         if let Backend::Udev(u) = self {
