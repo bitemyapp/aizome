@@ -13,6 +13,17 @@ fn golden(name: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/goldens").join(format!("{name}.png"))
 }
 
+/// Compare the window with the golden `name`: skipped without Aizome's
+/// fonts (`AIZOME_FONT_DIR`), which the goldens are drawn in.
+fn compare(h: &mut Harness<Shitsurae>, name: &str) {
+    if !h.theme().has_ui_font() {
+        eprintln!("skipping the golden {name}: Archivo isn't installed (set AIZOME_FONT_DIR=~/work/.aizome-fonts)");
+        return;
+    }
+    let w = h.window();
+    assert_golden(h, w, golden(name), 1.0);
+}
+
 fn open(target: &str, day: bool) -> Harness<Shitsurae> {
     let dir = common::temp_dir(target);
     let path = dir.join("settings.toml");
@@ -26,9 +37,8 @@ fn open(target: &str, day: bool) -> Harness<Shitsurae> {
 fn check(target: &str, name: &str) {
     for day in [false, true] {
         let mut h = open(target, day);
-        let w = h.window();
         let suffix = if day { "day" } else { "night" };
-        assert_golden(&mut h, w, golden(&format!("{name}-{suffix}")), 1.0);
+        compare(&mut h, &format!("{name}-{suffix}"));
     }
 }
 
@@ -66,9 +76,8 @@ fn battery() {
 fn search_results() {
     for day in [false, true] {
         let mut h = open("keyboard", day);
-        let w = h.window();
         h.send(AppMsg::Search("lock".into()));
         let suffix = if day { "day" } else { "night" };
-        assert_golden(&mut h, w, golden(&format!("search-{suffix}")), 1.0);
+        compare(&mut h, &format!("search-{suffix}"));
     }
 }
