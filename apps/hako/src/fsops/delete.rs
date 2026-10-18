@@ -125,7 +125,7 @@ pub fn measure(path: &Path, control: &Control, limit: u64) -> Option<(u64, u64)>
         if m.is_file() {
             n.1 += m.len();
         }
-        if n.0 % 512 == 0 {
+        if n.0.is_multiple_of(512) {
             control.checkpoint()?;
         }
         if m.is_dir() && n.0 < limit

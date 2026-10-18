@@ -147,7 +147,7 @@ impl Hako {
             DragEvent::Start => {
                 let sources = self.selection_of(w);
                 if let Some(b) = self.windows.get_mut(&w) {
-                    b.drag = (!sources.is_empty()).then(|| Drag { sources, target: None, from: col, spring: 0 });
+                    b.drag = (!sources.is_empty()).then_some(Drag { sources, target: None, from: col, spring: 0 });
                 }
             }
             DragEvent::Over(t) => {

@@ -16,6 +16,10 @@ use aizome_kit::{Align, Constraints, Icon, Layoutable, Length, Point, Rect, Role
 
 use super::dnd::{Dest, Spot, Spots, Target};
 
+/// Where drops on a row go, the spot it is, the window's spots, and the
+/// message for files dropped from another program.
+pub type DropInto<Msg> = (Dest, u64, Spots, Rc<dyn Fn(Dest, Vec<String>) -> Msg>);
+
 /// A sidebar row.
 pub struct PlaceRow<Msg> {
     pub icon: Icon,
@@ -30,7 +34,7 @@ pub struct PlaceRow<Msg> {
     pub on_eject: Option<Msg>,
     pub on_menu: Option<Rc<dyn Fn(Point) -> Msg>>,
     /// Where drops on it go, and the spot it is.
-    pub drop: Option<(Dest, u64, Spots, Rc<dyn Fn(Dest, Vec<String>) -> Msg>)>,
+    pub drop: Option<DropInto<Msg>>,
 }
 
 impl<Msg: Clone + Send + 'static> From<PlaceRow<Msg>> for Element<Msg> {
@@ -177,7 +181,7 @@ pub struct Crumb<Msg> {
     pub current: bool,
     pub lit: bool,
     pub on_press: Option<Msg>,
-    pub drop: Option<(Dest, u64, Spots, Rc<dyn Fn(Dest, Vec<String>) -> Msg>)>,
+    pub drop: Option<DropInto<Msg>>,
 }
 
 impl<Msg: Clone + Send + 'static> From<Crumb<Msg>> for Element<Msg> {

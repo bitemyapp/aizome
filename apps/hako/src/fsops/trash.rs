@@ -705,7 +705,7 @@ mod tests {
         let mode = fs::metadata(t.join("data/Trash")).unwrap().permissions().mode();
         assert_eq!(mode & 0o777, 0o700, "the Trash is private");
 
-        let got = tr.trash(&folder.parent().unwrap().to_path_buf()).unwrap();
+        let got = tr.trash(folder.parent().unwrap()).unwrap();
         assert!(got.file.join("inner/x").exists());
         let sizes = directory_sizes(&tr.home_can());
         assert_eq!(sizes.get(OsStr::new("folder")), Some(&5));

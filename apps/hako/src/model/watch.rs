@@ -156,12 +156,12 @@ mod tests {
             let _ = tx.send(p);
         })
         .unwrap();
-        w.set(&[a.clone()]);
+        w.set(std::slice::from_ref(&a));
         std::fs::write(a.join("new.txt"), "x").unwrap();
         assert_eq!(rx.recv_timeout(Duration::from_secs(2)).unwrap(), a);
         while rx.try_recv().is_ok() {}
         // Only what's watched.
-        w.set(&[b.clone()]);
+        w.set(std::slice::from_ref(&b));
         std::fs::write(a.join("other.txt"), "x").unwrap();
         std::fs::rename(a.join("new.txt"), b.join("moved.txt")).unwrap();
         assert_eq!(rx.recv_timeout(Duration::from_secs(2)).unwrap(), b);

@@ -99,6 +99,7 @@ impl Thumbnails {
 
     /// Keep a thumbnail made from straight RGBA pixels (scaled down to
     /// fit `size`).
+    #[allow(clippy::too_many_arguments)]
     pub fn save(&self, file: &Path, mtime: i64, file_size: u64, mime: &str, rgba: &[u8], width: u32, height: u32, size: ThumbSize) -> io::Result<PathBuf> {
         let uri = file_uri(file);
         let (px, w, h) = scale_to_fit(rgba, width, height, size.pixels());
@@ -203,10 +204,10 @@ pub fn scale_to_fit(rgba: &[u8], w: u32, h: u32, max: u32) -> (Vec<u8>, u32, u32
                 }
             }
             let o = ((y * nw + x) * 4) as usize;
-            if a > 0 {
-                out[o] = (r / a) as u8;
-                out[o + 1] = (g / a) as u8;
-                out[o + 2] = (b / a) as u8;
+            if let (Some(r), Some(g), Some(b)) = (r.checked_div(a), g.checked_div(a), b.checked_div(a)) {
+                out[o] = r as u8;
+                out[o + 1] = g as u8;
+                out[o + 2] = b as u8;
             }
             out[o + 3] = (a / n.max(1)) as u8;
         }

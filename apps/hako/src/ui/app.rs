@@ -403,7 +403,7 @@ impl Hako {
 
     pub(crate) fn handle_request(&mut self, cx: &mut Cx<Msg>, r: Request) {
         let (loc, select) = match &r {
-            Request::Open(p) if p.is_dir() => (Loc::Folder(p.clone()), None),
+            Request::Open(p) if p.is_dir() => (self.loc_for(p), None),
             Request::Open(p) | Request::Reveal(p) => match (p.parent(), p.file_name()) {
                 (Some(dir), Some(name)) => (self.loc_for(dir), Some(name.to_os_string())),
                 _ => (Loc::Folder(p.clone()), None),

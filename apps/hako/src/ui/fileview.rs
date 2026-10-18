@@ -647,33 +647,30 @@ impl<Msg: Clone + Send + 'static> Widget for ViewWidget<Msg> {
             self.v.spots.set(spot, Spot { rect: window_rect, priority: 0, resolve: resolve_fn });
         }
         let active = cx.is_focused() && cx.window_active();
-        if self.n() == 0 {
-            if let Some(m) = &self.v.message {
+        if self.n() == 0
+            && let Some(m) = &self.v.message {
                 let spec = TextSpec { max_lines: 3, wrap: aizome_kit::sidestep_ui::Wrap::Words, align: aizome_kit::sidestep_ui::Alignment::Center, ..TextSpec::new(FontSpec::ui(t.metrics.small + 1.0), t.text3()) };
                 let w = (b.width() - 24.0).max(10.0);
                 let l = cx.layout_text(m, &spec, Some(w));
                 let s = l.size();
                 cx.canvas.draw_text(&l, Point::new(((b.width() - s.width) / 2.0).round(), (b.height() * 0.38 - s.height / 2.0).round()));
             }
-        }
         let header = self.header(t);
         let body = Rect::new(0.0, header, b.x1, b.y1);
         cx.canvas.save();
         cx.canvas.clip_rect(body);
-        let first;
-        let last;
-        match self.v.layout {
+        
+        
+        let (first, last) = match self.v.layout {
             Layout::Icons => {
                 let cols = self.grid_cols();
-                first = ((off / CELL_H).floor().max(0.0) as usize) * cols;
-                last = ((((off + body.height()) / CELL_H).ceil().max(0.0) as usize) * cols).min(self.n());
+                (((off / CELL_H).floor().max(0.0) as usize) * cols, ((((off + body.height()) / CELL_H).ceil().max(0.0) as usize) * cols).min(self.n()))
             }
             _ => {
                 let rh = self.row_h(t);
-                first = (off / rh).floor().max(0.0) as usize;
-                last = (((off + body.height()) / rh).ceil().max(0.0) as usize).min(self.n());
+                ((off / rh).floor().max(0.0) as usize, (((off + body.height()) / rh).ceil().max(0.0) as usize).min(self.n()))
             }
-        }
+        };
         for i in first.min(last)..last {
             let r = self.row_rect(i, off, t);
             if !cx.canvas.needs(r) {

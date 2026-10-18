@@ -16,8 +16,11 @@ pub fn catcher<Msg: Clone + Send + 'static>(child: Element<Msg>, on_key: impl Fn
     Element::new(Catcher { on_key: Rc::new(on_key) }, vec![child])
 }
 
+/// What a key means, if anything.
+type OnKey<Msg> = Rc<dyn Fn(&KeyEvent) -> Option<Msg>>;
+
 struct Catcher<Msg> {
-    on_key: Rc<dyn Fn(&KeyEvent) -> Option<Msg>>,
+    on_key: OnKey<Msg>,
 }
 
 impl<Msg: Clone + Send + 'static> Widget for Catcher<Msg> {

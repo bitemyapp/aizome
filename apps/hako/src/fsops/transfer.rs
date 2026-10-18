@@ -795,9 +795,9 @@ mod tests {
     fn copying_into_its_own_folder_duplicates() {
         let t = TempDir::new("copy-same");
         let f = t.file("doc.txt", "d");
-        let r = quiet(&[f.clone()], t.path(), Mode::Copy);
+        let r = quiet(std::slice::from_ref(&f), t.path(), Mode::Copy);
         assert_eq!(r.done, vec![(f.clone(), t.join("doc copy.txt"))]);
-        let r = duplicate(&[f.clone()], &mut Env::new(&Control::new(), &mut Always(Resolution::Cancel, ErrorChoice::Cancel), &mut ()));
+        let r = duplicate(std::slice::from_ref(&f), &mut Env::new(&Control::new(), &mut Always(Resolution::Cancel, ErrorChoice::Cancel), &mut ()));
         assert_eq!(r.done, vec![(f, t.join("doc copy 2.txt"))]);
     }
 
@@ -807,14 +807,14 @@ mod tests {
         let src = tree(&t, "src");
         let inner = src.join("sub");
         for mode in [Mode::Copy, Mode::Move] {
-            let r = quiet(&[src.clone()], &inner, mode);
+            let r = quiet(std::slice::from_ref(&src), &inner, mode);
             assert_eq!(r.failed.len(), 1, "{r:?}");
             assert!(r.failed[0].1.contains("inside itself"));
             assert_tree(&src);
             assert!(!inner.join("src").exists());
         }
         // Moving a thing to where it is does nothing, quietly.
-        let r = quiet(&[src.clone()], t.path(), Mode::Move);
+        let r = quiet(std::slice::from_ref(&src), t.path(), Mode::Move);
         assert_eq!(r.done, vec![(src.clone(), src.clone())]);
         assert_tree(&src);
     }
@@ -825,7 +825,7 @@ mod tests {
         let src = tree(&t, "src");
         let ino = fs::metadata(src.join("a.txt")).unwrap().ino();
         let dest = t.dir("dest");
-        let r = quiet(&[src.clone()], &dest, Mode::Move);
+        let r = quiet(std::slice::from_ref(&src), &dest, Mode::Move);
         assert!(r.is_clean(), "{r:?}");
         assert!(!src.exists());
         assert_tree(&dest.join("src"));
@@ -935,7 +935,7 @@ mod tests {
         let secret = t.file("src/sub/secret.txt", "unreadable");
         fs::set_permissions(&secret, fs::Permissions::from_mode(0o000)).unwrap();
         let mut s = Script { errors: [ErrorChoice::Skip].into(), ..Default::default() };
-        let r = run(&[src.clone()], other.path(), Mode::Move, &mut s);
+        let r = run(std::slice::from_ref(&src), other.path(), Mode::Move, &mut s);
         assert_eq!(s.asked, ["error read secret.txt"]);
         assert_eq!(r.problems.len(), 1, "{r:?}");
         assert_eq!(r.done.len(), 1);
@@ -997,7 +997,7 @@ mod tests {
             }
         };
         let mut env = Env::new(&control, &mut asker, &mut reporter);
-        let r = transfer(&[big.clone()], &dest, Mode::Copy, &mut env, None);
+        let r = transfer(std::slice::from_ref(&big), &dest, Mode::Copy, &mut env, None);
         assert!(r.cancelled);
         assert_eq!(fs::read_dir(&dest).unwrap().count(), 0, "the partial file is gone");
         assert!(big.exists(), "the source stays");
@@ -1078,7 +1078,7 @@ mod tests {
         assert!(trash.list().is_empty());
         assert_eq!(fs::read_dir(t.join("data/Trash/info")).unwrap().count(), 0);
         // Erase refuses what isn't in a can, and empties what is.
-        trash_items(&[folder.clone()], &trash, &mut Env::new(&control, &mut asker, &mut ()));
+        trash_items(std::slice::from_ref(&folder), &trash, &mut Env::new(&control, &mut asker, &mut ()));
         let mut fake = trash.list()[0].clone();
         fake.file = t.join("home/docs/a.txt");
         fake.name = "a.txt".into();

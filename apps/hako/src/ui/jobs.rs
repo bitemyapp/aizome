@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 use aizome_kit::{MsgSender, WindowKey};
 
 use crate::fsops::archive::{self, Format};
-use crate::fsops::transfer::{self, Item, Mode};
+use crate::fsops::transfer::{self, Mode};
 use crate::fsops::trash::{self, Trash};
 use crate::fsops::undo::{self, Record, Step, items_label};
 use crate::fsops::{Asker, Conflict, Control, Env, ErrorChoice, Failure, Progress, Report, Reporter, Resolution};
@@ -339,11 +339,6 @@ pub fn drop_mode(sources: &[PathBuf], dest: &std::path::Path, copy: bool) -> Mod
     let dev = |p: &std::path::Path| std::fs::metadata(p).ok().map(|m| std::os::unix::fs::MetadataExt::dev(&m));
     let d = dev(dest);
     if sources.iter().all(|s| s.parent().and_then(dev) == d) { Mode::Move } else { Mode::Copy }
-}
-
-#[allow(dead_code)]
-fn _items(i: &[Item]) -> usize {
-    i.len()
 }
 
 #[cfg(test)]
