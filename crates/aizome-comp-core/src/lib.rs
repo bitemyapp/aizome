@@ -83,6 +83,8 @@ pub mod build {
     /// "true" when it was built with Cargo's `--target` (as the Nix package
     /// is): a logic must be too.
     pub const EXPLICIT_TARGET: &str = env!("AIZOME_CORE_EXPLICIT_TARGET");
+    /// Each path package's sources, hashed: `name=hash …`.
+    pub const SOURCES: &str = env!("AIZOME_CORE_SOURCES");
 }
 
 use std::process::ExitCode;

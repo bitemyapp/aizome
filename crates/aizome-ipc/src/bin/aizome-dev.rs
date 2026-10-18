@@ -425,6 +425,9 @@ impl Dev {
             w => w.package(),
         });
         let before = mtime(&out);
+        if *what == What::Logic {
+            self.check_sidestep();
+        }
         let args = self.cargo_args(what);
         say(format!("building {}", what.package()));
         let started = Instant::now();
@@ -473,13 +476,20 @@ impl Dev {
             && built != running
         {
             // Which part of the core differs: the new build's compositor says.
-            let theirs = self.built_core_parts();
+            let theirs = self.built_core_info();
+            let parts = theirs.as_ref().and_then(|t| t["abi_parts"].as_str()).unwrap_or("?").to_string();
+            let mut what = String::new();
+            if let Some(t) = &theirs {
+                let differ = differing(&self.core_str("sources"), t["sources"].as_str().unwrap_or(""));
+                if !differ.is_empty() {
+                    what = format!(" The packages whose sources differ: {}.", differ.join(", "));
+                }
+            }
             return Err(format!(
                 "the logic was built against another compositor core than the session's \
-                 (session: {}; this build: {}). The core changed (its sources, Sidestep, the \
-                 lock file, the toolchain or the flags): that runs at the next login",
+                 (session: {}; this build: {parts}).{what} The core changed (its sources, Sidestep, \
+                 the lock file, the toolchain or the flags): that runs at the next login",
                 self.core_str("abi_parts"),
-                theirs.unwrap_or_else(|| "?".into())
             ));
         }
         reload(Request::Reload {
@@ -491,8 +501,8 @@ impl Dev {
         })
     }
 
-    /// The ABI parts of the compositor core aizome-dev just built.
-    fn built_core_parts(&mut self) -> Option<String> {
+    /// The build info of the compositor core aizome-dev just built.
+    fn built_core_info(&mut self) -> Option<Value> {
         let dir = self.out_dir();
         let env = self.cargo_env().ok()?;
         let rustc = find_in(env.get("PATH")?, "rustc")?;
@@ -504,8 +514,36 @@ impl Dev {
             .env("LD_LIBRARY_PATH", std::env::join_paths([dir.clone(), dir.join("deps"), std_dir]).ok()?)
             .output()
             .ok()?;
-        let v: Value = serde_json::from_slice(&out.stdout).ok()?;
-        v["abi_parts"].as_str().map(String::from)
+        serde_json::from_slice(&out.stdout).ok()
+    }
+
+    /// Whether the checkout's Sidestep is the session's: a word when it
+    /// isn't, as a logic built against it wouldn't load.
+    fn check_sidestep(&self) {
+        let Some(want) = self.env.as_ref().and_then(|e| e["sidestep_rev"].as_str()) else { return };
+        let dir = self.checkout.join("sidestep");
+        let git = |args: &[&str]| {
+            Command::new("git")
+                .arg("-C")
+                .arg(&dir)
+                .args(args)
+                .stderr(Stdio::null())
+                .output()
+                .ok()
+                .filter(|o| o.status.success())
+                .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        };
+        let Some(have) = git(&["rev-parse", "HEAD"]) else { return };
+        let dirty = git(&["status", "--porcelain", "--untracked-files=no"]).is_some_and(|s| !s.is_empty());
+        if have != want || dirty {
+            say(format!(
+                "the session was built against Sidestep {want}, but {} is at {have}{}: the logic \
+                 won't load until they match (`git -C {} switch --detach {want}`, or a worktree there)",
+                dir.display(),
+                if dirty { " with changes" } else { "" },
+                dir.display()
+            ));
+        }
     }
 
     /// Rebuilds and reloads on every save.
@@ -718,6 +756,17 @@ fn print_report(r: &ReloadReport) -> Result<(), String> {
     failed.map_or(Ok(()), Err)
 }
 
+/// The packages whose source hashes differ between two `name=hash …` lists.
+fn differing(a: &str, b: &str) -> Vec<String> {
+    let parse = |s: &str| -> BTreeMap<String, String> {
+        s.split_whitespace().filter_map(|kv| kv.split_once('=')).map(|(k, v)| (k.into(), v.into())).collect()
+    };
+    let (a, b) = (parse(a), parse(b));
+    let mut names: BTreeSet<&String> = a.keys().collect();
+    names.extend(b.keys());
+    names.into_iter().filter(|n| a.get(*n) != b.get(*n)).cloned().collect()
+}
+
 /// The ABI mark a logic library carries.
 fn read_abi(path: &Path) -> Option<String> {
     let bytes = std::fs::read(path).ok()?;
@@ -782,5 +831,13 @@ mod tests {
         assert_eq!(p(&["apps/hako/src/main.rs"]), BTreeSet::from([What::App("hako".into())]));
         assert_eq!(p(&["crates/aizome-kit/src/app.rs"]), BTreeSet::from([What::Logic, What::Shell]));
         assert_eq!(p(&["crates/aizome-comp/tests/reload.rs"]), BTreeSet::new());
+    }
+
+    #[test]
+    fn names_the_packages_that_differ() {
+        assert_eq!(
+            differing("aizome-ipc=aaa sidestep-ui=bbb", "aizome-ipc=aaa sidestep-ui=ccc sidestep-engine=ddd"),
+            ["sidestep-engine", "sidestep-ui"]
+        );
     }
 }

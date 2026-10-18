@@ -752,6 +752,7 @@ pub fn build_info() -> serde_json::Value {
         "opt_level": crate::build::OPT_LEVEL,
         "rustflags": crate::build::RUSTFLAGS,
         "explicit_target": crate::build::EXPLICIT_TARGET == "true",
+        "sources": crate::build::SOURCES,
         "version": env!("CARGO_PKG_VERSION"),
     })
 }

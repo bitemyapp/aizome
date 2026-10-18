@@ -116,6 +116,8 @@ fn main() {
 
     // The path packages' sources.
     let mut sources = Sha256::new();
+    // Each package's too, so a refused logic can say which differ.
+    let mut each_package = Vec::new();
     path_packages.sort();
     for name in &path_packages {
         let Some(dir) = package_dir(&workspace, name) else {
@@ -133,11 +135,16 @@ fn main() {
         files.sort();
         println!("cargo:rerun-if-changed={}", dir.join("src").display());
         println!("cargo:rerun-if-changed={}", dir.join("Cargo.toml").display());
+        let mut this = Sha256::new();
         for f in files {
             let rel = f.strip_prefix(&dir).unwrap_or(&f);
+            let bytes = std::fs::read(&f).unwrap_or_default();
             sources.update(rel.to_string_lossy().as_bytes());
-            sources.update(std::fs::read(&f).unwrap_or_default());
+            sources.update(&bytes);
+            this.update(rel.to_string_lossy().as_bytes());
+            this.update(&bytes);
         }
+        each_package.push(format!("{name}={}", &hex(&this.finalize())[..12]));
     }
     parts.insert("sources", hex(&sources.finalize()));
 
@@ -156,6 +163,7 @@ fn main() {
     println!("cargo:rustc-env=AIZOME_CORE_OPT_LEVEL={}", std::env::var("OPT_LEVEL").unwrap_or_default());
     println!("cargo:rustc-env=AIZOME_CORE_RUSTFLAGS={}", codegen_flags(&flags).join(" "));
     println!("cargo:rustc-env=AIZOME_CORE_EXPLICIT_TARGET={explicit_target}");
+    println!("cargo:rustc-env=AIZOME_CORE_SOURCES={}", each_package.join(" "));
 }
 
 fn digest(bytes: &[u8]) -> String {

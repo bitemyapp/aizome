@@ -87,6 +87,9 @@ let
     cargo_store_path = split cargo;
     rustc_version = rustc.version;
     source_rev = rev;
+    # The Sidestep the core was built against (the flake's `sidestep`
+    # input): a checkout's ../sidestep-aizome must be at it.
+    sidestep_rev = sidestep.rev or null;
   };
 in
 rustPlatform.buildRustPackage {
