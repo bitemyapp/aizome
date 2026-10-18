@@ -25,6 +25,8 @@ pub const APP_ID: &str = "org.aizome.Sumi";
 pub const WINDOW_SIZE: Size = Size::new(698.0, 516.0);
 /// Unsaved text is kept this long after the last change.
 const AUTOSAVE_AFTER: Duration = Duration::from_millis(800);
+/// How soon a colouring pass follows the frame that asked for it.
+const HIGHLIGHT_PASS: Duration = Duration::from_millis(4);
 /// Files bigger than this are read on a thread of their own.
 const READ_IN_BACKGROUND: u64 = 2 << 20;
 /// Documents bigger than this are searched on a thread of their own.
@@ -126,6 +128,8 @@ pub enum Msg {
     Close(WindowKey, CloseChoice),
     Searched(WindowKey, u64, u64, Result<Arc<Vec<Range<usize>>>, String>),
     Autosave(WindowKey, u64),
+    /// Line colours need more working out: a pass a moment from now.
+    HighlightSoon,
     /// Line colours need more working out.
     Highlight,
     ToggleNumbers,
@@ -173,6 +177,8 @@ pub struct Sumi {
     seq: u64,
     /// Whether line colours have a time budget (tests can lift it).
     pub highlight_budget: Duration,
+    /// A colouring pass is due.
+    highlight_soon: bool,
     /// Links ❖-clicked, newest last; opened with xdg-open unless `open_links`
     /// is off (tests).
     pub links: Vec<String>,
@@ -210,6 +216,7 @@ impl Sumi {
             closing: HashSet::new(),
             seq: 0,
             highlight_budget: Duration::from_millis(3),
+            highlight_soon: false,
             links: Vec::new(),
             open_links: true,
         }
@@ -255,7 +262,7 @@ impl Sumi {
             if let Some(tx) = &self.notify {
                 let tx = tx.clone();
                 h.notify = Some(Box::new(move || {
-                    tx.send(Msg::Highlight);
+                    tx.send(Msg::HighlightSoon);
                 }));
             }
         }
@@ -1147,7 +1154,17 @@ impl Program for Sumi {
                     self.autosave_now(w);
                 }
             }
+            Msg::HighlightSoon => {
+                // In a frame of its own, after the one that asked: the pass
+                // spends the colouring budget, and the frame that asked (a
+                // jump to the end of a large file) has its own work.
+                if !self.highlight_soon {
+                    self.highlight_soon = true;
+                    cx.after(HIGHLIGHT_PASS, Msg::Highlight);
+                }
+            }
             Msg::Highlight => {
+                self.highlight_soon = false;
                 for d in self.docs.values_mut() {
                     if let Ok(mut h) = d.highlight.lock() {
                         h.incomplete = false;

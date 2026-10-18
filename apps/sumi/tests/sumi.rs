@@ -514,7 +514,9 @@ fn a_large_file_opens_quickly_and_stays_quick() {
     let t = Instant::now();
     let mut passes = 0;
     while valid(&h) + 30 < lines {
+        // What the highlighter asked for, then the pass it schedules.
         h.send(Msg::Nothing);
+        h.advance(Duration::from_millis(5));
         passes += 1;
         assert!(passes < 100_000);
     }
