@@ -29,7 +29,11 @@ fn starts(h: &Harness<Koyomi>, title: &str) -> Vec<String> {
 
 fn ends(h: &Harness<Koyomi>, title: &str) -> Vec<String> {
     let k = h.program();
-    k.occ.iter().filter(|o| k.store.calendars[o.cal].events[o.event].summary == title).map(|o| o.end.strftime("%H:%M").to_string()).collect()
+    k.occ
+        .iter()
+        .filter(|o| k.store.calendars[o.cal].events[o.event].summary == title)
+        .map(|o| o.end.strftime("%H:%M").to_string())
+        .collect()
 }
 
 /// The calendar file `id` as it is on disk now.
@@ -133,7 +137,10 @@ fn dragging_in_the_week_moves_resizes_and_makes_events() {
     // Undo puts it back, on disk too.
     h.command(w, 'z');
     assert_eq!(starts(&h, "Design review: Koyomi"), ["2026-10-14T14:00"]);
-    assert_eq!(on_disk(&dir, "work").events.iter().find(|e| e.uid == "review@test").unwrap().start.civil(), datetime(2026, 10, 14, 14, 0, 0, 0));
+    assert_eq!(
+        on_disk(&dir, "work").events.iter().find(|e| e.uid == "review@test").unwrap().start.civil(),
+        datetime(2026, 10, 14, 14, 0, 0, 0)
+    );
     h.key(w, Key::Character("z".into()), Modifiers::SUPER | Modifiers::SHIFT);
     assert_eq!(starts(&h, "Design review: Koyomi"), ["2026-10-15T15:00"]);
     h.command(w, 'z');
@@ -159,7 +166,13 @@ fn dragging_in_the_week_moves_resizes_and_makes_events() {
     assert_eq!(starts(&h, "Lunch with Ana"), ["2026-10-12T13:00"]);
     // New events go in the default calendar with the default alert.
     let k = h.program();
-    let (cal, lunch) = k.store.calendars.iter().flat_map(|c| c.events.iter().map(move |e| (c, e))).find(|(_, e)| e.summary == "Lunch with Ana").unwrap();
+    let (cal, lunch) = k
+        .store
+        .calendars
+        .iter()
+        .flat_map(|c| c.events.iter().map(move |e| (c, e)))
+        .find(|(_, e)| e.summary == "Lunch with Ana")
+        .unwrap();
     assert_eq!(cal.id, "home");
     assert_eq!(lunch.alarms[0].minutes_before(), Some(10));
 
@@ -179,14 +192,24 @@ fn a_series_asks_before_it_changes() {
     let w = h.window();
     h.send(Msg::SetView(View::Week));
     // A stand-up block (the sidebar's Up Next has the title too).
-    let one = h.semantics(w).into_iter().find(|(s, _)| s.label.as_deref().is_some_and(|l| l.starts_with("Stand-up, "))).map(|(_, r)| r).expect("a stand-up");
+    let one = h
+        .semantics(w)
+        .into_iter()
+        .find(|(s, _)| s.label.as_deref().is_some_and(|l| l.starts_with("Stand-up, ")))
+        .map(|(_, r)| r)
+        .expect("a stand-up");
     let grid = h.find_id(w, "time-grid").unwrap();
     let col = (grid.width() - 56.0) / 7.0;
     let at = |day: f64| Point::new(grid.x0 + 56.0 + col * (day + 0.5), one.center().y);
     // Thursday's, an hour later: only it.
     h.drag(w, at(3.0), at(3.0) + Vec2::new(0.0, 48.0), 4);
     let texts = h.texts(w);
-    assert!(h.click_text(w, "Only This Event"), "an alert asks: {:?} {:?}", texts.iter().filter(|t| t.contains("Event") || t.contains("Stand")).collect::<Vec<_>>(), h.program().selected);
+    assert!(
+        h.click_text(w, "Only This Event"),
+        "an alert asks: {:?} {:?}",
+        texts.iter().filter(|t| t.contains("Event") || t.contains("Stand")).collect::<Vec<_>>(),
+        h.program().selected
+    );
     let s = starts(&h, "Stand-up");
     assert!(s.contains(&"2026-10-15T10:30".to_owned()) && !s.contains(&"2026-10-15T09:30".to_owned()), "{s:?}");
     assert!(s.contains(&"2026-10-16T09:30".to_owned()));
@@ -214,7 +237,11 @@ fn the_month_moves_events_between_days_and_deletes_with_undo() {
     let mut h = harness("month", ThemeChoice::Night);
     let w = h.window();
     let cell = |h: &Harness<Koyomi>, label: &str| -> Rect {
-        h.semantics(w).into_iter().find(|(s, _)| s.label.as_deref().is_some_and(|l| l.starts_with(label))).map(|(_, r)| r).unwrap_or_else(|| panic!("{label}"))
+        h.semantics(w)
+            .into_iter()
+            .find(|(s, _)| s.label.as_deref().is_some_and(|l| l.starts_with(label)))
+            .map(|(_, r)| r)
+            .unwrap_or_else(|| panic!("{label}"))
     };
     // Wednesday 14: the stand-up (lane 0) and the review (lane 1).
     let wed = cell(&h, "Wednesday 14 October 2026");

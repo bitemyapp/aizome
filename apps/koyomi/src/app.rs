@@ -387,7 +387,13 @@ impl Koyomi {
                 } else if a.year() == z.year() {
                     format!("{} – {} {}", format::month_short(a.month()), format::month_short(z.month()), z.year())
                 } else {
-                    format!("{} {} – {} {}", format::month_short(a.month()), a.year(), format::month_short(z.month()), z.year())
+                    format!(
+                        "{} {} – {} {}",
+                        format::month_short(a.month()),
+                        a.year(),
+                        format::month_short(z.month()),
+                        z.year()
+                    )
                 };
                 (t, None)
             }
@@ -450,8 +456,24 @@ impl Koyomi {
     fn model_key(&self) -> u64 {
         use std::hash::{Hash, Hasher};
         let mut h = std::collections::hash_map::DefaultHasher::new();
-        (self.view, self.cursor, self.mini, self.generation, &self.state.hidden, self.today, self.now.hour(), self.now.minute()).hash(&mut h);
-        (self.weeks(), self.h24(), self.settings.week_numbers, &self.selected.as_ref().map(|s| (&s.cal, &s.uid, s.rid.as_ref().map(|r| r.civil())))).hash(&mut h);
+        (
+            self.view,
+            self.cursor,
+            self.mini,
+            self.generation,
+            &self.state.hidden,
+            self.today,
+            self.now.hour(),
+            self.now.minute(),
+        )
+            .hash(&mut h);
+        (
+            self.weeks(),
+            self.h24(),
+            self.settings.week_numbers,
+            &self.selected.as_ref().map(|s| (&s.cal, &s.uid, s.rid.as_ref().map(|r| r.civil()))),
+        )
+            .hash(&mut h);
         self.scroll.hash(&mut h);
         Rc::as_ptr(&self.occ).hash(&mut h);
         h.finish()
@@ -489,16 +511,29 @@ impl Koyomi {
                     weeks.push((0..7).filter_map(|i| crate::rrule::add_days(d, i)).collect());
                     d = crate::rrule::add_days(d, 7).unwrap_or(z.tomorrow().unwrap_or(z));
                 }
-                let cells = crate::ui::month::build(&weeks, &self.occ, |o| self.chip_of(o), self.anchor.month(), self.today, self.cursor, weekend);
+                let cells = crate::ui::month::build(
+                    &weeks,
+                    &self.occ,
+                    |o| self.chip_of(o),
+                    self.anchor.month(),
+                    self.today,
+                    self.cursor,
+                    weekend,
+                );
                 let names = w.days().iter().map(|d| format::weekday_short(*d).to_uppercase()).collect();
                 m.month = Some(Rc::new(MonthData {
-                    weeks: cells.into_iter().zip(&weeks).map(|(c, days)| (w.number(days[0]), c.into_iter().map(Rc::new).collect())).collect(),
+                    weeks: cells
+                        .into_iter()
+                        .zip(&weeks)
+                        .map(|(c, days)| (w.number(days[0]), c.into_iter().map(Rc::new).collect()))
+                        .collect(),
                     names,
                     week_numbers: self.settings.week_numbers,
                 }));
             }
             View::Week | View::Day => {
-                let days: Vec<Date> = (0..=crate::model::days_between(a, z)).filter_map(|i| crate::rrule::add_days(a, i)).collect();
+                let days: Vec<Date> =
+                    (0..=crate::model::days_between(a, z)).filter_map(|i| crate::rrule::add_days(a, i)).collect();
                 let mut blocks = Vec::new();
                 let mut bars = Vec::new();
                 for o in self.occ.iter() {
@@ -525,7 +560,11 @@ impl Koyomi {
                     }
                     let Some(day) = days.iter().position(|d| *d == o.start.date()) else { continue };
                     let s = o.start.hour() as i32 * 60 + o.start.minute() as i32;
-                    let e_min = if o.end.date() > o.start.date() { 1440 } else { o.end.hour() as i32 * 60 + o.end.minute() as i32 };
+                    let e_min = if o.end.date() > o.start.date() {
+                        1440
+                    } else {
+                        o.end.hour() as i32 * 60 + o.end.minute() as i32
+                    };
                     blocks.push(Block {
                         key,
                         day,
@@ -548,7 +587,9 @@ impl Koyomi {
                 bars.sort_by(|x, y| x.first.cmp(&y.first).then(y.last.cmp(&x.last)));
                 let mut lanes: Vec<Vec<bool>> = Vec::new();
                 for b in bars.iter_mut() {
-                    let lane = (0..).find(|l: &usize| lanes.get(*l).is_none_or(|row| (b.first..=b.last).all(|i| !row[i]))).unwrap_or(0);
+                    let lane = (0..)
+                        .find(|l: &usize| lanes.get(*l).is_none_or(|row| (b.first..=b.last).all(|i| !row[i])))
+                        .unwrap_or(0);
                     if lanes.len() <= lane {
                         lanes.resize(lane + 1, vec![false; days.len()]);
                     }
@@ -574,9 +615,23 @@ impl Koyomi {
                     }
                 }
                 let weekend_cols = days.iter().map(|d| weekend(*d)).collect();
-                m.header = Some(HeaderData { days: days.clone(), today: self.today, cursor: self.cursor, week_number: self.settings.week_numbers.then(|| w.number(a)) });
-                m.strip = Some(Rc::new(StripData { days: days.clone(), bars, lanes: shown_lanes, more, today: self.today }));
-                m.grid = Some(Rc::new(GridData { days, today: self.today, now: self.now, h24: self.h24(), blocks, weekend: weekend_cols, scroll_to: self.scroll }));
+                m.header = Some(HeaderData {
+                    days: days.clone(),
+                    today: self.today,
+                    cursor: self.cursor,
+                    week_number: self.settings.week_numbers.then(|| w.number(a)),
+                });
+                m.strip =
+                    Some(Rc::new(StripData { days: days.clone(), bars, lanes: shown_lanes, more, today: self.today }));
+                m.grid = Some(Rc::new(GridData {
+                    days,
+                    today: self.today,
+                    now: self.now,
+                    h24: self.h24(),
+                    blocks,
+                    weekend: weekend_cols,
+                    scroll_to: self.scroll,
+                }));
             }
             View::Year => {
                 let y = self.anchor.year();
@@ -587,7 +642,15 @@ impl Koyomi {
                 let busy = self.busy_days(start, end);
                 let months = (1..=12)
                     .map(|mo| {
-                        let mut mm = Mini { year: y, month: mo, today: self.today, cursor: self.cursor, range: None, first_day: w.first_day, busy: 0 };
+                        let mut mm = Mini {
+                            year: y,
+                            month: mo,
+                            today: self.today,
+                            cursor: self.cursor,
+                            range: None,
+                            first_day: w.first_day,
+                            busy: 0,
+                        };
                         mm.busy = bits(&busy, mm.first_shown());
                         mm
                     })
@@ -626,7 +689,11 @@ impl Koyomi {
                 } else {
                     format::short_date(o.start.date())
                 };
-                let when = if o.spans_days() { format!("{day}, all day") } else { format!("{day}, {}", format::time(o.start.time(), self.h24())) };
+                let when = if o.spans_days() {
+                    format!("{day}, all day")
+                } else {
+                    format!("{day}, {}", format::time(o.start.time(), self.h24()))
+                };
                 (cal.color, when, if e.summary.is_empty() { "New Event".into() } else { e.summary.clone() })
             })
             .collect();
@@ -650,12 +717,19 @@ impl Koyomi {
     }
 
     pub fn month_model(&self) -> Rc<MonthData> {
-        self.models().month.clone().unwrap_or_else(|| Rc::new(MonthData { weeks: Vec::new(), names: Vec::new(), week_numbers: false }))
+        self.models()
+            .month
+            .clone()
+            .unwrap_or_else(|| Rc::new(MonthData { weeks: Vec::new(), names: Vec::new(), week_numbers: false }))
     }
 
     pub fn week_models(&self) -> (HeaderData, Rc<StripData>, Rc<GridData>) {
         let m = self.models();
-        (m.header.clone().expect("week models"), m.strip.clone().expect("week models"), m.grid.clone().expect("week models"))
+        (
+            m.header.clone().expect("week models"),
+            m.strip.clone().expect("week models"),
+            m.grid.clone().expect("week models"),
+        )
     }
 
     pub fn year_model(&self) -> YearData {
@@ -742,7 +816,11 @@ impl Koyomi {
                 let (path, cal) = self.store.snapshot(i);
                 *self.writing.entry(id.clone()).or_default() += 1;
                 cx.spawn(move || {
-                    let r = path.parent().map(std::fs::create_dir_all).transpose().and_then(|_| settings::write_atomic(&path, cal.to_ics().as_bytes()));
+                    let r = path
+                        .parent()
+                        .map(std::fs::create_dir_all)
+                        .transpose()
+                        .and_then(|_| settings::write_atomic(&path, cal.to_ics().as_bytes()));
                     Msg::Saved(id, store::stamp(&path), r.err().map(|e| e.to_string()))
                 });
             } else if let Err(e) = self.store.save(i) {
@@ -752,7 +830,11 @@ impl Koyomi {
     }
 
     fn snapshot(&self, cal: &str, uid: &str) -> Change {
-        let events = self.store.index_of(cal).map(|i| self.store.calendars[i].events.iter().filter(|e| e.uid == uid).cloned().collect()).unwrap_or_default();
+        let events = self
+            .store
+            .index_of(cal)
+            .map(|i| self.store.calendars[i].events.iter().filter(|e| e.uid == uid).cloned().collect())
+            .unwrap_or_default();
         Change::Events { cal: cal.to_owned(), uid: uid.to_owned(), events }
     }
 
@@ -837,29 +919,49 @@ impl Koyomi {
             self.pending = Some(Pending::Move { r, start, end, all_day });
             cx.alert(
                 self.window,
-                Alert::new("Change this event, or all of them?", "It's one of a series. Changing all of them moves every event in it the same way.")
-                    .default_button("Only This Event", Msg::Scope(Scope::This))
-                    .button("All Events", Msg::Scope(Scope::All))
-                    .cancel_with("Cancel", Msg::ScopeCancel),
+                Alert::new(
+                    "Change this event, or all of them?",
+                    "It's one of a series. Changing all of them moves every event in it the same way.",
+                )
+                .default_button("Only This Event", Msg::Scope(Scope::This))
+                .button("All Events", Msg::Scope(Scope::All))
+                .cancel_with("Cancel", Msg::ScopeCancel),
             );
             return;
         }
         self.do_reschedule(r, start, end, all_day, Scope::This, cx);
     }
 
-    fn do_reschedule(&mut self, r: OccRef, start: DateTime, end: DateTime, all_day: bool, scope: Scope, cx: &mut Cx<Msg>) {
+    fn do_reschedule(
+        &mut self,
+        r: OccRef,
+        start: DateTime,
+        end: DateTime,
+        all_day: bool,
+        scope: Scope,
+        cx: &mut Cx<Msg>,
+    ) {
         let Some(ci) = self.calendar_index(&r.cal) else { return };
         let before = self.snapshot(&r.cal, &r.uid);
         let tz = self.tz.clone();
         let here = self.here.clone();
         if edit::reschedule(&mut self.store.calendars[ci], &r, start, end, all_day, scope, &tz, &here) {
-            let title = self.store.calendars[ci].events.iter().find(|e| e.uid == r.uid).map(|e| e.summary.clone()).unwrap_or_default();
+            let title = self.store.calendars[ci]
+                .events
+                .iter()
+                .find(|e| e.uid == r.uid)
+                .map(|e| e.summary.clone())
+                .unwrap_or_default();
             self.record("Move Event", vec![before]);
             let cal = r.cal.clone();
             self.changed(&cal, cx);
             // The moved occurrence stays selected.
             let moved = OccRef { start, end, all_day, ..r };
-            let found = self.occ.iter().find(|o| moved.is(o, &self.store.calendars)).map(|o| OccRef::of(o, &self.store.calendars));
+            let found = self
+                .occ
+                .iter()
+                .find(|o| moved.is(o, &self.store.calendars))
+                .map(|o| OccRef::of(o, &self.store.calendars));
             self.selected = found.or(Some(moved));
             let when = format::span(start, end, all_day, self.h24());
             self.note(format!("Moved “{title}” to {when} · ❖Z to undo"), cx);
@@ -869,7 +971,12 @@ impl Koyomi {
     fn delete(&mut self, r: OccRef, scope: Scope, cx: &mut Cx<Msg>) {
         let Some(ci) = self.calendar_index(&r.cal) else { return };
         let before = self.snapshot(&r.cal, &r.uid);
-        let title = self.store.calendars[ci].events.iter().find(|e| e.uid == r.uid).map(|e| e.summary.clone()).unwrap_or_default();
+        let title = self.store.calendars[ci]
+            .events
+            .iter()
+            .find(|e| e.uid == r.uid)
+            .map(|e| e.summary.clone())
+            .unwrap_or_default();
         if edit::delete(&mut self.store.calendars[ci], &r, scope) {
             self.record("Delete Event", vec![before]);
             let cal = r.cal.clone();
@@ -885,11 +992,14 @@ impl Koyomi {
             self.pending = Some(Pending::Delete(r));
             cx.alert(
                 self.window,
-                Alert::new("Delete this event, or more of the series?", "It's one of a series. Deleted events can be had back with Undo.")
-                    .destructive_button("Only This Event", Msg::Scope(Scope::This))
-                    .button("This and Later Events", Msg::Scope(Scope::Future))
-                    .button("All Events", Msg::Scope(Scope::All))
-                    .cancel_with("Cancel", Msg::ScopeCancel),
+                Alert::new(
+                    "Delete this event, or more of the series?",
+                    "It's one of a series. Deleted events can be had back with Undo.",
+                )
+                .destructive_button("Only This Event", Msg::Scope(Scope::This))
+                .button("This and Later Events", Msg::Scope(Scope::Future))
+                .button("All Events", Msg::Scope(Scope::All))
+                .cancel_with("Cancel", Msg::ScopeCancel),
             );
         } else {
             self.delete(r, Scope::This, cx);
@@ -899,7 +1009,11 @@ impl Koyomi {
     /// Open the editor for a new event over `[start, end)`.
     fn new_event(&mut self, start: DateTime, end: DateTime, all_day: bool, cx: &mut Cx<Msg>) {
         let Some(cal) = self.default_calendar() else { return };
-        let (s, e) = if all_day { (When::Date(start.date()), When::Date(end.date())) } else { (edit::local_when(start, &self.here), edit::local_when(end, &self.here)) };
+        let (s, e) = if all_day {
+            (When::Date(start.date()), When::Date(end.date()))
+        } else {
+            (edit::local_when(start, &self.here), edit::local_when(end, &self.here))
+        };
         let mut ev = Event::new("", s, e);
         let alert = if all_day { self.settings.default_all_day_alert } else { self.settings.default_alert };
         if let Some(m) = alert {
@@ -922,7 +1036,8 @@ impl Koyomi {
         }
         let (start, end, all_day, id) = (o.start, o.end, o.all_day, cal.id.clone());
         let sheet = cx.show_sheet(self.window);
-        self.editor = Some(Editor::new(sheet, Some(r), series, id, &shown, start, end, all_day, self.today, self.h24()));
+        self.editor =
+            Some(Editor::new(sheet, Some(r), series, id, &shown, start, end, all_day, self.today, self.h24()));
         cx.focus("edit-title");
     }
 
@@ -955,7 +1070,11 @@ impl Koyomi {
         match target {
             None => {
                 let Some(ci) = self.calendar_index(&ed.calendar) else { return };
-                let (s, e) = if ed.all_day { (When::Date(start.date()), When::Date(end.date())) } else { (edit::local_when(start, &here), edit::local_when(end, &here)) };
+                let (s, e) = if ed.all_day {
+                    (When::Date(start.date()), When::Date(end.date()))
+                } else {
+                    (edit::local_when(start, &here), edit::local_when(end, &here))
+                };
                 let mut ev = Event::new(title.clone(), s, e);
                 ev.location = ed.location.trim().to_owned();
                 ev.description = ed.notes.text().trim_end().to_owned();
@@ -986,14 +1105,23 @@ impl Koyomi {
                 }
                 // The event the fields go in: the instance's override, or
                 // the master (or the event itself).
-                let instance = cal.events.iter().position(|e| e.uid == r.uid && e.recurrence_id.as_ref().zip(r.rid.as_ref()).is_some_and(|(a, b)| a.civil() == b.civil()));
+                let instance = cal.events.iter().position(|e| {
+                    e.uid == r.uid
+                        && e.recurrence_id.as_ref().zip(r.rid.as_ref()).is_some_and(|(a, b)| a.civil() == b.civil())
+                });
                 let target_i = match (scope, r.rid.is_some()) {
                     (Scope::This, true) => {
                         if instance.is_none() {
                             // Make the override, unmoved.
                             edit::reschedule(cal, &r, r.start, r.end, r.all_day, Scope::This, &tz, &here);
                         }
-                        cal.events.iter().position(|e| e.uid == r.uid && e.recurrence_id.as_ref().zip(r.rid.as_ref()).is_some_and(|(a, b)| a.civil() == b.civil()))
+                        cal.events.iter().position(|e| {
+                            e.uid == r.uid
+                                && e.recurrence_id
+                                    .as_ref()
+                                    .zip(r.rid.as_ref())
+                                    .is_some_and(|(a, b)| a.civil() == b.civil())
+                        })
                     }
                     _ => cal.master(&r.uid).or(instance),
                 };
@@ -1008,7 +1136,8 @@ impl Koyomi {
                     {
                         let rule = rep.to_rule(&e.start, &tz);
                         let had = e.rrule.clone();
-                        if rule != had && Repeat::from_rule(had.as_ref(), e.start.civil().date()).as_ref() != Some(rep) {
+                        if rule != had && Repeat::from_rule(had.as_ref(), e.start.civil().date()).as_ref() != Some(rep)
+                        {
                             e.rrule = rule;
                         }
                     }
@@ -1020,7 +1149,8 @@ impl Koyomi {
                     && let Some(cj) = self.calendar_index(&ed.calendar)
                 {
                     changes.push(self.snapshot(&ed.calendar, &r.uid));
-                    let moving: Vec<Event> = self.store.calendars[ci].events.iter().filter(|e| e.uid == r.uid).cloned().collect();
+                    let moving: Vec<Event> =
+                        self.store.calendars[ci].events.iter().filter(|e| e.uid == r.uid).cloned().collect();
                     self.store.calendars[ci].events.retain(|e| e.uid != r.uid);
                     self.store.calendars[cj].events.extend(moving);
                     touched.push(ed.calendar.clone());
@@ -1030,7 +1160,12 @@ impl Koyomi {
                     self.changed(&c, cx);
                 }
                 let moved = OccRef { cal: ed.calendar.clone(), start, end, all_day: ed.all_day, ..r };
-                self.selected = self.occ.iter().find(|o| moved.is(o, &self.store.calendars)).map(|o| OccRef::of(o, &self.store.calendars)).or(Some(moved));
+                self.selected = self
+                    .occ
+                    .iter()
+                    .find(|o| moved.is(o, &self.store.calendars))
+                    .map(|o| OccRef::of(o, &self.store.calendars))
+                    .or(Some(moved));
                 self.note(format!("Saved “{title}”"), cx);
             }
         }
@@ -1080,12 +1215,21 @@ impl Koyomi {
                 }
             }
         }
-        parsed.name = names.first().cloned().unwrap_or_else(|| files.first().and_then(|f| f.file_stem()).map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "Imported".into()));
+        parsed.name = names.first().cloned().unwrap_or_else(|| {
+            files
+                .first()
+                .and_then(|f| f.file_stem())
+                .map(|s| s.to_string_lossy().into_owned())
+                .unwrap_or_else(|| "Imported".into())
+        });
         if parsed.events.is_empty() {
             self.note("There are no events in that file.", cx);
             return;
         }
-        let target = into.and_then(|id| self.store.index_of(&id)).or_else(|| self.default_calendar().and_then(|id| self.store.index_of(&id))).unwrap_or(0);
+        let target = into
+            .and_then(|id| self.store.index_of(&id))
+            .or_else(|| self.default_calendar().and_then(|id| self.store.index_of(&id)))
+            .unwrap_or(0);
         let sheet = cx.show_sheet(self.window);
         self.import = Some(ImportSheet { sheet, files, parsed, skipped, target });
     }
@@ -1136,7 +1280,14 @@ impl Koyomi {
         }
         self.note(s, cx);
         // Show where the events are.
-        if let Some(first) = imp.parsed.events.iter().map(|e| e.start.instant(&self.tz)).filter(|t| t.to_zoned(self.tz.clone()).date() >= self.today).min() {
+        if let Some(first) = imp
+            .parsed
+            .events
+            .iter()
+            .map(|e| e.start.instant(&self.tz))
+            .filter(|t| t.to_zoned(self.tz.clone()).date() >= self.today)
+            .min()
+        {
             self.go(first.to_zoned(self.tz.clone()).date());
         }
     }
@@ -1439,24 +1590,41 @@ impl Program for Koyomi {
                 let Some(i) = self.store.index_of(&id) else { return };
                 match settings::write_atomic(&path, self.store.calendars[i].to_ics().as_bytes()) {
                     Ok(()) => self.note(format!("Exported to {}", path.display()), cx),
-                    Err(e) => cx.alert(self.window, Alert::new("The calendar couldn't be exported", format!("{}: {e}", path.display()))),
+                    Err(e) => cx.alert(
+                        self.window,
+                        Alert::new("The calendar couldn't be exported", format!("{}: {e}", path.display())),
+                    ),
                 }
             }
             Msg::ExportTo(_, None) => {}
             Msg::Import => {
-                let dialog = FileDialog::new().title("Import Events").filter("iCalendar", &["ics", "ical", "ifb", "icalendar"]).multiple();
+                let dialog = FileDialog::new()
+                    .title("Import Events")
+                    .filter("iCalendar", &["ics", "ical", "ifb", "icalendar"])
+                    .multiple();
                 cx.open_panel(self.window, dialog, Msg::ImportFiles);
             }
             Msg::ImportInto(id) => {
                 self.settings.default_calendar.get_or_insert(id.clone());
-                let dialog = FileDialog::new().title(format!("Import Events into “{}”", self.store.index_of(&id).map(|i| self.store.calendars[i].name.clone()).unwrap_or_default())).filter("iCalendar", &["ics", "ical"]).multiple();
-                cx.open_panel(self.window, dialog, move |p| Msg::ImportFiles(p.map(|mut v| {
-                    v.push(PathBuf::from(format!("koyomi-into:{id}")));
-                    v
-                })));
+                let dialog = FileDialog::new()
+                    .title(format!(
+                        "Import Events into “{}”",
+                        self.store.index_of(&id).map(|i| self.store.calendars[i].name.clone()).unwrap_or_default()
+                    ))
+                    .filter("iCalendar", &["ics", "ical"])
+                    .multiple();
+                cx.open_panel(self.window, dialog, move |p| {
+                    Msg::ImportFiles(p.map(|mut v| {
+                        v.push(PathBuf::from(format!("koyomi-into:{id}")));
+                        v
+                    }))
+                });
             }
             Msg::ImportFiles(Some(mut files)) => {
-                let into = files.iter().position(|f| f.to_string_lossy().starts_with("koyomi-into:")).map(|i| files.remove(i).to_string_lossy().trim_start_matches("koyomi-into:").to_owned());
+                let into = files
+                    .iter()
+                    .position(|f| f.to_string_lossy().starts_with("koyomi-into:"))
+                    .map(|i| files.remove(i).to_string_lossy().trim_start_matches("koyomi-into:").to_owned());
                 if !files.is_empty() {
                     self.open_import(files, into, cx);
                 }
@@ -1557,10 +1725,12 @@ impl Program for Koyomi {
             Msg::WeekNumbers(on) => self.settings.week_numbers = on,
             Msg::ClockFormat(c) => self.settings.clock = c,
             Msg::DefaultAlert(i) => {
-                self.settings.default_alert = if i == 0 { None } else { crate::ui::editor::TIMED_ALERTS.get(i - 1).map(|(m, _)| *m) };
+                self.settings.default_alert =
+                    if i == 0 { None } else { crate::ui::editor::TIMED_ALERTS.get(i - 1).map(|(m, _)| *m) };
             }
             Msg::DefaultAllDayAlert(i) => {
-                self.settings.default_all_day_alert = if i == 0 { None } else { crate::ui::editor::ALL_DAY_ALERTS.get(i - 1).map(|(m, _)| *m) };
+                self.settings.default_all_day_alert =
+                    if i == 0 { None } else { crate::ui::editor::ALL_DAY_ALERTS.get(i - 1).map(|(m, _)| *m) };
             }
             Msg::Snooze(v) => self.settings.snooze_minutes = v.round().clamp(1.0, 120.0) as i64,
             Msg::DayStarts(v) => {
@@ -1625,11 +1795,19 @@ impl Program for Koyomi {
 
     fn view(&self, window: WindowKey) -> Element<Msg> {
         if let Some(ed) = self.editor.as_ref().filter(|e| e.sheet == window) {
-            let cals: Vec<(String, String)> = self.store.calendars.iter().map(|c| (c.id.clone(), c.name.clone())).collect();
-            return ed.view(&cals, Msg::EditField, Msg::EditSave, Msg::EditCancel, ed.target.as_ref().map(|_| Msg::EditDelete));
+            let cals: Vec<(String, String)> =
+                self.store.calendars.iter().map(|c| (c.id.clone(), c.name.clone())).collect();
+            return ed.view(
+                &cals,
+                Msg::EditField,
+                Msg::EditSave,
+                Msg::EditCancel,
+                ed.target.as_ref().map(|_| Msg::EditDelete),
+            );
         }
         if let Some(n) = self.name.as_ref().filter(|n| n.sheet == window) {
-            let (title, ok) = if n.cal.is_some() { ("Rename Calendar", "Rename") } else { ("New Calendar", "Make Calendar") };
+            let (title, ok) =
+                if n.cal.is_some() { ("Rename Calendar", "Rename") } else { ("New Calendar", "Make Calendar") };
             return ui::name_sheet(title, &n.text, ok, Msg::NameText, Msg::NameDone, Msg::NameCancel);
         }
         if let Some(imp) = self.import.as_ref().filter(|i| i.sheet == window) {

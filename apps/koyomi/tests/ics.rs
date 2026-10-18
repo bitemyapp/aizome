@@ -18,7 +18,14 @@ fn october(cal: &Calendar, zone: &str) -> Vec<(String, String)> {
     let tz = TimeZone::get(zone).unwrap();
     let cals = vec![cal.clone()];
     let ix = Index::new(&cals, &tz);
-    let v: Vec<Occurrence> = occur::occurrences(&cals, &ix, &[true], &tz, datetime(2026, 10, 1, 0, 0, 0, 0), datetime(2026, 11, 1, 0, 0, 0, 0));
+    let v: Vec<Occurrence> = occur::occurrences(
+        &cals,
+        &ix,
+        &[true],
+        &tz,
+        datetime(2026, 10, 1, 0, 0, 0, 0),
+        datetime(2026, 11, 1, 0, 0, 0, 0),
+    );
     v.iter().map(|o| (o.start.to_string(), cals[0].events[o.event].summary.clone())).collect()
 }
 
@@ -76,7 +83,14 @@ fn google_calendar_export() {
     let tz = TimeZone::get("Europe/London").unwrap();
     let cals = vec![cal.clone()];
     let ix = Index::new(&cals, &tz);
-    let march = occur::occurrences(&cals, &ix, &[true], &tz, datetime(2027, 3, 1, 0, 0, 0, 0), datetime(2027, 4, 1, 0, 0, 0, 0));
+    let march = occur::occurrences(
+        &cals,
+        &ix,
+        &[true],
+        &tz,
+        datetime(2027, 3, 1, 0, 0, 0, 0),
+        datetime(2027, 4, 1, 0, 0, 0, 0),
+    );
     assert!(march.iter().any(|m| m.all_day && m.start == datetime(2027, 3, 14, 0, 0, 0, 0)));
     // Climbing's display alarm an hour before; the e-mail one is kept.
     let climbing = cal.events.iter().find(|e| e.summary == "Climbing").unwrap();
@@ -114,10 +128,23 @@ fn apple_calendar_export() {
     let tz = TimeZone::get("America/Los_Angeles").unwrap();
     let cals = vec![cal.clone()];
     let ix = Index::new(&cals, &tz);
-    let rest = occur::occurrences(&cals, &ix, &[true], &tz, datetime(2026, 10, 1, 0, 0, 0, 0), datetime(2027, 6, 1, 0, 0, 0, 0));
+    let rest = occur::occurrences(
+        &cals,
+        &ix,
+        &[true],
+        &tz,
+        datetime(2026, 10, 1, 0, 0, 0, 0),
+        datetime(2027, 6, 1, 0, 0, 0, 0),
+    );
     assert_eq!(rest.iter().filter(|r| cals[0].events[r.event].summary == "Run club").count(), 6);
     // The all-day alarm goes off at 09:00 the day before (wall clock).
-    let alarms = occur::alarms(&cals, &ix, &tz, datetime(2026, 10, 30, 0, 0, 0, 0).to_zoned(tz.clone()).unwrap().timestamp(), datetime(2026, 10, 31, 0, 0, 0, 0).to_zoned(tz.clone()).unwrap().timestamp());
+    let alarms = occur::alarms(
+        &cals,
+        &ix,
+        &tz,
+        datetime(2026, 10, 30, 0, 0, 0, 0).to_zoned(tz.clone()).unwrap().timestamp(),
+        datetime(2026, 10, 31, 0, 0, 0, 0).to_zoned(tz.clone()).unwrap().timestamp(),
+    );
     assert_eq!(alarms.len(), 1);
     assert_eq!(alarms[0].0.to_zoned(tz.clone()).datetime(), datetime(2026, 10, 30, 9, 0, 0, 0));
     round_trips(&cal);
@@ -133,7 +160,10 @@ fn outlook_export() {
         When::Zoned(_, tz) => assert_eq!(&*tz.id, "Europe/Berlin"),
         other => panic!("{other:?}"),
     }
-    assert!(budget.uid.starts_with("040000008200E00074C5B7101A82E008") && budget.uid.ends_with("0B0F67DD1D1F1A54FAE8A3C4A7B0F0E2A"));
+    assert!(
+        budget.uid.starts_with("040000008200E00074C5B7101A82E008")
+            && budget.uid.ends_with("0B0F67DD1D1F1A54FAE8A3C4A7B0F0E2A")
+    );
     let o = october(&cal, "Europe/Berlin");
     assert_eq!(at(&o, datetime(2026, 10, 13, 10, 0, 0, 0)), Some("Budget review"));
     // A "Customized Time Zone" with the US rules: 09:00 EDT is 15:00 in Berlin.
@@ -142,7 +172,14 @@ fn outlook_export() {
     let tz = TimeZone::get("Europe/Berlin").unwrap();
     let cals = vec![cal.clone()];
     let ix = Index::new(&cals, &tz);
-    let all = occur::occurrences(&cals, &ix, &[true], &tz, datetime(2026, 10, 1, 0, 0, 0, 0), datetime(2028, 1, 1, 0, 0, 0, 0));
+    let all = occur::occurrences(
+        &cals,
+        &ix,
+        &[true],
+        &tz,
+        datetime(2026, 10, 1, 0, 0, 0, 0),
+        datetime(2028, 1, 1, 0, 0, 0, 0),
+    );
     let budgets: Vec<String> = all.iter().filter(|r| r.event == 0).map(|r| r.start.date().to_string()).collect();
     assert_eq!(budgets.first().map(String::as_str), Some("2026-10-13"));
     assert_eq!(budgets[1], "2026-11-10");

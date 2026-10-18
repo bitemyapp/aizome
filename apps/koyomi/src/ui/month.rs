@@ -39,8 +39,14 @@ pub enum ChipKind {
     /// An all-day or multi-day event: a bar across its days. `seg` is
     /// the day's place along the bar in its week (the title runs on
     /// from the first).
-    Bar { seg: u8, before: bool, after: bool },
-    Timed { time: Arc<str> },
+    Bar {
+        seg: u8,
+        before: bool,
+        after: bool,
+    },
+    Timed {
+        time: Arc<str>,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Hash)]
@@ -104,11 +110,19 @@ pub fn build(
         let (first, last) = (days[0], days[days.len() - 1]);
         let mut cells: Vec<DayData> = days
             .iter()
-            .map(|d| DayData { date: *d, in_month: d.month() == month, today: *d == today, selected: *d == cursor, weekend: weekend(*d), lanes: Vec::new() })
+            .map(|d| DayData {
+                date: *d,
+                in_month: d.month() == month,
+                today: *d == today,
+                selected: *d == cursor,
+                weekend: weekend(*d),
+                lanes: Vec::new(),
+            })
             .collect();
         // Bars first, longest first, each in the lowest lane free on all
         // its days.
-        let mut bars: Vec<&Occurrence> = occ.iter().filter(|o| o.spans_days() && o.first_day() <= last && o.last_day() >= first).collect();
+        let mut bars: Vec<&Occurrence> =
+            occ.iter().filter(|o| o.spans_days() && o.first_day() <= last && o.last_day() >= first).collect();
         bars.sort_by(|a, b| a.first_day().cmp(&b.first_day()).then((b.last_day(), b.end).cmp(&(a.last_day(), a.end))));
         for o in bars {
             let (key, title, dye, selected, _) = chip(o);
@@ -121,7 +135,11 @@ pub fn build(
                 }
                 cell.lanes[lane] = Some(Chip {
                     key,
-                    kind: ChipKind::Bar { seg: (i - a) as u8, before: i > a || o.first_day() < days[a], after: i < z || o.last_day() > days[z] },
+                    kind: ChipKind::Bar {
+                        seg: (i - a) as u8,
+                        before: i > a || o.first_day() < days[a],
+                        after: i < z || o.last_day() > days[z],
+                    },
                     title: title.clone(),
                     dye,
                     selected,
@@ -239,10 +257,18 @@ pub fn grid<Msg: Send + 'static>(data: Rc<MonthData>, on: impl Fn(GridAction) ->
         .flat_map(|(_, days)| days.iter().map(|d| Element::new(Cell { d: d.clone() }, Vec::new()).key(("day", d.date))))
         .collect();
     let gutter = if data.week_numbers { WEEK_NUMBERS } else { 0.0 };
-    Element::new(MonthGrid::<Msg> { geo: Geo { width: 0.0, height: 0.0, rows: data.weeks.len(), gutter }, data, on: MsgMap::new(on), _m: std::marker::PhantomData }, children)
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .id("month-grid")
+    Element::new(
+        MonthGrid::<Msg> {
+            geo: Geo { width: 0.0, height: 0.0, rows: data.weeks.len(), gutter },
+            data,
+            on: MsgMap::new(on),
+            _m: std::marker::PhantomData,
+        },
+        children,
+    )
+    .width(Length::Fill)
+    .height(Length::Fill)
+    .id("month-grid")
 }
 
 impl<Msg: Send + 'static> MonthGrid<Msg> {
@@ -290,7 +316,10 @@ impl<Msg: Send + 'static> Widget for MonthGrid<Msg> {
     }
 
     fn layout(&mut self, cx: &mut LayoutCx, bc: Constraints) -> Size {
-        let size = Size::new(if bc.max.width.is_finite() { bc.max.width } else { 800.0 }, if bc.max.height.is_finite() { bc.max.height } else { 600.0 });
+        let size = Size::new(
+            if bc.max.width.is_finite() { bc.max.width } else { 800.0 },
+            if bc.max.height.is_finite() { bc.max.height } else { 600.0 },
+        );
         self.geo = Geo { width: size.width, height: size.height, rows: self.data.weeks.len(), gutter: self.geo.gutter };
         let mut i = 0;
         for r in 0..self.data.weeks.len() {
@@ -327,7 +356,12 @@ impl<Msg: Send + 'static> Widget for MonthGrid<Msg> {
                 let cell = Rect::new(0.0, y0 + 1.0, geo.gutter, geo.row_y(r).1);
                 cx.canvas.fill_rect(cell, t.surface().mix(t.sunk(), 0.5));
                 let n = self.data.weeks[r].0;
-                cx.draw_text_in(&n.to_string(), &mono(10.5, t.faint()), Rect::new(0.0, y0 + 4.0, geo.gutter - 6.0, y0 + 20.0), Align::End);
+                cx.draw_text_in(
+                    &n.to_string(),
+                    &mono(10.5, t.faint()),
+                    Rect::new(0.0, y0 + 4.0, geo.gutter - 6.0, y0 + 20.0),
+                    Align::End,
+                );
             }
         }
         draw::bottom(cx.canvas, Rect::new(0.0, 0.0, b.x1, HEADER), t.line(), 1.0);
@@ -346,7 +380,12 @@ impl<Msg: Send + 'static> Widget for MonthGrid<Msg> {
             cx.canvas.fill_rect(g + aizome_kit::Vec2::new(3.0, 3.0), t.slab());
         }
         cx.canvas.fill_rect(g, dye);
-        cx.draw_text_in(&chip.title, &ui(11.5, 600.0, colors::on_dye(t, dye)), Rect::new(g.x0 + 6.0, g.y0, g.x1 - 4.0, g.y1), Align::Start);
+        cx.draw_text_in(
+            &chip.title,
+            &ui(11.5, 600.0, colors::on_dye(t, dye)),
+            Rect::new(g.x0 + 6.0, g.y0, g.x1 - 4.0, g.y1),
+            Align::Start,
+        );
     }
 
     fn hash(&self, h: &mut PaintHasher) {
@@ -438,11 +477,20 @@ impl<Msg: Send + 'static> Widget for MonthGrid<Msg> {
                 }
                 if let (Some((_, chip, home)), Some(target)) = (st.press, st.target)
                     && target != home
-                    && let (Some(from), Some(to)) = (self.day(home.0, home.1).map(|d| d.date), self.day(target.0, target.1).map(|d| d.date))
+                    && let (Some(from), Some(to)) =
+                        (self.day(home.0, home.1).map(|d| d.date), self.day(target.0, target.1).map(|d| d.date))
                 {
                     let shift = crate::model::days_between(from, to);
                     let mv = |dt: DateTime| dt.checked_add(jiff::Span::new().days(shift)).unwrap_or(dt);
-                    self.emit(cx, GridAction::Move { key: chip.key, start: mv(chip.start), end: mv(chip.end), all_day: chip.all_day });
+                    self.emit(
+                        cx,
+                        GridAction::Move {
+                            key: chip.key,
+                            start: mv(chip.start),
+                            end: mv(chip.end),
+                            all_day: chip.all_day,
+                        },
+                    );
                 }
                 Status::Handled
             }
@@ -481,7 +529,11 @@ impl Widget for Cell {
             cx.canvas.fill_rect(r, t.selection().with_alpha(if t.is_dark() { 0.16 } else { 0.1 }));
         }
         // The day's number, top left; the first of a month says which.
-        let label = if d.date.day() == 1 { format!("{} {}", d.date.day(), crate::format::month_short(d.date.month()).to_uppercase()) } else { d.date.day().to_string() };
+        let label = if d.date.day() == 1 {
+            format!("{} {}", d.date.day(), crate::format::month_short(d.date.month()).to_uppercase())
+        } else {
+            d.date.day().to_string()
+        };
         let color = if d.today {
             t.on_focus()
         } else if d.in_month {
@@ -489,7 +541,10 @@ impl Widget for Cell {
         } else {
             t.faint()
         };
-        let spec = TextSpec::new(FontSpec { weight: if d.today { 600.0 } else { 400.0 }, tabular: true, ..FontSpec::mono(12.0) }, color);
+        let spec = TextSpec::new(
+            FontSpec { weight: if d.today { 600.0 } else { 400.0 }, tabular: true, ..FontSpec::mono(12.0) },
+            color,
+        );
         let w = cx.layout_text(&label, &spec, None).size().width.ceil();
         let num = Rect::new(4.0, 3.0, 4.0 + w + 8.0, 20.0);
         if d.today {
@@ -505,7 +560,12 @@ impl Widget for Cell {
         }
         if more > 0 {
             let lr = lane_rect(r, shown);
-            cx.draw_text_in(&format!("+{more} more"), &mono(10.5, t.text3()), Rect::new(lr.x0 + 6.0, lr.y0, lr.x1 - 4.0, lr.y1), Align::Start);
+            cx.draw_text_in(
+                &format!("+{more} more"),
+                &mono(10.5, t.text3()),
+                Rect::new(lr.x0 + 6.0, lr.y0, lr.x1 - 4.0, lr.y1),
+                Align::Start,
+            );
         }
     }
 
@@ -522,7 +582,12 @@ impl Widget for Cell {
         let n = self.d.lanes.iter().filter(|c| c.is_some()).count();
         Some(Semantics {
             role: SemanticRole::Cell,
-            label: Some(format!("{}, {} event{}", crate::format::long_date(self.d.date), n, if n == 1 { "" } else { "s" })),
+            label: Some(format!(
+                "{}, {} event{}",
+                crate::format::long_date(self.d.date),
+                n,
+                if n == 1 { "" } else { "s" }
+            )),
             selected: Some(self.d.selected),
             ..Default::default()
         })
@@ -538,10 +603,17 @@ fn paint_chip(cx: &mut PaintCx, chip: &Chip, lr: Rect) {
             let x0 = if *before { lr.x0 - 1.0 } else { lr.x0 + 3.0 };
             let x1 = if *after { lr.x1 } else { lr.x1 - 3.0 };
             let bar = Rect::new(x0, lr.y0, x1, lr.y1);
-            let (fill, fg) = if chip.selected { (dye, colors::on_dye(t, dye)) } else { (colors::tint(t, dye).mix(dye, 0.3), colors::on_tint(t, dye)) };
+            let (fill, fg) = if chip.selected {
+                (dye, colors::on_dye(t, dye))
+            } else {
+                (colors::tint(t, dye).mix(dye, 0.3), colors::on_tint(t, dye))
+            };
             cx.canvas.fill_rect(bar, fill);
             if !before {
-                cx.canvas.fill_rect(Rect::new(bar.x0, bar.y0, bar.x0 + 3.0, bar.y1), if chip.selected { fg.with_alpha(0.5) } else { dye });
+                cx.canvas.fill_rect(
+                    Rect::new(bar.x0, bar.y0, bar.x0 + 3.0, bar.y1),
+                    if chip.selected { fg.with_alpha(0.5) } else { dye },
+                );
             }
             // The title runs on across the bar's days: each day draws its
             // stretch of it, as if from where the bar starts.
@@ -571,10 +643,16 @@ fn paint_chip(cx: &mut PaintCx, chip: &Chip, lr: Rect) {
                 cx.canvas.fill_rect(Rect::new(inner.x0 + 3.0, inner.y0 + 5.0, inner.x0 + 9.0, inner.y0 + 11.0), dye);
             }
             let x = inner.x0 + 13.0;
-            let tw = cx.draw_text_in(time, &mono(10.5, sub), Rect::new(x, inner.y0, inner.x1 - 2.0, inner.y1), Align::Start);
+            let tw =
+                cx.draw_text_in(time, &mono(10.5, sub), Rect::new(x, inner.y0, inner.x1 - 2.0, inner.y1), Align::Start);
             let mut spec = ui(11.5, 500.0, fg);
             spec.strikethrough = chip.cancelled;
-            cx.draw_text_in(&chip.title, &spec, Rect::new(x + tw + 5.0, inner.y0, inner.x1 - 2.0, inner.y1), Align::Start);
+            cx.draw_text_in(
+                &chip.title,
+                &spec,
+                Rect::new(x + tw + 5.0, inner.y0, inner.x1 - 2.0, inner.y1),
+                Align::Start,
+            );
         }
     }
 }

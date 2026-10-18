@@ -28,8 +28,12 @@ pub const TIMED_ALERTS: &[(i64, &str)] = &[
 ];
 
 /// … and for all-day events: minutes before the day's midnight.
-pub const ALL_DAY_ALERTS: &[(i64, &str)] =
-    &[(-540, "On the day, at 09:00"), (900, "The day before, at 09:00"), (2340, "2 days before, at 09:00"), (9540, "1 week before, at 09:00")];
+pub const ALL_DAY_ALERTS: &[(i64, &str)] = &[
+    (-540, "On the day, at 09:00"),
+    (900, "The day before, at 09:00"),
+    (2340, "2 days before, at 09:00"),
+    (9540, "1 week before, at 09:00"),
+];
 
 /// The alert a draft has.
 #[derive(Clone, Debug, PartialEq)]
@@ -112,13 +116,19 @@ impl Editor {
     ) -> Editor {
         let (sd, st) = dt_text(start, h24);
         // An all-day event's end shows as its last day.
-        let shown_end = if all_day && end.time() == Time::midnight() && end > start { end.date().yesterday().unwrap_or(end.date()).to_datetime(Time::midnight()) } else { end };
+        let shown_end = if all_day && end.time() == Time::midnight() && end > start {
+            end.date().yesterday().unwrap_or(end.date()).to_datetime(Time::midnight())
+        } else {
+            end
+        };
         let (ed, et) = dt_text(shown_end, h24);
         let repeat = Repeat::from_rule(e.rrule.as_ref(), e.start.civil().date());
         let alert = match e.alarms.iter().find(|a| a.is_active() && matches!(a.action.as_str(), "DISPLAY" | "AUDIO")) {
             None => AlertChoice::None,
             Some(a) => match a.minutes_before() {
-                Some(m) if (if all_day { ALL_DAY_ALERTS } else { TIMED_ALERTS }).iter().any(|(x, _)| *x == m) => AlertChoice::Before(m),
+                Some(m) if (if all_day { ALL_DAY_ALERTS } else { TIMED_ALERTS }).iter().any(|(x, _)| *x == m) => {
+                    AlertChoice::Before(m)
+                }
                 _ => AlertChoice::Kept,
             },
         };
@@ -143,7 +153,11 @@ impl Editor {
             repeat,
             until_text,
             alert,
-            length: if all_day { crate::model::days_between(start.date(), end.date()).max(1) } else { end.duration_since(start).as_mins().max(0) },
+            length: if all_day {
+                crate::model::days_between(start.date(), end.date()).max(1)
+            } else {
+                end.duration_since(start).as_mins().max(0)
+            },
             error: None,
             changed: false,
             today,
@@ -155,7 +169,13 @@ impl Editor {
         // "Sat 17 Oct 2026": the weekday is a courtesy.
         let s = s.trim();
         let s = match s.split_once(' ') {
-            Some((w, rest)) if w.len() == 3 && w.chars().all(|c| c.is_ascii_alphabetic()) && format::MONTHS.iter().all(|m| !m.starts_with(w)) => rest,
+            Some((w, rest))
+                if w.len() == 3
+                    && w.chars().all(|c| c.is_ascii_alphabetic())
+                    && format::MONTHS.iter().all(|m| !m.starts_with(w)) =>
+            {
+                rest
+            }
             _ => s,
         };
         format::parse_date(s, self.today)
@@ -190,7 +210,8 @@ impl Editor {
             return;
         }
         let Some(st) = format::parse_time(&self.start_time) else { return };
-        let end = sd.to_datetime(st).checked_add(jiff::SignedDuration::from_mins(self.length)).unwrap_or(sd.to_datetime(st));
+        let end =
+            sd.to_datetime(st).checked_add(jiff::SignedDuration::from_mins(self.length)).unwrap_or(sd.to_datetime(st));
         let (ed, et) = dt_text(end, self.h24);
         self.end_date = ed;
         self.end_time = et;
@@ -198,7 +219,11 @@ impl Editor {
 
     fn end_moved(&mut self) {
         if let Ok((s, e)) = self.times() {
-            self.length = if self.all_day { crate::model::days_between(s.date(), e.date()).max(1) } else { e.duration_since(s).as_mins() };
+            self.length = if self.all_day {
+                crate::model::days_between(s.date(), e.date()).max(1)
+            } else {
+                e.duration_since(s).as_mins()
+            };
         }
     }
 
@@ -249,7 +274,10 @@ impl Editor {
                 self.end_moved();
             }
             Field::Freq(i) => {
-                let freq = [None, Some(Freq::Daily), Some(Freq::Weekly), Some(Freq::Monthly), Some(Freq::Yearly)].get(i).copied().flatten();
+                let freq = [None, Some(Freq::Daily), Some(Freq::Weekly), Some(Freq::Monthly), Some(Freq::Yearly)]
+                    .get(i)
+                    .copied()
+                    .flatten();
                 if i == 5 {
                     // "Custom" chosen again: nothing changes.
                     return;
@@ -291,7 +319,12 @@ impl Editor {
                 }
             }
             Field::EndKind(i) => {
-                let until = self.date(&self.until_text).or_else(|| self.date(&self.start_date).and_then(|d| d.checked_add(jiff::Span::new().months(3)).ok())).unwrap_or(self.today);
+                let until = self
+                    .date(&self.until_text)
+                    .or_else(|| {
+                        self.date(&self.start_date).and_then(|d| d.checked_add(jiff::Span::new().months(3)).ok())
+                    })
+                    .unwrap_or(self.today);
                 if i == 2 {
                     self.until_text = format!("{} {}", format::short_date(until), until.year());
                 }
@@ -345,7 +378,8 @@ impl Editor {
             }
             (AlertChoice::None, None) => {}
             (AlertChoice::Before(m), Some(i)) => {
-                alarms[i].trigger = Trigger::Relative { offset: crate::ics::value::Duration::minutes(-m), from_end: false };
+                alarms[i].trigger =
+                    Trigger::Relative { offset: crate::ics::value::Duration::minutes(-m), from_end: false };
             }
             (AlertChoice::Before(m), None) => alarms.insert(0, Alarm::before(*m)),
         }
@@ -361,16 +395,32 @@ impl Editor {
         delete: Option<Msg>,
     ) -> Element<Msg> {
         let e = edit.clone();
-        let title = text_field(&self.title).placeholder("New Event").on_change(move |s| e(Field::Title(s))).on_submit(save.clone()).id("edit-title");
+        let title = text_field(&self.title)
+            .placeholder("New Event")
+            .on_change(move |s| e(Field::Title(s)))
+            .on_submit(save.clone())
+            .id("edit-title");
         let e = edit.clone();
-        let location = text_field(&self.location).placeholder("Location").on_change(move |s| e(Field::Location(s))).on_submit(save.clone()).id("edit-location");
+        let location = text_field(&self.location)
+            .placeholder("Location")
+            .on_change(move |s| e(Field::Location(s)))
+            .on_submit(save.clone())
+            .id("edit-location");
         let mut rows: Vec<Element<Msg>> = Vec::new();
         let e = edit.clone();
         rows.push(form_row("All-day", toggle(self.all_day).on_toggle(move |on| e(Field::AllDay(on)))).into());
-        let when = |label: &'static str, date: &str, time: &str, fd: fn(String) -> Field, ft: fn(String) -> Field, id: &'static str| -> Element<Msg> {
+        let when = |label: &'static str,
+                    date: &str,
+                    time: &str,
+                    fd: fn(String) -> Field,
+                    ft: fn(String) -> Field,
+                    id: &'static str|
+         -> Element<Msg> {
             let e1 = edit.clone();
             let e2 = edit.clone();
-            let mut r = row![text_field(date).mono().on_change(move |s| e1(fd(s))).width(132.0).id(format!("{id}-date"))].spacing(6.0);
+            let mut r =
+                row![text_field(date).mono().on_change(move |s| e1(fd(s))).width(132.0).id(format!("{id}-date"))]
+                    .spacing(6.0);
             if !self.all_day {
                 r = r.push(text_field(time).mono().on_change(move |s| e2(ft(s))).width(88.0).id(format!("{id}-time")));
             }
@@ -380,7 +430,8 @@ impl Editor {
         rows.push(when("Ends", &self.end_date, &self.end_time, Field::EndDate, Field::EndTime, "end"));
         // Repeat.
         let start = self.date(&self.start_date).unwrap_or(self.today);
-        let mut freqs: Vec<String> = ["Never", "Every Day", "Every Week", "Every Month", "Every Year"].iter().map(|s| s.to_string()).collect();
+        let mut freqs: Vec<String> =
+            ["Never", "Every Day", "Every Week", "Every Month", "Every Year"].iter().map(|s| s.to_string()).collect();
         let sel = match &self.repeat {
             Some(r) => match r.freq {
                 None => 0,
@@ -395,9 +446,16 @@ impl Editor {
             }
         };
         let e = edit.clone();
-        rows.push(form_row("Repeat", dropdown(freqs, Some(sel)).on_select(move |i| e(Field::Freq(i))).id("edit-repeat")).into());
+        rows.push(
+            form_row("Repeat", dropdown(freqs, Some(sel)).on_select(move |i| e(Field::Freq(i))).id("edit-repeat"))
+                .into(),
+        );
         match &self.repeat {
-            None => rows.push(form_row("Rule", text(self.custom_repeat.clone()).mono().size(11.0).role(Role::Text3)).description("Kept as it is unless Repeat is changed.").into()),
+            None => rows.push(
+                form_row("Rule", text(self.custom_repeat.clone()).mono().size(11.0).role(Role::Text3))
+                    .description("Kept as it is unless Repeat is changed.")
+                    .into(),
+            ),
             Some(r) if r.freq.is_some() => {
                 let unit = match r.freq {
                     Some(Freq::Daily) => "days",
@@ -407,8 +465,15 @@ impl Editor {
                 };
                 let e = edit.clone();
                 rows.push(
-                    form_row("Every", stepper(r.interval as f64).range(1.0..=99.0).step(1.0).suffix(format!(" {}", if r.interval == 1 { unit.trim_end_matches('s') } else { unit })).on_change(move |v| e(Field::Interval(v))))
-                        .into(),
+                    form_row(
+                        "Every",
+                        stepper(r.interval as f64)
+                            .range(1.0..=99.0)
+                            .step(1.0)
+                            .suffix(format!(" {}", if r.interval == 1 { unit.trim_end_matches('s') } else { unit }))
+                            .on_change(move |v| e(Field::Interval(v))),
+                    )
+                    .into(),
                 );
                 if r.freq == Some(Freq::Weekly) {
                     let days = crate::locale::Weeks::default().days();
@@ -431,23 +496,55 @@ impl Editor {
                 if r.freq == Some(Freq::Monthly) {
                     let nth = (start.day() - 1) / 7 + 1;
                     let ord = ["first", "second", "third", "fourth", "last"][(nth as usize - 1).min(4)];
-                    let opts = [format!("On the {}", crate::edit::ordinal(start.day())), format!("On the {ord} {}", format::weekday_short(start.weekday()))];
+                    let opts = [
+                        format!("On the {}", crate::edit::ordinal(start.day())),
+                        format!("On the {ord} {}", format::weekday_short(start.weekday())),
+                    ];
                     let e = edit.clone();
-                    rows.push(form_row("On", segmented(opts, if r.by_weekday { 1 } else { 0 }).on_select(move |i| e(Field::ByWeekday(i == 1)))).into());
+                    rows.push(
+                        form_row(
+                            "On",
+                            segmented(opts, if r.by_weekday { 1 } else { 0 })
+                                .on_select(move |i| e(Field::ByWeekday(i == 1))),
+                        )
+                        .into(),
+                    );
                 }
                 let (kind, extra): (usize, Option<Element<Msg>>) = match &r.end {
                     RepeatEnd::Never => (0, None),
                     RepeatEnd::After(n) => {
                         let e = edit.clone();
-                        (1, Some(stepper(*n as f64).range(1.0..=999.0).step(1.0).suffix(" times").on_change(move |v| e(Field::Count(v))).into()))
+                        (
+                            1,
+                            Some(
+                                stepper(*n as f64)
+                                    .range(1.0..=999.0)
+                                    .step(1.0)
+                                    .suffix(" times")
+                                    .on_change(move |v| e(Field::Count(v)))
+                                    .into(),
+                            ),
+                        )
                     }
                     RepeatEnd::On(_) => {
                         let e = edit.clone();
-                        (2, Some(text_field(&self.until_text).mono().on_change(move |s| e(Field::Until(s))).width(132.0).id("edit-until").into()))
+                        (
+                            2,
+                            Some(
+                                text_field(&self.until_text)
+                                    .mono()
+                                    .on_change(move |s| e(Field::Until(s)))
+                                    .width(132.0)
+                                    .id("edit-until")
+                                    .into(),
+                            ),
+                        )
                     }
                 };
                 let e = edit.clone();
-                let mut end_row = row![dropdown(["Never", "After", "On Date"], Some(kind)).on_select(move |i| e(Field::EndKind(i)))].spacing(6.0);
+                let mut end_row =
+                    row![dropdown(["Never", "After", "On Date"], Some(kind)).on_select(move |i| e(Field::EndKind(i)))]
+                        .spacing(6.0);
                 if let Some(x) = extra {
                     end_row = end_row.push(x);
                 }
@@ -471,23 +568,48 @@ impl Editor {
             }
         };
         let e = edit.clone();
-        rows.push(form_row("Alert", dropdown(alerts, Some(sel)).on_select(move |i| e(Field::Alert(i))).id("edit-alert")).into());
+        rows.push(
+            form_row("Alert", dropdown(alerts, Some(sel)).on_select(move |i| e(Field::Alert(i))).id("edit-alert"))
+                .into(),
+        );
         let names: Vec<String> = calendars.iter().map(|(_, n)| n.clone()).collect();
         let sel = calendars.iter().position(|(id, _)| *id == self.calendar);
         let e = edit.clone();
-        rows.push(form_row("Calendar", dropdown(names, sel).on_select(move |i| e(Field::Calendar(i))).id("edit-calendar")).into());
+        rows.push(
+            form_row("Calendar", dropdown(names, sel).on_select(move |i| e(Field::Calendar(i))).id("edit-calendar"))
+                .into(),
+        );
 
         let e = edit.clone();
-        let notes = text_editor(&self.notes).on_action(move |a| e(Field::Notes(a))).mono(false).current_line(false).placeholder("Notes").padding(6.0).height(76.0).id("edit-notes");
+        let notes = text_editor(&self.notes)
+            .on_action(move |a| e(Field::Notes(a)))
+            .mono(false)
+            .current_line(false)
+            .placeholder("Notes")
+            .padding(6.0)
+            .height(76.0)
+            .id("edit-notes");
         let mut buttons: Vec<Element<Msg>> = Vec::new();
         if let Some(d) = delete {
             buttons.push(button("Delete…").destructive().on_press(d).into());
         }
         buttons.push(spacer().into());
         buttons.push(button("Cancel").cancel().on_press(cancel).into());
-        buttons.push(button(if self.target.is_some() { "Save" } else { "Add Event" }).default().on_press(save).id("edit-save").into());
+        buttons.push(
+            button(if self.target.is_some() { "Save" } else { "Add Event" })
+                .default()
+                .on_press(save)
+                .id("edit-save")
+                .into(),
+        );
         let mut col = column![
-            text(if self.target.is_some() { if self.series { "Edit Repeating Event" } else { "Edit Event" } } else { "New Event" }).semibold().size(15.0),
+            text(if self.target.is_some() {
+                if self.series { "Edit Repeating Event" } else { "Edit Event" }
+            } else {
+                "New Event"
+            })
+            .semibold()
+            .size(15.0),
             title,
             location,
             form_section("", rows),
@@ -497,6 +619,9 @@ impl Editor {
         if let Some(err) = &self.error {
             col = col.push(text(err.clone()).role(Role::Danger).size(12.0));
         }
-        col.push(aizome_kit::widgets::layout::row(buttons).spacing(8.0).width(Length::Fill)).padding(18.0).width(470.0).into()
+        col.push(aizome_kit::widgets::layout::row(buttons).spacing(8.0).width(Length::Fill))
+            .padding(18.0)
+            .width(470.0)
+            .into()
     }
 }

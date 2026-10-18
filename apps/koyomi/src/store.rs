@@ -63,7 +63,8 @@ impl Store {
                     let text = String::from_utf8_lossy(&bytes);
                     let (cal, dropped) = Calendar::parse(&id, &text);
                     if dropped > 0 {
-                        self.problems.push(format!("{}: {dropped} events without a start were skipped", path.display()));
+                        self.problems
+                            .push(format!("{}: {dropped} events without a start were skipped", path.display()));
                     }
                     self.calendars.push(cal);
                     self.stamps.push(st);
@@ -221,7 +222,9 @@ pub struct Imported {
 pub fn merge(into: &mut Calendar, from: &Calendar) -> Imported {
     let mut r = Imported::default();
     for e in &from.events {
-        let same = |x: &Event| x.uid == e.uid && x.recurrence_id.as_ref().map(|w| w.civil()) == e.recurrence_id.as_ref().map(|w| w.civil());
+        let same = |x: &Event| {
+            x.uid == e.uid && x.recurrence_id.as_ref().map(|w| w.civil()) == e.recurrence_id.as_ref().map(|w| w.civil())
+        };
         match into.events.iter().position(same) {
             Some(i) => {
                 if e.sequence >= into.events[i].sequence && into.events[i] != *e {
@@ -267,7 +270,11 @@ mod tests {
         assert_eq!(s.calendars.iter().map(|c| c.name.as_str()).collect::<Vec<_>>(), ["Home", "Work"]);
         assert!(!s.changed_on_disk());
         let i = s.index_of("work").unwrap();
-        s.calendars[i].events.push(Event::new("Ship it", When::Date(date(2026, 10, 20)), When::Date(date(2026, 10, 21))));
+        s.calendars[i].events.push(Event::new(
+            "Ship it",
+            When::Date(date(2026, 10, 20)),
+            When::Date(date(2026, 10, 21)),
+        ));
         s.save(i).unwrap();
         assert!(!s.changed_on_disk());
         // Another program writes a calendar.
@@ -288,7 +295,11 @@ mod tests {
 
     #[test]
     fn imports_merge_by_uid_and_version() {
-        let mut into = Calendar::parse("a", "BEGIN:VEVENT\nUID:1\nDTSTART;VALUE=DATE:20261017\nSUMMARY:Old\nSEQUENCE:1\nEND:VEVENT\n").0;
+        let mut into = Calendar::parse(
+            "a",
+            "BEGIN:VEVENT\nUID:1\nDTSTART;VALUE=DATE:20261017\nSUMMARY:Old\nSEQUENCE:1\nEND:VEVENT\n",
+        )
+        .0;
         let from = Calendar::parse(
             "b",
             "BEGIN:VEVENT\nUID:1\nDTSTART;VALUE=DATE:20261017\nSUMMARY:New\nSEQUENCE:2\nEND:VEVENT\nBEGIN:VEVENT\nUID:2\nDTSTART;VALUE=DATE:20261018\nSUMMARY:Other\nEND:VEVENT\n",

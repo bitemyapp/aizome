@@ -8,10 +8,10 @@ mod common;
 
 use std::time::Duration;
 
+use aizome_kit::Vec2;
 use aizome_kit::sidestep_ui::{Modifiers, NamedKey, PointerButton};
 use aizome_kit::testing::Harness;
 use aizome_kit::theme::ThemeChoice;
-use aizome_kit::Vec2;
 use common::*;
 use koyomi::app::{Koyomi, Msg, View};
 
@@ -106,4 +106,3 @@ fn dragging_across_the_week_fits_the_budget() {
     budget("drag", report("drag step", moves));
     budget("drop", report("drop", drops));
 }
-

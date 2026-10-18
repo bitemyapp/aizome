@@ -45,11 +45,7 @@ impl Occurrence {
     /// before.
     pub fn last_day(&self) -> Date {
         let d = self.end.date();
-        if self.end.time() == Time::midnight() && self.end > self.start {
-            d.yesterday().unwrap_or(d)
-        } else {
-            d
-        }
+        if self.end.time() == Time::midnight() && self.end > self.start { d.yesterday().unwrap_or(d) } else { d }
     }
 
     /// Whether it shows on more than one day (or is all-day): such events
@@ -175,7 +171,14 @@ fn same_instance(w: &When, dt: DateTime, all_day: bool, zone: &TimeZone, local: 
 /// The occurrences that overlap `[from, to)` (wall-clock time here), of
 /// the calendars `shown`, in order of start (all-day first, longer
 /// first). With `with_cancelled`, cancelled events are kept (marked).
-pub fn occurrences(cals: &[Calendar], ix: &Index, shown: &[bool], local: &TimeZone, from: DateTime, to: DateTime) -> Vec<Occurrence> {
+pub fn occurrences(
+    cals: &[Calendar],
+    ix: &Index,
+    shown: &[bool],
+    local: &TimeZone,
+    from: DateTime,
+    to: DateTime,
+) -> Vec<Occurrence> {
     let mut out = Vec::new();
     let from_i = to_instant(from, local);
     let to_i = to_instant(to, local);
@@ -206,7 +209,17 @@ pub fn occurrences(cals: &[Calendar], ix: &Index, shown: &[bool], local: &TimeZo
                 push_single(&mut out, ci, ei, e, None, local, from, to);
                 continue;
             }
-            expand_series(&mut out, ci, ei, e, ix.overrides[ci].get(&e.uid).map(Vec::as_slice).unwrap_or(&[]), cal, local, from, to);
+            expand_series(
+                &mut out,
+                ci,
+                ei,
+                e,
+                ix.overrides[ci].get(&e.uid).map(Vec::as_slice).unwrap_or(&[]),
+                cal,
+                local,
+                from,
+                to,
+            );
         }
     }
     sort(&mut out);
@@ -268,7 +281,16 @@ fn overlaps(o: &Occurrence, from: DateTime, to: DateTime) -> bool {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn push_single(out: &mut Vec<Occurrence>, ci: usize, ei: usize, e: &Event, rid: Option<When>, local: &TimeZone, from: DateTime, to: DateTime) {
+fn push_single(
+    out: &mut Vec<Occurrence>,
+    ci: usize,
+    ei: usize,
+    e: &Event,
+    rid: Option<When>,
+    local: &TimeZone,
+    from: DateTime,
+    to: DateTime,
+) {
     let o = make(ci, ei, e, &e.start, rid, local);
     if overlaps(&o, from, to) {
         out.push(o);
@@ -276,7 +298,17 @@ fn push_single(out: &mut Vec<Occurrence>, ci: usize, ei: usize, e: &Event, rid: 
 }
 
 #[allow(clippy::too_many_arguments)]
-fn expand_series(out: &mut Vec<Occurrence>, ci: usize, ei: usize, e: &Event, overrides: &[usize], cal: &Calendar, local: &TimeZone, from: DateTime, to: DateTime) {
+fn expand_series(
+    out: &mut Vec<Occurrence>,
+    ci: usize,
+    ei: usize,
+    e: &Event,
+    overrides: &[usize],
+    cal: &Calendar,
+    local: &TimeZone,
+    from: DateTime,
+    to: DateTime,
+) {
     let zone = e.start.zone(local);
     let all_day = e.all_day();
     let dur = e.duration(local);
@@ -291,7 +323,9 @@ fn expand_series(out: &mut Vec<Occurrence>, ci: usize, ei: usize, e: &Event, ove
         if e.exdates.iter().any(|x| same_instance(x, dt, all_day, &zone, local)) {
             return;
         }
-        if overrides.iter().any(|&oi| cal.events[oi].recurrence_id.as_ref().is_some_and(|r| same_instance(r, dt, all_day, &zone, local))) {
+        if overrides.iter().any(|&oi| {
+            cal.events[oi].recurrence_id.as_ref().is_some_and(|r| same_instance(r, dt, all_day, &zone, local))
+        }) {
             return;
         }
         let w = e.start.with_civil(dt);
@@ -332,7 +366,13 @@ fn expand_series(out: &mut Vec<Occurrence>, ci: usize, ei: usize, e: &Event, ove
 
 /// The instants alarms go off in `[from, to)`, with the occurrence they
 /// belong to and which alarm.
-pub fn alarms(cals: &[Calendar], ix: &Index, local: &TimeZone, from: Timestamp, to: Timestamp) -> Vec<(Timestamp, Occurrence, usize)> {
+pub fn alarms(
+    cals: &[Calendar],
+    ix: &Index,
+    local: &TimeZone,
+    from: Timestamp,
+    to: Timestamp,
+) -> Vec<(Timestamp, Occurrence, usize)> {
     // Alarms go off up to a week before their event (or after it):
     // look a little wider than asked, then keep what's in range.
     let widen = SignedDuration::from_hours(24 * 8);
@@ -386,10 +426,19 @@ mod tests {
 
     #[test]
     fn series_with_exceptions_and_moved_instances() {
-        let cals = cal("BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:s\nDTSTART;TZID=Europe/Berlin:20261005T100000\nDTEND;TZID=Europe/Berlin:20261005T110000\nRRULE:FREQ=WEEKLY;BYDAY=MO\nEXDATE;TZID=Europe/Berlin:20261012T100000\nSUMMARY:Weekly\nEND:VEVENT\nBEGIN:VEVENT\nUID:s\nRECURRENCE-ID;TZID=Europe/Berlin:20261019T100000\nDTSTART;TZID=Europe/Berlin:20261020T150000\nDTEND;TZID=Europe/Berlin:20261020T160000\nSUMMARY:Moved\nEND:VEVENT\nEND:VCALENDAR\n");
+        let cals = cal(
+            "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:s\nDTSTART;TZID=Europe/Berlin:20261005T100000\nDTEND;TZID=Europe/Berlin:20261005T110000\nRRULE:FREQ=WEEKLY;BYDAY=MO\nEXDATE;TZID=Europe/Berlin:20261012T100000\nSUMMARY:Weekly\nEND:VEVENT\nBEGIN:VEVENT\nUID:s\nRECURRENCE-ID;TZID=Europe/Berlin:20261019T100000\nDTSTART;TZID=Europe/Berlin:20261020T150000\nDTEND;TZID=Europe/Berlin:20261020T160000\nSUMMARY:Moved\nEND:VEVENT\nEND:VCALENDAR\n",
+        );
         let berlin = TimeZone::get("Europe/Berlin").unwrap();
         let ix = Index::new(&cals, &berlin);
-        let v = occurrences(&cals, &ix, &[true], &berlin, datetime(2026, 10, 1, 0, 0, 0, 0), datetime(2026, 11, 1, 0, 0, 0, 0));
+        let v = occurrences(
+            &cals,
+            &ix,
+            &[true],
+            &berlin,
+            datetime(2026, 10, 1, 0, 0, 0, 0),
+            datetime(2026, 11, 1, 0, 0, 0, 0),
+        );
         assert_eq!(days(&v), ["2026-10-05T10:00:00", "2026-10-20T15:00:00", "2026-10-26T10:00:00"]);
         assert_eq!(cals[0].events[v[1].event].summary, "Moved");
         // Across the DST change (25 October) the wall-clock time holds.
@@ -397,26 +446,33 @@ mod tests {
         // Elsewhere it's the same instants.
         let ny = TimeZone::get("America/New_York").unwrap();
         let ix = Index::new(&cals, &ny);
-        let v = occurrences(&cals, &ix, &[true], &ny, datetime(2026, 10, 1, 0, 0, 0, 0), datetime(2026, 11, 1, 0, 0, 0, 0));
+        let v =
+            occurrences(&cals, &ix, &[true], &ny, datetime(2026, 10, 1, 0, 0, 0, 0), datetime(2026, 11, 1, 0, 0, 0, 0));
         assert_eq!(v[0].start, datetime(2026, 10, 5, 4, 0, 0, 0));
     }
 
     #[test]
     fn all_day_and_long_events_reach_into_the_range() {
-        let cals = cal("BEGIN:VEVENT\nUID:a\nDTSTART;VALUE=DATE:20260928\nDTEND;VALUE=DATE:20261003\nSUMMARY:Trip\nEND:VEVENT\nBEGIN:VEVENT\nUID:b\nDTSTART;VALUE=DATE:20250101\nRRULE:FREQ=YEARLY\nSUMMARY:New Year\nEND:VEVENT\n");
+        let cals = cal(
+            "BEGIN:VEVENT\nUID:a\nDTSTART;VALUE=DATE:20260928\nDTEND;VALUE=DATE:20261003\nSUMMARY:Trip\nEND:VEVENT\nBEGIN:VEVENT\nUID:b\nDTSTART;VALUE=DATE:20250101\nRRULE:FREQ=YEARLY\nSUMMARY:New Year\nEND:VEVENT\n",
+        );
         let z = TimeZone::UTC;
         let ix = Index::new(&cals, &z);
-        let v = occurrences(&cals, &ix, &[true], &z, datetime(2026, 10, 1, 0, 0, 0, 0), datetime(2026, 10, 2, 0, 0, 0, 0));
+        let v =
+            occurrences(&cals, &ix, &[true], &z, datetime(2026, 10, 1, 0, 0, 0, 0), datetime(2026, 10, 2, 0, 0, 0, 0));
         assert_eq!(v.len(), 1);
         assert_eq!(v[0].last_day(), date(2026, 10, 2));
-        let v = occurrences(&cals, &ix, &[true], &z, datetime(2027, 1, 1, 0, 0, 0, 0), datetime(2027, 1, 2, 0, 0, 0, 0));
+        let v =
+            occurrences(&cals, &ix, &[true], &z, datetime(2027, 1, 1, 0, 0, 0, 0), datetime(2027, 1, 2, 0, 0, 0, 0));
         assert_eq!(days(&v), ["2027-01-01T00:00:00"]);
         assert!(v[0].all_day);
     }
 
     #[test]
     fn alarms_go_off_before_their_events() {
-        let cals = cal("BEGIN:VEVENT\nUID:a\nDTSTART:20261017T090000Z\nDTEND:20261017T100000Z\nSUMMARY:Call\nBEGIN:VALARM\nACTION:DISPLAY\nTRIGGER:-PT15M\nEND:VALARM\nEND:VEVENT\nBEGIN:VEVENT\nUID:b\nDTSTART;VALUE=DATE:20261018\nSUMMARY:Birthday\nBEGIN:VALARM\nACTION:DISPLAY\nTRIGGER:-PT15H\nEND:VALARM\nEND:VEVENT\n");
+        let cals = cal(
+            "BEGIN:VEVENT\nUID:a\nDTSTART:20261017T090000Z\nDTEND:20261017T100000Z\nSUMMARY:Call\nBEGIN:VALARM\nACTION:DISPLAY\nTRIGGER:-PT15M\nEND:VALARM\nEND:VEVENT\nBEGIN:VEVENT\nUID:b\nDTSTART;VALUE=DATE:20261018\nSUMMARY:Birthday\nBEGIN:VALARM\nACTION:DISPLAY\nTRIGGER:-PT15H\nEND:VALARM\nEND:VEVENT\n",
+        );
         let z = TimeZone::get("Europe/London").unwrap();
         let ix = Index::new(&cals, &z);
         let from = datetime(2026, 10, 17, 0, 0, 0, 0).to_zoned(z.clone()).unwrap().timestamp();

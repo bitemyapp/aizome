@@ -297,12 +297,18 @@ mod tests {
 
     #[test]
     fn quoted_parameters_keep_their_colons() {
-        let p = parse_line("ATTENDEE;CN=\"Doe, Jane\";DELEGATED-FROM=\"mailto:a@b.c\",\"mailto:d@e.f\":mailto:jane@example.com").unwrap();
+        let p = parse_line(
+            "ATTENDEE;CN=\"Doe, Jane\";DELEGATED-FROM=\"mailto:a@b.c\",\"mailto:d@e.f\":mailto:jane@example.com",
+        )
+        .unwrap();
         assert_eq!(p.name, "ATTENDEE");
         assert_eq!(p.param("CN"), Some("Doe, Jane"));
         assert_eq!(p.params[1].1, vec!["mailto:a@b.c".to_owned(), "mailto:d@e.f".to_owned()]);
         assert_eq!(p.value, "mailto:jane@example.com");
-        assert_eq!(format_prop(&p), "ATTENDEE;CN=\"Doe, Jane\";DELEGATED-FROM=\"mailto:a@b.c\",\"mailto:d@e.f\":mailto:jane@example.com");
+        assert_eq!(
+            format_prop(&p),
+            "ATTENDEE;CN=\"Doe, Jane\";DELEGATED-FROM=\"mailto:a@b.c\",\"mailto:d@e.f\":mailto:jane@example.com"
+        );
     }
 
     #[test]

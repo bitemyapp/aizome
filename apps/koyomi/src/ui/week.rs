@@ -196,15 +196,26 @@ struct Grid<Msg> {
 
 /// The time grid.
 pub fn grid<Msg: Send + 'static>(data: Rc<GridData>, on: impl Fn(GridAction) -> Msg + 'static) -> Element<Msg> {
-    let mut children: Vec<Element<Msg>> =
-        data.blocks.iter().map(|b| Element::new(BlockView { b: b.clone() }, Vec::new()).key(("block", b.key, b.day))).collect();
+    let mut children: Vec<Element<Msg>> = data
+        .blocks
+        .iter()
+        .map(|b| Element::new(BlockView { b: b.clone() }, Vec::new()).key(("block", b.key, b.day)))
+        .collect();
     let label = crate::format::time(data.now.time(), data.h24);
     let today = data.days.iter().position(|d| *d == data.today);
     children.push(Element::new(NowLine { label, today, n: data.days.len().max(1) }, Vec::new()).key("now-line"));
-    Element::new(Grid::<Msg> { data, on: MsgMap::new(on), geo: Geo { width: 0.0, height: 0.0, n: 1, scroll: 0.0 }, _m: std::marker::PhantomData }, children)
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .id("time-grid")
+    Element::new(
+        Grid::<Msg> {
+            data,
+            on: MsgMap::new(on),
+            geo: Geo { width: 0.0, height: 0.0, n: 1, scroll: 0.0 },
+            _m: std::marker::PhantomData,
+        },
+        children,
+    )
+    .width(Length::Fill)
+    .height(Length::Fill)
+    .id("time-grid")
 }
 
 fn snap(m: f64) -> f64 {
@@ -284,7 +295,10 @@ impl<Msg: Send + 'static> Widget for Grid<Msg> {
     }
 
     fn layout(&mut self, cx: &mut LayoutCx, bc: Constraints) -> Size {
-        let size = Size::new(if bc.max.width.is_finite() { bc.max.width } else { 800.0 }, if bc.max.height.is_finite() { bc.max.height } else { 600.0 });
+        let size = Size::new(
+            if bc.max.width.is_finite() { bc.max.width } else { 800.0 },
+            if bc.max.height.is_finite() { bc.max.height } else { 600.0 },
+        );
         let mut geo = Geo { width: size.width, height: size.height, n: self.data.days.len().max(1), scroll: 0.0 };
         let (token, minute) = self.data.scroll_to;
         let st = cx.state::<GridState>();
@@ -395,14 +409,29 @@ impl<Msg: Send + 'static> Widget for Grid<Msg> {
         draw::border(cx.canvas, r, t.focus(), 1.0);
         if t.shadows() {
             let s3 = t.metrics.shadow;
-            cx.canvas.fill_rect(Rect::new(r.x0 + s3, r.y1, r.x1 + s3, r.y1 + s3).intersect(r.inflate(3.0, 3.0)), t.slab());
+            cx.canvas
+                .fill_rect(Rect::new(r.x0 + s3, r.y1, r.x1 + s3, r.y1 + s3).intersect(r.inflate(3.0, 3.0)), t.slab());
             cx.canvas.fill_rect(Rect::new(r.x1, r.y0 + s3, r.x1 + s3, r.y1).intersect(r.inflate(3.0, 3.0)), t.slab());
         }
-        let label = crate::format::time_range(at(self.data.days[day], s).time(), at(self.data.days[day], e).time(), self.data.h24);
+        let label = crate::format::time_range(
+            at(self.data.days[day], s).time(),
+            at(self.data.days[day], e).time(),
+            self.data.h24,
+        );
         let fg = if block.is_some() { on } else { t.text() };
-        cx.draw_text_in(&label, &mono(10.5, fg), Rect::new(r.x0 + 6.0, r.y0 + 2.0, r.x1 - 4.0, r.y0 + 16.0), Align::Start);
+        cx.draw_text_in(
+            &label,
+            &mono(10.5, fg),
+            Rect::new(r.x0 + 6.0, r.y0 + 2.0, r.x1 - 4.0, r.y0 + 16.0),
+            Align::Start,
+        );
         if let Some(bl) = block {
-            cx.draw_text_in(&bl.title, &ui(12.0, 600.0, fg), Rect::new(r.x0 + 6.0, r.y0 + 15.0, r.x1 - 4.0, r.y0 + 31.0).intersect(r), Align::Start);
+            cx.draw_text_in(
+                &bl.title,
+                &ui(12.0, 600.0, fg),
+                Rect::new(r.x0 + 6.0, r.y0 + 15.0, r.x1 - 4.0, r.y0 + 31.0).intersect(r),
+                Align::Start,
+            );
         }
     }
 
@@ -465,11 +494,24 @@ impl<Msg: Send + 'static> Widget for Grid<Msg> {
                     }
                     None if *clicks >= 2 => {
                         let s = (minute / 30.0).floor() * 30.0;
-                        self.emit(cx, GridAction::Create { start: at(day, s), end: at(day, (s + 60.0).min(1440.0)), all_day: false });
+                        self.emit(
+                            cx,
+                            GridAction::Create {
+                                start: at(day, s),
+                                end: at(day, (s + 60.0).min(1440.0)),
+                                all_day: false,
+                            },
+                        );
                     }
                     None => {
-                        cx.state::<GridState>().drag =
-                            Some(Drag { kind: DragKind::Create, block: None, origin: p, grab: 0.0, active: false, ghost: None });
+                        cx.state::<GridState>().drag = Some(Drag {
+                            kind: DragKind::Create,
+                            block: None,
+                            origin: p,
+                            grab: 0.0,
+                            active: false,
+                            ghost: None,
+                        });
                         cx.capture_pointer();
                         self.emit(cx, GridAction::Day(day));
                     }
@@ -518,7 +560,10 @@ impl<Msg: Send + 'static> Widget for Grid<Msg> {
                         let first = geo.minute_at(d.origin.y);
                         let (a, z) = if minute >= first { (first, minute) } else { (minute, first) };
                         let col0 = geo.col_at(d.origin.x).unwrap_or(0);
-                        let (s, e) = ((a / SNAP).floor() * SNAP, ((z / SNAP).ceil() * SNAP).max((a / SNAP).floor() * SNAP + SNAP));
+                        let (s, e) = (
+                            (a / SNAP).floor() * SNAP,
+                            ((z / SNAP).ceil() * SNAP).max((a / SNAP).floor() * SNAP + SNAP),
+                        );
                         Some((col0, s, e.min(1440.0)))
                     }
                     _ => None,
@@ -604,7 +649,10 @@ impl Widget for BlockView {
         };
         cx.canvas.fill_rect(r, fill);
         // The calendar's colour down the left edge.
-        cx.canvas.fill_rect(Rect::new(r.x0, r.y0, r.x0 + 3.0, r.y1), if self.b.selected { fg.with_alpha(0.55) } else { dye });
+        cx.canvas.fill_rect(
+            Rect::new(r.x0, r.y0, r.x0 + 3.0, r.y1),
+            if self.b.selected { fg.with_alpha(0.55) } else { dye },
+        );
         if self.b.selected {
             draw::border(cx.canvas, r, t.bevel_lo().with_alpha(0.6), 1.0);
         } else {
@@ -623,22 +671,41 @@ impl Widget for BlockView {
             // One line: the title, then the time if there's room.
             let tw = cx.draw_text_in(&self.b.title, &title, Rect::new(x, r.y0 + 1.0, w, r.y0 + 16.0), Align::Start);
             let start = self.b.time.split('–').next().unwrap_or(&self.b.time).to_owned();
-            cx.draw_text_in(&start, &mono(10.5, sub), Rect::new(x + tw + 6.0, r.y0 + 1.0, w, r.y0 + 16.0), Align::Start);
+            cx.draw_text_in(
+                &start,
+                &mono(10.5, sub),
+                Rect::new(x + tw + 6.0, r.y0 + 1.0, w, r.y0 + 16.0),
+                Align::Start,
+            );
             return;
         }
         cx.draw_text_in(&self.b.title, &title, Rect::new(x, r.y0 + 3.0, w, r.y0 + 19.0), Align::Start);
         cx.draw_text_in(&self.b.time, &mono(10.5, sub), Rect::new(x, r.y0 + 19.0, w, r.y0 + 33.0), Align::Start);
         if !self.b.location.is_empty() && r.height() >= 50.0 {
-            cx.draw_text_in(&self.b.location, &ui(11.0, 400.0, sub), Rect::new(x, r.y0 + 33.0, w, r.y0 + 48.0), Align::Start);
+            cx.draw_text_in(
+                &self.b.location,
+                &ui(11.0, 400.0, sub),
+                Rect::new(x, r.y0 + 33.0, w, r.y0 + 48.0),
+                Align::Start,
+            );
         }
     }
 
     fn hash(&self, h: &mut PaintHasher) {
-        h.add(&self.b.title).add(&self.b.time).add(&self.b.location).add(&(self.b.dye, self.b.selected, self.b.cancelled));
+        h.add(&self.b.title).add(&self.b.time).add(&self.b.location).add(&(
+            self.b.dye,
+            self.b.selected,
+            self.b.cancelled,
+        ));
     }
 
     fn semantics(&self) -> Option<Semantics> {
-        Some(Semantics { role: SemanticRole::Button, label: Some(format!("{}, {}", self.b.title, self.b.time)), selected: Some(self.b.selected), ..Default::default() })
+        Some(Semantics {
+            role: SemanticRole::Button,
+            label: Some(format!("{}, {}", self.b.title, self.b.time)),
+            selected: Some(self.b.selected),
+            ..Default::default()
+        })
     }
 
     fn text(&self) -> Option<&str> {
@@ -749,7 +816,9 @@ pub const HEADER: f64 = 46.0;
 
 /// The header: each day's name and number (today's on the focus colour).
 pub fn header<Msg: Send + 'static>(data: HeaderData, on_day: impl Fn(Date) -> Msg + 'static) -> Element<Msg> {
-    Element::new(Header::<Msg> { data, on_day: MsgMap::new(on_day), _m: std::marker::PhantomData }, Vec::new()).width(Length::Fill).height(HEADER)
+    Element::new(Header::<Msg> { data, on_day: MsgMap::new(on_day), _m: std::marker::PhantomData }, Vec::new())
+        .width(Length::Fill)
+        .height(HEADER)
 }
 
 impl<Msg: Send + 'static> Widget for Header<Msg> {
@@ -766,7 +835,12 @@ impl<Msg: Send + 'static> Widget for Header<Msg> {
         let b = cx.bounds();
         let geo = Geo { width: b.width(), height: b.height(), n: self.data.days.len().max(1), scroll: 0.0 };
         if let Some(n) = self.data.week_number {
-            cx.draw_text_in(&format!("W{n}"), &mono(10.5, t.faint()), Rect::new(4.0, 6.0, GUTTER - 10.0, 22.0), Align::End);
+            cx.draw_text_in(
+                &format!("W{n}"),
+                &mono(10.5, t.faint()),
+                Rect::new(4.0, 6.0, GUTTER - 10.0, 22.0),
+                Align::End,
+            );
         }
         let single = self.data.days.len() == 1;
         for (i, d) in self.data.days.iter().enumerate() {
@@ -777,7 +851,10 @@ impl<Msg: Send + 'static> Widget for Header<Msg> {
             cap.letter_spacing = 1.0;
             cx.draw_text_in(&name, &cap, Rect::new(x0 + 8.0, 4.0, x1 - 4.0, 18.0), Align::Start);
             let num = d.day().to_string();
-            let spec = TextSpec::new(FontSpec { weight: 600.0, tabular: true, ..FontSpec::mono(17.0) }, if today { t.on_focus() } else { t.text() });
+            let spec = TextSpec::new(
+                FontSpec { weight: 600.0, tabular: true, ..FontSpec::mono(17.0) },
+                if today { t.on_focus() } else { t.text() },
+            );
             let nw = cx.layout_text(&num, &spec, None).size().width.ceil();
             let r = Rect::new(x0 + 6.0, 19.0, x0 + 6.0 + nw + 8.0, 41.0);
             if today {
@@ -788,7 +865,12 @@ impl<Msg: Send + 'static> Widget for Header<Msg> {
             cx.draw_text_in(&num, &spec, r, Align::Center);
             if single {
                 let label = format!("{} {}", crate::format::month_name(d.month()), d.year());
-                cx.draw_text_in(&label, &ui(13.0, 400.0, t.text2()), Rect::new(r.x1 + 10.0, 21.0, x1 - 8.0, 40.0), Align::Start);
+                cx.draw_text_in(
+                    &label,
+                    &ui(13.0, 400.0, t.text2()),
+                    Rect::new(r.x1 + 10.0, 21.0, x1 - 8.0, 40.0),
+                    Align::Start,
+                );
             }
             cx.canvas.fill_rect(Rect::new(x0, 0.0, x0 + 1.0, b.y1), t.line());
         }
@@ -809,7 +891,8 @@ impl<Msg: Send + 'static> Widget for Header<Msg> {
 
     fn event(&mut self, cx: &mut EventCx, event: &Event) -> Status {
         if let Event::PointerDown { pos, button: PointerButton::Left, .. } = event {
-            let geo = Geo { width: cx.size().width, height: cx.size().height, n: self.data.days.len().max(1), scroll: 0.0 };
+            let geo =
+                Geo { width: cx.size().width, height: cx.size().height, n: self.data.days.len().max(1), scroll: 0.0 };
             if let Some(i) = geo.col_at(pos.x) {
                 super::send(cx, self.on_day.make(self.data.days[i]));
             }
@@ -874,7 +957,10 @@ struct Strip<Msg> {
 /// The all-day strip above the grid.
 pub fn strip<Msg: Send + 'static>(data: Rc<StripData>, on: impl Fn(GridAction) -> Msg + 'static) -> Element<Msg> {
     let h = data.height();
-    Element::new(Strip::<Msg> { data, on: MsgMap::new(on), _m: std::marker::PhantomData }, Vec::new()).width(Length::Fill).height(h).id("all-day")
+    Element::new(Strip::<Msg> { data, on: MsgMap::new(on), _m: std::marker::PhantomData }, Vec::new())
+        .width(Length::Fill)
+        .height(h)
+        .id("all-day")
 }
 
 impl<Msg: Send + 'static> Strip<Msg> {
@@ -918,7 +1004,12 @@ impl<Msg: Send + 'static> Widget for Strip<Msg> {
         let b = cx.bounds();
         let size = cx.size();
         let geo = self.geo(size);
-        cx.draw_text_in("all-day", &mono(9.5, t.faint()), Rect::new(2.0, 4.0, GUTTER - 8.0, 4.0 + LANE - 2.0), Align::End);
+        cx.draw_text_in(
+            "all-day",
+            &mono(9.5, t.faint()),
+            Rect::new(2.0, 4.0, GUTTER - 8.0, 4.0 + LANE - 2.0),
+            Align::End,
+        );
         for i in 0..geo.n {
             let x = geo.col_x(i).0;
             cx.canvas.fill_rect(Rect::new(x, 0.0, x + 1.0, b.y1), t.line());
@@ -926,10 +1017,17 @@ impl<Msg: Send + 'static> Widget for Strip<Msg> {
         for bar in self.data.bars.iter().filter(|bar| bar.lane < self.data.lanes) {
             let r = self.bar_rect(size, bar);
             let dye = colors::dye(t, bar.dye);
-            let (fill, fg) = if bar.selected { (dye, colors::on_dye(t, dye)) } else { (colors::tint(t, dye).mix(dye, 0.25), colors::on_tint(t, dye)) };
+            let (fill, fg) = if bar.selected {
+                (dye, colors::on_dye(t, dye))
+            } else {
+                (colors::tint(t, dye).mix(dye, 0.25), colors::on_tint(t, dye))
+            };
             cx.canvas.fill_rect(r, fill);
             if !bar.before {
-                cx.canvas.fill_rect(Rect::new(r.x0, r.y0, r.x0 + 3.0, r.y1), if bar.selected { fg.with_alpha(0.55) } else { dye });
+                cx.canvas.fill_rect(
+                    Rect::new(r.x0, r.y0, r.x0 + 3.0, r.y1),
+                    if bar.selected { fg.with_alpha(0.55) } else { dye },
+                );
             }
             let mut spec = ui(12.0, 600.0, fg);
             spec.strikethrough = bar.cancelled;
@@ -940,7 +1038,12 @@ impl<Msg: Send + 'static> Widget for Strip<Msg> {
             if *n > 0 {
                 let (x0, x1) = geo.col_x(i);
                 let y = 4.0 + (self.data.lanes.saturating_sub(1)) as f64 * LANE;
-                cx.draw_text_in(&format!("+{n} more"), &mono(10.5, t.text3()), Rect::new(x0 + 8.0, y, x1 - 4.0, y + LANE - 2.0), Align::Start);
+                cx.draw_text_in(
+                    &format!("+{n} more"),
+                    &mono(10.5, t.text3()),
+                    Rect::new(x0 + 8.0, y, x1 - 4.0, y + LANE - 2.0),
+                    Align::Start,
+                );
             }
         }
         draw::bottom(cx.canvas, b, t.line2(), 1.0);
@@ -1004,7 +1107,9 @@ impl<Msg: Send + 'static> Widget for Strip<Msg> {
                     return Status::Handled;
                 }
                 let bar = &self.data.bars[i];
-                let (Some(c0), Some(c1)) = (geo.col_at(origin.x.max(GUTTER)), geo.col_at(pos.x.max(GUTTER))) else { return Status::Handled };
+                let (Some(c0), Some(c1)) = (geo.col_at(origin.x.max(GUTTER)), geo.col_at(pos.x.max(GUTTER))) else {
+                    return Status::Handled;
+                };
                 let shift = c1 as i64 - c0 as i64;
                 let first = (bar.first as i64 + shift).clamp(0, geo.n as i64 - 1) as usize;
                 let last = (bar.last as i64 + shift).clamp(0, geo.n as i64 - 1) as usize;
@@ -1036,7 +1141,12 @@ impl<Msg: Send + 'static> Widget for Strip<Msg> {
                             let end = crate::rrule::add_days(start, bar.days.max(1)).unwrap_or(start);
                             self.emit(
                                 cx,
-                                GridAction::Move { key: bar.key, start: start.to_datetime(Time::midnight()), end: end.to_datetime(Time::midnight()), all_day: true },
+                                GridAction::Move {
+                                    key: bar.key,
+                                    start: start.to_datetime(Time::midnight()),
+                                    end: end.to_datetime(Time::midnight()),
+                                    all_day: true,
+                                },
                             );
                         }
                     }

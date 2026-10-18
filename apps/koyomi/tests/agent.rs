@@ -38,7 +38,13 @@ impl Bus {
             ),
         )
         .ok()?;
-        let mut child = match Command::new("dbus-daemon").arg(format!("--config-file={}", config.display())).args(["--print-address", "--nofork"]).stdout(Stdio::piped()).stderr(Stdio::null()).spawn() {
+        let mut child = match Command::new("dbus-daemon")
+            .arg(format!("--config-file={}", config.display()))
+            .args(["--print-address", "--nofork"])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+        {
             Ok(c) => c,
             Err(e) => {
                 eprintln!("skipping: no dbus-daemon ({e})");
@@ -71,9 +77,21 @@ struct Daemon {
 #[zbus::interface(name = "org.freedesktop.Notifications")]
 impl Daemon {
     #[allow(clippy::too_many_arguments)]
-    fn notify(&mut self, app: String, replaces: u32, _icon: String, summary: String, body: String, actions: Vec<String>, hints: HashMap<String, OwnedValue>, _timeout: i32) -> u32 {
+    fn notify(
+        &mut self,
+        app: String,
+        replaces: u32,
+        _icon: String,
+        summary: String,
+        body: String,
+        actions: Vec<String>,
+        hints: HashMap<String, OwnedValue>,
+        _timeout: i32,
+    ) -> u32 {
         let entry = hints.get("desktop-entry").and_then(|v| String::try_from(v.clone()).ok()).unwrap_or_default();
-        let id = if replaces != 0 { replaces } else {
+        let id = if replaces != 0 {
+            replaces
+        } else {
             self.next += 1;
             self.next
         };
@@ -119,7 +137,15 @@ fn alerts_are_notifications_with_snooze_and_open() {
     assert_eq!(entry, "org.aizome.Koyomi");
 
     // The person presses Snooze.
-    server.emit_signal(None::<&str>, "/org/freedesktop/Notifications", "org.freedesktop.Notifications", "ActionInvoked", &(id, "snooze")).unwrap();
+    server
+        .emit_signal(
+            None::<&str>,
+            "/org/freedesktop/Notifications",
+            "org.freedesktop.Notifications",
+            "ActionInvoked",
+            &(id, "snooze"),
+        )
+        .unwrap();
     let reply = rx.recv_timeout(Duration::from_secs(5)).expect("the agent hears it");
     assert_eq!(reply, Reply::Snooze(id));
     assert_eq!(agent.handle(reply, at(9, 21)), None);
@@ -129,10 +155,26 @@ fn alerts_are_notifications_with_snooze_and_open() {
     agent.post(again, &mut dbus);
     let id2 = posted.lock().unwrap()[1].0;
     // Then Open: the day to show.
-    server.emit_signal(None::<&str>, "/org/freedesktop/Notifications", "org.freedesktop.Notifications", "ActionInvoked", &(id2, "open")).unwrap();
+    server
+        .emit_signal(
+            None::<&str>,
+            "/org/freedesktop/Notifications",
+            "org.freedesktop.Notifications",
+            "ActionInvoked",
+            &(id2, "open"),
+        )
+        .unwrap();
     let reply = rx.recv_timeout(Duration::from_secs(5)).unwrap();
     assert_eq!(agent.handle(reply, at(9, 32)).as_deref(), Some("2026-10-19"));
     // Closing one is heard too.
-    server.emit_signal(None::<&str>, "/org/freedesktop/Notifications", "org.freedesktop.Notifications", "NotificationClosed", &(id2, 2u32)).unwrap();
+    server
+        .emit_signal(
+            None::<&str>,
+            "/org/freedesktop/Notifications",
+            "org.freedesktop.Notifications",
+            "NotificationClosed",
+            &(id2, 2u32),
+        )
+        .unwrap();
     assert_eq!(rx.recv_timeout(Duration::from_secs(5)).unwrap(), Reply::Closed(id2));
 }

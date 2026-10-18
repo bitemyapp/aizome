@@ -57,7 +57,9 @@ impl OccRef {
     pub fn is(&self, o: &Occurrence, cals: &[Calendar]) -> bool {
         let cal = &cals[o.cal];
         let e = &cal.events[o.event];
-        cal.id == self.cal && e.uid == self.uid && same_rid(o.rid.as_ref().or(e.recurrence_id.as_ref()), self.rid.as_ref())
+        cal.id == self.cal
+            && e.uid == self.uid
+            && same_rid(o.rid.as_ref().or(e.recurrence_id.as_ref()), self.rid.as_ref())
     }
 }
 
@@ -98,14 +100,19 @@ pub fn in_terms_of(like: &When, dt: DateTime, local: &TimeZone) -> When {
 /// for `rid` if there is one.
 fn parts(cal: &Calendar, uid: &str, rid: Option<&When>) -> (Option<usize>, Option<usize>) {
     let master = cal.master(uid);
-    let over = rid.and_then(|r| cal.events.iter().position(|e| e.uid == uid && e.recurrence_id.as_ref().is_some_and(|x| x.civil() == r.civil())));
+    let over = rid.and_then(|r| {
+        cal.events.iter().position(|e| e.uid == uid && e.recurrence_id.as_ref().is_some_and(|x| x.civil() == r.civil()))
+    });
     (master, over)
 }
 
 /// Whether the occurrence belongs to a series (asks before changing).
 pub fn in_series(cal: &Calendar, r: &OccRef) -> bool {
     match cal.master(&r.uid) {
-        Some(m) => cal.events[m].is_recurring() || r.rid.is_some() && cal.events.iter().any(|e| e.uid == r.uid && e.recurrence_id.is_some()),
+        Some(m) => {
+            cal.events[m].is_recurring()
+                || r.rid.is_some() && cal.events.iter().any(|e| e.uid == r.uid && e.recurrence_id.is_some())
+        }
         None => r.rid.is_some(),
     }
 }
@@ -157,7 +164,16 @@ fn instance_of(master: &Event, rid: &When, local: &TimeZone) -> Event {
 
 /// Move or resize an occurrence to `[start, end)` here.
 #[allow(clippy::too_many_arguments)]
-pub fn reschedule(cal: &mut Calendar, r: &OccRef, start: DateTime, end: DateTime, all_day: bool, scope: Scope, local: &TimeZone, here: &Tz) -> bool {
+pub fn reschedule(
+    cal: &mut Calendar,
+    r: &OccRef,
+    start: DateTime,
+    end: DateTime,
+    all_day: bool,
+    scope: Scope,
+    local: &TimeZone,
+    here: &Tz,
+) -> bool {
     let (master, over) = parts(cal, &r.uid, r.rid.as_ref());
     match (scope, r.rid.as_ref()) {
         // A single event (or a lone override).
@@ -194,7 +210,16 @@ pub fn reschedule(cal: &mut Calendar, r: &OccRef, start: DateTime, end: DateTime
 /// Move a whole series by the change of one of its instances: from
 /// `rid` to `[start, end)` here.
 #[allow(clippy::too_many_arguments)]
-fn shift_series(cal: &mut Calendar, m: usize, rid: &When, start: DateTime, end: DateTime, all_day: bool, local: &TimeZone, here: &Tz) {
+fn shift_series(
+    cal: &mut Calendar,
+    m: usize,
+    rid: &When,
+    start: DateTime,
+    end: DateTime,
+    all_day: bool,
+    local: &TimeZone,
+    here: &Tz,
+) {
     let uid = cal.events[m].uid.clone();
     let master = &cal.events[m];
     let was_all_day = master.all_day();
@@ -221,7 +246,8 @@ fn shift_series(cal: &mut Calendar, m: usize, rid: &When, start: DateTime, end: 
     let e = &mut cal.events[m];
     let first = shift(&e.start);
     let len = if all_day {
-        let last = if end.time() == Time::midnight() { end.date() } else { end.date().tomorrow().unwrap_or(end.date()) };
+        let last =
+            if end.time() == Time::midnight() { end.date() } else { end.date().tomorrow().unwrap_or(end.date()) };
         Duration::days(days_between(start.date(), last).max(1))
     } else {
         Duration::seconds(end.duration_since(start).as_secs().max(0))
@@ -289,10 +315,15 @@ pub fn delete(cal: &mut Calendar, r: &OccRef, scope: Scope) -> bool {
                     rule.count = None;
                     rule.until = Some(match &e.start {
                         When::Date(_) => Until::Date(cut.date().yesterday().unwrap_or(cut.date())),
-                        When::Floating(_) => Until::DateTime { at: cut.checked_sub(jiff::SignedDuration::from_secs(1)).unwrap_or(cut), utc: false },
+                        When::Floating(_) => Until::DateTime {
+                            at: cut.checked_sub(jiff::SignedDuration::from_secs(1)).unwrap_or(cut),
+                            utc: false,
+                        },
                         w => {
                             let z = w.zone(&TimeZone::UTC);
-                            let ts = to_instant(cut, &z).checked_sub(jiff::SignedDuration::from_secs(1)).unwrap_or_else(|_| to_instant(cut, &z));
+                            let ts = to_instant(cut, &z)
+                                .checked_sub(jiff::SignedDuration::from_secs(1))
+                                .unwrap_or_else(|_| to_instant(cut, &z));
                             Until::DateTime { at: ts.to_zoned(TimeZone::UTC).datetime(), utc: true }
                         }
                     });
@@ -326,7 +357,8 @@ pub enum RepeatEnd {
 }
 
 impl Repeat {
-    pub const NEVER: Repeat = Repeat { freq: None, interval: 1, weekdays: Vec::new(), by_weekday: false, end: RepeatEnd::Never };
+    pub const NEVER: Repeat =
+        Repeat { freq: None, interval: 1, weekdays: Vec::new(), by_weekday: false, end: RepeatEnd::Never };
 
     /// What the editor makes of a rule; `None` if it can't show it (it
     /// keeps the rule as it is then).
@@ -349,7 +381,8 @@ impl Repeat {
             (None, Some(Until::DateTime { at, .. })) => RepeatEnd::On(at.date()),
             (None, None) => RepeatEnd::Never,
         };
-        let mut rep = Repeat { freq: Some(r.freq), interval: r.interval.max(1), weekdays: Vec::new(), by_weekday: false, end };
+        let mut rep =
+            Repeat { freq: Some(r.freq), interval: r.interval.max(1), weekdays: Vec::new(), by_weekday: false, end };
         match r.freq {
             Freq::Daily if r.by_day.is_empty() && r.by_month_day.is_empty() => {}
             Freq::Weekly if r.by_month_day.is_empty() && r.by_day.iter().all(|(n, _)| *n == 0) => {
@@ -359,7 +392,10 @@ impl Repeat {
             Freq::Monthly if r.by_month_day.is_empty() && r.by_day.len() == 1 && r.by_day[0].0 != 0 => {
                 rep.by_weekday = true;
             }
-            Freq::Yearly if r.by_day.is_empty() && r.by_month_day.is_empty() && (r.by_month.is_empty() || r.by_month == [start.month()]) => {}
+            Freq::Yearly
+                if r.by_day.is_empty()
+                    && r.by_month_day.is_empty()
+                    && (r.by_month.is_empty() || r.by_month == [start.month()]) => {}
             _ => return None,
         }
         Some(rep)
@@ -392,7 +428,9 @@ impl Repeat {
             RepeatEnd::On(d) => {
                 r.until = Some(match start {
                     When::Date(_) => Until::Date(d),
-                    When::Floating(_) => Until::DateTime { at: d.to_datetime(Time::constant(23, 59, 59, 0)), utc: false },
+                    When::Floating(_) => {
+                        Until::DateTime { at: d.to_datetime(Time::constant(23, 59, 59, 0)), utc: false }
+                    }
                     w => {
                         let z = w.zone(local);
                         let ts = to_instant(d.to_datetime(Time::constant(23, 59, 59, 0)), &z);
@@ -470,13 +508,17 @@ mod tests {
     fn starts(cal: &Calendar, tz: &TimeZone) -> Vec<String> {
         let cals = vec![cal.clone()];
         let ix = Index::new(&cals, tz);
-        occurrences(&cals, &ix, &[true], tz, datetime(2026, 10, 1, 0, 0, 0, 0), datetime(2026, 11, 1, 0, 0, 0, 0)).iter().map(|o| o.start.to_string()).collect()
+        occurrences(&cals, &ix, &[true], tz, datetime(2026, 10, 1, 0, 0, 0, 0), datetime(2026, 11, 1, 0, 0, 0, 0))
+            .iter()
+            .map(|o| o.start.to_string())
+            .collect()
     }
 
     fn occ(cal: &Calendar, tz: &TimeZone, n: usize) -> OccRef {
         let cals = vec![cal.clone()];
         let ix = Index::new(&cals, tz);
-        let v = occurrences(&cals, &ix, &[true], tz, datetime(2026, 10, 1, 0, 0, 0, 0), datetime(2026, 11, 1, 0, 0, 0, 0));
+        let v =
+            occurrences(&cals, &ix, &[true], tz, datetime(2026, 10, 1, 0, 0, 0, 0), datetime(2026, 11, 1, 0, 0, 0, 0));
         OccRef::of(&v[n], &cals)
     }
 
@@ -486,11 +528,32 @@ mod tests {
         let mut cal = weekly();
         let r = occ(&cal, &tz, 1);
         assert!(in_series(&cal, &r));
-        assert!(reschedule(&mut cal, &r, datetime(2026, 10, 13, 14, 0, 0, 0), datetime(2026, 10, 13, 15, 30, 0, 0), false, Scope::This, &tz, &here));
-        assert_eq!(starts(&cal, &tz), ["2026-10-05T10:00:00", "2026-10-13T14:00:00", "2026-10-19T10:00:00", "2026-10-26T10:00:00"]);
+        assert!(reschedule(
+            &mut cal,
+            &r,
+            datetime(2026, 10, 13, 14, 0, 0, 0),
+            datetime(2026, 10, 13, 15, 30, 0, 0),
+            false,
+            Scope::This,
+            &tz,
+            &here
+        ));
+        assert_eq!(
+            starts(&cal, &tz),
+            ["2026-10-05T10:00:00", "2026-10-13T14:00:00", "2026-10-19T10:00:00", "2026-10-26T10:00:00"]
+        );
         // Moving it again changes the same override.
         let r = occ(&cal, &tz, 1);
-        reschedule(&mut cal, &r, datetime(2026, 10, 14, 9, 0, 0, 0), datetime(2026, 10, 14, 10, 0, 0, 0), false, Scope::This, &tz, &here);
+        reschedule(
+            &mut cal,
+            &r,
+            datetime(2026, 10, 14, 9, 0, 0, 0),
+            datetime(2026, 10, 14, 10, 0, 0, 0),
+            false,
+            Scope::This,
+            &tz,
+            &here,
+        );
         assert_eq!(cal.events.len(), 2);
         assert_eq!(starts(&cal, &tz)[1], "2026-10-14T09:00:00");
     }
@@ -504,7 +567,16 @@ mod tests {
         assert_eq!(starts(&cal, &tz).len(), 3);
         let r = occ(&cal, &tz, 1);
         // Monday 10:00 to Tuesday 11:00, an hour long still.
-        reschedule(&mut cal, &r, datetime(2026, 10, 13, 11, 0, 0, 0), datetime(2026, 10, 13, 12, 0, 0, 0), false, Scope::All, &tz, &here);
+        reschedule(
+            &mut cal,
+            &r,
+            datetime(2026, 10, 13, 11, 0, 0, 0),
+            datetime(2026, 10, 13, 12, 0, 0, 0),
+            false,
+            Scope::All,
+            &tz,
+            &here,
+        );
         assert_eq!(starts(&cal, &tz), ["2026-10-06T11:00:00", "2026-10-13T11:00:00", "2026-10-27T11:00:00"]);
     }
 
@@ -523,13 +595,35 @@ mod tests {
     #[test]
     fn all_day_and_back() {
         let (tz, here) = london();
-        let mut cal = Calendar::parse("c", "BEGIN:VEVENT\nUID:x\nDTSTART:20261017T090000Z\nDTEND:20261017T100000Z\nSUMMARY:x\nEND:VEVENT\n").0;
+        let mut cal = Calendar::parse(
+            "c",
+            "BEGIN:VEVENT\nUID:x\nDTSTART:20261017T090000Z\nDTEND:20261017T100000Z\nSUMMARY:x\nEND:VEVENT\n",
+        )
+        .0;
         let r = occ(&cal, &tz, 0);
-        reschedule(&mut cal, &r, datetime(2026, 10, 18, 0, 0, 0, 0), datetime(2026, 10, 20, 0, 0, 0, 0), true, Scope::This, &tz, &here);
+        reschedule(
+            &mut cal,
+            &r,
+            datetime(2026, 10, 18, 0, 0, 0, 0),
+            datetime(2026, 10, 20, 0, 0, 0, 0),
+            true,
+            Scope::This,
+            &tz,
+            &here,
+        );
         assert_eq!(cal.events[0].start, When::Date(date(2026, 10, 18)));
         assert_eq!(cal.events[0].end_when(&tz), When::Date(date(2026, 10, 20)));
         let r = occ(&cal, &tz, 0);
-        reschedule(&mut cal, &r, datetime(2026, 10, 18, 15, 0, 0, 0), datetime(2026, 10, 18, 16, 0, 0, 0), false, Scope::This, &tz, &here);
+        reschedule(
+            &mut cal,
+            &r,
+            datetime(2026, 10, 18, 15, 0, 0, 0),
+            datetime(2026, 10, 18, 16, 0, 0, 0),
+            false,
+            Scope::This,
+            &tz,
+            &here,
+        );
         assert_eq!(cal.events[0].start, When::Zoned(datetime(2026, 10, 18, 15, 0, 0, 0), here));
     }
 
@@ -537,16 +631,31 @@ mod tests {
     fn repeats_round_trip_through_rules() {
         let (tz, here) = london();
         let start = When::Zoned(datetime(2026, 10, 17, 9, 0, 0, 0), here);
-        let rep = Repeat { freq: Some(Freq::Weekly), interval: 2, weekdays: vec![Weekday::Saturday, Weekday::Monday], by_weekday: false, end: RepeatEnd::After(5) };
+        let rep = Repeat {
+            freq: Some(Freq::Weekly),
+            interval: 2,
+            weekdays: vec![Weekday::Saturday, Weekday::Monday],
+            by_weekday: false,
+            end: RepeatEnd::After(5),
+        };
         let rule = rep.to_rule(&start, &tz).unwrap();
         assert_eq!(rule.to_ical(), "FREQ=WEEKLY;INTERVAL=2;COUNT=5;BYDAY=MO,SA");
         let back = Repeat::from_rule(Some(&rule), date(2026, 10, 17)).unwrap();
         assert_eq!(back.weekdays, vec![Weekday::Monday, Weekday::Saturday]);
         assert_eq!(back.describe(date(2026, 10, 17)), "Every 2 weeks on Mon, Sat, 5 times");
-        let third_sat = Repeat { freq: Some(Freq::Monthly), interval: 1, weekdays: vec![], by_weekday: true, end: RepeatEnd::On(date(2027, 1, 31)) };
+        let third_sat = Repeat {
+            freq: Some(Freq::Monthly),
+            interval: 1,
+            weekdays: vec![],
+            by_weekday: true,
+            end: RepeatEnd::On(date(2027, 1, 31)),
+        };
         let rule = third_sat.to_rule(&start, &tz).unwrap();
         assert_eq!(rule.to_ical(), "FREQ=MONTHLY;UNTIL=20270131T235959Z;BYDAY=3SA");
         assert_eq!(third_sat.describe(date(2026, 10, 17)), "Every month on the third Saturday, until Sun 31 Jan");
-        assert!(Repeat::from_rule(RRule::parse("FREQ=MONTHLY;BYDAY=MO,TU;BYSETPOS=-1").as_ref(), date(2026, 10, 17)).is_none());
+        assert!(
+            Repeat::from_rule(RRule::parse("FREQ=MONTHLY;BYDAY=MO,TU;BYSETPOS=-1").as_ref(), date(2026, 10, 17))
+                .is_none()
+        );
     }
 }

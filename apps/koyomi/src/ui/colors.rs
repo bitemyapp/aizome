@@ -1,8 +1,8 @@
 //! Calendar colours in the theme: each dye as the palette has it in
 //! Night, Day and High Contrast, and what reads on it.
 
-use aizome_kit::theme::{Theme, color};
 use aizome_kit::Color;
+use aizome_kit::theme::{Theme, color};
 use aizome_theme::{DYE_RAMP, Rgba};
 
 use crate::model::Dye;

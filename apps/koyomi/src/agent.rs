@@ -98,7 +98,15 @@ pub struct Agent {
 impl Agent {
     pub fn new(store: Store, tz: TimeZone, state: AgentState, settings: &Settings) -> Agent {
         let index = Index::new(&store.calendars, &tz);
-        Agent { store, tz, state, snooze: SignedDuration::from_mins(settings.snooze_minutes.max(1)), index, shown: HashMap::new(), dirty: false }
+        Agent {
+            store,
+            tz,
+            state,
+            snooze: SignedDuration::from_mins(settings.snooze_minutes.max(1)),
+            index,
+            shown: HashMap::new(),
+            dirty: false,
+        }
     }
 
     /// Read the calendars again if their files changed.
@@ -133,7 +141,13 @@ impl Agent {
                 format!("{}, all day", format::short_date(o.start.date()))
             });
         } else {
-            let when = if lead > 0 && lead < 24 * 60 { format!("In {}", format::minutes(lead)) } else if lead == 0 { "Now".into() } else { String::new() };
+            let when = if lead > 0 && lead < 24 * 60 {
+                format!("In {}", format::minutes(lead))
+            } else if lead == 0 {
+                "Now".into()
+            } else {
+                String::new()
+            };
             let range = if o.start.date() == today {
                 format::time_range(o.start.time(), o.end.time(), h24)
             } else {
@@ -168,7 +182,8 @@ impl Agent {
             self.state.fired.insert(n.key.clone(), at.as_second());
             out.push(n);
         }
-        let (ready, later): (Vec<_>, Vec<_>) = std::mem::take(&mut self.state.snoozed).into_iter().partition(|(at, _)| *at <= now.as_second());
+        let (ready, later): (Vec<_>, Vec<_>) =
+            std::mem::take(&mut self.state.snoozed).into_iter().partition(|(at, _)| *at <= now.as_second());
         self.state.snoozed = later;
         out.extend(ready.into_iter().map(|(_, n)| n));
         self.state.last_check = Some(now.as_second());
@@ -188,7 +203,15 @@ impl Agent {
                 next = next.min(t);
             }
         }
-        if let Some((at, _, _)) = occur::alarms(&self.store.calendars, &self.index, &self.tz, now.checked_add(SignedDuration::from_secs(1)).unwrap_or(now), poll).first() {
+        if let Some((at, _, _)) = occur::alarms(
+            &self.store.calendars,
+            &self.index,
+            &self.tz,
+            now.checked_add(SignedDuration::from_secs(1)).unwrap_or(now),
+            poll,
+        )
+        .first()
+        {
             next = next.min(*at);
         }
         next.max(now)

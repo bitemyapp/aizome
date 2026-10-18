@@ -179,7 +179,8 @@ mod tests {
 
     #[test]
     fn settings_read_what_they_know() {
-        let s: Settings = toml::from_str("first_day = \"sunday\"\nclock = \"12h\"\nweek_numbers = false\nunknown = 3\n").unwrap();
+        let s: Settings =
+            toml::from_str("first_day = \"sunday\"\nclock = \"12h\"\nweek_numbers = false\nunknown = 3\n").unwrap();
         assert_eq!(s.first_day, FirstDay::Sunday);
         assert_eq!(s.clock, Clock::H12);
         assert!(!s.week_numbers);

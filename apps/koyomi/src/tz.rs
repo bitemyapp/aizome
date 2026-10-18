@@ -256,10 +256,13 @@ fn observances(vtz: &Component) -> Vec<Observance> {
             "STANDARD" => false,
             _ => continue,
         };
-        let Some(start) = c.prop("DTSTART").and_then(|p| value::parse_datetime(&p.value)).map(|(dt, _)| dt) else { continue };
+        let Some(start) = c.prop("DTSTART").and_then(|p| value::parse_datetime(&p.value)).map(|(dt, _)| dt) else {
+            continue;
+        };
         let Some(to) = c.prop("TZOFFSETTO").and_then(|p| value::parse_offset(&p.value)) else { continue };
         let from = c.prop("TZOFFSETFROM").and_then(|p| value::parse_offset(&p.value)).unwrap_or(to);
-        let mut o = Observance { daylight, start, from, to, name: c.text("TZNAME"), month: None, week: None, weekday: None };
+        let mut o =
+            Observance { daylight, start, from, to, name: c.text("TZNAME"), month: None, week: None, weekday: None };
         if let Some(rule) = c.prop("RRULE").and_then(|p| crate::rrule::RRule::parse(&p.value)) {
             o.month = rule.by_month.first().copied().or(Some(start.month()));
             if let Some(&(n, wd)) = rule.by_day.first() {
@@ -309,12 +312,22 @@ pub fn from_vtimezone(vtz: &Component) -> Option<TimeZone> {
     let obs = observances(vtz);
     let latest = |daylight: bool| obs.iter().filter(|o| o.daylight == daylight).max_by_key(|o| o.start);
     let std = latest(false).or_else(|| latest(true))?;
-    let dst = latest(true).filter(|d| d.month.is_some() && d.week.is_some() && d.weekday.is_some() && std.month.is_some() && !std.daylight);
+    let dst = latest(true).filter(|d| {
+        d.month.is_some() && d.week.is_some() && d.weekday.is_some() && std.month.is_some() && !std.daylight
+    });
     match dst {
         Some(d) if std.week.is_some() && std.weekday.is_some() => {
             let rule = |o: &Observance| {
                 let t = o.start.time();
-                format!("M{}.{}.{}/{}:{:02}:{:02}", o.month.unwrap(), o.week.unwrap(), o.weekday.unwrap(), t.hour(), t.minute(), t.second())
+                format!(
+                    "M{}.{}.{}/{}:{:02}:{:02}",
+                    o.month.unwrap(),
+                    o.week.unwrap(),
+                    o.weekday.unwrap(),
+                    t.hour(),
+                    t.minute(),
+                    t.second()
+                )
             };
             let posix = format!(
                 "{}{}{}{},{},{}",
@@ -389,7 +402,9 @@ impl Zones {
             for n in names {
                 if let Some((name, zone)) = WINDOWS
                     .iter()
-                    .find(|(_, iana)| iana.rsplit('/').next().is_some_and(|city| city.replace('_', " ").eq_ignore_ascii_case(n)))
+                    .find(|(_, iana)| {
+                        iana.rsplit('/').next().is_some_and(|city| city.replace('_', " ").eq_ignore_ascii_case(n))
+                    })
                     .and_then(|(_, iana)| iana_in(iana))
                 {
                     return Tz { id: name.into(), zone: Some(zone) };

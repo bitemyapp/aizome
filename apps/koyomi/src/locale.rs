@@ -25,9 +25,9 @@ impl Default for Weeks {
 
 /// Territories whose weeks start on Sunday (CLDR `firstDay`).
 const SUNDAY: &[&str] = &[
-    "AG", "AS", "BD", "BR", "BS", "BT", "BW", "BZ", "CA", "CN", "CO", "DM", "DO", "ET", "GT", "GU", "HK", "HN", "ID", "IL", "IN", "JM", "JP",
-    "KE", "KH", "KR", "LA", "MH", "MM", "MO", "MT", "MX", "MZ", "NI", "NP", "PA", "PE", "PH", "PK", "PR", "PT", "PY", "SA", "SG", "SV", "TH",
-    "TT", "TW", "UM", "US", "VE", "VI", "WS", "YE", "ZA", "ZW",
+    "AG", "AS", "BD", "BR", "BS", "BT", "BW", "BZ", "CA", "CN", "CO", "DM", "DO", "ET", "GT", "GU", "HK", "HN", "ID",
+    "IL", "IN", "JM", "JP", "KE", "KH", "KR", "LA", "MH", "MM", "MO", "MT", "MX", "MZ", "NI", "NP", "PA", "PE", "PH",
+    "PK", "PR", "PT", "PY", "SA", "SG", "SV", "TH", "TT", "TW", "UM", "US", "VE", "VI", "WS", "YE", "ZA", "ZW",
 ];
 /// … on Saturday.
 const SATURDAY: &[&str] = &["AE", "AF", "BH", "DJ", "DZ", "EG", "IQ", "IR", "JO", "KW", "LY", "OM", "QA", "SD", "SY"];
@@ -35,11 +35,15 @@ const SATURDAY: &[&str] = &["AE", "AF", "BH", "DJ", "DZ", "EG", "IQ", "IR", "JO"
 const FRIDAY: &[&str] = &["MV"];
 /// Territories that number weeks as ISO 8601 does (CLDR `minDays` 4).
 const MIN_DAYS_4: &[&str] = &[
-    "AD", "AN", "AT", "AX", "BE", "BG", "CH", "CZ", "DE", "DK", "EE", "ES", "FI", "FJ", "FO", "FR", "GB", "GF", "GG", "GI", "GP", "GR", "HU",
-    "IE", "IM", "IS", "IT", "JE", "LI", "LT", "LU", "MC", "MQ", "NL", "NO", "PL", "RE", "RU", "SE", "SJ", "SK", "SM", "VA",
+    "AD", "AN", "AT", "AX", "BE", "BG", "CH", "CZ", "DE", "DK", "EE", "ES", "FI", "FJ", "FO", "FR", "GB", "GF", "GG",
+    "GI", "GP", "GR", "HU", "IE", "IM", "IS", "IT", "JE", "LI", "LT", "LU", "MC", "MQ", "NL", "NO", "PL", "RE", "RU",
+    "SE", "SJ", "SK", "SM", "VA",
 ];
 /// Territories whose clocks commonly read 12-hour.
-const TWELVE_HOUR: &[&str] = &["US", "CA", "AU", "NZ", "IN", "PH", "PK", "EG", "SA", "MY", "BD", "CO", "MX", "SV", "HN", "NI", "PR", "KR", "TW", "JO"];
+const TWELVE_HOUR: &[&str] = &[
+    "US", "CA", "AU", "NZ", "IN", "PH", "PK", "EG", "SA", "MY", "BD", "CO", "MX", "SV", "HN", "NI", "PR", "KR", "TW",
+    "JO",
+];
 
 /// The locale that sets times: `LC_ALL`, else `LC_TIME`, else `LANG`.
 pub fn time_locale() -> String {

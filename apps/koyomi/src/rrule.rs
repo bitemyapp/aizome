@@ -153,7 +153,9 @@ impl RRule {
         }
         match self.until {
             Some(Until::Date(d)) => parts.push(format!("UNTIL={}", crate::ics::value::format_date(d))),
-            Some(Until::DateTime { at, utc }) => parts.push(format!("UNTIL={}", crate::ics::value::format_datetime(at, utc))),
+            Some(Until::DateTime { at, utc }) => {
+                parts.push(format!("UNTIL={}", crate::ics::value::format_datetime(at, utc)))
+            }
             None => {}
         }
         let list = |v: &[i8]| v.iter().map(|n| n.to_string()).collect::<Vec<_>>().join(",");
@@ -164,7 +166,10 @@ impl RRule {
             parts.push(format!("BYWEEKNO={}", list(&self.by_week_no)));
         }
         if !self.by_year_day.is_empty() {
-            parts.push(format!("BYYEARDAY={}", self.by_year_day.iter().map(|n| n.to_string()).collect::<Vec<_>>().join(",")));
+            parts.push(format!(
+                "BYYEARDAY={}",
+                self.by_year_day.iter().map(|n| n.to_string()).collect::<Vec<_>>().join(",")
+            ));
         }
         if !self.by_month_day.is_empty() {
             parts.push(format!("BYMONTHDAY={}", list(&self.by_month_day)));
@@ -187,7 +192,10 @@ impl RRule {
             parts.push(format!("BYSECOND={}", list(&self.by_second)));
         }
         if !self.by_set_pos.is_empty() {
-            parts.push(format!("BYSETPOS={}", self.by_set_pos.iter().map(|n| n.to_string()).collect::<Vec<_>>().join(",")));
+            parts.push(format!(
+                "BYSETPOS={}",
+                self.by_set_pos.iter().map(|n| n.to_string()).collect::<Vec<_>>().join(",")
+            ));
         }
         if self.wkst != Weekday::Monday {
             parts.push(format!("WKST={}", weekday_code(self.wkst)));
@@ -312,7 +320,9 @@ impl RRule {
     }
 
     fn times_of_day(&self, t: Time) -> Vec<Time> {
-        if !matches!(self.freq, Freq::Daily | Freq::Weekly | Freq::Monthly | Freq::Yearly) || (self.by_hour.is_empty() && self.by_minute.is_empty()) {
+        if !matches!(self.freq, Freq::Daily | Freq::Weekly | Freq::Monthly | Freq::Yearly)
+            || (self.by_hour.is_empty() && self.by_minute.is_empty())
+        {
             return vec![t];
         }
         let hours: Vec<i8> = if self.by_hour.is_empty() { vec![t.hour()] } else { self.by_hour.clone() };
@@ -332,13 +342,15 @@ impl RRule {
     /// Whether `d` passes the rule's day filters (for DAILY and finer).
     fn date_matches(&self, d: Date) -> bool {
         (self.by_month.is_empty() || self.by_month.contains(&d.month()))
-            && (self.by_month_day.is_empty() || self.by_month_day.iter().any(|&md| month_day(d.year(), d.month(), md) == Some(d.day())))
+            && (self.by_month_day.is_empty()
+                || self.by_month_day.iter().any(|&md| month_day(d.year(), d.month(), md) == Some(d.day())))
             && (self.by_day.is_empty() || self.by_day.iter().any(|(_, w)| *w == d.weekday()))
             && (self.by_year_day.is_empty() || self.by_year_day.iter().any(|&yd| year_day(d.year(), yd) == Some(d)))
     }
 
     fn weekly(&self, week: Date, start: Date) -> Vec<Date> {
-        let days: Vec<Weekday> = if self.by_day.is_empty() { vec![start.weekday()] } else { self.by_day.iter().map(|(_, w)| *w).collect() };
+        let days: Vec<Weekday> =
+            if self.by_day.is_empty() { vec![start.weekday()] } else { self.by_day.iter().map(|(_, w)| *w).collect() };
         let mut out: Vec<Date> = days
             .iter()
             .filter_map(|w| {
@@ -353,7 +365,12 @@ impl RRule {
 
     /// The days of month `m` of year `y` the rule picks.
     fn month_days(&self, y: i16, m: i8, start: Date, default_day: bool) -> Vec<Date> {
-        let by_md: Vec<Date> = self.by_month_day.iter().filter_map(|&md| month_day(y, m, md)).filter_map(|d| Date::new(y, m, d).ok()).collect();
+        let by_md: Vec<Date> = self
+            .by_month_day
+            .iter()
+            .filter_map(|&md| month_day(y, m, md))
+            .filter_map(|d| Date::new(y, m, d).ok())
+            .collect();
         let by_wd: Vec<Date> = self.by_day.iter().flat_map(|&(n, w)| weekdays_in_month(y, m, n, w)).collect();
         let mut out = match (self.by_month_day.is_empty(), self.by_day.is_empty()) {
             (false, false) => by_md.into_iter().filter(|d| by_wd.contains(d)).collect(),
@@ -382,7 +399,10 @@ impl RRule {
         let mut out: Vec<Date> = Vec::new();
         if !self.by_year_day.is_empty() {
             out = self.by_year_day.iter().filter_map(|&yd| year_day(y, yd)).collect();
-            out.retain(|d| (self.by_month.is_empty() || self.by_month.contains(&d.month())) && (self.by_day.is_empty() || self.by_day.iter().any(|(_, w)| *w == d.weekday())));
+            out.retain(|d| {
+                (self.by_month.is_empty() || self.by_month.contains(&d.month()))
+                    && (self.by_day.is_empty() || self.by_day.iter().any(|(_, w)| *w == d.weekday()))
+            });
         } else if !self.by_month.is_empty() {
             for &m in &self.by_month {
                 out.extend(self.month_days(y, m, start, true));
@@ -499,14 +519,16 @@ fn year_day(y: i16, yd: i16) -> Option<Date> {
 fn weekdays_in_month(y: i16, m: i8, n: i8, w: Weekday) -> Vec<Date> {
     let Ok(first) = Date::new(y, m, 1) else { return Vec::new() };
     let off = (w.to_monday_zero_offset() - first.weekday().to_monday_zero_offset()).rem_euclid(7);
-    let all: Vec<Date> = (0..5i64).filter_map(|i| add_days(first, off as i64 + 7 * i)).filter(|d| d.month() == m).collect();
+    let all: Vec<Date> =
+        (0..5i64).filter_map(|i| add_days(first, off as i64 + 7 * i)).filter(|d| d.month() == m).collect();
     pick(all, n)
 }
 
 fn weekdays_in_year(y: i16, n: i8, w: Weekday) -> Vec<Date> {
     let Ok(first) = Date::new(y, 1, 1) else { return Vec::new() };
     let off = (w.to_monday_zero_offset() - first.weekday().to_monday_zero_offset()).rem_euclid(7);
-    let all: Vec<Date> = (0..54i64).filter_map(|i| add_days(first, off as i64 + 7 * i)).filter(|d| d.year() == y).collect();
+    let all: Vec<Date> =
+        (0..54i64).filter_map(|i| add_days(first, off as i64 + 7 * i)).filter(|d| d.year() == y).collect();
     pick(all, n)
 }
 

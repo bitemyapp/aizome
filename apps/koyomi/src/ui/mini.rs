@@ -53,7 +53,12 @@ fn paint_days(cx: &mut PaintCx, m: &Mini, r: Rect, row: f64, names_h: f64) {
         let wd = m.first_day.wrapping_add(i as i64);
         let name = &crate::format::weekday_short(wd)[..1];
         let x0 = (r.x0 + w * i as f64).round();
-        cx.draw_text_in(name, &mono(10.0, t.text3()), Rect::new(x0, r.y0, (x0 + w).round(), r.y0 + names_h), Align::Center);
+        cx.draw_text_in(
+            name,
+            &mono(10.0, t.text3()),
+            Rect::new(x0, r.y0, (x0 + w).round(), r.y0 + names_h),
+            Align::Center,
+        );
     }
     let top = r.y0 + names_h;
     if let Some((a, z)) = m.range {
@@ -64,7 +69,10 @@ fn paint_days(cx: &mut PaintCx, m: &Mini, r: Rect, row: f64, names_h: f64) {
                 let (c, rr) = (i % 7, i / 7);
                 let x0 = (r.x0 + w * c as f64).round();
                 let y0 = (top + row * rr as f64).round();
-                cx.canvas.fill_rect(Rect::new(x0, y0 + 1.0, (r.x0 + w * (c + 1) as f64).round(), y0 + row - 1.0), t.selection().with_alpha(if t.is_dark() { 0.35 } else { 0.18 }));
+                cx.canvas.fill_rect(
+                    Rect::new(x0, y0 + 1.0, (r.x0 + w * (c + 1) as f64).round(), y0 + row - 1.0),
+                    t.selection().with_alpha(if t.is_dark() { 0.35 } else { 0.18 }),
+                );
             }
         }
     }
@@ -89,7 +97,10 @@ fn paint_days(cx: &mut PaintCx, m: &Mini, r: Rect, row: f64, names_h: f64) {
         } else if d == m.cursor && in_month {
             draw::border(cx.canvas, draw::centered(cell, (w - 4.0).min(24.0).round(), row - 4.0), t.line2(), 1.0);
         }
-        let spec = TextSpec::new(FontSpec { weight: if today { 600.0 } else { 400.0 }, tabular: true, ..FontSpec::mono(11.0) }, color);
+        let spec = TextSpec::new(
+            FontSpec { weight: if today { 600.0 } else { 400.0 }, tabular: true, ..FontSpec::mono(11.0) },
+            color,
+        );
         cx.draw_text_in(&d.day().to_string(), &spec, Rect::new(x0, y0, x1, y0 + row - 3.0), Align::Center);
         if m.busy & (1 << i) != 0 && !today {
             let dot = draw::centered(Rect::new(x0, y0 + row - 5.0, x1, y0 + row - 2.0), 3.0, 2.0);
@@ -115,7 +126,10 @@ struct MiniMonth<Msg> {
 pub const MINI_HEIGHT: f64 = 28.0 + 18.0 + 6.0 * 24.0 + 4.0;
 
 pub fn mini_month<Msg: Send + 'static>(m: Mini, on: impl Fn(MiniAction) -> Msg + 'static) -> Element<Msg> {
-    Element::new(MiniMonth::<Msg> { m, on: MsgMap::new(on), _m: std::marker::PhantomData }, Vec::new()).width(Length::Fill).height(MINI_HEIGHT).id("mini-month")
+    Element::new(MiniMonth::<Msg> { m, on: MsgMap::new(on), _m: std::marker::PhantomData }, Vec::new())
+        .width(Length::Fill)
+        .height(MINI_HEIGHT)
+        .id("mini-month")
 }
 
 impl<Msg: Send + 'static> MiniMonth<Msg> {
@@ -144,7 +158,12 @@ impl<Msg: Send + 'static> Widget for MiniMonth<Msg> {
         let title = format!("{} {}", crate::format::month_name(self.m.month), self.m.year);
         let mut f = FontSpec::ui(13.0);
         f.weight = 600.0;
-        cx.draw_text_in(&title, &TextSpec::new(f, t.text()), Rect::new(6.0, 2.0, size.width - 56.0, 26.0), Align::Start);
+        cx.draw_text_in(
+            &title,
+            &TextSpec::new(f, t.text()),
+            Rect::new(6.0, 2.0, size.width - 56.0, 26.0),
+            Align::Start,
+        );
         let (prev, next) = self.arrows(size);
         Icon::ChevronLeft.draw(cx.canvas, draw::centered(prev, 14.0, 14.0).origin(), 14.0, t.text2());
         Icon::ChevronRight.draw(cx.canvas, draw::centered(next, 14.0, 14.0).origin(), 14.0, t.text2());
@@ -189,7 +208,11 @@ impl<Msg: Send + 'static> Widget for MiniMonth<Msg> {
     }
 
     fn semantics(&self) -> Option<Semantics> {
-        Some(Semantics { role: SemanticRole::Table, label: Some(format!("{} {}", crate::format::month_name(self.m.month), self.m.year)), ..Default::default() })
+        Some(Semantics {
+            role: SemanticRole::Table,
+            label: Some(format!("{} {}", crate::format::month_name(self.m.month), self.m.year)),
+            ..Default::default()
+        })
     }
 }
 
@@ -210,8 +233,14 @@ const Y_NAMES: f64 = 16.0;
 const Y_ROW: f64 = 21.0;
 const Y_BLOCK: f64 = Y_TITLE + Y_NAMES + 6.0 * Y_ROW;
 
-pub fn year<Msg: Send + 'static>(data: YearData, on: impl Fn(crate::ui::week::GridAction) -> Msg + 'static) -> Element<Msg> {
-    Element::new(Year::<Msg> { data, on: MsgMap::new(on), _m: std::marker::PhantomData }, Vec::new()).width(Length::Fill).height(Length::Fill).id("year")
+pub fn year<Msg: Send + 'static>(
+    data: YearData,
+    on: impl Fn(crate::ui::week::GridAction) -> Msg + 'static,
+) -> Element<Msg> {
+    Element::new(Year::<Msg> { data, on: MsgMap::new(on), _m: std::marker::PhantomData }, Vec::new())
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .id("year")
 }
 
 impl<Msg: Send + 'static> Year<Msg> {
@@ -219,7 +248,10 @@ impl<Msg: Send + 'static> Year<Msg> {
     fn blocks(size: Size) -> Vec<Rect> {
         let pad = 16.0;
         let gap_x = 24.0;
-        let cols = [6usize, 4, 3, 2].into_iter().find(|c| (size.width - 2.0 * pad - gap_x * (*c as f64 - 1.0)) / *c as f64 >= 180.0).unwrap_or(2);
+        let cols = [6usize, 4, 3, 2]
+            .into_iter()
+            .find(|c| (size.width - 2.0 * pad - gap_x * (*c as f64 - 1.0)) / *c as f64 >= 180.0)
+            .unwrap_or(2);
         let rows = 12_usize.div_ceil(cols);
         let w = ((size.width - 2.0 * pad - gap_x * (cols as f64 - 1.0)) / cols as f64).min(300.0);
         let used = w * cols as f64 + gap_x * (cols as f64 - 1.0);
@@ -258,8 +290,16 @@ impl<Msg: Send + 'static> Widget for Year<Msg> {
             let mut f = FontSpec::ui(14.0);
             f.weight = 650.0;
             let color = if current { t.role(aizome_kit::Role::Accent) } else { t.text() };
-            cx.draw_text_in(crate::format::month_name(m.month), &TextSpec::new(f, color), Rect::new(r.x0 + 4.0, r.y0, r.x1, r.y0 + Y_TITLE - 4.0), Align::Start);
-            cx.canvas.fill_rect(Rect::new(r.x0, r.y0 + Y_TITLE - 3.0, r.x1, r.y0 + Y_TITLE - 2.0), if current { t.focus() } else { t.line() });
+            cx.draw_text_in(
+                crate::format::month_name(m.month),
+                &TextSpec::new(f, color),
+                Rect::new(r.x0 + 4.0, r.y0, r.x1, r.y0 + Y_TITLE - 4.0),
+                Align::Start,
+            );
+            cx.canvas.fill_rect(
+                Rect::new(r.x0, r.y0 + Y_TITLE - 3.0, r.x1, r.y0 + Y_TITLE - 2.0),
+                if current { t.focus() } else { t.line() },
+            );
             paint_days(cx, m, Rect::new(r.x0, r.y0 + Y_TITLE, r.x1, r.y1), Y_ROW, Y_NAMES);
         }
     }

@@ -2,8 +2,20 @@
 
 use jiff::civil::{Date, DateTime, Time, Weekday};
 
-pub const MONTHS: [&str; 12] =
-    ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+pub const MONTHS: [&str; 12] = [
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
+];
 
 pub fn month_name(m: i8) -> &'static str {
     MONTHS[(m.clamp(1, 12) - 1) as usize]
@@ -87,16 +99,28 @@ pub fn short_date(d: Date) -> String {
 /// `Sat 17 Oct – Tue 20 Oct`, `Sat 17 Oct, all day`.
 pub fn span(start: DateTime, end: DateTime, all_day: bool, h24: bool) -> String {
     if all_day {
-        let last = if end.time() == Time::midnight() && end > start { end.date().yesterday().unwrap_or(end.date()) } else { end.date() };
+        let last = if end.time() == Time::midnight() && end > start {
+            end.date().yesterday().unwrap_or(end.date())
+        } else {
+            end.date()
+        };
         if last <= start.date() {
             return format!("{}, all day", short_date(start.date()));
         }
         return format!("{} – {}", short_date(start.date()), short_date(last));
     }
-    if start.date() == end.date() || (end.time() == Time::midnight() && end.date().yesterday().ok() == Some(start.date())) {
+    if start.date() == end.date()
+        || (end.time() == Time::midnight() && end.date().yesterday().ok() == Some(start.date()))
+    {
         format!("{}, {}", short_date(start.date()), time_range(start.time(), end.time(), h24))
     } else {
-        format!("{}, {} – {}, {}", short_date(start.date()), time(start.time(), h24), short_date(end.date()), time(end.time(), h24))
+        format!(
+            "{}, {} – {}, {}",
+            short_date(start.date()),
+            time(start.time(), h24),
+            short_date(end.date()),
+            time(end.time(), h24)
+        )
     }
 }
 
@@ -123,7 +147,9 @@ pub fn parse_time(s: &str) -> Option<Time> {
         "midnight" => return Some(Time::midnight()),
         _ => {}
     }
-    let (body, pm) = if let Some(b) = s.strip_suffix("pm").or_else(|| s.strip_suffix("p.m.")).or_else(|| s.strip_suffix('p')) {
+    let (body, pm) = if let Some(b) =
+        s.strip_suffix("pm").or_else(|| s.strip_suffix("p.m.")).or_else(|| s.strip_suffix('p'))
+    {
         (b.trim(), Some(true))
     } else if let Some(b) = s.strip_suffix("am").or_else(|| s.strip_suffix("a.m.")).or_else(|| s.strip_suffix('a')) {
         (b.trim(), Some(false))
@@ -161,8 +187,13 @@ pub fn parse_date(s: &str, today: Date) -> Option<Date> {
     if let Ok(d) = s.parse::<Date>() {
         return Some(d);
     }
-    let parts: Vec<&str> = s.split(|c: char| c == '/' || c == '-' || c == '.' || c == ',' || c.is_whitespace()).filter(|p| !p.is_empty()).collect();
-    let month_of = |p: &str| MONTHS.iter().position(|m| p.len() >= 3 && m.to_ascii_lowercase().starts_with(p)).map(|i| i as i8 + 1);
+    let parts: Vec<&str> = s
+        .split(|c: char| c == '/' || c == '-' || c == '.' || c == ',' || c.is_whitespace())
+        .filter(|p| !p.is_empty())
+        .collect();
+    let month_of = |p: &str| {
+        MONTHS.iter().position(|m| p.len() >= 3 && m.to_ascii_lowercase().starts_with(p)).map(|i| i as i8 + 1)
+    };
     let num = |p: &str| p.parse::<i32>().ok();
     let (y, m, d) = match parts.as_slice() {
         // 17 oct 2026 / oct 17 2026 / 17 oct / oct 17
@@ -196,9 +227,18 @@ mod tests {
         assert_eq!(time(t(0, 15, 0, 0), false), "12:15 AM");
         assert_eq!(time_range(t(9, 0, 0, 0), t(10, 30, 0, 0), false), "9:00–10:30 AM");
         assert_eq!(hour(12, false), "Noon");
-        assert_eq!(span(datetime(2026, 10, 17, 0, 0, 0, 0), datetime(2026, 10, 18, 0, 0, 0, 0), true, true), "Sat 17 Oct, all day");
-        assert_eq!(span(datetime(2026, 10, 17, 0, 0, 0, 0), datetime(2026, 10, 21, 0, 0, 0, 0), true, true), "Sat 17 Oct – Tue 20 Oct");
-        assert_eq!(span(datetime(2026, 10, 17, 9, 30, 0, 0), datetime(2026, 10, 17, 10, 45, 0, 0), false, true), "Sat 17 Oct, 09:30–10:45");
+        assert_eq!(
+            span(datetime(2026, 10, 17, 0, 0, 0, 0), datetime(2026, 10, 18, 0, 0, 0, 0), true, true),
+            "Sat 17 Oct, all day"
+        );
+        assert_eq!(
+            span(datetime(2026, 10, 17, 0, 0, 0, 0), datetime(2026, 10, 21, 0, 0, 0, 0), true, true),
+            "Sat 17 Oct – Tue 20 Oct"
+        );
+        assert_eq!(
+            span(datetime(2026, 10, 17, 9, 30, 0, 0), datetime(2026, 10, 17, 10, 45, 0, 0), false, true),
+            "Sat 17 Oct, 09:30–10:45"
+        );
         assert_eq!(minutes(90), "1 h 30 min");
         assert_eq!(minutes(2880), "2 days");
     }

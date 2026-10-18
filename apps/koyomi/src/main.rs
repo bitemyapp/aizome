@@ -73,7 +73,13 @@ fn list(args: &[String]) -> ExitCode {
         println!("{}", serde_json::Value::Array(v));
     } else {
         for c in &store.calendars {
-            println!("{:<20} {:<24} {:>5} events{}", c.id, c.name, c.events.len(), if hidden.contains(&c.id) { "  (hidden)" } else { "" });
+            println!(
+                "{:<20} {:<24} {:>5} events{}",
+                c.id,
+                c.name,
+                c.events.len(),
+                if hidden.contains(&c.id) { "  (hidden)" } else { "" }
+            );
         }
     }
     for p in &store.problems {

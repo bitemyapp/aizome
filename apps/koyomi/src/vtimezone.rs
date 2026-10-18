@@ -53,7 +53,11 @@ pub fn make(id: &str) -> Option<Component> {
         let wd = d.weekday();
         // The same rule's day in 1970, as DTSTART.
         let first = Date::new(1970, d.month(), 1).ok()?;
-        let start = if week < 0 { first.last_of_month().nth_weekday_of_month(-1, wd).ok()? } else { first.nth_weekday_of_month(week, wd).ok()? };
+        let start = if week < 0 {
+            first.last_of_month().nth_weekday_of_month(-1, wd).ok()?
+        } else {
+            first.nth_weekday_of_month(week, wd).ok()?
+        };
         let mut o = Component::new(if t.dst().is_dst() { "DAYLIGHT" } else { "STANDARD" });
         o.push(Prop::new("DTSTART", value::format_datetime(start.to_datetime(local.time()), false)));
         o.push(Prop::new("TZOFFSETFROM", offset_text(before.seconds())));

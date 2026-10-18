@@ -17,7 +17,9 @@ use aizome_kit::hash::PaintHasher;
 use aizome_kit::prelude::*;
 use aizome_kit::sidestep_ui::{Key as KeyName, KeyEvent, NamedKey, PointerButton};
 use aizome_kit::text::TextSpec;
-use aizome_kit::widget::{Event, EventCx, FocusRing, Focusable, LayoutCx, PaintCx, SemanticAction, SemanticRole, Semantics, Status, Widget};
+use aizome_kit::widget::{
+    Event, EventCx, FocusRing, Focusable, LayoutCx, PaintCx, SemanticAction, SemanticRole, Semantics, Status, Widget,
+};
 use aizome_kit::{Constraints, column, row};
 
 use crate::app::{Koyomi, Msg, View};
@@ -146,7 +148,12 @@ impl Widget for CalRowWidget {
         let fg = if self.r.shown { t.text() } else { t.text3() };
         let right = b.x1 - 10.0;
         let count = self.r.count.to_string();
-        let w = cx.draw_text_in(&count, &TextSpec::new(FontSpec { tabular: true, ..FontSpec::mono(11.0) }, t.text3()), Rect::new(32.0, 0.0, right, b.y1), Align::End);
+        let w = cx.draw_text_in(
+            &count,
+            &TextSpec::new(FontSpec { tabular: true, ..FontSpec::mono(11.0) }, t.text3()),
+            Rect::new(32.0, 0.0, right, b.y1),
+            Align::End,
+        );
         cx.draw_text_in(&self.r.name, &TextSpec::new(f, fg), Rect::new(32.0, 0.0, right - w - 8.0, b.y1), Align::Start);
     }
 
@@ -197,14 +204,24 @@ fn caption_mono<Msg: 'static>(s: &str) -> Element<Msg> {
 }
 
 fn sidebar(k: &Koyomi) -> Element<Msg> {
-    let mut items: Vec<Element<Msg>> = vec![container(mini::mini_month(k.mini_model(), Msg::Mini)).padding([8.0, 9.0, 4.0, 9.0]).width(Length::Fill).into()];
+    let mut items: Vec<Element<Msg>> = vec![
+        container(mini::mini_month(k.mini_model(), Msg::Mini)).padding([8.0, 9.0, 4.0, 9.0]).width(Length::Fill).into(),
+    ];
     items.push(caption_mono("Calendars"));
     let default = k.default_calendar();
     for c in &k.store.calendars {
         let shown = !k.state.hidden.contains(&c.id);
-        let r = CalRow { name: c.name.as_str().into(), dye: c.color, shown, default: default.as_deref() == Some(c.id.as_str()), count: c.events.len() };
+        let r = CalRow {
+            name: c.name.as_str().into(),
+            dye: c.color,
+            shown,
+            default: default.as_deref() == Some(c.id.as_str()),
+            count: c.events.len(),
+        };
         let id = c.id.clone();
-        let el = Element::new(CalRowWidget { r, on: MsgFn::new(Msg::ToggleCalendar(id.clone())) }, Vec::new()).key(("cal", id.clone())).width(Length::Fill);
+        let el = Element::new(CalRowWidget { r, on: MsgFn::new(Msg::ToggleCalendar(id.clone())) }, Vec::new())
+            .key(("cal", id.clone()))
+            .width(Length::Fill);
         let mut colours = Menu::new("Colour");
         for d in Dye::ALL {
             colours = colours.item(MenuItem::new(d.name(), Msg::SetColor(id.clone(), d)).checked(c.color == d));
@@ -215,7 +232,10 @@ fn sidebar(k: &Koyomi) -> Element<Msg> {
             .separator()
             .item(MenuItem::new("Rename…", Msg::RenameCalendar(id.clone())))
             .submenu(colours)
-            .item(MenuItem::new("New Events Go Here", Msg::MakeDefault(id.clone())).checked(default.as_deref() == Some(id.as_str())))
+            .item(
+                MenuItem::new("New Events Go Here", Msg::MakeDefault(id.clone()))
+                    .checked(default.as_deref() == Some(id.as_str())),
+            )
             .separator()
             .item(MenuItem::new("Import into This Calendar…", Msg::ImportInto(id.clone())))
             .item(MenuItem::new("Export…", Msg::Export(id.clone())))
@@ -223,7 +243,11 @@ fn sidebar(k: &Koyomi) -> Element<Msg> {
             .item(MenuItem::new("Delete Calendar…", Msg::DeleteCalendar(id.clone())));
         items.push(context_menu(el, menu).width(Length::Fill).into());
     }
-    items.push(container(button("New Calendar…").plain().icon(Icon::Plus).on_press(Msg::NewCalendar).id("new-calendar")).padding([4.0, 6.0]).into());
+    items.push(
+        container(button("New Calendar…").plain().icon(Icon::Plus).on_press(Msg::NewCalendar).id("new-calendar"))
+            .padding([4.0, 6.0])
+            .into(),
+    );
     // What's next, from the next week.
     let next = k.up_next();
     if !next.is_empty() {
@@ -233,7 +257,12 @@ fn sidebar(k: &Koyomi) -> Element<Msg> {
                 container(
                     row![
                         Element::new(Swatch(dye), Vec::new()),
-                        column![text(title).size(12.0).semibold(), text(when).mono().tabular().size(10.5).role(Role::Text3)].spacing(1.0).width(Length::Fill),
+                        column![
+                            text(title).size(12.0).semibold(),
+                            text(when).mono().tabular().size(10.5).role(Role::Text3)
+                        ]
+                        .spacing(1.0)
+                        .width(Length::Fill),
                     ]
                     .spacing(8.0)
                     .align(Align::Start),
@@ -297,7 +326,9 @@ fn toolbar_view(k: &Koyomi) -> Element<Msg> {
             .into(),
     );
     items.push(toolbar_separator());
-    items.push(icon_button(Icon::Plus).toolbar().on_press(Msg::NewEvent).tooltip("New Event (❖N)").label("New Event").into());
+    items.push(
+        icon_button(Icon::Plus).toolbar().on_press(Msg::NewEvent).tooltip("New Event (❖N)").label("New Event").into(),
+    );
     toolbar(items)
 }
 
@@ -321,48 +352,90 @@ fn details(k: &Koyomi) -> Element<Msg> {
     let mut items: Vec<Element<Msg>> = Vec::new();
     match k.selected_event() {
         Some((o, cal, e)) => {
-            items.push(text(if e.summary.is_empty() { "New Event".to_owned() } else { e.summary.clone() }).semibold().size(17.0).wrap().into());
-            items.push(row![Element::new(Swatch(cal.color), Vec::new()), text(cal.name.clone()).size(12.0).role(Role::Text2)].spacing(6.0).into());
+            items.push(
+                text(if e.summary.is_empty() { "New Event".to_owned() } else { e.summary.clone() })
+                    .semibold()
+                    .size(17.0)
+                    .wrap()
+                    .into(),
+            );
+            items.push(
+                row![Element::new(Swatch(cal.color), Vec::new()), text(cal.name.clone()).size(12.0).role(Role::Text2)]
+                    .spacing(6.0)
+                    .into(),
+            );
             items.push(divider().into());
             items.push(text(crate::format::span(o.start, o.end, o.all_day, k.h24())).mono().size(12.0).into());
             if let Some(rule) = &k.master_rule(o) {
                 items.push(text(rule.clone()).size(12.0).role(Role::Text2).wrap().into());
             }
             if !e.location.is_empty() {
-                items.push(row![icon(Icon::MapPin).size(14.0).role(Role::Text3), text(e.location.clone()).size(12.0).wrap()].spacing(6.0).align(Align::Start).into());
+                items.push(
+                    row![icon(Icon::MapPin).size(14.0).role(Role::Text3), text(e.location.clone()).size(12.0).wrap()]
+                        .spacing(6.0)
+                        .align(Align::Start)
+                        .into(),
+                );
             }
             for a in e.alarms.iter().filter(|a| a.is_active()) {
                 let label = match a.minutes_before() {
-                    Some(m) if o.all_day && m < 0 => format!("On the day, at {}", crate::format::time(jiff::civil::Time::midnight().wrapping_add(jiff::SignedDuration::from_mins(-m)), k.h24())),
+                    Some(m) if o.all_day && m < 0 => format!(
+                        "On the day, at {}",
+                        crate::format::time(
+                            jiff::civil::Time::midnight().wrapping_add(jiff::SignedDuration::from_mins(-m)),
+                            k.h24()
+                        )
+                    ),
                     Some(0) => "At the start".to_owned(),
                     Some(m) if m > 0 => format!("{} before", crate::format::minutes(m)),
                     Some(m) => format!("{} after", crate::format::minutes(m)),
                     None => "At a set time".to_owned(),
                 };
-                items.push(row![icon(Icon::Bell).size(14.0).role(Role::Text3), text(label).size(12.0)].spacing(6.0).into());
+                items.push(
+                    row![icon(Icon::Bell).size(14.0).role(Role::Text3), text(label).size(12.0)].spacing(6.0).into(),
+                );
             }
             if !e.description.is_empty() {
                 items.push(divider().into());
                 items.push(text(e.description.clone()).size(12.0).role(Role::Text2).wrap().selectable().into());
             }
             items.push(space(4.0));
-            items.push(row![button("Edit…").on_press(Msg::Edit), button("Delete").destructive().on_press(Msg::Delete)].spacing(8.0).into());
+            items.push(
+                row![button("Edit…").on_press(Msg::Edit), button("Delete").destructive().on_press(Msg::Delete)]
+                    .spacing(8.0)
+                    .into(),
+            );
         }
         None => {
             items.push(text("Agenda").mono().size(10.5).letter_spacing(1.2).caps().role(Role::Text3).into());
             let day: Vec<_> = k.occ.iter().filter(|o| o.first_day() <= k.cursor && o.last_day() >= k.cursor).collect();
             if day.is_empty() {
                 items.push(text("Nothing on this day.").role(Role::Text3).size(12.0).into());
-                items.push(text("Double-click the grid, or drag across it, to add an event.").role(Role::Text3).size(11.0).wrap().into());
+                items.push(
+                    text("Double-click the grid, or drag across it, to add an event.")
+                        .role(Role::Text3)
+                        .size(11.0)
+                        .wrap()
+                        .into(),
+                );
             }
             for o in day {
                 let cal = &k.store.calendars[o.cal];
                 let e = &cal.events[o.event];
-                let when = if o.all_day || o.spans_days() { "all day".to_owned() } else { crate::format::time_range(o.start.time(), o.end.time(), k.h24()) };
+                let when = if o.all_day || o.spans_days() {
+                    "all day".to_owned()
+                } else {
+                    crate::format::time_range(o.start.time(), o.end.time(), k.h24())
+                };
                 items.push(
                     row![
                         Element::new(Swatch(cal.color), Vec::new()),
-                        column![text(e.summary.clone()).size(12.0).semibold(), text(when).mono().size(10.5).role(Role::Text3)].spacing(1.0).width(Length::Fill),
+                        column![
+                            text(e.summary.clone()).size(12.0).semibold(),
+                            text(when).mono().size(10.5).role(Role::Text3)
+                        ]
+                        .spacing(1.0)
+                        .width(Length::Fill),
                     ]
                     .spacing(8.0)
                     .align(Align::Start)
@@ -386,8 +459,16 @@ fn main_view(k: &Koyomi) -> Element<Msg> {
         View::Year => mini::year(k.year_model(), Msg::Grid),
         View::Week | View::Day => {
             let (header, strip, grid) = k.week_models();
-            let col: Element<Msg> = column![week::header(header, Msg::GoTo), week::strip(strip, Msg::Grid), week::grid(grid, Msg::Grid)].width(Length::Fill).height(Length::Fill).into();
-            if k.view == View::Day { row![col, details(k)].width(Length::Fill).height(Length::Fill).align(Align::Start).into() } else { col }
+            let col: Element<Msg> =
+                column![week::header(header, Msg::GoTo), week::strip(strip, Msg::Grid), week::grid(grid, Msg::Grid)]
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+                    .into();
+            if k.view == View::Day {
+                row![col, details(k)].width(Length::Fill).height(Length::Fill).align(Align::Start).into()
+            } else {
+                col
+            }
         }
     }
 }
@@ -395,7 +476,11 @@ fn main_view(k: &Koyomi) -> Element<Msg> {
 pub fn view(k: &Koyomi) -> Element<Msg> {
     let main = Element::new(Keys, vec![main_view(k)]).id("calendar").width(Length::Fill).height(Length::Fill);
     let body: Element<Msg> = if k.show_sidebar {
-        sidebar_layout(sidebar(k), main).first_size(k.state.sidebar.unwrap_or(212.0)).min_sizes(200.0, 420.0).on_resize(Msg::SidebarWidth).into()
+        sidebar_layout(sidebar(k), main)
+            .first_size(k.state.sidebar.unwrap_or(212.0))
+            .min_sizes(200.0, 420.0)
+            .on_resize(Msg::SidebarWidth)
+            .into()
     } else {
         main
     };
@@ -407,7 +492,9 @@ pub fn name_sheet(title: &str, value: &str, ok: &str, on: fn(String) -> Msg, don
     column![
         text(title.to_owned()).semibold().size(15.0),
         text_field(value).on_change(on).on_submit(done.clone()).id("name-field"),
-        row![spacer(), button("Cancel").cancel().on_press(cancel), button(ok.to_owned()).default().on_press(done)].spacing(8.0).width(Length::Fill),
+        row![spacer(), button("Cancel").cancel().on_press(cancel), button(ok.to_owned()).default().on_press(done)]
+            .spacing(8.0)
+            .width(Length::Fill),
     ]
     .spacing(12.0)
     .padding(18.0)

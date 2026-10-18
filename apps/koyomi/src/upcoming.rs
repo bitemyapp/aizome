@@ -53,7 +53,14 @@ fn rfc3339(dt: DateTime, tz: &TimeZone) -> String {
 
 /// The events from `now` to the end of the day `days` days on (today
 /// counts as day 1), of the calendars not `hidden`, at most `limit`.
-pub fn upcoming(cals: &[Calendar], hidden: &[String], tz: &TimeZone, now: Timestamp, days: u32, limit: usize) -> Report {
+pub fn upcoming(
+    cals: &[Calendar],
+    hidden: &[String],
+    tz: &TimeZone,
+    now: Timestamp,
+    days: u32,
+    limit: usize,
+) -> Report {
     let shown: Vec<bool> = cals.iter().map(|c| !hidden.contains(&c.id)).collect();
     let ix = Index::new(cals, tz);
     let now_local = now.to_zoned(tz.clone()).datetime();
@@ -113,7 +120,12 @@ pub fn text(r: &Report, h24: bool) -> String {
         let when = if e.all_day {
             "all day".to_owned()
         } else {
-            let t = |s: &str| s.get(11..16).and_then(|hm| hm.parse::<Time>().ok()).map(|t| crate::format::time(t, h24)).unwrap_or_default();
+            let t = |s: &str| {
+                s.get(11..16)
+                    .and_then(|hm| hm.parse::<Time>().ok())
+                    .map(|t| crate::format::time(t, h24))
+                    .unwrap_or_default()
+            };
             format!("{}–{}", t(&e.start), t(&e.end))
         };
         out.push_str(&format!("  {when:<13} {}  ({})", e.title, e.calendar_name));

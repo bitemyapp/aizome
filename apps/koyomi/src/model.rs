@@ -76,7 +76,10 @@ impl When {
 
     /// Every value of a list property (EXDATE, RDATE).
     pub fn list_from_prop(p: &Prop, zones: &mut Zones) -> Vec<When> {
-        value::split_list(&p.value).into_iter().filter_map(|v| Self::from_value(v.trim(), p.param("VALUE"), p.param("TZID"), zones)).collect()
+        value::split_list(&p.value)
+            .into_iter()
+            .filter_map(|v| Self::from_value(v.trim(), p.param("VALUE"), p.param("TZID"), zones))
+            .collect()
     }
 
     fn from_value(v: &str, kind: Option<&str>, tzid: Option<&str>, zones: &mut Zones) -> Option<When> {
@@ -86,7 +89,8 @@ impl When {
         {
             return Some(When::Date(d));
         }
-        let (dt, utc) = value::parse_datetime(v).or_else(|| value::parse_date(v).map(|d| (d.to_datetime(Time::midnight()), false)))?;
+        let (dt, utc) = value::parse_datetime(v)
+            .or_else(|| value::parse_date(v).map(|d| (d.to_datetime(Time::midnight()), false)))?;
         if utc {
             return Some(When::Utc(dt));
         }
@@ -108,7 +112,9 @@ impl When {
             When::Date(d) => Prop::new(name, value::format_date(*d)).with_param("VALUE", "DATE"),
             When::Floating(dt) => Prop::new(name, value::format_datetime(*dt, false)),
             When::Utc(dt) => Prop::new(name, value::format_datetime(*dt, true)),
-            When::Zoned(dt, tz) => Prop::new(name, value::format_datetime(*dt, false)).with_param("TZID", tz.id.to_string()),
+            When::Zoned(dt, tz) => {
+                Prop::new(name, value::format_datetime(*dt, false)).with_param("TZID", tz.id.to_string())
+            }
         }
     }
 }
@@ -134,7 +140,10 @@ pub enum End {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Trigger {
     /// Before (negative) or after the event's start, or its end.
-    Relative { offset: Duration, from_end: bool },
+    Relative {
+        offset: Duration,
+        from_end: bool,
+    },
     Absolute(Timestamp),
 }
 
@@ -163,7 +172,8 @@ impl Alarm {
 
     /// Whether it does anything a person would notice.
     pub fn is_active(&self) -> bool {
-        !self.action.eq_ignore_ascii_case("NONE") && !self.extra.iter().any(|p| p.name == "ACKNOWLEDGED" && self.is_absolute_past(p))
+        !self.action.eq_ignore_ascii_case("NONE")
+            && !self.extra.iter().any(|p| p.name == "ACKNOWLEDGED" && self.is_absolute_past(p))
     }
 
     fn is_absolute_past(&self, _ack: &Prop) -> bool {
@@ -183,7 +193,9 @@ impl Alarm {
 
     fn from_component(c: &Component) -> Option<Alarm> {
         let t = c.prop("TRIGGER")?;
-        let trigger = if t.param("VALUE").is_some_and(|v| v.eq_ignore_ascii_case("DATE-TIME")) || t.value.contains('T') && !t.value.contains('P') {
+        let trigger = if t.param("VALUE").is_some_and(|v| v.eq_ignore_ascii_case("DATE-TIME"))
+            || t.value.contains('T') && !t.value.contains('P')
+        {
             let (dt, _) = value::parse_datetime(&t.value)?;
             Trigger::Absolute(to_instant(dt, &TimeZone::UTC))
         } else {
@@ -192,7 +204,12 @@ impl Alarm {
         };
         let action = c.prop("ACTION").map(|p| p.value.trim().to_ascii_uppercase()).unwrap_or_else(|| "DISPLAY".into());
         let description = c.text("DESCRIPTION").unwrap_or_default();
-        let extra = c.props.iter().filter(|p| !matches!(p.name.as_str(), "TRIGGER" | "ACTION" | "DESCRIPTION")).cloned().collect();
+        let extra = c
+            .props
+            .iter()
+            .filter(|p| !matches!(p.name.as_str(), "TRIGGER" | "ACTION" | "DESCRIPTION"))
+            .cloned()
+            .collect();
         Some(Alarm { trigger, action, description, extra, other: c.children.clone() })
     }
 
@@ -387,7 +404,11 @@ impl Event {
             start,
             end,
             rrule: c.prop("RRULE").and_then(|p| RRule::parse(&p.value)),
-            rdates: c.props_named("RDATE").filter(|p| !p.param("VALUE").is_some_and(|v| v.eq_ignore_ascii_case("PERIOD"))).flat_map(|p| When::list_from_prop(p, zones)).collect(),
+            rdates: c
+                .props_named("RDATE")
+                .filter(|p| !p.param("VALUE").is_some_and(|v| v.eq_ignore_ascii_case("PERIOD")))
+                .flat_map(|p| When::list_from_prop(p, zones))
+                .collect(),
             exdates: c.props_named("EXDATE").flat_map(|p| When::list_from_prop(p, zones)).collect(),
             recurrence_id: c.prop("RECURRENCE-ID").and_then(|p| When::from_prop(p, zones)),
             alarms: c.children_named("VALARM").filter_map(Alarm::from_component).collect(),
@@ -397,7 +418,18 @@ impl Event {
             other: c.children.iter().filter(|k| k.name != "VALARM").cloned().collect(),
         };
         const KNOWN: &[&str] = &[
-            "UID", "SUMMARY", "LOCATION", "DESCRIPTION", "DTSTART", "DTEND", "DURATION", "RRULE", "EXDATE", "RECURRENCE-ID", "STATUS", "SEQUENCE",
+            "UID",
+            "SUMMARY",
+            "LOCATION",
+            "DESCRIPTION",
+            "DTSTART",
+            "DTEND",
+            "DURATION",
+            "RRULE",
+            "EXDATE",
+            "RECURRENCE-ID",
+            "STATUS",
+            "SEQUENCE",
         ];
         e.extra = c
             .props
@@ -498,7 +530,8 @@ impl Event {
             },
             Until::DateTime { at, utc } => match &self.start {
                 When::Date(_) => {
-                    let date = if utc { to_instant(at, &TimeZone::UTC).to_zoned(local.clone()).date() } else { at.date() };
+                    let date =
+                        if utc { to_instant(at, &TimeZone::UTC).to_zoned(local.clone()).date() } else { at.date() };
                     date.to_datetime(Time::midnight())
                 }
                 s if utc => to_instant(at, &TimeZone::UTC).to_zoned(s.zone(local)).datetime(),
@@ -531,7 +564,8 @@ pub fn new_uid() -> String {
     static N: AtomicU64 = AtomicU64::new(0);
     let n = N.fetch_add(1, Ordering::Relaxed);
     let t = Timestamp::now();
-    let mut seed = t.as_nanosecond() as u64 ^ (u64::from(std::process::id()) << 32) ^ n.wrapping_mul(0x9e37_79b9_7f4a_7c15);
+    let mut seed =
+        t.as_nanosecond() as u64 ^ (u64::from(std::process::id()) << 32) ^ n.wrapping_mul(0x9e37_79b9_7f4a_7c15);
     // A splitmix step, so UIDs made in one nanosecond still differ.
     seed = seed.wrapping_add(0x9e37_79b9_7f4a_7c15);
     let mut z = seed;
@@ -562,7 +596,8 @@ pub enum Dye {
 }
 
 impl Dye {
-    pub const ALL: [Dye; 8] = [Dye::Hanada, Dye::Ai, Dye::Kamenozoki, Dye::Cyan, Dye::Green, Dye::Red, Dye::Violet, Dye::Kohaku];
+    pub const ALL: [Dye; 8] =
+        [Dye::Hanada, Dye::Ai, Dye::Kamenozoki, Dye::Cyan, Dye::Green, Dye::Red, Dye::Violet, Dye::Kohaku];
 
     pub fn key(self) -> &'static str {
         match self {
@@ -612,7 +647,8 @@ impl Dye {
     /// The dye nearest a colour from another app, by hue (greys and
     /// browns go to Ai and Kohaku).
     pub fn nearest(rgb: u32) -> Dye {
-        let (r, g, b) = (((rgb >> 16) & 255) as f32 / 255.0, ((rgb >> 8) & 255) as f32 / 255.0, (rgb & 255) as f32 / 255.0);
+        let (r, g, b) =
+            (((rgb >> 16) & 255) as f32 / 255.0, ((rgb >> 8) & 255) as f32 / 255.0, (rgb & 255) as f32 / 255.0);
         let max = r.max(g).max(b);
         let min = r.min(g).min(b);
         let delta = max - min;
@@ -665,7 +701,15 @@ pub struct Calendar {
 
 impl Calendar {
     pub fn new(id: impl Into<String>, name: impl Into<String>, color: Dye) -> Calendar {
-        Calendar { id: id.into(), name: name.into(), color, events: Vec::new(), timezones: Vec::new(), other: Vec::new(), props: Vec::new() }
+        Calendar {
+            id: id.into(),
+            name: name.into(),
+            color,
+            events: Vec::new(),
+            timezones: Vec::new(),
+            other: Vec::new(),
+            props: Vec::new(),
+        }
     }
 
     /// Read iCalendar text: every VCALENDAR in it (and bare events) as one
@@ -681,7 +725,9 @@ impl Calendar {
                 "VCALENDAR" => {
                     for p in &c.props {
                         match p.name.as_str() {
-                            "X-WR-CALNAME" | "NAME" => name = name.or_else(|| Some(p.text_value()).filter(|n| !n.trim().is_empty())),
+                            "X-WR-CALNAME" | "NAME" => {
+                                name = name.or_else(|| Some(p.text_value()).filter(|n| !n.trim().is_empty()))
+                            }
                             "X-AIZOME-COLOR" => colour = Dye::from_key(&p.value).or(colour),
                             "X-APPLE-CALENDAR-COLOR" | "COLOR" | "X-OUTLOOK-COLOR" => {
                                 if colour.is_none() {
@@ -730,7 +776,12 @@ impl Calendar {
         c.push(Prop::text("X-WR-CALNAME", &self.name));
         c.push(Prop::new("X-AIZOME-COLOR", self.color.key()));
         c.push(Prop::new("X-APPLE-CALENDAR-COLOR", format!("#{:06X}", self.color.hex())));
-        c.props.extend(self.props.iter().filter(|p| !matches!(p.name.as_str(), "X-WR-CALNAME" | "X-AIZOME-COLOR" | "X-APPLE-CALENDAR-COLOR")).cloned());
+        c.props.extend(
+            self.props
+                .iter()
+                .filter(|p| !matches!(p.name.as_str(), "X-WR-CALNAME" | "X-AIZOME-COLOR" | "X-APPLE-CALENDAR-COLOR"))
+                .cloned(),
+        );
         // The zones the events use: their definitions as read, or made
         // for IANA zones.
         let mut used: Vec<Arc<str>> = Vec::new();
