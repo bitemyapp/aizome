@@ -291,3 +291,67 @@ fn a_picture_drawn_smaller_is_scaled_once_and_looks_the_same() {
     let off = aizome_kit::testing::difference(&direct, &cached, 3);
     assert!(off < 0.002, "scaled once, it looks as scaled each time: {off}");
 }
+
+/// A program that opens a window per document, each with its text field
+/// focused, as an editor's File ▸ New does.
+#[derive(Default)]
+struct Documents {
+    texts: Vec<(WindowKey, String)>,
+}
+
+#[derive(Clone, Debug)]
+enum DocMsg {
+    New,
+    Typed(WindowKey, String),
+}
+
+impl Documents {
+    fn open(&mut self, cx: &mut Cx<DocMsg>) {
+        let w = cx.open_window(WindowSpec::new("Untitled").size(300.0, 200.0));
+        self.texts.push((w, String::new()));
+        cx.focus("text");
+    }
+}
+
+impl Program for Documents {
+    type Msg = DocMsg;
+    fn info(&self) -> AppInfo {
+        AppInfo::new("org.aizome.Documents", "Documents", "Test")
+    }
+    fn launched(&mut self, cx: &mut Cx<DocMsg>) {
+        self.open(cx);
+    }
+    fn update(&mut self, msg: DocMsg, cx: &mut Cx<DocMsg>) {
+        match msg {
+            DocMsg::New => self.open(cx),
+            DocMsg::Typed(w, s) => {
+                if let Some(t) = self.texts.iter_mut().find(|(k, _)| *k == w) {
+                    t.1 = s;
+                }
+            }
+        }
+    }
+    fn view(&self, w: WindowKey) -> Element<DocMsg> {
+        let text = self.texts.iter().find(|(k, _)| *k == w).map(|t| t.1.clone()).unwrap_or_default();
+        column![text_field(&text).on_change(move |s| DocMsg::Typed(w, s)).id("text")].padding(12.0).into()
+    }
+}
+
+#[test]
+fn focus_after_opening_a_window_goes_to_that_window() {
+    let mut h = Harness::new(Documents::default());
+    let first = h.window();
+    h.focus_window(first, true);
+    assert_eq!(h.focused_name(first).as_deref(), Some("text"));
+    h.type_text(first, "one");
+    h.send(DocMsg::New);
+    let second = *h.windows().iter().find(|k| **k != first).expect("a second window");
+    // The new window's field has the focus, and the first window's text
+    // is left alone when the keys come to the new one.
+    h.focus_window(first, false);
+    h.focus_window(second, true);
+    assert_eq!(h.focused_name(second).as_deref(), Some("text"));
+    h.type_text(second, "two");
+    let texts: Vec<&str> = h.program().texts.iter().map(|t| t.1.as_str()).collect();
+    assert_eq!(texts, ["one", "two"]);
+}

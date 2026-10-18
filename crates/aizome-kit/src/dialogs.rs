@@ -383,7 +383,7 @@ pub(crate) fn show_panel(
         w.panels.push(id);
         w.dirty = true;
     }
-    core.pending_focus.push(if save { "panel-name".into() } else { "panel-files".into() });
+    core.pending_focus.push((None, if save { "panel-name".into() } else { "panel-files".into() }));
 }
 
 fn finish(core: &mut Core, panel: u64, result: Option<Vec<PathBuf>>) {

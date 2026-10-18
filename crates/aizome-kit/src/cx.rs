@@ -235,8 +235,14 @@ impl<Msg: Clone + Send + 'static> Cx<'_, Msg> {
     }
 
     /// Focus the element given `.id(name)`, in the window with the
-    /// keyboard (now, or once it shows).
+    /// keyboard (now, or once it shows); right after `open_window`, in the
+    /// window just opened, once it shows.
     pub fn focus(&mut self, name: &str) {
+        let opening = self.core.wins.values().filter(|w| w.key().is_some() && w.tree.root.is_none()).map(|w| w.id).max();
+        if let Some(w) = opening {
+            self.core.pending_focus.push((Some(w), name.into()));
+            return;
+        }
         let wins: Vec<WinId> = match self.core.key_window {
             Some(w) => vec![w],
             None => self.core.app_windows().into_iter().map(|(w, _)| w).collect(),
@@ -246,7 +252,7 @@ impl<Msg: Clone + Send + 'static> Cx<'_, Msg> {
                 return;
             }
         }
-        self.core.pending_focus.push(name.into());
+        self.core.pending_focus.push((None, name.into()));
     }
 
     pub fn theme(&self) -> &Theme {

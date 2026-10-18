@@ -199,8 +199,9 @@ pub(crate) struct Core {
     /// No Aizome shell: draw the menu bar along each window's top.
     pub in_window_menus: bool,
     pub mods: Modifiers,
-    /// A name to focus once it's in a tree.
-    pub pending_focus: Vec<Arc<str>>,
+    /// A name to focus once it's in a tree: in the window given (one
+    /// just opened, not built yet), or in the next window built that has it.
+    pub pending_focus: Vec<(Option<WinId>, Arc<str>)>,
     pub bg_tx: Sender<AnyMsg>,
     pub bg_rx: Receiver<AnyMsg>,
     pub stats: Stats,
@@ -463,7 +464,10 @@ impl Core {
         self.stats.view_layout(started.elapsed());
         self.sync_popovers(win, platform);
         let mut names = std::mem::take(&mut self.pending_focus);
-        names.retain(|n| !self.focus_name(win, n, platform));
+        names.retain(|(target, n)| match target {
+            Some(t) if *t != win => self.wins.contains_key(t),
+            _ => !self.focus_name(win, n, platform),
+        });
         self.pending_focus = names;
     }
 
