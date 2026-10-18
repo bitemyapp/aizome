@@ -291,9 +291,37 @@ false`), and the Nix package builds the compositor (core, logic and the
 `examples/frame_bench` on a 2880×1800 output at scale 2 (CPU per frame,
 median of three runs, p50 / p99 in ms):
 
-‹bench-table›
+| Scenario | Before, thin LTO | Before, no LTO | Core + logic |
+|---|---|---|---|
+| GLES: move a window | 0.34 / 1.10 | 0.38 / 1.04 | 0.42 / 0.93 |
+| GLES: animating client | 0.28 / 0.74 | 0.29 / 0.87 | 0.33 / 1.62 |
+| GLES: Desk switches | 0.29 / 0.93 | 0.33 / 0.74 | 0.36 / 1.21 |
+| GLES: 10 windows, one moving | 0.64 / 1.03 | 0.72 / 1.33 | 0.75 / 1.88 |
+| GLES: full-screen client | 0.30 / 0.98 | 0.35 / 0.69 | 0.36 / 2.09 |
+| GLES: overview open/close | 0.87 / 5.50 | 1.04 / 4.79 | 0.71 / 5.29 |
+| pixman: move a window | 0.41 / 0.91 | 0.39 / 0.86 | 0.38 / 0.99 |
+| pixman: animating client | 0.79 / 2.03 | 0.77 / 1.74 | 0.80 / 2.65 |
+| pixman: Desk switches | 0.49 / 1.18 | 0.48 / 1.11 | 0.48 / 0.83 |
+| pixman: 10 windows, one moving | 0.64 / 0.95 | 0.71 / 1.24 | 0.71 / 1.48 |
+| pixman: full-screen client | 1.97 / 3.03 | 2.14 / 8.11 | 2.15 / 6.33 |
+| pixman: overview open/close | 5.15 / 20.9 | 7.86 / 26.7 | 6.45 / 27.4 |
 
-‹bench-commentary›
+
+"Before" is main as this branch last merged it, "core + logic" this
+branch on top of it; all three were built against the same Sidestep and
+run interleaved; the machine was shared with other builds (load 8 to
+23 on 8 cores), so the p99 column is mostly other processes, and only
+differences in p50 of more than a few percent mean anything. Under GLES
+the split costs 0.04 to 0.08 ms a frame at the median: about half is
+LTO's absence (no LTO at all, same code: 4 to 16 % slower), the rest the
+boundary itself (the scene built as a list of items and then turned into
+render elements, calls between the two libraries that can't be inlined,
+every hook through `catch_unwind`). Under pixman, where the time goes to
+pixman itself, the three are within noise. Every steady scenario stays
+well inside the 4 ms budget (the slowest median, a full-screen client
+under pixman, is 2.15 ms). Thin LTO for the compositor would need it to
+be one binary again; the logic's reloadability is worth the 0.05 ms.
+
 
 The core needs `-C prefer-dynamic` (it links std dynamically so the
 binary and every logic share one std); `scripts/rustc-wrapper` adds it
