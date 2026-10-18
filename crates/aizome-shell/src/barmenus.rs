@@ -107,8 +107,20 @@ impl Shell {
         crate::menubar::title_rects(theme, &mut measure, &model)
     }
 
-    /// Typing in the Toolchest: the palette, with what was typed.
+    /// Typing in the Toolchest: the palette, with what was typed. The
+    /// Toolchest stays open, holding the keys, until the palette shows
+    /// (the compositor closes it then), so keys typed meanwhile follow the
+    /// first into the palette instead of reaching the window underneath.
     pub(crate) fn toolchest_typed(&mut self, text: String, cx: &mut Cx<Msg>) {
-        self.open_palette(None, text, cx);
+        match &mut self.palette {
+            Some(p) => {
+                let query = format!("{}{text}", p.query);
+                self.open_palette(None, query, cx);
+            }
+            None => {
+                self.open_palette(None, text, cx);
+                cx.after(std::time::Duration::from_millis(250), Msg::ToolchestHandedOver);
+            }
+        }
     }
 }

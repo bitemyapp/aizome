@@ -229,10 +229,17 @@ fn typing_in_the_toolchest_turns_it_into_the_palette() {
     h.click(bar, center_of(&t, Slot::Toolchest));
     assert_eq!(lit(&h), Some(Slot::Toolchest));
     h.type_text(bar, "w");
-    assert!(h.popups(bar).is_empty(), "the Toolchest made way");
     let p = window_titled(&h, "Palette");
     assert_eq!(h.program().palette.as_ref().map(|p| p.query.as_str()), Some("w"));
     let _ = p;
+    // Keys typed before the palette shows (the Toolchest still has them)
+    // follow the first, rather than reaching the window underneath.
+    h.type_text(bar, "in");
+    assert_eq!(h.program().palette.as_ref().map(|p| p.query.as_str()), Some("win"));
+    // Once the palette has had time to show, the Toolchest has made way
+    // (the compositor closes it as soon as the palette maps).
+    h.advance(std::time::Duration::from_millis(300));
+    assert!(h.popups(bar).is_empty(), "the Toolchest made way");
 }
 
 /// Tear off the submenu open over the bar by its strip's pin.

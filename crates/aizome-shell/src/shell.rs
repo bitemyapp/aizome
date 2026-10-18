@@ -92,6 +92,9 @@ pub enum Msg {
     BarSide(i32),
     /// Typed in the Toolchest: the palette takes over.
     ToolchestTyped(String),
+    /// The palette has had time to show: the Toolchest closes, if the
+    /// compositor hasn't closed it already.
+    ToolchestHandedOver,
     /// The bar's notification line has shown long enough.
     BannerDone(u32),
     /// Nothing: a message to wake the loop.
@@ -577,7 +580,7 @@ impl Shell {
                     .min_width(rect.width())
                     .on_tear_off(tear)
                     .on_tear_off_sub(subs)
-                    .on_type(Msg::ToolchestTyped);
+                    .on_type_until_closed(Msg::ToolchestTyped);
                 let style = self.as_bar_menu(style, win, slot, keyboard);
                 self.show_menu(win, anchor, &menu, style, cx);
             }
@@ -1173,6 +1176,13 @@ impl Program for Shell {
             Msg::LogindPowerKey(k) => self.logind_power_key = k,
             Msg::BarSide(d) => self.bar_side(d, cx),
             Msg::ToolchestTyped(text) => self.toolchest_typed(text, cx),
+            Msg::ToolchestHandedOver => {
+                for s in self.screens.clone() {
+                    if let Some(b) = s.bar {
+                        cx.close_menus(b);
+                    }
+                }
+            }
             Msg::Nothing => {}
         }
         self.after_update(cx);
