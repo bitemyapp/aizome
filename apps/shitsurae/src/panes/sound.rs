@@ -168,6 +168,13 @@ fn bus_words(d: &AudioDevice) -> &'static str {
     }
 }
 
+/// Whether the meter should move to another input: the default input isn't
+/// the one it follows (another is the default now, or one is known only
+/// now, or none is any more).
+fn input_changed(default: Option<&str>, following: Option<&str>) -> bool {
+    default != following
+}
+
 fn percent(v: f32) -> String {
     format!("{:.0}%", v * 100.0)
 }
@@ -446,10 +453,14 @@ impl Pane for Sound {
                 s.sound.insert("volume_feedback".into(), toml::Value::Boolean(on));
             }),
             Msg::Meter => {
-                // The default input changed elsewhere (a headset plugged in):
-                // follow the new one.
-                if let (Snd::Live(a), Some((name, _))) = (&self.snd, &self.meter)
-                    && a.snapshot().default_input().is_some_and(|d| d.name != *name)
+                // The default input changed elsewhere (a headset plugged in),
+                // or is known only now (the pane showed before the sound
+                // server answered): follow it.
+                if let Snd::Live(a) = &self.snd
+                    && input_changed(
+                        a.snapshot().default_input().map(|d| d.name.as_str()),
+                        self.meter.as_ref().map(|(n, _)| n.as_str()),
+                    )
                 {
                     self.follow_input(cx);
                 }
@@ -918,5 +929,16 @@ mod tests {
             ["PG27UCDM", "HDMI / DisplayPort 2", "Speaker", "Microphones", "WH-1000XM5", "Built-in Audio"]
         );
         assert_eq!(sound_label("dialog-warning"), "Dialog warning");
+    }
+
+    #[test]
+    fn the_meter_starts_once_the_default_input_is_known() {
+        // The pane shows before pipewire-pulse has answered: no input yet,
+        // so no meter. The input that then appears must start one.
+        assert!(!input_changed(None, None));
+        assert!(input_changed(Some("alsa_input.mic"), None));
+        assert!(!input_changed(Some("alsa_input.mic"), Some("alsa_input.mic")));
+        assert!(input_changed(Some("bluez_input.headset"), Some("alsa_input.mic")));
+        assert!(input_changed(None, Some("alsa_input.mic")));
     }
 }
