@@ -25,7 +25,13 @@ fn golden(name: &str) -> PathBuf {
 }
 
 fn places(dir: &Path) -> Places {
-    Places { notes: dir.join("Notes"), state: Some(dir.join("state")), trash: Some(dir.join("Trash")), autostart: Some(dir.join("autostart")), compositor: false }
+    Places {
+        notes: dir.join("Notes"),
+        state: Some(dir.join("state")),
+        trash: Some(dir.join("Trash")),
+        autostart: Some(dir.join("autostart")),
+        compositor: false,
+    }
 }
 
 fn app(dir: &Path, request: Request) -> Fusen {
@@ -47,8 +53,16 @@ fn fill(dir: &Path) {
         f.set_modified(when).unwrap();
     };
     write("Groceries.md", "# Groceries\n- [ ] miso\n- [x] tofu\n- [ ] negi\n", 60);
-    write("Tiles at fractional scale.md", "Tiles at fractional scale\nHalf a pixel off rather than blurred: snap the tile grid\nto device pixels and let **damage** round outward.\n", 3600);
-    write("Work/Release notes.md", "Release notes\n\n- Sumi: the board's editor\n- Fusen: stickies that float\n\nSee [the board](https://aizome.org/board).\n", 86400 * 2);
+    write(
+        "Tiles at fractional scale.md",
+        "Tiles at fractional scale\nHalf a pixel off rather than blurred: snap the tile grid\nto device pixels and let **damage** round outward.\n",
+        3600,
+    );
+    write(
+        "Work/Release notes.md",
+        "Release notes\n\n- Sumi: the board's editor\n- Fusen: stickies that float\n\nSee [the board](https://aizome.org/board).\n",
+        86400 * 2,
+    );
     write("Work/Desks.md", "Desks\nMail, Build, Write: one folder each.\n", 86400 * 40);
 }
 
@@ -209,7 +223,9 @@ fn new_notes_from_the_command_line_and_a_second_launch() {
     assert_eq!(r.new, ["From the shell\nselected text"]);
     assert!(r.stickies_only);
     let sock = dir.join("fusen.sock");
-    let aizome_sumi::instance::Claim::First(listener) = aizome_sumi::instance::claim_at(sock.clone(), &[]) else { panic!("first") };
+    let aizome_sumi::instance::Claim::First(listener) = aizome_sumi::instance::claim_at(sock.clone(), &[]) else {
+        panic!("first")
+    };
     let mut a = app(&dir, Request { new: vec!["Hello\nfrom --new".into()], ..Request::default() });
     a.instance = Some(listener);
     let mut h = Harness::new(a);
@@ -272,7 +288,9 @@ fn goldens() {
         h.save_png(w, Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("fusen-main-{name}@2x.png")), 2.0);
         assert_golden(&mut h, w, golden(&format!("main-{name}")), 1.0);
         if theme == ThemeChoice::Night {
-            for (title, color, file) in [("Groceries", NoteColor::Green, "sticky-green"), ("Release notes", NoteColor::Amber, "sticky-amber")] {
+            for (title, color, file) in
+                [("Groceries", NoteColor::Green, "sticky-green"), ("Release notes", NoteColor::Amber, "sticky-amber")]
+            {
                 let id = id_of(&h, title);
                 h.send(Msg::Select(Some(id)));
                 h.send(Msg::Color(color));
@@ -316,7 +334,13 @@ fn typing_fits_the_frame_budget() {
     }
     frames.sort();
     let p = |q: f64| frames[((frames.len() - 1) as f64 * q) as usize];
-    eprintln!("fusen typing: p50 {:?} p95 {:?} max {:?} (n={}, at 2x)", p(0.5), p(0.95), frames.last().unwrap(), frames.len());
+    eprintln!(
+        "fusen typing: p50 {:?} p95 {:?} max {:?} (n={}, at 2x)",
+        p(0.5),
+        p(0.95),
+        frames.last().unwrap(),
+        frames.len()
+    );
     if !cfg!(debug_assertions) {
         assert!(p(0.95) < Duration::from_millis(4), "p95 {:?}", p(0.95));
     }

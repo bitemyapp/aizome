@@ -24,7 +24,8 @@ pub enum NoteColor {
 }
 
 impl NoteColor {
-    pub const ALL: [NoteColor; 5] = [NoteColor::Amber, NoteColor::Kamenozoki, NoteColor::Hanada, NoteColor::Green, NoteColor::Rose];
+    pub const ALL: [NoteColor; 5] =
+        [NoteColor::Amber, NoteColor::Kamenozoki, NoteColor::Hanada, NoteColor::Green, NoteColor::Rose];
 
     pub fn name(self) -> &'static str {
         match self {
@@ -156,10 +157,17 @@ fn truncate(s: &str, n: usize) -> String {
 
 /// A file name for a title: what a file system takes, short.
 pub fn file_stem(title: &str) -> String {
-    let mut s: String = title
-        .chars()
-        .map(|c| if matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|') || c.is_control() { ' ' } else { c })
-        .collect();
+    let mut s: String =
+        title
+            .chars()
+            .map(|c| {
+                if matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|') || c.is_control() {
+                    ' '
+                } else {
+                    c
+                }
+            })
+            .collect();
     s = s.split_whitespace().collect::<Vec<_>>().join(" ");
     let s = s.trim_start_matches('.').trim();
     let s: String = s.chars().take(60).collect();
@@ -189,7 +197,10 @@ pub struct Store {
 
 impl Store {
     pub fn new(root: PathBuf) -> Store {
-        let index = std::fs::read_to_string(root.join(INDEX)).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
+        let index = std::fs::read_to_string(root.join(INDEX))
+            .ok()
+            .and_then(|t| serde_json::from_str(&t).ok())
+            .unwrap_or_default();
         Store { root, index, next_id: 0 }
     }
 
@@ -268,7 +279,11 @@ impl Store {
         }
         let bytes = std::fs::read(path).ok()?;
         let text = aizome_sumi::files::decode(&bytes, None).text;
-        let folder = path.parent().and_then(|p| p.strip_prefix(&self.root).ok()).map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
+        let folder = path
+            .parent()
+            .and_then(|p| p.strip_prefix(&self.root).ok())
+            .map(|p| p.to_string_lossy().into_owned())
+            .unwrap_or_default();
         Some(Note {
             id,
             path: path.to_path_buf(),
@@ -329,7 +344,9 @@ pub fn trash(path: &Path, trash: &Path) -> std::io::Result<()> {
     };
     let mut target = files.join(&name);
     let mut n = 2;
-    while target.exists() || info.join(format!("{}.trashinfo", target.file_name().unwrap_or_default().to_string_lossy())).exists() {
+    while target.exists()
+        || info.join(format!("{}.trashinfo", target.file_name().unwrap_or_default().to_string_lossy())).exists()
+    {
         target = files.join(format!("{stem} {n}{ext}"));
         n += 1;
     }
@@ -338,8 +355,17 @@ pub fn trash(path: &Path, trash: &Path) -> std::io::Result<()> {
     let date = &date[..19];
     let abs = std::path::absolute(path)?;
     let uri = aizome_sumi::recent::file_uri(&abs);
-    let encoded = uri.trim_start_matches("file://").replace("&amp;", "&").replace("&apos;", "'").replace("&quot;", "\"").replace("&lt;", "<").replace("&gt;", ">");
-    std::fs::write(info.join(format!("{tname}.trashinfo")), format!("[Trash Info]\nPath={encoded}\nDeletionDate={date}\n"))?;
+    let encoded = uri
+        .trim_start_matches("file://")
+        .replace("&amp;", "&")
+        .replace("&apos;", "'")
+        .replace("&quot;", "\"")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">");
+    std::fs::write(
+        info.join(format!("{tname}.trashinfo")),
+        format!("[Trash Info]\nPath={encoded}\nDeletionDate={date}\n"),
+    )?;
     if std::fs::rename(path, &target).is_err() {
         std::fs::copy(path, &target)?;
         std::fs::remove_file(path)?;

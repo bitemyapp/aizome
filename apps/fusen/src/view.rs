@@ -36,7 +36,9 @@ pub fn when(t: std::time::SystemTime, now: std::time::SystemTime) -> String {
     if d == today - 1 {
         return "Yesterday".to_owned();
     }
-    let iso = aizome_sumi::recent::iso8601(std::time::UNIX_EPOCH + std::time::Duration::from_secs((a + offset).max(0) as u64));
+    let iso = aizome_sumi::recent::iso8601(
+        std::time::UNIX_EPOCH + std::time::Duration::from_secs((a + offset).max(0) as u64),
+    );
     let (y, m, dd) = (&iso[0..4], &iso[5..7], &iso[8..10]);
     const MONTHS: [&str; 12] = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
     let month = MONTHS[m.parse::<usize>().unwrap_or(1).clamp(1, 12) - 1];
@@ -81,7 +83,16 @@ pub fn highlighter(open: &Open, ink: Option<Color>) -> Highlighter {
             {
                 span.role = None;
                 span.color = Some(c);
-                if matches!(t.kind, Kind::TaskDone | Kind::EmphasisMark | Kind::HeadingMark | Kind::Url | Kind::Rule | Kind::FenceMark | Kind::Comment) {
+                if matches!(
+                    t.kind,
+                    Kind::TaskDone
+                        | Kind::EmphasisMark
+                        | Kind::HeadingMark
+                        | Kind::Url
+                        | Kind::Rule
+                        | Kind::FenceMark
+                        | Kind::Comment
+                ) {
                     span.alpha = Some(0.5);
                 }
             }
@@ -94,7 +105,8 @@ pub fn highlighter(open: &Open, ink: Option<Color>) -> Highlighter {
 fn dot(color: NoteColor, size: f64) -> Element<Msg> {
     canvas(color, move |c, r, color, _| {
         let s = size.min(r.width()).min(r.height());
-        let rect = Rect::from_origin_size(Point::new(r.x0 + (r.width() - s) / 2.0, r.y0 + (r.height() - s) / 2.0), (s, s));
+        let rect =
+            Rect::from_origin_size(Point::new(r.x0 + (r.width() - s) / 2.0, r.y0 + (r.height() - s) / 2.0), (s, s));
         c.fill_rect(rect, rgb(color.dye()));
     })
     .width(size)
@@ -112,32 +124,42 @@ struct RowData {
 }
 
 fn note_row(r: &RowData) -> Element<Msg> {
-    let title = row![text(r.title.clone()).semibold().width(Length::Fill), text(r.when.clone()).size(11.0).role(Role::Text3).tabular()]
-        .spacing(8.0)
-        .width(Length::Fill);
+    let title = row![
+        text(r.title.clone()).semibold().width(Length::Fill),
+        text(r.when.clone()).size(11.0).role(Role::Text3).tabular()
+    ]
+    .spacing(8.0)
+    .width(Length::Fill);
     let mut top: Vec<Element<Msg>> = vec![dot(r.color, 8.0)];
     if r.pinned {
         top.push(icon(Icon::Pin).size(12.0).role(Role::Text3).into());
     }
     top.push(title.into());
     let preview = if r.preview.is_empty() { "No more text".to_owned() } else { r.preview.clone() };
-    column![
-        aizome_kit::row(top).spacing(6.0).width(Length::Fill),
-        text(preview).size(12.0).role(Role::Text3),
-    ]
-    .spacing(3.0)
-    .padding([8.0, 12.0])
-    .width(Length::Fill)
-    .into()
+    column![aizome_kit::row(top).spacing(6.0).width(Length::Fill), text(preview).size(12.0).role(Role::Text3),]
+        .spacing(3.0)
+        .padding([8.0, 12.0])
+        .width(Length::Fill)
+        .into()
 }
 
 fn sidebar(app: &Fusen) -> Element<Msg> {
     let mut items: Vec<Element<Msg>> = vec![caption("Fusen")];
     let all = app.notes.len();
-    items.push(sidebar_item(Icon::StickyNote, "All Notes", app.folder.is_none()).detail(all.to_string()).on_press(Msg::Folder(None)).into());
+    items.push(
+        sidebar_item(Icon::StickyNote, "All Notes", app.folder.is_none())
+            .detail(all.to_string())
+            .on_press(Msg::Folder(None))
+            .into(),
+    );
     let pinned = app.notes.iter().filter(|n| n.meta.pinned).count();
     if pinned > 0 {
-        items.push(sidebar_item(Icon::Pin, "Pinned", app.folder.as_deref() == Some(crate::app::PINNED)).detail(pinned.to_string()).on_press(Msg::Folder(Some(crate::app::PINNED.to_owned()))).into());
+        items.push(
+            sidebar_item(Icon::Pin, "Pinned", app.folder.as_deref() == Some(crate::app::PINNED))
+                .detail(pinned.to_string())
+                .on_press(Msg::Folder(Some(crate::app::PINNED.to_owned())))
+                .into(),
+        );
     }
     if !app.folders.is_empty() {
         items.push(caption("Folders"));
@@ -146,7 +168,12 @@ fn sidebar(app: &Fusen) -> Element<Msg> {
             let depth = f.matches('/').count();
             let name = f.rsplit('/').next().unwrap_or(f);
             let label = format!("{}{name}", "    ".repeat(depth));
-            items.push(sidebar_item(Icon::Folder, label, app.folder.as_deref() == Some(f.as_str())).detail(n.to_string()).on_press(Msg::Folder(Some(f.clone()))).into());
+            items.push(
+                sidebar_item(Icon::Folder, label, app.folder.as_deref() == Some(f.as_str()))
+                    .detail(n.to_string())
+                    .on_press(Msg::Folder(Some(f.clone())))
+                    .into(),
+            );
         }
     }
     aizome_kit::column(items).padding([4.0, 0.0]).width(Length::Fill).into()
@@ -157,7 +184,13 @@ fn note_list(app: &Fusen, shown: &[&Note]) -> Element<Msg> {
     let rows: Rc<Vec<RowData>> = Rc::new(
         shown
             .iter()
-            .map(|n| RowData { title: n.title.clone(), preview: n.preview.clone(), when: when(n.modified, now), color: n.meta.color, pinned: n.meta.pinned })
+            .map(|n| RowData {
+                title: n.title.clone(),
+                preview: n.preview.clone(),
+                when: when(n.modified, now),
+                color: n.meta.color,
+                pinned: n.meta.pinned,
+            })
             .collect(),
     );
     let ids: Vec<u64> = shown.iter().map(|n| n.id).collect();
@@ -188,7 +221,11 @@ fn note_list(app: &Fusen, shown: &[&Note]) -> Element<Msg> {
 
 fn editor(app: &Fusen) -> Element<Msg> {
     let Some(id) = app.selected else {
-        return container(text("No note selected").role(Role::Text3)).center().width(Length::Fill).height(Length::Fill).into();
+        return container(text("No note selected").role(Role::Text3))
+            .center()
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .into();
     };
     let Some(open) = app.open.get(&id) else {
         return container(text("").role(Role::Text3)).width(Length::Fill).height(Length::Fill).into();
@@ -197,7 +234,11 @@ fn editor(app: &Fusen) -> Element<Msg> {
 }
 
 /// A note's editor: in the main window, or (with its colour) a sticky's.
-pub fn note_editor(id: u64, open: &Open, color: Option<NoteColor>) -> aizome_kit::widgets::text_editor::TextEditor<Msg> {
+pub fn note_editor(
+    id: u64,
+    open: &Open,
+    color: Option<NoteColor>,
+) -> aizome_kit::widgets::text_editor::TextEditor<Msg> {
     let rope = open.content.rope().clone();
     let ink = color.map(|c| rgb(c.ink().0));
     let mut e = text_editor(&open.content)
@@ -235,11 +276,35 @@ fn toolbar(app: &Fusen) -> Element<Msg> {
     let color = note.map(|n| NoteColor::ALL.iter().position(|c| *c == n.meta.color).unwrap_or(0));
     aizome_kit::toolbar(vec![
         icon_button(Icon::SquarePen).toolbar().on_press(Msg::New).tooltip("New Note (❖N)").label("New Note").into(),
-        icon_button(Icon::Trash).toolbar().enabled(has).on_press(Msg::Delete).tooltip("Delete Note (❖⌫)").label("Delete Note").into(),
+        icon_button(Icon::Trash)
+            .toolbar()
+            .enabled(has)
+            .on_press(Msg::Delete)
+            .tooltip("Delete Note (❖⌫)")
+            .label("Delete Note")
+            .into(),
         toolbar_separator(),
-        icon_button(Icon::Pin).toolbar().selected(pinned).enabled(has).on_press(Msg::Pin).tooltip(if pinned { "Unpin" } else { "Pin to the Top" }).label("Pin").into(),
-        dropdown(colors, color).compact().enabled(has).on_select(|i| Msg::Color(NoteColor::ALL[i.min(4)])).label("Colour").into(),
-        icon_button(Icon::StickyNote).toolbar().enabled(has).on_press(Msg::Sticky(None)).tooltip("Open as Sticky (❖T)").label("Open as Sticky").into(),
+        icon_button(Icon::Pin)
+            .toolbar()
+            .selected(pinned)
+            .enabled(has)
+            .on_press(Msg::Pin)
+            .tooltip(if pinned { "Unpin" } else { "Pin to the Top" })
+            .label("Pin")
+            .into(),
+        dropdown(colors, color)
+            .compact()
+            .enabled(has)
+            .on_select(|i| Msg::Color(NoteColor::ALL[i.min(4)]))
+            .label("Colour")
+            .into(),
+        icon_button(Icon::StickyNote)
+            .toolbar()
+            .enabled(has)
+            .on_press(Msg::Sticky(None))
+            .tooltip("Open as Sticky (❖T)")
+            .label("Open as Sticky")
+            .into(),
         spacer().into(),
         status_text(match app.notes.len() {
             1 => "1 note".to_owned(),

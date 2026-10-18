@@ -267,7 +267,9 @@ impl Fusen {
 
     /// Pinned first, then the newest.
     fn sort(&mut self) {
-        self.notes.sort_by(|a, b| b.meta.pinned.cmp(&a.meta.pinned).then(b.modified.cmp(&a.modified)).then(a.title.cmp(&b.title)));
+        self.notes.sort_by(|a, b| {
+            b.meta.pinned.cmp(&a.meta.pinned).then(b.modified.cmp(&a.modified)).then(a.title.cmp(&b.title))
+        });
     }
 
     /// The notes the list shows: the folder's, matching the search.
@@ -287,7 +289,8 @@ impl Fusen {
     /// Read the folder again: new notes, changed ones (not being edited),
     /// gone ones.
     pub fn rescan(&mut self) {
-        let ids: BTreeMap<PathBuf, u64> = self.notes.iter().filter(|n| Self::on_disk(n)).map(|n| (n.path.clone(), n.id)).collect();
+        let ids: BTreeMap<PathBuf, u64> =
+            self.notes.iter().filter(|n| Self::on_disk(n)).map(|n| (n.path.clone(), n.id)).collect();
         let mut scanned = self.store.scan(&ids);
         // New notes not yet written stay; notes being edited keep their text.
         for n in &self.notes {
@@ -424,7 +427,10 @@ impl Fusen {
         let stem = notes::file_stem(&title);
         let path = if !Self::on_disk(&n) {
             notes::free_path(&dir, &stem, None)
-        } else if n.meta.auto_named && n.path.file_stem().is_some_and(|s| s.to_string_lossy() != stem) && n.path.parent() == Some(dir.as_path()) {
+        } else if n.meta.auto_named
+            && n.path.file_stem().is_some_and(|s| s.to_string_lossy() != stem)
+            && n.path.parent() == Some(dir.as_path())
+        {
             let to = notes::free_path(&dir, &stem, Some(&n.path));
             if std::fs::rename(&n.path, &to).is_ok() {
                 self.store.moved(&n.path, &to);
@@ -515,7 +521,8 @@ impl Fusen {
         let title = self.sticky_title(&n.title, None);
         let size = place.map_or(STICKY_SIZE, |p| Size::new(p.w.max(120) as f64, p.h.max(80) as f64));
         self.ensure_open(id);
-        let k = cx.open_window(WindowSpec::new(title.clone()).size(size.width, size.height).min_size(160.0, 100.0).utility());
+        let k = cx
+            .open_window(WindowSpec::new(title.clone()).size(size.width, size.height).min_size(160.0, 100.0).utility());
         self.stickies.insert(k, Sticky { note: id, title: title.clone(), float });
         if self.places.compositor {
             cx.spawn(move || {
@@ -590,7 +597,8 @@ impl Fusen {
             // Text handed over (the shell's Services write it to a file of
             // its own): a new note.
             if let Ok(text) = std::fs::read_to_string(&f) {
-                let services = std::env::var_os("XDG_RUNTIME_DIR").is_some_and(|r| f.starts_with(PathBuf::from(r).join("aizome-services")));
+                let services = std::env::var_os("XDG_RUNTIME_DIR")
+                    .is_some_and(|r| f.starts_with(PathBuf::from(r).join("aizome-services")));
                 if services {
                     let _ = std::fs::remove_file(&f);
                 }
@@ -690,7 +698,11 @@ impl Program for Fusen {
                 let Some(id) = self.target(cx) else { return };
                 let Some(n) = self.note(id).cloned() else { return };
                 let shown: Vec<u64> = self.shown().iter().map(|n| n.id).collect();
-                let next = shown.iter().position(|x| *x == id).and_then(|i| shown.get(i + 1).or(i.checked_sub(1).and_then(|j| shown.get(j)))).copied();
+                let next = shown
+                    .iter()
+                    .position(|x| *x == id)
+                    .and_then(|i| shown.get(i + 1).or(i.checked_sub(1).and_then(|j| shown.get(j))))
+                    .copied();
                 if Self::on_disk(&n) {
                     let done = match &self.places.trash {
                         Some(t) => notes::trash(&n.path, t),
@@ -698,12 +710,16 @@ impl Program for Fusen {
                     };
                     if let Err(e) = done {
                         if let Some(w) = self.main {
-                            cx.alert(w, Alert::new(format!("“{}” couldn't be moved to the Trash.", n.title), e.to_string()));
+                            cx.alert(
+                                w,
+                                Alert::new(format!("“{}” couldn't be moved to the Trash.", n.title), e.to_string()),
+                            );
                         }
                         return;
                     }
                 }
-                let windows: Vec<WindowKey> = self.stickies.iter().filter(|(_, s)| s.note == id).map(|(k, _)| *k).collect();
+                let windows: Vec<WindowKey> =
+                    self.stickies.iter().filter(|(_, s)| s.note == id).map(|(k, _)| *k).collect();
                 for k in windows {
                     self.stickies.remove(&k);
                     cx.close_window(k);
@@ -781,7 +797,8 @@ impl Program for Fusen {
                     return;
                 }
                 let dir = if folder.is_empty() { self.store.root.clone() } else { self.store.root.join(&folder) };
-                let stem = n.path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "Note".into());
+                let stem =
+                    n.path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "Note".into());
                 let to = notes::free_path(&dir, &stem, None);
                 if std::fs::create_dir_all(&dir).is_ok() && std::fs::rename(&n.path, &to).is_ok() {
                     self.store.moved(&n.path, &to);
@@ -820,7 +837,11 @@ impl Program for Fusen {
                     let (s, e_old, e_new) = aizome_sumi::doc::diff(&old, o.content.rope());
                     let new = o.content.rope();
                     if let Ok(mut h) = o.highlight.lock() {
-                        h.edited(new.char_to_line(s.min(new.len_chars())), old.char_to_line(e_old.min(old.len_chars())), new.char_to_line(e_new.min(new.len_chars())));
+                        h.edited(
+                            new.char_to_line(s.min(new.len_chars())),
+                            old.char_to_line(e_old.min(old.len_chars())),
+                            new.char_to_line(e_new.min(new.len_chars())),
+                        );
                     }
                     self.edited(id, cx);
                 }
@@ -948,10 +969,19 @@ impl Program for Fusen {
         {
             return aizome_kit::column![
                 text("New Folder").semibold().size(15.0),
-                text_field(name).placeholder("Name").on_change(Msg::FolderName).on_submit(Msg::FolderDone(true)).id("folder-name").width(Length::Fill),
-                aizome_kit::row![spacer(), button("Cancel").cancel().on_press(Msg::FolderDone(false)), button("Create").default().on_press(Msg::FolderDone(true))]
-                    .spacing(8.0)
+                text_field(name)
+                    .placeholder("Name")
+                    .on_change(Msg::FolderName)
+                    .on_submit(Msg::FolderDone(true))
+                    .id("folder-name")
                     .width(Length::Fill),
+                aizome_kit::row![
+                    spacer(),
+                    button("Cancel").cancel().on_press(Msg::FolderDone(false)),
+                    button("Create").default().on_press(Msg::FolderDone(true))
+                ]
+                .spacing(8.0)
+                .width(Length::Fill),
             ]
             .spacing(12.0)
             .padding(16.0)
@@ -979,9 +1009,12 @@ impl Program for Fusen {
             .item(role("Hide Others", MenuRole::HideOthers).shortcut(Shortcut::cmd('H').alt()))
             .separator()
             .item(MenuItem::new(format!("Quit {name}"), Msg::Quit).shortcut(Shortcut::cmd('Q')));
-        let mut move_to = Menu::new("Move to").item(MenuItem::new("Notes", Msg::MoveTo(String::new())).checked(note.is_some_and(|n| n.folder.is_empty())));
+        let mut move_to = Menu::new("Move to").item(
+            MenuItem::new("Notes", Msg::MoveTo(String::new())).checked(note.is_some_and(|n| n.folder.is_empty())),
+        );
         for f in &self.folders {
-            move_to.push(MenuItem::new(f.clone(), Msg::MoveTo(f.clone())).checked(note.is_some_and(|n| n.folder == *f)));
+            move_to
+                .push(MenuItem::new(f.clone(), Msg::MoveTo(f.clone())).checked(note.is_some_and(|n| n.folder == *f)));
         }
         let file = Menu::new("File")
             .item(MenuItem::new("New Note", Msg::New).shortcut(Shortcut::cmd('N')))
@@ -991,7 +1024,11 @@ impl Program for Fusen {
             .item(MenuItem::new("Close", Msg::CloseKey).shortcut(Shortcut::cmd('W')))
             .separator()
             .submenu(move_to)
-            .item(MenuItem::new("Delete Note", Msg::Delete).shortcut(Shortcut::cmd_key(aizome_kit::ShortcutKey::Backspace)).enabled(has))
+            .item(
+                MenuItem::new("Delete Note", Msg::Delete)
+                    .shortcut(Shortcut::cmd_key(aizome_kit::ShortcutKey::Backspace))
+                    .enabled(has),
+            )
             .separator()
             .item(MenuItem::new("Show Notes Folder", Msg::ShowFolder));
         let edit = Menu::new(EDIT)
@@ -1015,15 +1052,25 @@ impl Program for Fusen {
             .item(MenuItem::new("Numbered List", Msg::List(List::Numbered)));
         let mut colors = Menu::new("Colour");
         for c in NoteColor::ALL {
-            colors.push(MenuItem::new(c.name(), Msg::Color(c)).checked(note.is_some_and(|n| n.meta.color == c)).enabled(has));
+            colors.push(
+                MenuItem::new(c.name(), Msg::Color(c)).checked(note.is_some_and(|n| n.meta.color == c)).enabled(has),
+            );
         }
         let floating = self.stickies.values().any(|s| s.float);
         let note_menu = Menu::new("Note")
-            .item(MenuItem::new(if note.is_some_and(|n| n.meta.pinned) { "Unpin Note" } else { "Pin Note" }, Msg::Pin).shortcut(Shortcut::cmd('P').alt()).enabled(has))
+            .item(
+                MenuItem::new(if note.is_some_and(|n| n.meta.pinned) { "Unpin Note" } else { "Pin Note" }, Msg::Pin)
+                    .shortcut(Shortcut::cmd('P').alt())
+                    .enabled(has),
+            )
             .submenu(colors)
             .separator()
             .item(MenuItem::new("Open as Sticky", Msg::Sticky(None)).shortcut(Shortcut::cmd('T')).enabled(has))
-            .item(MenuItem::new("Keep Sticky on Top", Msg::Float(!floating)).checked(floating).enabled(!self.stickies.is_empty()));
+            .item(
+                MenuItem::new("Keep Sticky on Top", Msg::Float(!floating))
+                    .checked(floating)
+                    .enabled(!self.stickies.is_empty()),
+            );
         MenuBar::standard(&info)
             .replace(&name, app)
             .with_file_menu(file)
