@@ -414,7 +414,7 @@ impl InputExt for State {
                     tracing::warn!("screenshot: {e}");
                 }
             }
-            Action::ScreenshotArea => crate::overlays::start_area_pick(self),
+            Action::ScreenshotArea => crate::overlays::start_area_pick(self, None),
             Action::ScreenshotWindow => {
                 use aizome_comp_core::screenshot;
                 if let Some(id) = focused

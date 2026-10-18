@@ -116,6 +116,10 @@ pub const SHELL_ACTIONS: &[&str] = &[
     "bell",
     "lock",
     "screenshot-tool",
+    "record",
+    "record-screen",
+    "record-area",
+    "stop-recording",
     "volume-up",
     "volume-down",
     "mute",
@@ -227,6 +231,9 @@ pub fn defaults() -> Vec<(&'static str, String)> {
         ("Super+Shift+4", "screenshot-area".into()),
         ("Super+Shift+5", "screenshot-tool".into()),
         ("Print", "screenshot-screen".into()),
+        // Tatami's: start a recording (pick an area, or click for a display), or
+        // stop the one going.
+        ("Alt+Print", "record".into()),
         ("XF86AudioRaiseVolume", "volume-up".into()),
         ("XF86AudioLowerVolume", "volume-down".into()),
         ("XF86AudioMute", "mute".into()),
@@ -351,5 +358,12 @@ mod tests {
         assert_eq!(b.find(ctrl_logo, &[Keysym::new(keysyms::KEY_3)]), Some(&Action::GoToDesk(3)));
         assert_eq!(b.find(logo, &[Keysym::new(keysyms::KEY_space)]), Some(&Action::Shell("palette".into())));
         assert!(Action::parse("go-to-desk-7") == Some(Action::GoToDesk(7)));
+        // ⌥Print records (Alt turns Print into Sys_Req, so the key's own
+        // symbol is what matches).
+        let alt = Mods { alt: true, ..Default::default() };
+        let print = [Keysym::new(keysyms::KEY_Print), Keysym::new(keysyms::KEY_Sys_Req)];
+        assert_eq!(b.find(alt, &print), Some(&Action::Shell("record".into())));
+        assert_eq!(b.find(Mods::default(), &print[..1]), Some(&Action::ScreenshotScreen));
+        assert_eq!(Action::parse("stop-recording"), Some(Action::Shell("stop-recording".into())));
     }
 }

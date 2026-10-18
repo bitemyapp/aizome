@@ -79,6 +79,10 @@ pub enum Action {
     /// the shell and the settings, whatever changed (as ⌃❖R).
     ReloadAizome,
     Screenshot,
+    /// Start a screen recording (one at a time).
+    Record(crate::recording::Ask),
+    /// Stop the recording going (the file is finished, then announced).
+    StopRecording,
     NewDesk,
     /// Ask for a new Desk name in place (double-click in the strip).
     RenameDesk {

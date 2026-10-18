@@ -23,6 +23,20 @@ recompressed losslessly (oxipng, pixel-identical).
 | `12-lock.png` | `aizomectl lock`, a password typed (outside the VM the PAM service `aizome` doesn't exist, so it stays locked) |
 | `13-full-effects.png` | The Full effects tier in Night: the Toolchest torn off over the city's lights, Sumi's menu at the pointer with File open over the bridge, the Deskbar with a text clipping dragged from Sumi onto the Shelf; the frosted faces let the wallpaper tint through, with a fine grain and no blur. The system's disk (`nvme0`) is on the desktop |
 
+The `14`–`16` pictures are screen recording's, taken on 18 October 2026
+with `scripts/headless-session --output 2880x1800@2` (release builds of
+the `screen-recording` branch, GLES on the Intel render node, scratch
+`HOME` and a private D-Bus without service activation) and `aizomectl
+screenshot`. The recorder was wf-recorder through screencopy: the
+headless session has no KMS, and gpu-screen-recorder was a stand-in that
+fails, so it never read the real display's planes.
+
+| File | What |
+|---|---|
+| `14-recording.png` | Recording (`aizome-shell msg '{"request":"record","target":"screen"}'`, as the palette's Record Screen): the red dot and `0:04` leading the systray, and ❖⇧5's Capture menu with Stop Recording, the screenshots and Record the Screen ▸ / Record an Area ▸ |
+| `15-recording-palette.png` | ❖Space, "record": Record Screen, with Desktop Audio, with Microphone, and with both (Record Area's follow below) |
+| `16-recording-saved.png` | Stopped: the file announced in the bar's line and filed under Screen Recording in the Deskbar, with Show in Files and Open |
+
 The `compositor-*.png` pictures are older ones from the compositor's own
 tests.
 

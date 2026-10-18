@@ -661,6 +661,9 @@ fn images_mount_through_a_loop_device() {
     let calls = calls(&log);
     assert!(calls.contains(&"LoopSetup(read-only=Some(true))".to_owned()), "{calls:?}");
     assert!(calls.contains(&"SetAutoclear(true)".to_owned()));
+    // The snapshot follows UDisks2's signals, which can trail the mount's
+    // reply on a busy machine.
+    assert!(eventually(|| disks.snapshot().volumes().iter().any(|v| v.name == "IMAGE")));
     let state = disks.snapshot();
     let volume = state.volumes().into_iter().find(|v| v.name == "IMAGE").unwrap();
     assert_eq!(volume.icon_name, "media-optical");

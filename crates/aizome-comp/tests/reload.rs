@@ -51,14 +51,29 @@ fn build() -> &'static Build {
             assert!(status.success(), "building the compositor (variant {variant:?}) failed");
         };
         let logic = target.join("debug/libaizome_comp_logic.so");
-        run(None);
         let base = target.join("logic-base.so");
-        std::fs::copy(&logic, &base).unwrap();
-        run(Some("red"));
         let red = target.join("logic-red.so");
-        std::fs::copy(&logic, &red).unwrap();
-        // Put the plain one back for the next run's first build.
-        run(None);
+        let abi = |p: &Path| {
+            let bytes = std::fs::read(p).unwrap();
+            let mark = b"AIZOME-LOGIC-ABI:";
+            let at = bytes.windows(mark.len()).position(|w| w == mark).expect("the mark");
+            bytes[at..at + mark.len() + 64].to_vec()
+        };
+        // Sidestep is a checkout beside this one that others may move on
+        // meanwhile: then the three builds see different cores, and it's
+        // built again.
+        for _ in 0..3 {
+            run(None);
+            std::fs::copy(&logic, &base).unwrap();
+            run(Some("red"));
+            std::fs::copy(&logic, &red).unwrap();
+            // Put the plain one back for the next run's first build.
+            run(None);
+            if abi(&base) == abi(&red) && abi(&red) == abi(&logic) {
+                break;
+            }
+            eprintln!("the core changed while building (Sidestep moved?); again");
+        }
         Build { aizome: target.join("debug/aizome"), base, red }
     })
 }

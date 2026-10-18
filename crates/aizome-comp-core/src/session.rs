@@ -139,6 +139,14 @@ fn free_x_display() -> Option<u32> {
 pub fn start(state: &mut State) {
     let opts = state.az.options.clone();
 
+    // Whether this is someone's login session, on a seat and known to
+    // systemd: only then does the shell serve polkit, hold logind's sleep
+    // and lock for logind. A headless or nested run (tests, screenshots,
+    // trying Aizome inside another desktop) runs as the same user inside
+    // that user's real login session, and must leave all of that alone.
+    let real = opts.backend == crate::cli::BackendKind::Udev && !opts.no_session;
+    state.az.children.env.push(("AIZOME_SESSION".into(), if real { "1" } else { "0" }.into()));
+
     if !opts.no_xwayland {
         if let Some(bin) = which("xwayland-satellite") {
             if let Some(n) = free_x_display() {

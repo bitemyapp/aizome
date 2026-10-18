@@ -130,11 +130,13 @@ impl State {
                     renderer_setting: renderer_setting.into(),
                     renderer_after_restart,
                     logic: self.logic_stats(),
+                    screencopy: self.az.screencopy.active().then(|| self.az.screencopy.stats.report("screencopy")),
                 };
                 if reset {
                     for o in self.az.out.values_mut() {
                         o.stats.reset();
                     }
+                    self.az.screencopy.stats.reset();
                 }
                 Response::Stats { stats }
             }

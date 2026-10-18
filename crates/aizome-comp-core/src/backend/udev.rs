@@ -485,6 +485,34 @@ impl Udev {
         }
     }
 
+    /// Screencopy renders on the primary GPU, as captures do.
+    pub fn screencopy(
+        &mut self,
+        az: &mut Aizome,
+        job: &mut crate::protocols::screencopy::Job,
+    ) -> Result<crate::protocols::screencopy::Outcome, String> {
+        use crate::protocols::screencopy::{copy_gpu, copy_pixman};
+        let primary = self.primary_gpu;
+        match &mut self.renderers {
+            Renderers::Gles(gpus) => {
+                let mut r = gpus.single_renderer(&primary).map_err(|e| format!("{e:?}"))?;
+                copy_gpu::<UdevRenderer<'_>, GlesRenderbuffer>(&mut r, az, job)
+            }
+            Renderers::Pixman(r) => copy_pixman(r, az, job),
+        }
+    }
+
+    pub fn screencopy_dmabuf_format(&mut self) -> Option<smithay::backend::allocator::Fourcc> {
+        let primary = self.primary_gpu;
+        match &mut self.renderers {
+            Renderers::Gles(gpus) => {
+                let r = gpus.single_renderer(&primary).ok()?;
+                crate::protocols::screencopy::renderable_dmabuf_format(&r)
+            }
+            Renderers::Pixman(_) => None,
+        }
+    }
+
     fn crtc_of(&self, output: &Output) -> Option<(&DrmDevice, crtc::Handle)> {
         let id = output.user_data().get::<UdevOutputId>()?;
         let d = self.devices.get(&id.node)?;

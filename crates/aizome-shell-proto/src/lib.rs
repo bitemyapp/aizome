@@ -99,6 +99,20 @@ pub enum ShellRequest {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         output: Option<String>,
     },
+    /// Start a screen recording, as the palette's Record Screen and Record
+    /// Area do: `target` is `screen` (the focused display; the default),
+    /// `area` (the person picks) or a display's name. Audio left out
+    /// follows `[recording]`. Refused while one is going.
+    Record {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        target: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        desktop_audio: Option<bool>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        microphone: Option<bool>,
+    },
+    /// Stop the recording going (its file is finished and announced).
+    StopRecording,
 }
 
 /// What the shell sends.
@@ -341,6 +355,14 @@ mod tests {
         assert_eq!(lock, AppMessage::Request { request: ShellRequest::Lock });
         let osd: AppMessage = decode(r#"{"type":"request","request":"osd","kind":"volume","value":0.5}"#).unwrap();
         assert_eq!(osd, AppMessage::Request { request: ShellRequest::Osd { kind: "volume".into(), value: 0.5 } });
+        let rec: ShellRequest =
+            serde_json::from_str(r#"{"request":"record","target":"area","microphone":true}"#).unwrap();
+        assert_eq!(
+            rec,
+            ShellRequest::Record { target: Some("area".into()), desktop_audio: None, microphone: Some(true) }
+        );
+        let stop: ShellRequest = serde_json::from_str(r#"{"request":"stop-recording"}"#).unwrap();
+        assert_eq!(stop, ShellRequest::StopRecording);
         let reply = ShellMessage::Reply { ok: true, message: String::new() };
         assert_eq!(encode(&reply), "{\"type\":\"reply\",\"ok\":true}\n");
         // An app built before replies existed skips them.

@@ -234,6 +234,10 @@ fn wm_request(st: &mut State, req: Request) -> Result<Option<Response>, String> 
             st.run_action(a);
             Response::Ok
         }
+        Request::PickArea { tag } => {
+            crate::overlays::start_area_pick(st, Some(tag));
+            Response::Ok
+        }
         _ => return Ok(None),
     }))
 }

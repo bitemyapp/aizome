@@ -61,6 +61,8 @@ session
                                 Night Light: change it, then show it
   power-off-monitors | power-on-monitors
   lock                          ask the shell to lock
+  pick-area [TAG]               let the person pick an area (the screenshot
+                                picker); the pick is an area-picked event
   action NAME                   run a key-binding action by name
   quit                          end the session
   reload [--logic] [--shell] [--from PATH] [--check] [--offer]
@@ -443,6 +445,7 @@ fn parse(command: &str, mut args: Vec<String>) -> Result<Request, String> {
             }
             Some(a) => Request::RecoveryAction { action: a.to_string(), app_id: None },
         },
+        "pick-area" => Request::PickArea { tag: args.first().cloned().unwrap_or_default() },
         "action" => {
             need(&args, 1, "an action name")?;
             Request::Action { action: args[0].clone() }
@@ -611,6 +614,10 @@ fn print_response(r: &Response) -> ExitCode {
                 if let Some(g) = &o.gpu_us {
                     println!("  gpu {}", fmt_pct(g));
                 }
+            }
+            if let Some(s) = &stats.screencopy {
+                println!("screencopy: {} copies, {} samples", s.frames_rendered, s.samples);
+                println!("  cpu {}", fmt_pct(&s.cpu_us));
             }
         }
         Response::Screenshot { path } => println!("{path}"),
@@ -956,6 +963,19 @@ fn describe_event(e: &Event) -> String {
             report.logic.action, report.shell.action, report.settings.action, report.core.action
         ),
         Event::LogicFailed { message, action } => format!("logic failed: {message} ({action})"),
+        Event::AreaPicked { tag, area, output, window } => match area {
+            Some(a) => {
+                let mut s = format!("area-picked {tag} {},{} {}x{}", a.x, a.y, a.w, a.h);
+                if let Some(o) = output {
+                    s += &format!(" on {o}");
+                }
+                if let Some(w) = window {
+                    s += &format!(" window {w}");
+                }
+                s
+            }
+            None => format!("area-picked {tag} cancelled"),
+        },
     }
 }
 
