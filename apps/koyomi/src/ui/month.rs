@@ -473,17 +473,10 @@ impl Widget for Cell {
         let t = cx.theme();
         let r = cx.bounds();
         let d = &self.d;
-        // The window's ground is the surface already: only other days fill.
-        let ground = if !d.in_month {
-            Some(t.surface().mix(t.sunk(), if t.is_dark() { 0.7 } else { 0.8 }))
-        } else if d.weekend {
-            Some(t.surface().mix(t.sunk(), if t.is_dark() { 0.35 } else { 0.45 }))
-        } else {
-            None
-        };
-        if let Some(g) = ground {
-            cx.canvas.fill_rect(r, g);
-        }
+        // The window's ground is the surface already, and a month redraws
+        // nearly whole when it changes: days fill nothing more of their own
+        // (other months' days are told by their faint numbers), so a month
+        // costs one pass over its pixels.
         if d.selected {
             cx.canvas.fill_rect(r, t.selection().with_alpha(if t.is_dark() { 0.16 } else { 0.1 }));
         }
