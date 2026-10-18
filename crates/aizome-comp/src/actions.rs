@@ -290,7 +290,10 @@ impl State {
     pub fn resize_window(&mut self, id: WinId, rect: Rect) {
         let Some(w) = self.az.wm.get(id) else { return };
         let old = w.rect;
-        let rect = Rect::new(rect.x, rect.y, rect.w.max(1), rect.h.max(1));
+        // Within the sizes the client allows, as a resize by the edges is
+        // (Tenki under 640pt wide stacks its words a letter to a line).
+        let (min, max) = crate::grabs::size_limits(self, id);
+        let rect = Rect::new(rect.x, rect.y, rect.w.clamp(min.0, max.0), rect.h.clamp(min.1, max.1));
         for m in self.az.wm.set_rect(id, rect) {
             if let Some(w) = self.az.wm.get_mut(m) {
                 w.placement = Placement::Free;

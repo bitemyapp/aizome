@@ -263,11 +263,17 @@ pub struct Spec {
     /// Ask for server-side decorations (otherwise it never binds
     /// xdg-decoration, as GTK4 doesn't).
     pub ssd: bool,
+    /// xdg_toplevel.set_min_size, if any.
+    pub min_size: Option<(i32, i32)>,
 }
 
 impl Spec {
     pub fn new(app_id: &str, color: u32) -> Spec {
-        Spec { app_id: app_id.into(), title: app_id.into(), color, size: (400, 300), ssd: true }
+        Spec { app_id: app_id.into(), title: app_id.into(), color, size: (400, 300), ssd: true, min_size: None }
+    }
+    pub fn min_size(mut self, w: i32, h: i32) -> Spec {
+        self.min_size = Some((w, h));
+        self
     }
     pub fn size(mut self, w: i32, h: i32) -> Spec {
         self.size = (w, h);
@@ -398,6 +404,9 @@ fn run_client(stream: UnixStream, spec: Spec, rx: Receiver<Cmd>, seen: Arc<Mutex
     let tl = xs.get_toplevel(&qh, ());
     tl.set_app_id(spec.app_id.clone());
     tl.set_title(spec.title.clone());
+    if let Some((w, h)) = spec.min_size {
+        tl.set_min_size(w, h);
+    }
     if let Some(d) = &deco {
         let td = d.get_toplevel_decoration(&tl, &qh, ());
         td.set_mode(zxdg_toplevel_decoration_v1::Mode::ServerSide);

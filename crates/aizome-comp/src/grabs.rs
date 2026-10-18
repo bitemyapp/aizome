@@ -293,7 +293,7 @@ pub fn start_resize(state: &mut State, win: WinId, edges: Edges, pos: Point<f64,
 }
 
 /// The size limits a client set.
-fn size_limits(state: &State, win: WinId) -> ((i32, i32), (i32, i32)) {
+pub(crate) fn size_limits(state: &State, win: WinId) -> ((i32, i32), (i32, i32)) {
     let Some(m) = state.az.windows.get(&win) else { return ((64, 32), (i32::MAX, i32::MAX)) };
     let (min, max) = smithay::wayland::compositor::with_states(m.surface(), |s| {
         let c = *s.cached_state.get::<smithay::wayland::shell::xdg::SurfaceCachedState>().current();

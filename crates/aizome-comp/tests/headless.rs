@@ -227,6 +227,16 @@ fn client_side_decorations_get_the_tab_only() {
 }
 
 #[test]
+fn ipc_resize_keeps_to_the_clients_minimum() {
+    let c = Compositor::start(opts(None));
+    let _a = c.client(Spec::new("test.min", 0x2222cc).min_size(320, 240));
+    let w = c.wait_window("test.min");
+    c.ok(Request::Resize { id: Some(w.id), rect: aizome_ipc::Rect::new(100, 100, 200, 100) });
+    let ws = c.wait_windows("resized", |ws| ws[0].geometry.x == 100);
+    assert_eq!(ws[0].geometry, aizome_ipc::Rect::new(100, 100, 320, 240), "no smaller than the client allows");
+}
+
+#[test]
 fn fill_takes_the_usable_area() {
     let c = Compositor::start(opts(None));
     let a = c.client(Spec::new("test.a", 0x2222cc));
