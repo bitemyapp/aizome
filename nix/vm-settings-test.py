@@ -1135,6 +1135,9 @@ def printers():
     # The new printer's row is open: print a test page on it.
     S.press("Print Test Page")
     until("the page printed", lambda: name in machine.succeed("lpstat -W completed -o 2>&1 || true"), timeout=90)
+    # Sharing it with the network.
+    S.click(S.beside("Share on the network", "switch"))
+    until("shared", lambda: "printer-is-shared=true" in machine.succeed(f"lpoptions -p {name}"))
     reopen("printers")
     assert S.control("printers", "default-printer", role="combobox").get("value") == name
     S.quit()
