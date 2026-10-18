@@ -253,13 +253,13 @@ fn location_banner() -> Element<Msg> {
     .spacing(6.0)
     .width(Fill);
     container(row![icon(Icon::LocateFixed).size(22.0).role(Role::Warning), words].spacing(12.0).width(Fill))
-    .padding([12.0, 14.0])
-    .fill(Tone::Raised)
-    .border(Edge::Line2)
-    .bevel()
-    .width(Fill)
-    .key("ask-location")
-    .into()
+        .padding([12.0, 14.0])
+        .fill(Tone::Raised)
+        .border(Edge::Line2)
+        .bevel()
+        .width(Fill)
+        .key("ask-location")
+        .into()
 }
 
 /// A quiet message in the middle of the main view.
