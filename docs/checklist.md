@@ -1,0 +1,235 @@
+# Aizome against its design and brief
+
+What the end-to-end walkthrough of 17–18 October 2026 found: every element
+of the boards (`aizome-design/boards/aizome-{desktop,menus}-{night,day}@2x.png`,
+`reference/png/C1-Switcher.png`, `C3-Palette.png`, `C4-Overview.png`,
+`C4-Marking.png`) and of the brief, with its status, how it was checked and
+what's left. The walkthrough ran the real session headless at 2880 × 1800
+@ 2 from release builds (see `docs/screenshots/README.md`), drove it with
+`aizomectl input` and looked at a screenshot after each step.
+
+**done**: implemented and seen working in the live session.
+**partial**: works, with a gap that's named. **missing**: not there.
+
+"Live" below means the headless session; "tests" means the crate's own
+tests, which were run after each fix.
+
+## Windows and tabs (Haiku)
+
+| Element | Status | How it was checked | Notes |
+|---|---|---|---|
+| Tab only as wide as its title, Archivo semi-condensed 650, close box and zoom box | done | live, `01`, `02` | Long titles keep the tab short; paths lose their middle (`/h/c/w/aizome`) |
+| Focused tab amber with the 2pt rail along the frame | done | live | |
+| Unfocused tabs `tab-idle` with an app glyph | done | live | **Fixed** (`de92f1b`): the glyph was the app icon's silhouette, a solid square for tiled icons; now Lucide line glyphs as on the boards |
+| Square frame, 1pt bevel, hard 3pt shadow including the tab | done | live, `compositor` tests | |
+| ⇧-drag slides a tab along the top | done | live (`01`: foot/Hako's tabs slid right) | |
+| Drag a tab onto another: dashed amber slot, "Release to stack with …" | done | live, screenshot during the drag | |
+| Stacked tabs side by side, one window showing; click a tab to switch | done | live (Tokei/Soroban, foot/Hako) | **Fixed** (`9a2bc77`): a fixed-size window (Soroban) stacked with a larger one left a hole onto the desktop; the frame now fills under the client |
+| Unstack by dragging a tab out | done | live | |
+| Double-click a tab, or the zoom box: fill | done | live | **Fixed** (`4b3fd67`): fill and split ran under the Deskbar, hiding windows' right edges |
+| Close box | done | live (Shitsurae) | |
+| Resize by the edges | done | live (right and bottom edges, Shitsurae) | |
+| ⌃❖-drag moves, ⌃❖-right-drag resizes | done | live | |
+| ❖H hide, ❖M minimise | done | live, Deskbar shows "hidden" | |
+
+## The marking menu (C4-Marking)
+
+| Element | Status | How | Notes |
+|---|---|---|---|
+| Right press and pause on a tab shows eight verbs | done | live, `11` | |
+| Flick without pausing runs the verb | done | live (flick east: split right, and again to restore) | |
+| "to Desk ▸" opens a ring of Desk names | done | live | |
+
+## Desks and the overview
+
+| Element | Status | How | Notes |
+|---|---|---|---|
+| ⌃❖←/→, ⌃❖1–4 | done | live | |
+| Desks strip in the bar, current on `selection`, click to switch, `+` adds | done | live | Double-click rename not tried |
+| ❖Return opens foot | done | live | In the Desk's folder: not tried live (the Desk had none then) |
+| Overview (⌃❖↑): Desks with thumbnails, counts, "here", new Desk slot | done | live, `04` | |
+| Drag a window to another Desk in the overview | done | live (Tokei to Write) | |
+| Type to filter, 1–9 to go, Esc | done | live | |
+
+## The switcher (C1-Switcher)
+
+| Element | Status | How | Notes |
+|---|---|---|---|
+| ❖Tab: apps row with icons and window counts | done | live, `05` | |
+| ↓ or keep holding: that app's windows with live thumbnails | done | live, `05` | |
+| ❖`: next window of the app | done | live (three Sumi windows) | |
+
+## The menu bar, menus and tear-offs
+
+| Element | Status | How | Notes |
+|---|---|---|---|
+| Bar 24pt: Toolchest button with the mark, app name bold, its menus | done | live | |
+| Menus from the bar, shortcuts in mono with ❖⇧⌥⌃ | done | live | |
+| Type-ahead in a menu | done | live (Edit, "sel") | |
+| Submenus, keyboard (↑↓→←, Return, Esc) | done | live | |
+| F10 / ⌥❖M focuses the bar | done | live, `keys` tests | |
+| ❖-right-click: the whole menu at the pointer (NeXT) | done | live, `02` | |
+| Services ▸ (New Note with Selection, Open in Sumi, …) | done | live: New Note with Selection made a Fusen note from Sumi's selection | Only that service tried |
+| Tear-off by the strip or its pin; palettes move by their strip | done | live, `02` | **Fixed** (`31cbcc9`): dragging a palette's strip moved it by the drag again on every move, sending it off screen, where the shell crashed (a negative layer size); now it follows the pointer and stays on its output |
+| Palettes remembered, per app, pinned | done | live (`palettes.json`), `menus` tests | |
+| The boards' pin glyph on title strips | done | live | **Fixed** (`a50dde6`): unpinned strips drew a struck-through pin |
+| Fallback menus for apps that publish none (foot) | done | live | |
+
+## The Toolchest
+
+| Element | Status | How | Notes |
+|---|---|---|---|
+| Mouse, ❖⌥Space | done | live | |
+| Applications ▸ by category, Places, Desks, Find, System, Session | done | live, `07` | **Fixed** (`a50dde6`): the rows' glyphs were dropped by the kit for submenus |
+| Typing opens the palette with what was typed | done | live | **Fixed** (`f5951ea`): only the first key reached the palette; the rest went to the window under it |
+| Tear-off | done | live, `02` | |
+
+## The palette (C3-Palette, Strip's)
+
+| Element | Status | How | Notes |
+|---|---|---|---|
+| ❖Space; query row with "in ‹App› · ‹title›" | done | live, `03` | |
+| Commands of the focused app with paths and keycaps | done | live | |
+| Shortcut coach after three runs | done | live, `03` | |
+| Windows, Files, Apps, Settings, Actions scopes; Tab cycles | done | live (opened Shashin from Windows; "caps lock" opened Shitsurae's Keyboard; "night" switched theme) | |
+| Arithmetic: "= result" | done | live (`12*(3+4)/2` = 42) | |
+| ❖K actions | done | live (a file's actions) | |
+| Matched characters in blue, underlined; selected row with the amber rail | done | live | |
+
+## The systray
+
+| Element | Status | How | Notes |
+|---|---|---|---|
+| CPU and memory meters | done | live | |
+| Network panel | partial | live (real NetworkManager, read only) | Shows Wi-Fi switch, the connected network, airplane mode, settings. The list of other networks was empty here; joining wasn't tried (not allowed on this machine) |
+| Sound panel | partial | live (private PipeWire, null sink) | Output and input sliders; no device list (one device) and no media player was running, so MPRIS controls weren't seen |
+| Bluetooth panel | partial | live (real BlueZ) | Switch and settings row; no devices listed |
+| Display panel | done | live | Night/Day/Auto and Size. Brightness hides on outputs without a built-in panel (**fixed**, `6fd37f5`); Night Light needs gamma, which headless lacks |
+| Battery panel | done | live (real UPower) | Charge, state, power mode |
+| Clock panel | done | live | Month with today in amber, Do Not Disturb; agenda empty |
+| Escape closes the panels | done | live | **Fixed** (`130ca23`): after closing, keys went to the bar, not the window; (`441f0c8`): slivers of the highlight were left beside the glyphs |
+| Clock, IBM Plex Mono tabular | done | live | |
+
+## The Deskbar and the Shelf
+
+| Element | Status | How | Notes |
+|---|---|---|---|
+| Apps with their windows; focused bar, "hidden", "stack", "desk N" | done | live, `01`, `05` | |
+| Click a row focuses | done | live | |
+| Notifications under their app: count in red, newest in a card, × dismisses | done | live (`notify-send` on the private bus), `01` | Clicking for the default action not tried |
+| Notification line in the bar | done | live | |
+| Fold to "N apps ⌄" and back | done | live | |
+| Shelf: drag to park, "Drop to park" | done | live (Hako's files, a desktop icon) | Dragging *text* from Sumi's selection didn't start a drag (it re-selected); dragging out from the Shelf is covered by `deskbar` tests, not tried live |
+| App glyphs | done | live | **Fixed** (`588b55b`): Shashin and Annai had category fallbacks |
+
+## The desktop
+
+| Element | Status | How | Notes |
+|---|---|---|---|
+| Wallpaper per theme | done | live, `01`, `07` | |
+| Icons: home, Trash, `~/Desktop` items, labels on chips | done | live | |
+| Disk and image icons | partial | live | The internal disk is a system volume and isn't shown (the board shows `nvme0` and an `.iso`); attaching images wasn't tried (no loop devices outside the VM) |
+| Double-click opens; drag moves (remembered) | done | live (opened a folder in Hako) | |
+| Right-click: the menu at the pointer | done | live | |
+
+## The rest of the shell
+
+| Element | Status | How | Notes |
+|---|---|---|---|
+| OSD (volume, mute, brightness) | done | live (`aizomectl action volume-up`, `mute`, `brightness-up`) | **Fixed** (`6fd37f5`, `27b4755`): the brightness key in a headless session changed the laptop's own panel, stepping from 0 since a blanked panel reads 0 |
+| Lock screen: wallpaper under a scrim, time, date, initial, name, password field, mark | done | live, `12` | PAM's `aizome` service doesn't exist outside the VM, so a password is refused ("That password didn't work") as expected; the shake wasn't looked at |
+| ❖⇧3, ❖⇧4 screenshots | done | live (files in `~/Pictures/Screenshots`, a notification) | |
+| Night, Day, High Contrast live | done | live, `07`; foot follows (SIGUSR1/2) | **Fixed** (`5ea3273`): the theme signal went to every foot of the user's, including the live desktop's |
+| Effects tiers Full, Lean, Austere | partial | live: switched in Settings, shadows go in Austere | Full's frost not examined closely |
+| Shell restart keeps apps working | done | live (killed the shell) | **Fixed** (`4b8f943`): apps lost their keyboard focus when the shell came back |
+
+## Settings (Shitsurae)
+
+| Element | Status | How | Notes |
+|---|---|---|---|
+| Sidebar with search, the user's card, grouped panes | done | live, `06` | |
+| Panes | done | live: Network, Appearance, Displays, Performance, Keyboard, General opened; the rest by their tests (goldens of 13 panes) | Changes that touch the system (joins, users, printers) weren't tried |
+| `--pane`, palette's Settings scope | done | live | |
+
+## Apps
+
+All fourteen opened from the session and were looked at:
+
+| App | Status | Notes |
+|---|---|---|
+| Shitsurae (Settings) | done | `06` |
+| Yukimi (Software) | done | `08`, this machine's configuration |
+| Hako (Files) | done | Miller columns, sidebar, drag out to the Shelf |
+| Sumi (Text Editor) | done | Markdown styling, ❖N/❖W/❖Z. **Fixed** (`7744b6e`): File ▸ New's window didn't take the keys |
+| Fusen (Notes) | done | Notes from `~/Notes`, Services' new note |
+| Koyomi (Calendar) | done | Month view |
+| Tokei (Clock) | done | `10` |
+| Soroban (Calculator) | done | Typed expressions with the tape |
+| Tenki (Weather) | done | `10`, fetched from Open-Meteo. **Fixed** (`0a6ee49`): the location question's words were squeezed to a letter a line in a narrow window |
+| Tansu (Disks) | done | Opened on the real disks, read only; no operation tried |
+| Kura (Disk Usage) | done | `09`, sunburst and suggestions; `index.json`/`index.md` written |
+| Myaku (Activity) | done | |
+| Shashin (Images) | done | |
+| Annai (Welcome) | done | |
+
+## The brief
+
+| Item | Status | Notes |
+|---|---|---|
+| Haiku tabs and tab groups | done | above |
+| Deskbar with app → windows, notifications and Shelf | done | text drag-out from Sumi missing (above) |
+| Global menu bar, NeXT menu at the pointer, tear-offs | done | |
+| Toolchest, Desks, desktop icons | done | disk icons partial |
+| Frames, type, themes (Night/Day) | done | High Contrast too |
+| Strip's palette: scopes, shortcut coach, Toolchest typing, ❖Space, Services | done | |
+| Two-tier switcher, Desks overview, marking menu | done | |
+| Systray: sound, Bluetooth, network, display, battery, power | partial | panels work; device lists and media not exercised here (above) |
+| Settings, all panes | partial | every pane opens and has goldens; live changes only to Appearance |
+| Apps (Yukimi, Calculator, Calendar, Clock, Disks, Disk Usage with its agent index, Notes, TextEdit, Weather, Files, Activity, Images, Welcome) | done | |
+| foot as the terminal, fish as the shell | done | foot with Aizome's `foot.ini`; fish from nixpkgs here (Sekka's module installs it) |
+| GPU and software rendering | done | GLES for the walkthrough; the same scene under pixman (`AIZOME_RENDERER=pixman`) |
+| The 4 ms budget | partial | below |
+| Super as the command key | done | ❖N, ❖W, ❖Z, ❖Space in the session; ❖ → Ctrl translation for foot and others in `keys` tests |
+
+## Frame times
+
+From `aizomectl stats` and `SIDESTEP_FRAME_STATS=1`, release builds, the
+final screenshot run (GLES, 2880 × 1800 @ 2):
+
+- **Compositor (GLES)**: 617 frames drawn, 271 redraws skipped for want
+  of damage; CPU p50 0.31 ms, p95 0.87 ms, p99 1.94 ms, max 6.4 ms; GPU
+  p50 0.68 ms, p95 1.92 ms. Over the longer walkthrough session (1,644
+  frames): CPU p95 0.49 ms, p99 2.0 ms, max 30 ms (the first frames,
+  uploading the wallpaper).
+- **Compositor (pixman)**, the desktop scene with the overview, switcher,
+  palette and a window drag: p50 0.18 ms, p95 4.8 ms, p99 8.4 ms, max
+  16 ms. Full-output damage at 2880 × 1800 in software is over budget; it
+  is the documented exception in `docs/performance.md`.
+- **Clients** (the shell and the apps, Sidestep's five-second summaries):
+  153 summaries, 143 with p95 within 4 ms. The ten over it were whole-window
+  repaints (67–100% damage): windows' first frames, the switch to Day and
+  back, Kura's first drawing after its scan, a page switch, 4.1–14.2 ms at
+  p95; two had p50 over 4 ms (single-frame summaries of new windows).
+- The shell's `perf` test (`window opens and closes`) failed once at p95
+  4.5 ms with the machine loaded (load average 14, three builds running)
+  and passed three times when quiet.
+
+## Fixes made during the walkthrough
+
+`5ea3273`, `7744b6e`, `9a2bc77`, `4b3fd67`, `130ca23`, `45f1e85`,
+`a50dde6`, `f5951ea`, `441f0c8`, `31cbcc9`, `27b4755`, `6fd37f5`,
+`588b55b`, `0a6ee49`, `91ca828`, `4b8f943`, `de92f1b`. Most came with a
+test that fails without the fix; the glyph, pin and highlight ones were
+checked by eye.
+
+## Still to do
+
+- Dragging selected text out of Sumi (the kit's editor) to the Shelf or
+  another app: the press on a selection re-selects instead of dragging.
+- Desktop icons for the internal disk (shown on the board) and attached
+  images.
+- The systray panels' device lists, media controls and Night Light were
+  not exercised for want of devices in this session; check them on the
+  laptop.
+- Whole-window repaints of the apps at 2× still exceed 4 ms at p95 when a
+  window first shows or the theme changes.
