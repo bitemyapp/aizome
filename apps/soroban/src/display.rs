@@ -126,7 +126,11 @@ impl Widget for DisplayWidget {
         Some(Semantics {
             role: SemanticRole::Label,
             label: Some("Display".into()),
-            value: Some(if self.shown.sub.is_empty() { self.shown.main.clone() } else { format!("{}, {}", self.shown.main, self.shown.sub) }),
+            value: Some(if self.shown.sub.is_empty() {
+                self.shown.main.clone()
+            } else {
+                format!("{}, {}", self.shown.main, self.shown.sub)
+            }),
             ..Default::default()
         })
     }

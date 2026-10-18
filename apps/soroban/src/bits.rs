@@ -11,7 +11,9 @@ use aizome_kit::layout::{Constraints, Point, Rect, Size};
 use aizome_kit::sidestep_ui::{Key as KeyName, NamedKey, PointerButton};
 use aizome_kit::text::TextSpec;
 use aizome_kit::theme::{FontSpec, Role};
-use aizome_kit::widget::{Event, EventCx, FocusRing, Focusable, LayoutCx, PaintCx, SemanticAction, SemanticRole, Semantics, Status, Widget};
+use aizome_kit::widget::{
+    Event, EventCx, FocusRing, Focusable, LayoutCx, PaintCx, SemanticAction, SemanticRole, Semantics, Status, Widget,
+};
 use aizome_kit::{Align, Element, Layoutable, Length};
 
 /// A bit's cell.
@@ -27,7 +29,12 @@ pub const HEIGHT: f64 = 4.0 * (CELL + CAPTION);
 /// A radix's row: `HEX  DEAD BEEF`.
 pub const ROW: f64 = 24.0;
 
-pub fn radix_row<Msg: Clone + Send + 'static>(label: &'static str, value: String, selected: bool, on_press: Msg) -> Element<Msg> {
+pub fn radix_row<Msg: Clone + Send + 'static>(
+    label: &'static str,
+    value: String,
+    selected: bool,
+    on_press: Msg,
+) -> Element<Msg> {
     Element::new(RadixRow { label, value, selected, on_press: MsgFn::new(on_press) }, Vec::new())
         .key(label)
         .width(Length::Fill)
@@ -71,7 +78,10 @@ impl Widget for RadixRow {
         let mut ls = TextSpec::new(lf, if self.selected { t.text() } else { t.text3() });
         ls.letter_spacing = 0.8;
         cx.draw_text_in(self.label, &ls, Rect::new(r.x0 + 12.0, r.y0, r.x0 + 48.0, r.y1), Align::Start);
-        let vs = TextSpec::new(mono(12.5, if self.selected { 600.0 } else { 400.0 }), if self.selected { t.text() } else { t.text2() });
+        let vs = TextSpec::new(
+            mono(12.5, if self.selected { 600.0 } else { 400.0 }),
+            if self.selected { t.text() } else { t.text2() },
+        );
         let room = Rect::new(r.x0 + 48.0, r.y0, r.x1 - 8.0, r.y1);
         let w = cx.layout_text(&self.value, &vs, None).size().width;
         let text = if w <= room.width() {
@@ -108,7 +118,8 @@ impl Widget for RadixRow {
                 Status::Handled
             }
             Event::Key(k) if k.pressed && cx.is_focused() && k.modifiers.is_empty() => {
-                let works = matches!(&k.key, KeyName::Named(NamedKey::Enter)) || matches!(&k.key, KeyName::Character(s) if s == " ");
+                let works = matches!(&k.key, KeyName::Named(NamedKey::Enter))
+                    || matches!(&k.key, KeyName::Character(s) if s == " ");
                 if works {
                     cx.emit(&self.on_press);
                     return Status::Handled;
@@ -141,9 +152,14 @@ impl Widget for RadixRow {
 }
 
 /// The 64 bit toggles: `value`'s bits, those past `bits` faint.
-pub fn bit_grid<Msg: Clone + Send + 'static>(value: u64, bits: u32, on_toggle: impl Fn(u32) -> Msg + 'static) -> Element<Msg> {
+pub fn bit_grid<Msg: Clone + Send + 'static>(
+    value: u64,
+    bits: u32,
+    on_toggle: impl Fn(u32) -> Msg + 'static,
+) -> Element<Msg> {
     Element::new(BitGrid { value, bits, on_toggle: Rc::new(on_toggle) }, Vec::new())
-        .key("bits").id("bits")
+        .key("bits")
+        .id("bits")
         .width(WIDTH)
         .height(HEIGHT)
 }
@@ -309,7 +325,8 @@ impl<Msg: Clone + Send + 'static> Widget for BitGrid<Msg> {
                     cx.invalidate();
                     return Status::Handled;
                 }
-                let flip = matches!(&k.key, KeyName::Named(NamedKey::Enter)) || matches!(&k.key, KeyName::Character(s) if s == " ");
+                let flip = matches!(&k.key, KeyName::Named(NamedKey::Enter))
+                    || matches!(&k.key, KeyName::Character(s) if s == " ");
                 if flip {
                     cx.emit(&MsgFn::new((self.on_toggle)(c)));
                     return Status::Handled;

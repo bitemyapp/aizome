@@ -8,8 +8,8 @@
 //! expressions go to `aizome_search::calc` (the palette's evaluator);
 //! Programmer mode's go to `calc::int` at the word size.
 
-use aizome_search::calc::{self, Angle};
 use aizome_search::calc::int::{self, Word};
+use aizome_search::calc::{self, Angle};
 use serde::{Deserialize, Serialize};
 
 /// The keypad showing.
@@ -67,7 +67,12 @@ pub enum Kind {
 pub enum Num {
     Real(f64),
     /// A bit pattern, and the word and radix it was shown in.
-    Int { bits: u64, word: u8, signed: bool, radix: u8 },
+    Int {
+        bits: u64,
+        word: u8,
+        signed: bool,
+        radix: u8,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -248,7 +253,9 @@ impl Key {
     /// What assistive technology and tooltips call it.
     pub fn spoken(self, second: bool) -> String {
         let s = match self {
-            Key::Digit(d) => return format!("{}", char::from_digit(u32::from(d), 16).unwrap_or('0').to_ascii_uppercase()),
+            Key::Digit(d) => {
+                return format!("{}", char::from_digit(u32::from(d), 16).unwrap_or('0').to_ascii_uppercase());
+            }
             Key::Point => "decimal point",
             Key::Add => "plus",
             Key::Sub => "minus",
@@ -374,7 +381,9 @@ pub struct Calc {
 
 impl Default for Calc {
     fn default() -> Calc {
-        let seed = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0x2545_f491, |d| d.as_nanos() as u64);
+        let seed = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0x2545_f491, |d| d.as_nanos() as u64);
         Calc {
             mode: Mode::Basic,
             pieces: Vec::new(),
@@ -481,14 +490,21 @@ impl Calc {
             (Mode::Programmer, Num::Int { bits, .. }) => int::format(bits, self.radix, self.word, true),
             (Mode::Programmer, Num::Real(v)) => int::format(self.real_to_int(v), self.radix, self.word, true),
             (_, Num::Real(v)) => format_real(v),
-            (_, Num::Int { bits, word, signed, .. }) => format_real(int_to_real(bits, Word::new(u32::from(word), signed))),
+            (_, Num::Int { bits, word, signed, .. }) => {
+                format_real(int_to_real(bits, Word::new(u32::from(word), signed)))
+            }
         }
     }
 
     /// The answer, as a number of this mode.
     pub fn answer(&self) -> Num {
         if self.mode == Mode::Programmer {
-            Num::Int { bits: self.int_ans, word: self.word.bits as u8, signed: self.word.signed, radix: self.radix as u8 }
+            Num::Int {
+                bits: self.int_ans,
+                word: self.word.bits as u8,
+                signed: self.word.signed,
+                radix: self.radix as u8,
+            }
         } else {
             Num::Real(self.ans)
         }
@@ -534,7 +550,8 @@ impl Calc {
             Ok(Num::Int { bits, .. }) => bits,
             _ => {
                 let start = self.trailing_number_start();
-                let digits: String = self.pieces[start..].iter().filter(|p| p.kind == Kind::Digit).map(|p| p.src.as_str()).collect();
+                let digits: String =
+                    self.pieces[start..].iter().filter(|p| p.kind == Kind::Digit).map(|p| p.src.as_str()).collect();
                 u64::from_str_radix(&digits, self.radix).map(|v| self.word.wrap(v)).unwrap_or(0)
             }
         }
@@ -866,7 +883,9 @@ impl Calc {
                     self.continue_from_answer();
                 }
                 let ends_in_digit = self.pieces.last().is_some_and(|p| p.kind == Kind::Digit && p.src != ".");
-                if !ends_in_digit || self.pieces[self.trailing_number_start()..].iter().any(|p| p.kind == Kind::Exponent) {
+                if !ends_in_digit
+                    || self.pieces[self.trailing_number_start()..].iter().any(|p| p.kind == Kind::Exponent)
+                {
                     return false;
                 }
                 self.push(Piece::new(Kind::Exponent, "e", "E"));
@@ -1109,7 +1128,11 @@ impl Calc {
 
     /// Whether the expression ends in a number, a value or ")".
     fn after_operand(&self) -> bool {
-        self.fresh || self.pieces.last().is_some_and(|p| matches!(p.kind, Kind::Digit | Kind::Value | Kind::Close | Kind::Postfix))
+        self.fresh
+            || self
+                .pieces
+                .last()
+                .is_some_and(|p| matches!(p.kind, Kind::Digit | Kind::Value | Kind::Close | Kind::Postfix))
     }
 
     /// Whether letters are being typed (so a, b, x… continue a word).
@@ -1121,13 +1144,19 @@ impl Calc {
     /// number (shown in capitals) or a word (shown in small letters).
     fn respell_word(&mut self) {
         let mut i = self.pieces.len();
-        while i > 0 && matches!(self.pieces[i - 1].kind, Kind::Digit | Kind::Text) && self.pieces[i - 1].src.chars().all(|c| c.is_ascii_alphanumeric()) {
+        while i > 0
+            && matches!(self.pieces[i - 1].kind, Kind::Digit | Kind::Text)
+            && self.pieces[i - 1].src.chars().all(|c| c.is_ascii_alphanumeric())
+        {
             i -= 1;
         }
         let run: String = self.pieces[i..].iter().map(|p| p.src.as_str()).collect();
         let number = run.chars().all(|c| c.is_digit(self.radix));
         // The keypad's words in its capitals: AND, ROL.
-        let keyword = matches!(run.to_ascii_lowercase().as_str(), "and" | "or" | "xor" | "not" | "nand" | "nor" | "shl" | "shr" | "rol" | "ror");
+        let keyword = matches!(
+            run.to_ascii_lowercase().as_str(),
+            "and" | "or" | "xor" | "not" | "nand" | "nor" | "shl" | "shr" | "rol" | "ror"
+        );
         for p in &mut self.pieces[i..] {
             if number {
                 p.kind = Kind::Digit;
@@ -1221,11 +1250,7 @@ impl Calc {
         if crossing {
             // The expression's value (or the answer) goes across; an
             // expression that has none is dropped.
-            let value = if self.fresh || self.pieces.is_empty() {
-                Some(self.answer())
-            } else {
-                self.evaluate().ok()
-            };
+            let value = if self.fresh || self.pieces.is_empty() { Some(self.answer()) } else { self.evaluate().ok() };
             let had_expr = !self.fresh && !self.pieces.is_empty();
             let from = if had_expr { self.shown_expr() } else { self.from.clone() };
             self.pieces.clear();

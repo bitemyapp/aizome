@@ -14,7 +14,9 @@ use aizome_kit::layout::{Constraints, Point, Rect, Size};
 use aizome_kit::sidestep_ui::{Key as KeyName, PointerButton};
 use aizome_kit::text::TextSpec;
 use aizome_kit::theme::{FontSpec, Role, Theme};
-use aizome_kit::widget::{Event, EventCx, Focusable, LayoutCx, PaintCx, SemanticAction, SemanticRole, Semantics, Status, Widget};
+use aizome_kit::widget::{
+    Event, EventCx, Focusable, LayoutCx, PaintCx, SemanticAction, SemanticRole, Semantics, Status, Widget,
+};
 use aizome_kit::{Color, Element, Layoutable};
 
 use crate::entry::{Family, Key, Mode};
@@ -52,11 +54,26 @@ pub fn basic() -> Grid {
     Grid {
         cols: 4,
         keys: vec![
-            Clear, Back, Percent, Div, //
-            Digit(7), Digit(8), Digit(9), Mul, //
-            Digit(4), Digit(5), Digit(6), Sub, //
-            Digit(1), Digit(2), Digit(3), Add, //
-            Negate, Digit(0), Point, Equals,
+            Clear,
+            Back,
+            Percent,
+            Div, //
+            Digit(7),
+            Digit(8),
+            Digit(9),
+            Mul, //
+            Digit(4),
+            Digit(5),
+            Digit(6),
+            Sub, //
+            Digit(1),
+            Digit(2),
+            Digit(3),
+            Add, //
+            Negate,
+            Digit(0),
+            Point,
+            Equals,
         ],
     }
 }
@@ -82,11 +99,41 @@ pub fn programmer() -> Grid {
     Grid {
         cols: 7,
         keys: vec![
-            And, Or, Clear, Back, Open, Close, Div, //
-            Xor, Not, Digit(12), Digit(13), Digit(14), Digit(15), Mul, //
-            Shl, Shr, Digit(8), Digit(9), Digit(10), Digit(11), Sub, //
-            Rol, Ror, Digit(4), Digit(5), Digit(6), Digit(7), Add, //
-            Mod, Negate, Digit(0), Digit(1), Digit(2), Digit(3), Equals,
+            And,
+            Or,
+            Clear,
+            Back,
+            Open,
+            Close,
+            Div, //
+            Xor,
+            Not,
+            Digit(12),
+            Digit(13),
+            Digit(14),
+            Digit(15),
+            Mul, //
+            Shl,
+            Shr,
+            Digit(8),
+            Digit(9),
+            Digit(10),
+            Digit(11),
+            Sub, //
+            Rol,
+            Ror,
+            Digit(4),
+            Digit(5),
+            Digit(6),
+            Digit(7),
+            Add, //
+            Mod,
+            Negate,
+            Digit(0),
+            Digit(1),
+            Digit(2),
+            Digit(3),
+            Equals,
         ],
     }
 }
@@ -160,7 +207,11 @@ fn colors(t: &Theme, f: &Face) -> (Option<Color>, Color, Color) {
         Family::Digit => (Some(t.raised()), t.line2(), t.text()),
         Family::Function => (Some(t.chrome()), t.line2(), t.text2()),
         Family::Clear => (Some(t.chrome()), t.line2(), t.role(Role::Danger)),
-        Family::Bitwise => (Some(t.chrome().mix(t.role(Role::Accent), if t.is_dark() { 0.12 } else { 0.10 })), t.line2(), t.role(Role::Accent)),
+        Family::Bitwise => (
+            Some(t.chrome().mix(t.role(Role::Accent), if t.is_dark() { 0.12 } else { 0.10 })),
+            t.line2(),
+            t.role(Role::Accent),
+        ),
         Family::Operator(step) => {
             let (fill, ink) = dye(t, step);
             (Some(fill), t.bevel_lo(), ink)
@@ -259,7 +310,8 @@ impl Widget for KeyWidget {
             s.weight = 600.0;
             s
         };
-        let sup_w = f.sup.map_or(0.0, |s| cx.layout_text(s, &TextSpec::new(sup_font(font), ink), None).size().width + 1.0);
+        let sup_w =
+            f.sup.map_or(0.0, |s| cx.layout_text(s, &TextSpec::new(sup_font(font), ink), None).size().width + 1.0);
         // Long words narrow to fit, then shrink.
         while w + sup_w > r.width() - 10.0 && size > 10.0 {
             if !font.condensed && font.family != aizome_kit::theme::Family::Mono {

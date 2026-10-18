@@ -171,7 +171,9 @@ impl SaveSheet {
 
 /// Folders to save in: Documents, Desktop and home, those that are there.
 fn save_folders() -> Vec<(String, PathBuf)> {
-    let Some(home) = std::env::var_os("HOME").map(PathBuf::from) else { return vec![("/tmp".into(), PathBuf::from("/tmp"))] };
+    let Some(home) = std::env::var_os("HOME").map(PathBuf::from) else {
+        return vec![("/tmp".into(), PathBuf::from("/tmp"))];
+    };
     let mut out = Vec::new();
     for (name, dir) in [("Documents", home.join("Documents")), ("Desktop", home.join("Desktop"))] {
         if dir.is_dir() {
@@ -196,7 +198,10 @@ impl Soroban {
         calc.angle = if saved.degrees { Angle::Degrees } else { Angle::Radians };
         calc.memory = saved.memory;
         calc.radix = if matches!(saved.radix, 2 | 8 | 10 | 16) { saved.radix } else { 10 };
-        calc.word = aizome_search::calc::int::Word::new(if WORDS.contains(&saved.word_bits) { saved.word_bits } else { 64 }, saved.signed);
+        calc.word = aizome_search::calc::int::Word::new(
+            if WORDS.contains(&saved.word_bits) { saved.word_bits } else { 64 },
+            saved.signed,
+        );
         calc.ans = if saved.ans.is_finite() { saved.ans } else { 0.0 };
         calc.int_ans = calc.word.wrap(saved.int_ans);
         calc.tape = saved.tape;
@@ -273,7 +278,9 @@ impl Soroban {
         let prog = self.calc.mode == Mode::Programmer;
         Some(match c {
             '0'..='9' => Key::Digit(c as u8 - b'0'),
-            'a'..='f' | 'A'..='F' if prog && self.calc.radix == 16 => Key::Digit(c.to_ascii_lowercase() as u8 - b'a' + 10),
+            'a'..='f' | 'A'..='F' if prog && self.calc.radix == 16 => {
+                Key::Digit(c.to_ascii_lowercase() as u8 - b'a' + 10)
+            }
             '.' => Key::Point,
             '+' => Key::Add,
             '-' | '−' => Key::Sub,
@@ -384,18 +391,14 @@ impl Soroban {
             radix_rows.push(bits::radix_row(label, text, c.radix == r, Msg::Radix(r)));
         }
         let word_index = WORDS.iter().position(|w| *w == c.word.bits);
-        let words = segmented(WORDS.iter().map(|w| w.to_string()), word_index).on_select(|i| Msg::Word(WORDS[i.min(3)]));
-        let sign = segmented(["Signed", "Unsigned"], if c.word.signed { 0 } else { 1 }).on_select(|i| Msg::Signed(i == 0));
+        let words =
+            segmented(WORDS.iter().map(|w| w.to_string()), word_index).on_select(|i| Msg::Word(WORDS[i.min(3)]));
+        let sign =
+            segmented(["Signed", "Unsigned"], if c.word.signed { 0 } else { 1 }).on_select(|i| Msg::Signed(i == 0));
         column![
             row![
                 aizome_kit::column(radix_rows).width(Length::Fill),
-                column![
-                    caption("Word"),
-                    words.width(152.0),
-                    sign.width(152.0),
-                ]
-                .spacing(4.0)
-                .align(Align::End),
+                column![caption("Word"), words.width(152.0), sign.width(152.0),].spacing(4.0).align(Align::End),
             ]
             .spacing(12.0)
             .align(Align::Start)
@@ -407,7 +410,8 @@ impl Soroban {
     }
 
     fn tape(&self) -> Element<Msg> {
-        let entries: Vec<(String, String)> = self.calc.tape.iter().map(|e| (e.expr.clone(), e.result.clone())).collect();
+        let entries: Vec<(String, String)> =
+            self.calc.tape.iter().map(|e| (e.expr.clone(), e.result.clone())).collect();
         let has = !entries.is_empty();
         let n = entries.len();
         let tool = |icon: Icon, msg: Msg, tip: &'static str| {
@@ -695,7 +699,8 @@ impl Program for Soroban {
         let mut view = Menu::new("View");
         for (i, m) in Mode::ALL.iter().enumerate() {
             let digit = char::from(b'1' + i as u8);
-            view = view.item(MenuItem::new(m.name(), Msg::SetMode(*m)).shortcut(Shortcut::cmd(digit)).checked(c.mode == *m));
+            view = view
+                .item(MenuItem::new(m.name(), Msg::SetMode(*m)).shortcut(Shortcut::cmd(digit)).checked(c.mode == *m));
         }
         view = view
             .separator()
@@ -707,8 +712,10 @@ impl Program for Soroban {
             .separator();
         if prog {
             let mut base = Menu::new("Radix");
-            for (r, name, k) in [(16, "Hexadecimal", 'H'), (10, "Decimal", 'D'), (8, "Octal", 'O'), (2, "Binary", 'B')] {
-                base = base.item(MenuItem::new(name, Msg::Radix(r)).shortcut(Shortcut::cmd(k).shift()).checked(c.radix == r));
+            for (r, name, k) in [(16, "Hexadecimal", 'H'), (10, "Decimal", 'D'), (8, "Octal", 'O'), (2, "Binary", 'B')]
+            {
+                base = base
+                    .item(MenuItem::new(name, Msg::Radix(r)).shortcut(Shortcut::cmd(k).shift()).checked(c.radix == r));
             }
             let mut word = Menu::new("Word Size");
             for w in WORDS {
@@ -723,7 +730,11 @@ impl Program for Soroban {
                 .item(MenuItem::new("Memory Subtract", Msg::Key(Key::MemSub)))
                 .item(MenuItem::new("Memory Recall", Msg::Key(Key::MemRecall)).enabled(c.memory.is_some()));
             calc = calc
-                .item(MenuItem::new("Degrees", Msg::Key(Key::Angle)).checked(c.angle == Angle::Degrees).shortcut(Shortcut::cmd('D')))
+                .item(
+                    MenuItem::new("Degrees", Msg::Key(Key::Angle))
+                        .checked(c.angle == Angle::Degrees)
+                        .shortcut(Shortcut::cmd('D')),
+                )
                 .item(MenuItem::new("Second Functions", Msg::Key(Key::Second)).checked(c.second))
                 .submenu(mem);
         }

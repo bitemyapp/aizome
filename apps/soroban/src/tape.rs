@@ -11,16 +11,22 @@ use aizome_kit::layout::{Constraints, Rect, Size};
 use aizome_kit::sidestep_ui::{Key as KeyName, NamedKey, PointerButton};
 use aizome_kit::text::TextSpec;
 use aizome_kit::theme::FontSpec;
-use aizome_kit::widget::{Event, EventCx, FocusRing, Focusable, LayoutCx, PaintCx, SemanticRole, Semantics, Status, Widget};
+use aizome_kit::widget::{
+    Event, EventCx, FocusRing, Focusable, LayoutCx, PaintCx, SemanticRole, Semantics, Status, Widget,
+};
 use aizome_kit::{Align, Element, Layoutable, Length};
 
 /// One entry's height.
 pub const ROW: f64 = 42.0;
 const PAD: f64 = 10.0;
 
-pub fn tape<Msg: Clone + Send + 'static>(entries: Vec<(String, String)>, on_recall: impl Fn(usize) -> Msg + 'static) -> Element<Msg> {
+pub fn tape<Msg: Clone + Send + 'static>(
+    entries: Vec<(String, String)>,
+    on_recall: impl Fn(usize) -> Msg + 'static,
+) -> Element<Msg> {
     Element::new(TapeWidget { entries, on_recall: Rc::new(on_recall), view: 0.0 }, Vec::new())
-        .key("tape-list").id("tape-list")
+        .key("tape-list")
+        .id("tape-list")
         .width(Length::Fill)
         .height(Length::Fill)
 }
@@ -67,7 +73,13 @@ impl<Msg> TapeWidget<Msg> {
     fn scroll_to(&self, s: &mut TapeState, i: usize) {
         let y0 = i as f64 * ROW;
         let top = self.top(s);
-        let new_top = if y0 < top { y0 } else if y0 + ROW > top + self.view { y0 + ROW - self.view } else { top };
+        let new_top = if y0 < top {
+            y0
+        } else if y0 + ROW > top + self.view {
+            y0 + ROW - self.view
+        } else {
+            top
+        };
         s.from_end = (self.max_scroll() - new_top).clamp(0.0, self.max_scroll());
     }
 }
