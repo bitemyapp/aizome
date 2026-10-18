@@ -218,12 +218,20 @@ pkgs.testers.runNixOSTest {
         machine.wait_until_succeeds(alice("aizome-shell msg state | grep -q '\"phase\":\"recording\"'"), timeout=30)
         # One at a time.
         machine.fail(record_screen)
-        # gpu-screen-recorder takes seconds to give up on software OpenGL;
-        # the clock restarts with each recorder that takes over. Five
-        # seconds of the one that stuck:
-        machine.wait_until_succeeds(
-            alice("aizome-shell msg state | grep -Eq '\"seconds\":([5-9]|[1-9][0-9])'"), timeout=60
-        )
+        # gpu-screen-recorder takes seconds to give up on software OpenGL
+        # (eight at a heavy load), and wf-recorder with VA-API has no
+        # device here; the clock restarts with each recorder that takes
+        # over. Five seconds of the one that sticks in a VM, wf-recorder
+        # with x264:
+        def stuck():
+            r = recording()
+            return r is not None and r.get("recorder") == "wf-recorder" and r.get("seconds", 0) >= 5
+
+        for _ in range(90):
+            if stuck():
+                break
+            machine.sleep(1)
+        assert stuck(), recording()
         going = recording()
         print(going)
         # gpu-screen-recorder refuses software OpenGL, so wf-recorder.
