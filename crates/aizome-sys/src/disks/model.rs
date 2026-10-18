@@ -180,11 +180,8 @@ impl DisksState {
         let mount_of = |b: &BlockDevice, want: &dyn Fn(&str) -> bool| -> Option<String> {
             b.filesystem.as_ref()?.mount_points.iter().filter(|m| want(m)).max_by_key(|m| m.len()).cloned()
         };
-        let (block, mount) = self
-            .blocks
-            .iter()
-            .find_map(|b| mount_of(b, &|m| m == "/").map(|m| (b, m)))
-            .or_else(|| {
+        let (block, mount) =
+            self.blocks.iter().find_map(|b| mount_of(b, &|m| m == "/").map(|m| (b, m))).or_else(|| {
                 self.blocks
                     .iter()
                     .filter_map(|b| mount_of(b, &|m| path_within(home, m)).map(|m| (b, m)))
@@ -1162,7 +1159,13 @@ mod tests {
         let mut home = b"/home".to_vec();
         home.push(0);
         let b = "/org/freedesktop/UDisks2/block_devices/sdb10";
-        moved.map.get_mut(b).unwrap().get_mut(IFACE_FILESYSTEM).unwrap().insert("MountPoints".into(), owned(vec![home]));
+        moved
+            .map
+            .get_mut(b)
+            .unwrap()
+            .get_mut(IFACE_FILESYSTEM)
+            .unwrap()
+            .insert("MountPoints".into(), owned(vec![home]));
         let system = build(&moved).system_volume("/home/u").unwrap();
         assert_eq!((system.name.as_str(), system.mount_point.as_deref()), ("sdb", Some("/home")));
         assert!(build(&moved).system_volume("/srv/u").is_none());
