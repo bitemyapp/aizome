@@ -106,6 +106,15 @@ pub fn cover(src: &[u8], sw: u32, sh: u32, dw: u32, dh: u32) -> Vec<u8> {
     out
 }
 
+/// How to draw a prepared wallpaper into `bounds` (points): pixel for
+/// pixel when it was made for them (the cheapest copy), else smoothly
+/// (the output changed and a new one is on its way).
+pub fn options(image: &Image, bounds: aizome_kit::layout::Rect, scale: f64) -> aizome_kit::sidestep_ui::ImageOptions {
+    let (w, h) = image.pixel_size();
+    let exact = (w as f64 - bounds.width() * scale).abs() < 0.5 && (h as f64 - bounds.height() * scale).abs() < 0.5;
+    aizome_kit::sidestep_ui::ImageOptions { smooth: !exact, ..Default::default() }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -140,13 +149,4 @@ mod tests {
         assert_eq!(out.len(), 400);
         assert!(out.chunks(4).all(|p| p[0] <= 200 && p[3] == 255));
     }
-}
-
-/// How to draw a prepared wallpaper into `bounds` (points): pixel for
-/// pixel when it was made for them (the cheapest copy), else smoothly
-/// (the output changed and a new one is on its way).
-pub fn options(image: &Image, bounds: aizome_kit::layout::Rect) -> aizome_kit::sidestep_ui::ImageOptions {
-    let s = image.size();
-    let exact = (s.width - bounds.width()).abs() < 0.01 && (s.height - bounds.height()).abs() < 0.01;
-    aizome_kit::sidestep_ui::ImageOptions { smooth: !exact, ..Default::default() }
 }

@@ -206,7 +206,7 @@ fn ground(image: Option<(Image, u64)>, size: Size) -> Element<DesktopMsg> {
                 let k = (b.width() / s.width).max(b.height() / s.height);
                 let (cw, ch) = (b.width() / k, b.height() / k);
                 let src = Rect::new((s.width - cw) / 2.0, (s.height - ch) / 2.0, (s.width + cw) / 2.0, (s.height + ch) / 2.0);
-                cx.canvas.draw_image_with(img, Some(src), b, crate::wallpaper::options(img, b));
+                cx.canvas.draw_image_with(img, Some(src), b, crate::wallpaper::options(img, b, cx.canvas.scale()));
             }
             _ => cx.canvas.fill_rect(b, aizome_kit::theme::color(t.palette.desktop)),
         }
