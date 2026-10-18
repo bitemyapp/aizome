@@ -21,11 +21,11 @@ pub use aizome_theme::{Effects, FocusColor, ThemeName};
 pub mod compositor;
 pub mod shell;
 pub use compositor::{NightLight, NightSchedule, RendererChoice, Sun, TabDoubleClick, sun_times, temperature_rgb};
-pub use shell::{
-    ClockFormat, DeskbarSettings, DesktopSettings, LockSettings, MenubarSettings, NotificationSettings, PALETTE_SCOPES, PaletteSettings,
-    PowerKey, PowerSettings, SYSTRAY_WIDGETS, SoundSettings, names_app,
-};
 use serde::{Deserialize, Serialize};
+pub use shell::{
+    ClockFormat, DeskbarSettings, DesktopSettings, LockSettings, MenubarSettings, NotificationSettings, PALETTE_SCOPES,
+    PaletteSettings, PowerKey, PowerSettings, SYSTRAY_WIDGETS, SoundSettings, names_app,
+};
 
 /// Everything in `settings.toml`.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -760,7 +760,10 @@ a = 1
         let path = dir.join("settings.toml");
         let mut s = Settings::default();
         s.windows.stack_new_windows_of_same_app = true;
-        s.desks = vec![DeskConfig::named("Mail"), DeskConfig { name: "Build".into(), folder: Some("~/work".into()), ..Default::default() }];
+        s.desks = vec![
+            DeskConfig::named("Mail"),
+            DeskConfig { name: "Build".into(), folder: Some("~/work".into()), ..Default::default() },
+        ];
         s.save_to(&path).unwrap();
         let back = Settings::load_from(&path).unwrap();
         assert_eq!(back, s);

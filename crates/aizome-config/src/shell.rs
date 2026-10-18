@@ -148,7 +148,8 @@ impl NotificationSettings {
         if self.do_not_disturb {
             return true;
         }
-        let (Some(from), Some(until)) = (self.quiet_from.as_deref().and_then(hhmm), self.quiet_until.as_deref().and_then(hhmm))
+        let (Some(from), Some(until)) =
+            (self.quiet_from.as_deref().and_then(hhmm), self.quiet_until.as_deref().and_then(hhmm))
         else {
             return false;
         };
@@ -181,7 +182,13 @@ pub struct LockSettings {
 
 impl Default for LockSettings {
     fn default() -> Self {
-        LockSettings { before_sleep: true, show_picture: true, pam_service: "aizome".into(), show_clock: true, after_monitors_off: true }
+        LockSettings {
+            before_sleep: true,
+            show_picture: true,
+            pam_service: "aizome".into(),
+            show_clock: true,
+            after_monitors_off: true,
+        }
     }
 }
 
@@ -292,7 +299,9 @@ mod tests {
 
     #[test]
     fn sections_read_with_defaults() {
-        let s = Settings::from_toml("[menubar]\nclock = \"12h\"\nfuture = 1\n[deskbar]\npinned = [\"org.aizome.Hako\"]\n").unwrap();
+        let s =
+            Settings::from_toml("[menubar]\nclock = \"12h\"\nfuture = 1\n[deskbar]\npinned = [\"org.aizome.Hako\"]\n")
+                .unwrap();
         let m = s.menubar_settings();
         assert_eq!(m.clock, ClockFormat::H12);
         assert!(m.shows("battery"));
@@ -370,11 +379,19 @@ mod tests {
 
     #[test]
     fn quiet_hours_wrap_past_midnight() {
-        let n = NotificationSettings { quiet_from: Some("22:00".into()), quiet_until: Some("07:00".into()), ..Default::default() };
+        let n = NotificationSettings {
+            quiet_from: Some("22:00".into()),
+            quiet_until: Some("07:00".into()),
+            ..Default::default()
+        };
         assert!(n.quiet_at(23 * 60));
         assert!(n.quiet_at(6 * 60 + 59));
         assert!(!n.quiet_at(12 * 60));
-        let day = NotificationSettings { quiet_from: Some("12:00".into()), quiet_until: Some("13:00".into()), ..Default::default() };
+        let day = NotificationSettings {
+            quiet_from: Some("12:00".into()),
+            quiet_until: Some("13:00".into()),
+            ..Default::default()
+        };
         assert!(day.quiet_at(12 * 60 + 30) && !day.quiet_at(13 * 60));
         assert!(NotificationSettings { do_not_disturb: true, ..Default::default() }.quiet_at(0));
         assert_eq!(hhmm("7:05"), Some(425));

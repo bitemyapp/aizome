@@ -80,7 +80,12 @@ pub enum RendererChoice {
 
 impl Settings {
     pub fn renderer_choice(&self) -> RendererChoice {
-        let r = self.extra.get("performance").and_then(toml::Value::as_table).and_then(|t| t.get("renderer")).and_then(toml::Value::as_str);
+        let r = self
+            .extra
+            .get("performance")
+            .and_then(toml::Value::as_table)
+            .and_then(|t| t.get("renderer"))
+            .and_then(toml::Value::as_str);
         match r {
             Some("gpu" | "gles") => RendererChoice::Gpu,
             Some("software" | "pixman") => RendererChoice::Software,
@@ -198,7 +203,10 @@ pub fn parse_hm(s: &str) -> Option<u32> {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Sun {
     /// Local minutes since midnight.
-    Rises { sunrise: u32, sunset: u32 },
+    Rises {
+        sunrise: u32,
+        sunset: u32,
+    },
     AlwaysUp,
     AlwaysDown,
 }
@@ -208,8 +216,13 @@ pub enum Sun {
 pub fn sun_times(latitude: f64, longitude: f64, day_of_year: u32, utc_offset: i32) -> Sun {
     use std::f64::consts::PI;
     let g = 2.0 * PI / 365.0 * (day_of_year.saturating_sub(1) as f64);
-    let eqtime = 229.18 * (0.000075 + 0.001868 * g.cos() - 0.032077 * g.sin() - 0.014615 * (2.0 * g).cos() - 0.040849 * (2.0 * g).sin());
-    let decl = 0.006918 - 0.399912 * g.cos() + 0.070257 * g.sin() - 0.006758 * (2.0 * g).cos() + 0.000907 * (2.0 * g).sin()
+    let eqtime = 229.18
+        * (0.000075 + 0.001868 * g.cos()
+            - 0.032077 * g.sin()
+            - 0.014615 * (2.0 * g).cos()
+            - 0.040849 * (2.0 * g).sin());
+    let decl = 0.006918 - 0.399912 * g.cos() + 0.070257 * g.sin() - 0.006758 * (2.0 * g).cos()
+        + 0.000907 * (2.0 * g).sin()
         - 0.002697 * (3.0 * g).cos()
         + 0.00148 * (3.0 * g).sin();
     let lat = latitude.to_radians();
@@ -222,7 +235,10 @@ pub fn sun_times(latitude: f64, longitude: f64, day_of_year: u32, utc_offset: i3
     }
     let ha = cos_ha.acos().to_degrees();
     let wrap = |m: f64| (((m + utc_offset as f64).round() as i64).rem_euclid(1440)) as u32;
-    Sun::Rises { sunrise: wrap(720.0 - 4.0 * (longitude + ha) - eqtime), sunset: wrap(720.0 - 4.0 * (longitude - ha) - eqtime) }
+    Sun::Rises {
+        sunrise: wrap(720.0 - 4.0 * (longitude + ha) - eqtime),
+        sunset: wrap(720.0 - 4.0 * (longitude - ha) - eqtime),
+    }
 }
 
 /// A colour temperature as red, green and blue multipliers, 6500 K being
@@ -231,7 +247,11 @@ pub fn temperature_rgb(kelvin: u32) -> [f64; 3] {
     fn raw(k: f64) -> [f64; 3] {
         let t = k / 100.0;
         let r = if t <= 66.0 { 255.0 } else { 329.698727446 * (t - 60.0).powf(-0.1332047592) };
-        let g = if t <= 66.0 { 99.4708025861 * t.ln() - 161.1195681661 } else { 288.1221695283 * (t - 60.0).powf(-0.0755148492) };
+        let g = if t <= 66.0 {
+            99.4708025861 * t.ln() - 161.1195681661
+        } else {
+            288.1221695283 * (t - 60.0).powf(-0.0755148492)
+        };
         let b = if t >= 66.0 {
             255.0
         } else if t <= 19.0 {
@@ -275,7 +295,13 @@ mod tests {
 
     #[test]
     fn night_light_schedules() {
-        let mut n = NightLight { enabled: true, schedule: NightSchedule::Manual, from: "21:30".into(), to: "06:15".into(), ..Default::default() };
+        let mut n = NightLight {
+            enabled: true,
+            schedule: NightSchedule::Manual,
+            from: "21:30".into(),
+            to: "06:15".into(),
+            ..Default::default()
+        };
         assert!(n.scheduled(22 * 60, 100, 0));
         assert!(n.scheduled(3 * 60, 100, 0));
         assert!(!n.scheduled(12 * 60, 100, 0));
