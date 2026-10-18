@@ -69,6 +69,10 @@ pub enum Msg {
     /// selection), for a menu waiting on it.
     Selection(u64, Option<String>),
     Note(crate::notifications::server::NoteEvent),
+    /// The bell's flash of generation `n` has shown long enough.
+    FlashDone(u64),
+    /// logind's `HandlePowerKey`, read.
+    LogindPowerKey(Option<String>),
     /// Koyomi's events and Tokei's world clocks, read.
     Agenda(crate::agenda::Agenda),
     /// The bar's menu of generation `n` closed.
@@ -107,6 +111,8 @@ pub enum Surface {
     TearOff(usize),
     Confirm,
     Cards,
+    /// The bell's flash.
+    Flash,
 }
 
 /// An output and the shell's surfaces on it.
@@ -145,6 +151,9 @@ pub struct Shell {
     pub notes_cfg: NotificationSettings,
     pub lock_cfg: LockSettings,
     pub palette_cfg: PaletteSettings,
+    pub desktop_cfg: aizome_config::DesktopSettings,
+    pub power_cfg: aizome_config::PowerSettings,
+    pub sound_cfg: aizome_config::SoundSettings,
     pub wm: Wm,
     pub ipc: Ipc,
     pub server: Option<Server>,
@@ -223,6 +232,16 @@ pub struct Shell {
     pub(crate) just_closed: Option<(WindowKey, Slot, std::time::Instant)>,
     /// Koyomi's next events and Tokei's world clocks, for the clock's panel.
     pub agenda: crate::agenda::Agenda,
+    /// The last sound made (or that would have been, in tests).
+    pub last_sound: Option<String>,
+    /// The bell's flash showing, and its generation.
+    pub flash: Option<(WindowKey, u64)>,
+    /// logind's `handle-power-key`, held while `[power] power_key` is set.
+    pub(crate) power_inhibit: Option<aizome_sys::Task<aizome_sys::power::Inhibition>>,
+    /// logind's own `HandlePowerKey`.
+    pub logind_power_key: Option<String>,
+    /// Night Light, as the compositor last told.
+    pub night: Option<aizome_ipc::NightLightState>,
     pub(crate) text: aizome_kit::text::TextCache,
     launches: HashMap<ActivationRequest, (Launch, Option<PathBuf>)>,
     stream: Option<MsgSender<Msg>>,
@@ -240,6 +259,9 @@ impl Shell {
             notes_cfg: NotificationSettings::default(),
             lock_cfg: LockSettings::default(),
             palette_cfg: PaletteSettings::default(),
+            desktop_cfg: Default::default(),
+            power_cfg: Default::default(),
+            sound_cfg: Default::default(),
             settings,
             wm: Wm::default(),
             ipc: Ipc::none(),
@@ -300,6 +322,11 @@ impl Shell {
             menu_gen: 0,
             just_closed: None,
             agenda: Default::default(),
+            last_sound: None,
+            flash: None,
+            power_inhibit: None,
+            logind_power_key: None,
+            night: None,
             text: aizome_kit::text::TextCache::default(),
             launches: HashMap::new(),
             stream: None,
@@ -317,6 +344,9 @@ impl Shell {
         self.notes_cfg = self.settings.notification_settings();
         self.lock_cfg = self.settings.lock_settings();
         self.palette_cfg = self.settings.palette_settings();
+        self.desktop_cfg = self.settings.desktop_settings();
+        self.power_cfg = self.settings.power_settings();
+        self.sound_cfg = self.settings.sound_settings();
     }
 
     /// Send `msg` to the program from a thread.
@@ -758,23 +788,34 @@ impl Shell {
         self.watch_desktop();
         self.icon_lookup = Some(aizome_sys::apps::IconLookup::from_env());
         self.start_lock();
+        self.sync_power_key();
+        self.read_logind_power_key(cx);
         self.start_polkit();
     }
 
     fn take_ipc(&mut self, e: IpcEvent, cx: &mut Cx<Msg>) {
         match e {
-            IpcEvent::Connected(s) => self.wm.reset(s.0),
+            IpcEvent::Connected(s) => {
+                self.wm.reset(s.0);
+                // What Night Light is doing, for the Display panel.
+                self.ipc.ask(Request::NightLight { enabled: None, temperature: None }, NIGHT_LIGHT_TAG);
+            }
             IpcEvent::Event(e) => {
                 self.wm.apply(&e);
                 match e {
                     Event::ConfigChanged => self.reload_settings(),
                     Event::Binding { action, pointer, output } => self.binding(&action, pointer, output, cx),
                     Event::Idle { kind } if kind == "lock" => self.lock(cx),
+                    // The monitors went off for idleness: lock, unless the
+                    // settings say not to.
+                    Event::Idle { kind } if kind == "monitors-off" && self.lock_cfg.after_monitors_off => self.lock(cx),
                     Event::ScreenshotTaken { path } => self.screenshot_taken(PathBuf::from(path), cx),
+                    Event::NightLightChanged { state } => self.night = Some(state),
                     _ => {}
                 }
             }
             IpcEvent::Disconnected => self.wm.connected = false,
+            IpcEvent::Reply { tag: NIGHT_LIGHT_TAG, response: aizome_ipc::Response::NightLight { state } } => self.night = Some(state),
             IpcEvent::Reply { .. } => {}
         }
     }
@@ -787,6 +828,8 @@ impl Shell {
             }
             "palette" => self.toggle_palette(None, String::new(), cx),
             "lock" => self.lock(cx),
+            "power-key" => self.power_key(cx),
+            "bell" => self.bell(output.as_deref(), cx),
             "app-menu" => {
                 if let Some((x, y)) = pointer {
                     self.pointer_menu_soon(x, y, cx);
@@ -814,6 +857,7 @@ impl Shell {
             self.settings = Settings::load_or_default();
         }
         self.read_settings();
+        self.sync_power_key();
         self.tray = self.sys.tray(&self.bar_cfg);
         if self.opts.live {
             self.load_wallpapers();
@@ -915,11 +959,14 @@ impl Shell {
                 }
                 (true, String::new())
             }
+            proto::ShellRequest::Bell { output } => {
+                self.bell(output.as_deref(), cx);
+                (true, String::new())
+            }
             proto::ShellRequest::MenuBar { output } => {
                 let ok = self.focus_menu_bar(output.as_deref(), cx);
                 (ok, if ok { String::new() } else { "no menu bar there".into() })
             }
-            other => (false, format!("not yet: {other:?}")),
         }
     }
 
@@ -1018,6 +1065,8 @@ impl Program for Shell {
             Msg::BannerDone(id) => self.banner_done(id, cx),
             Msg::MenuClosed(n) => self.menu_closed(n),
             Msg::Agenda(a) => self.agenda = a,
+            Msg::FlashDone(n) => self.flash_done(n, cx),
+            Msg::LogindPowerKey(k) => self.logind_power_key = k,
             Msg::BarSide(d) => self.bar_side(d, cx),
             Msg::ToolchestTyped(text) => self.toolchest_typed(text, cx),
             Msg::Nothing => {}
@@ -1048,8 +1097,9 @@ impl Program for Shell {
             }
             Some(Surface::TearOff(i)) => self.tear_view(*i),
             Some(Surface::Cards) => crate::notifications::cards::view(&self.card_views()).map(Msg::Card),
+            Some(Surface::Flash) => crate::bell::view(),
             Some(Surface::Confirm) => match &self.confirm {
-                Some(c) => crate::confirm::view(c.verb, c.left).map(Msg::Confirm),
+                Some(c) => crate::confirm::view(c.verb, c.left, c.power).map(Msg::Confirm),
                 None => aizome_kit::space(0.0),
             },
             Some(Surface::Auth) => match self.auth_view() {
@@ -1145,6 +1195,9 @@ pub fn app_sel(app_id: &str) -> AppSel {
 }
 
 /// A desktop surface's window spec, titled for logs and tests.
+/// The tag of the Night Light question asked at connecting.
+const NIGHT_LIGHT_TAG: u64 = 0x4e49_4748;
+
 pub fn layer(opts: LayerOptions, width: f64, height: f64, title: &str) -> WindowSpec {
     let mut s = WindowSpec::layer(opts, width, height);
     s.title = title.to_owned();

@@ -104,6 +104,7 @@ impl Shell {
                         aizome_config::UiSize::Medium => 1,
                         aizome_config::UiSize::Large => 2,
                     },
+                    night_light: self.night.as_ref().filter(|s| !s.outputs.is_empty()).map(|s| s.enabled),
                     ..DisplayPanel::default()
                 };
                 if let Some(b) = &self.sys.backlight {
@@ -334,6 +335,19 @@ impl Shell {
             PanelMsg::DoNotDisturb(on) => {
                 if self.notes_cfg.do_not_disturb != on {
                     self.run(crate::actions::Action::ToggleDoNotDisturb, cx);
+                }
+            }
+            PanelMsg::NightLight(on) => {
+                // Now, through the compositor, and kept in the settings.
+                if let Some(s) = &mut self.night {
+                    s.enabled = on;
+                }
+                self.settings.night_light.enabled = on;
+                if self.opts.live {
+                    self.ipc.send(aizome_ipc::Request::NightLight { enabled: Some(on), temperature: None });
+                    if let Err(e) = self.settings.save() {
+                        log::warn!("saving Night Light: {e}");
+                    }
                 }
             }
             PanelMsg::PowerMode(mode) => {

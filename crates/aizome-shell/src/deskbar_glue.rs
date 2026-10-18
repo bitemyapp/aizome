@@ -86,7 +86,7 @@ impl Shell {
                 ShelfRow { label: i.label(), glyph, hue, dim: matches!(i, ShelfItem::Text { .. }) }
             })
             .collect();
-        DeskbarModel { apps, shelf }
+        DeskbarModel { apps, shelf, hide_shelf: !self.deskbar_cfg.show_shelf }
     }
 
     /// Open, size or close the Deskbar to match the settings and its

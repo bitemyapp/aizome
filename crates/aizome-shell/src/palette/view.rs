@@ -52,6 +52,8 @@ pub struct Detail {
 pub struct PaletteView {
     pub query: String,
     pub scope: Option<Scope>,
+    /// The scope chips after All: what the palette finds.
+    pub scopes: Vec<Scope>,
     /// "in Editor · damage.rs".
     pub context: String,
     pub sections: Vec<Section>,
@@ -162,7 +164,7 @@ fn chip(label: &'static str, scope: Option<Scope>, on: bool) -> Element<PaletteM
 
 fn chips(v: &PaletteView) -> Element<PaletteMsg> {
     let mut items: Vec<Element<PaletteMsg>> = vec![chip("All", None, v.scope.is_none())];
-    for s in Scope::CYCLE {
+    for &s in &v.scopes {
         items.push(chip(s.label(), Some(s), v.scope == Some(s)));
     }
     items.push(aizome_kit::spacer().into());

@@ -1,5 +1,6 @@
 //! Restart, Shut Down and Log Out ask first: a small dialog that counts
-//! down 60 seconds, then does it (Cancel, Escape, or doing it now).
+//! down 60 seconds, then does it (Cancel, Escape, or doing it now). The
+//! power key's, where it asks, offers Sleep and Restart beside Shut Down.
 
 use std::time::Duration;
 
@@ -16,6 +17,8 @@ use crate::shell::{Msg, Shell, Surface, layer};
 use crate::widgets::drawn::{around, drawn};
 
 pub const WIDTH: f64 = 380.0;
+/// The power key's, with Sleep and Restart too.
+pub const POWER_WIDTH: f64 = 460.0;
 pub const HEIGHT: f64 = 150.0;
 pub const SECONDS: u32 = 60;
 
@@ -23,6 +26,8 @@ pub const SECONDS: u32 = 60;
 pub enum ConfirmMsg {
     Now,
     Cancel,
+    /// Another of the power key's choices (Sleep, Restart).
+    Do(SessionVerb),
     /// A second passed (of countdown `generation`).
     Tick(u64),
 }
@@ -33,6 +38,8 @@ pub struct Confirm {
     pub verb: SessionVerb,
     pub left: u32,
     pub generation: u64,
+    /// The power key's: Sleep and Restart beside it.
+    pub power: bool,
 }
 
 pub fn words(verb: SessionVerb, left: u32) -> (String, String, String) {
@@ -45,10 +52,11 @@ pub fn words(verb: SessionVerb, left: u32) -> (String, String, String) {
     (title.into(), format!("{what} in {left} second{s}. Open apps may ask to save first."), button.into())
 }
 
-pub fn view(verb: SessionVerb, left: u32) -> Element<ConfirmMsg> {
+pub fn view(verb: SessionVerb, left: u32, power: bool) -> Element<ConfirmMsg> {
     let (title, body, act) = words(verb, left);
+    let width = if power { POWER_WIDTH } else { WIDTH };
     let label = format!("{title} {body}");
-    let text = drawn(WIDTH - 48.0, 70.0, (title.clone(), body.clone()), move |cx| {
+    let text = drawn(width - 48.0, 70.0, (title.clone(), body.clone()), move |cx| {
         let t = cx.theme();
         let b = cx.bounds();
         look::mark(cx.canvas, t, Point::new(0.0, 2.0), 28.0);
@@ -60,14 +68,17 @@ pub fn view(verb: SessionVerb, left: u32) -> Element<ConfirmMsg> {
         cx.canvas.draw_text(&l, Point::new(44.0, 26.0));
     })
     .text(label, SemanticRole::Label);
-    let buttons = aizome_kit::row(vec![
-        aizome_kit::spacer().into(),
-        button("Cancel").cancel().on_press(ConfirmMsg::Cancel).into(),
-        button(act).default().on_press(ConfirmMsg::Now).into(),
-    ])
-    .spacing(8.0);
-    let content = aizome_kit::column(vec![text.into(), aizome_kit::spacer().into(), buttons.into()]).padding(24.0).width(WIDTH).height(HEIGHT);
-    let framed = around(content, 0.0, Size::new(WIDTH, HEIGHT), "confirm", |cx| {
+    let mut buttons: Vec<Element<ConfirmMsg>> = Vec::new();
+    if power {
+        buttons.push(button("Sleep").on_press(ConfirmMsg::Do(SessionVerb::Sleep)).into());
+        buttons.push(button("Restart").on_press(ConfirmMsg::Do(SessionVerb::Restart)).into());
+    }
+    buttons.push(aizome_kit::spacer().into());
+    buttons.push(button("Cancel").cancel().on_press(ConfirmMsg::Cancel).into());
+    buttons.push(button(act).default().on_press(ConfirmMsg::Now).into());
+    let buttons = aizome_kit::row(buttons).spacing(8.0);
+    let content = aizome_kit::column(vec![text.into(), aizome_kit::spacer().into(), buttons.into()]).padding(24.0).width(width).height(HEIGHT);
+    let framed = around(content, 0.0, Size::new(width, HEIGHT), "confirm", |cx| {
         let t = cx.theme();
         let b = cx.bounds();
         look::panel(cx.canvas, t, b);
@@ -84,18 +95,31 @@ pub fn view(verb: SessionVerb, left: u32) -> Element<ConfirmMsg> {
 impl Shell {
     /// Ask before restarting, shutting down or logging out.
     pub fn confirm(&mut self, verb: SessionVerb, cx: &mut Cx<Msg>) {
-        if let Some(c) = &mut self.confirm {
+        self.ask_session(verb, false, cx);
+    }
+
+    /// The power key asks: shut down in a minute, or sleep, or restart.
+    pub fn confirm_power(&mut self, cx: &mut Cx<Msg>) {
+        self.ask_session(SessionVerb::ShutDown, true, cx);
+    }
+
+    fn ask_session(&mut self, verb: SessionVerb, power: bool, cx: &mut Cx<Msg>) {
+        if let Some(c) = &mut self.confirm
+            && c.power == power
+        {
             c.verb = verb;
             c.left = SECONDS;
             return;
         }
+        self.close_confirm(cx);
         let Some(output) = self.focused_screen().map(|s| s.output.id) else { return };
+        let width = if power { POWER_WIDTH } else { WIDTH };
         let opts = LayerOptions::new(Layer::Overlay, "aizome-confirm").keyboard(KeyboardInteractivity::Exclusive).output(output);
-        let window = cx.open_window(layer(opts, WIDTH + 3.0, HEIGHT + 3.0, "Confirm"));
+        let window = cx.open_window(layer(opts, width + 3.0, HEIGHT + 3.0, "Confirm"));
         self.surfaces.insert(window, Surface::Confirm);
         self.serial += 1;
         let generation = self.serial;
-        self.confirm = Some(Confirm { window, verb, left: SECONDS, generation });
+        self.confirm = Some(Confirm { window, verb, left: SECONDS, generation, power });
         cx.after(Duration::from_secs(1), Msg::Confirm(ConfirmMsg::Tick(generation)));
         cx.focus("confirm");
     }
@@ -107,6 +131,10 @@ impl Shell {
             ConfirmMsg::Now => {
                 self.close_confirm(cx);
                 self.do_session(c.verb);
+            }
+            ConfirmMsg::Do(verb) => {
+                self.close_confirm(cx);
+                self.do_session(verb);
             }
             ConfirmMsg::Tick(g) if g == c.generation => {
                 if c.left <= 1 {

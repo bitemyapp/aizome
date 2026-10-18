@@ -17,7 +17,17 @@ impl Shell {
     pub fn desktop_icons(&self) -> Vec<DeskIcon> {
         let volumes = self.sys.disks.as_ref().map(|d| d.snapshot().volumes()).unwrap_or_default();
         let volumes = if volumes.is_empty() { self.volumes_fixture.clone() } else { volumes };
+        let cfg = &self.desktop_cfg;
+        // The home folder, disks and Trash as `[desktop]` says.
         desktop::icons(&self.user.0, &volumes, self.trash_full, &self.desktop.items)
+            .into_iter()
+            .filter(|i| match i.kind {
+                IconKind::Home(_) => cfg.show_home,
+                IconKind::Volume { .. } => cfg.show_disks,
+                IconKind::Trash { .. } => cfg.show_trash,
+                IconKind::Item { .. } => true,
+            })
+            .collect()
     }
 
     /// The wallpaper for the theme showing, decoded once.

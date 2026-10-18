@@ -58,13 +58,25 @@ impl Shell {
         match e {
             NoteEvent::Notify(id, n) => {
                 let filed = self.file_under(&n);
+                let names = [n.app_name.as_str(), filed.as_str(), n.desktop_entry.as_deref().unwrap_or("")];
+                let cfg = &self.notes_cfg;
+                // A blocked app's are dropped: the app hears it closed.
+                if aizome_config::names_app(&cfg.blocked_apps, &names) {
+                    self.note_closed(id, crate::notifications::store::CloseReason::Dismissed);
+                    return;
+                }
                 let now = crate::clock::Local::now();
-                let muted = self.notes_cfg.muted_apps.iter().any(|m| *m == n.app_name || *m == filed);
-                let quiet = self.notes_cfg.quiet_at(now.minutes()) || muted || self.locked();
+                let muted = aizome_config::names_app(&cfg.muted_apps, &names);
+                let silent = aizome_config::names_app(&cfg.silent_apps, &names);
+                let quiet = cfg.quiet_at(now.minutes()) || muted || self.locked();
+                let sound = n.sound.clone().filter(|_| !quiet && !silent);
                 let at = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
                 let posted = self.notes.post_as(id, *n, filed, quiet, at);
                 if posted.banner {
                     self.show_banner(id, cx);
+                }
+                if let Some(s) = sound {
+                    self.make_sound(&s);
                 }
             }
             NoteEvent::Close(id) => {
@@ -76,6 +88,19 @@ impl Shell {
                     self.banner_done(id, cx);
                 }
             }
+        }
+    }
+
+    /// Make a notification's sound (in tests: note it).
+    pub fn make_sound(&mut self, s: &crate::notifications::store::NoteSound) {
+        use crate::notifications::store::NoteSound;
+        let file = match s {
+            NoteSound::File(p) => Some(p.clone()),
+            NoteSound::Named(name) => crate::sound::theme_file(name),
+        };
+        self.last_sound = Some(format!("{s:?}"));
+        if self.opts.live && let Some(f) = file {
+            crate::sound::play(f);
         }
     }
 

@@ -219,9 +219,10 @@ pub fn flat(sections: &[Section]) -> Vec<&Row> {
     sections.iter().flat_map(|s| s.rows.iter()).collect()
 }
 
-/// The scope after `s` (Tab) or before it (⇧Tab), All included.
-pub fn cycle(s: Option<Scope>, forward: bool) -> Option<Scope> {
-    let all: Vec<Option<Scope>> = std::iter::once(None).chain(Scope::CYCLE.iter().copied().map(Some)).collect();
+/// The scope after `s` (Tab) or before it (⇧Tab) among `scopes`, All
+/// included.
+pub fn cycle(scopes: &[Scope], s: Option<Scope>, forward: bool) -> Option<Scope> {
+    let all: Vec<Option<Scope>> = std::iter::once(None).chain(scopes.iter().copied().map(Some)).collect();
     let i = all.iter().position(|x| *x == s).unwrap_or(0);
     let n = all.len();
     all[if forward { (i + 1) % n } else { (i + n - 1) % n }]
@@ -408,9 +409,12 @@ mod tests {
 
     #[test]
     fn tab_cycles_scopes_through_all() {
-        assert_eq!(cycle(None, true), Some(Scope::Command));
-        assert_eq!(cycle(Some(Scope::Setting), true), None);
-        assert_eq!(cycle(None, false), Some(Scope::Setting));
+        assert_eq!(cycle(&Scope::CYCLE, None, true), Some(Scope::Command));
+        assert_eq!(cycle(&Scope::CYCLE, Some(Scope::Setting), true), None);
+        assert_eq!(cycle(&Scope::CYCLE, None, false), Some(Scope::Setting));
+        // Only the scopes the settings leave on.
+        assert_eq!(cycle(&[Scope::App], Some(Scope::App), true), None);
+        assert_eq!(cycle(&[Scope::App], None, false), Some(Scope::App));
         assert_eq!(scope_named("Files"), Some(Scope::File));
     }
 

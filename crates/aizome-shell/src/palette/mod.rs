@@ -127,6 +127,25 @@ pub fn key_event(k: &KeyEvent) -> Option<PaletteEvent> {
 }
 
 impl Shell {
+    /// Whether the palette finds `scope` (`[palette] scopes`; an answer to
+    /// arithmetic always).
+    pub fn palette_finds(&self, scope: Scope) -> bool {
+        match scope {
+            Scope::Command => self.palette_cfg.finds("commands"),
+            Scope::Window => self.palette_cfg.finds("windows"),
+            Scope::File => self.palette_cfg.finds("files"),
+            Scope::App => self.palette_cfg.finds("apps"),
+            Scope::Setting => self.palette_cfg.finds("settings"),
+            Scope::Action => self.palette_cfg.finds("actions"),
+            Scope::Answer => true,
+        }
+    }
+
+    /// The scopes Tab goes through, after All: those the palette finds.
+    pub fn palette_scopes(&self) -> Vec<Scope> {
+        Scope::CYCLE.iter().copied().filter(|s| self.palette_finds(*s)).collect()
+    }
+
     /// Open the palette (or close it if open) on the focused output.
     pub fn toggle_palette(&mut self, scope: Option<Scope>, query: String, cx: &mut Cx<Msg>) {
         if self.palette.is_some() {
@@ -137,6 +156,8 @@ impl Shell {
     }
 
     pub fn open_palette(&mut self, scope: Option<Scope>, query: String, cx: &mut Cx<Msg>) {
+        // A scope the settings leave out opens All.
+        let scope = scope.filter(|s| self.palette_finds(*s));
         if let Some(p) = &mut self.palette {
             p.scope = scope;
             p.query = query;
@@ -275,6 +296,8 @@ impl Shell {
             a.boost = a.key.as_deref().map_or(0, |k| self.frecency.boost(k));
             out.push(a);
         }
+        // Only what the settings say the palette finds.
+        out.retain(|i| self.palette_finds(i.scope));
         out
     }
 
@@ -300,8 +323,9 @@ impl Shell {
         let home = aizome_config::home_dir();
         let boosts = self.palette.as_ref().map(|p| p.boosts.clone()).unwrap_or_default();
         let index = self.file_index.clone();
+        let files_on = self.palette_finds(Scope::File);
         let Some(p) = &mut self.palette else { return };
-        let wants_files = p.scope.is_none() || p.scope == Some(Scope::File);
+        let wants_files = files_on && (p.scope.is_none() || p.scope == Some(Scope::File));
         let q = p.query.trim().to_owned();
         if wants_files && p.files_for != q {
             if q.is_empty() {
@@ -348,7 +372,15 @@ impl Shell {
         let p = self.palette.as_ref()?;
         let rows = model::flat(&p.sections);
         let detail = rows.get(p.selected).map(|r| self.detail_of(&r.item, p));
-        Some(PaletteView { query: p.query.clone(), scope: p.scope, context: p.context.clone(), sections: p.sections.clone(), selected: p.selected, detail })
+        Some(PaletteView {
+            query: p.query.clone(),
+            scope: p.scope,
+            scopes: self.palette_scopes(),
+            context: p.context.clone(),
+            sections: p.sections.clone(),
+            selected: p.selected,
+            detail,
+        })
     }
 
     fn detail_of(&self, i: &Item, p: &PaletteState) -> Detail {
@@ -470,8 +502,9 @@ impl Shell {
 
     /// Tab and ⇧Tab.
     pub fn palette_cycle(&mut self, forward: bool, cx: &mut Cx<Msg>) {
+        let scopes = self.palette_scopes();
         let Some(p) = &mut self.palette else { return };
-        p.scope = model::cycle(p.scope, forward);
+        p.scope = model::cycle(&scopes, p.scope, forward);
         p.selected = 0;
         p.scroll = 0.0;
         self.rank_palette(cx);
@@ -594,17 +627,25 @@ impl Shell {
     /// thread; `keep` hands it to the palette.
     pub fn index_soon(&mut self, keep: bool, cx: &mut Cx<Msg>) {
         let roots: Vec<PathBuf> = self.palette_cfg.roots.iter().map(|r| aizome_config::expand_home(r)).collect();
+        let skip: Vec<PathBuf> = self.palette_cfg.exclude.iter().map(|r| aizome_config::expand_home(r)).collect();
         let max_age = std::time::Duration::from_secs(self.palette_cfg.reindex_minutes.max(1) as u64 * 60);
+        // What the index was built over: an index of other roots, or one
+        // that went into a folder skipped since, is built again.
+        let over = index_key(&roots, &skip);
         cx.spawn(move || {
             let cache = FileIndex::default_cache_path();
+            let key_file = cache.with_extension("key");
+            let same = std::fs::read_to_string(&key_file).is_ok_and(|k| k == over);
             let index = match FileIndex::load(&cache) {
-                Some(i) if i.age().is_some_and(|a| a < max_age) => i,
+                Some(i) if same && i.age().is_some_and(|a| a < max_age) => i,
                 _ => {
-                    let i = FileIndex::build(&roots, &aizome_search::files::Limits::default());
+                    let limits = aizome_search::files::Limits { skip, ..Default::default() };
+                    let i = FileIndex::build(&roots, &limits);
                     if let Some(d) = cache.parent() {
                         let _ = std::fs::create_dir_all(d);
                     }
                     let _ = i.save(&cache);
+                    let _ = std::fs::write(&key_file, &over);
                     i
                 }
             };
@@ -635,4 +676,20 @@ impl Shell {
             Msg::Palette(PaletteEvent::Settings(list))
         });
     }
+}
+
+/// What a file index was built over (its roots, and the folders it
+/// skipped), kept beside it to tell when it's for other settings.
+pub fn index_key(roots: &[PathBuf], skip: &[PathBuf]) -> String {
+    let mut s = String::from("roots\n");
+    for r in roots {
+        s.push_str(&r.to_string_lossy());
+        s.push('\n');
+    }
+    s.push_str("skip\n");
+    for r in skip {
+        s.push_str(&r.to_string_lossy());
+        s.push('\n');
+    }
+    s
 }

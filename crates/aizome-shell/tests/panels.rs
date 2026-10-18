@@ -44,7 +44,7 @@ fn fixture() -> aizome_shell::systray::glue::Fixture {
             ],
         }),
     );
-    f.insert(TrayWidget::Display, Panel::Display(DisplayPanel { backlights: vec![("intel_backlight".into(), 0.7)], theme: 0, size: 1 }));
+    f.insert(TrayWidget::Display, Panel::Display(DisplayPanel { backlights: vec![("intel_backlight".into(), 0.7)], theme: 0, size: 1, night_light: Some(false) }));
     f.insert(
         TrayWidget::Battery,
         Panel::Battery(BatteryPanel {

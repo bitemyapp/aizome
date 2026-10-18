@@ -45,6 +45,7 @@ pub enum PanelMsg {
     Size(usize),
     PowerMode(String),
     DoNotDisturb(bool),
+    NightLight(bool),
     /// Open Koyomi at a day (`YYYY-MM-DD`).
     OpenDay(String),
     /// Open Tokei's world clocks.
@@ -122,6 +123,8 @@ pub struct DisplayPanel {
     pub theme: usize,
     /// Small, Medium, Large.
     pub size: usize,
+    /// Night Light, where the compositor can show it: on or not.
+    pub night_light: Option<bool>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -413,6 +416,9 @@ fn display(p: &DisplayPanel) -> Vec<Element<PanelMsg>> {
     v.push(aizome_kit::container(segmented(["Night", "Day", "Auto"], p.theme).on_select(PanelMsg::Theme)).padding([0.0, PAD, 6.0, PAD]).into());
     v.push(labelled("Size", typeface::WEIGHT_REGULAR, None, 24.0));
     v.push(aizome_kit::container(segmented(["Small", "Medium", "Large"], p.size).on_select(PanelMsg::Size)).padding([0.0, PAD, 6.0, PAD]).into());
+    if let Some(on) = p.night_light {
+        v.push(labelled("Night Light", typeface::WEIGHT_REGULAR, Some(toggle(on).on_toggle(PanelMsg::NightLight).into()), ROW));
+    }
     v.push(sep());
     v.push(settings_row("Displays Settings…", "displays"));
     v
@@ -648,7 +654,7 @@ pub fn height(p: &Panel) -> f64 {
             h + sep + ROW
         }
         Panel::Bluetooth(b) => HEAD + if b.powered { b.devices.len() as f64 * ROW } else { 0.0 } + sep + ROW,
-        Panel::Display(d) => HEAD + d.backlights.len() as f64 * (ROW + 4.0) + 2.0 * (24.0 + 30.0) + sep + ROW,
+        Panel::Display(d) => HEAD + d.backlights.len() as f64 * (ROW + 4.0) + 2.0 * (24.0 + 30.0) + if d.night_light.is_some() { ROW } else { 0.0 } + sep + ROW,
         Panel::Battery(b) => HEAD + 34.0 + if b.modes.is_empty() { 0.0 } else { 24.0 + 30.0 } + sep + ROW,
         Panel::Clock(c) => {
             let weeks = crate::clock::month_grid(c.now.year, c.now.month).len();

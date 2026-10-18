@@ -32,6 +32,14 @@ pub enum NoteImage {
     Pixels { width: u32, height: u32, rgba: Vec<u8> },
 }
 
+/// A sound a notification asks for.
+#[derive(Clone, Debug, PartialEq)]
+pub enum NoteSound {
+    File(PathBuf),
+    /// A name in the freedesktop sound theme (`message-new-instant`).
+    Named(String),
+}
+
 /// What an app asked to show (`Notify`'s arguments).
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Incoming {
@@ -54,6 +62,9 @@ pub struct Incoming {
     pub resident: bool,
     /// The sender's process, when known.
     pub pid: Option<u32>,
+    /// The sound it asks for (`sound-file`, `sound-name`; none with
+    /// `suppress-sound`).
+    pub sound: Option<NoteSound>,
 }
 
 /// A notification the shell holds.
@@ -212,6 +223,11 @@ impl Store {
             }
         }
         out
+    }
+
+    /// Unread notifications that came at `at` or since, newest first.
+    pub fn unread_since(&self, at: u64) -> Vec<&Notification> {
+        self.list.iter().rev().filter(|n| !n.read && n.at >= at).collect()
     }
 
     pub fn unread_count(&self) -> usize {

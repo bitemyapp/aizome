@@ -98,6 +98,8 @@ pub struct ShelfRow {
 pub struct DeskbarModel {
     pub apps: Vec<AppRow>,
     pub shelf: Vec<ShelfRow>,
+    /// `[deskbar] show_shelf = false`: no Shelf under the apps.
+    pub hide_shelf: bool,
 }
 
 impl DeskbarModel {
@@ -110,6 +112,9 @@ impl DeskbarModel {
                 h += a.windows.len() as f64 * WINDOW_ROW;
             }
             h += a.cards.iter().map(|c| CARD + CARD_GAP + if c.buttons.is_empty() { 0.0 } else { BUTTONS }).sum::<f64>();
+        }
+        if self.hide_shelf {
+            return (h + 4.0).ceil() + SHADOW;
         }
         h += 1.0 + CAPTION;
         h += self.shelf.len() as f64 * (SHELF_ROW + SHELF_GAP) + SHELF_ROW + 10.0;
@@ -324,11 +329,15 @@ pub fn view(m: &DeskbarModel) -> Element<DeskbarMsg> {
             rows.push(card(c));
         }
     }
-    rows.push(aizome_kit::space(2.0));
-    rows.push(caption());
-    let mut shelf: Vec<Element<DeskbarMsg>> = m.shelf.iter().enumerate().map(|(i, r)| shelf_row(i, r)).collect();
-    shelf.push(drop_row());
-    rows.push(aizome_kit::container(column(shelf).spacing(SHELF_GAP)).padding([0.0, 10.0, 10.0, 10.0]).into());
+    if m.hide_shelf {
+        rows.push(aizome_kit::space(4.0));
+    } else {
+        rows.push(aizome_kit::space(2.0));
+        rows.push(caption());
+        let mut shelf: Vec<Element<DeskbarMsg>> = m.shelf.iter().enumerate().map(|(i, r)| shelf_row(i, r)).collect();
+        shelf.push(drop_row());
+        rows.push(aizome_kit::container(column(shelf).spacing(SHELF_GAP)).padding([0.0, 10.0, 10.0, 10.0]).into());
+    }
     let content = column(rows).width(WIDTH);
     let h = m.height();
     // The ground: `chrome`, its left and bottom edges, the shadow left and
@@ -381,10 +390,14 @@ mod tests {
                 cards: vec![],
             }],
             shelf: vec![],
+            hide_shelf: false,
         };
         assert_eq!(one.height(), base + APP_ROW + WINDOW_ROW);
         let mut folded = one.clone();
         folded.apps[0].folded = true;
         assert_eq!(folded.height(), base + APP_ROW);
+        // Without the Shelf, its caption and drop row go too.
+        let bare = DeskbarModel { hide_shelf: true, ..one.clone() };
+        assert!(bare.height() < one.height() - SHELF_ROW - CAPTION);
     }
 }

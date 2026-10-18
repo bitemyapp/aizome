@@ -56,6 +56,8 @@ pub struct LockState {
     pub caps: bool,
     /// The shake's step (0: still).
     pub shake: u32,
+    /// When it locked, seconds since the epoch (notifications since show).
+    pub since: u64,
     /// Holding logind's sleep until locked.
     pub sleep_pending: bool,
 }
@@ -83,6 +85,77 @@ pub struct LockView {
     pub shake: f64,
     pub wallpaper: Option<Image>,
     pub size: Size,
+    /// `[lock] show_clock`.
+    pub show_clock: bool,
+    /// Notifications that came while locked, newest first.
+    pub notes: Vec<LockNote>,
+}
+
+/// A notification on the lock screen: whose, and (with previews on) what.
+#[derive(Clone, Debug, PartialEq)]
+pub struct LockNote {
+    pub app: String,
+    pub glyph: Icon,
+    /// Empty without previews: "N notifications" stands in.
+    pub summary: String,
+    pub body: String,
+    /// How many it stands for (without previews, one row per app).
+    pub count: usize,
+}
+
+/// The most notification rows the lock screen shows.
+pub const NOTES: usize = 3;
+const NOTE_H: f64 = 46.0;
+const NOTE_W: f64 = 320.0;
+
+/// The rows for notifications that came while locked: each one with
+/// previews, else one per app with how many.
+pub fn lock_notes(notes: &[(String, Icon, String, String)], previews: bool) -> Vec<LockNote> {
+    let mut out: Vec<LockNote> = Vec::new();
+    for (app, glyph, summary, body) in notes {
+        if previews {
+            out.push(LockNote { app: app.clone(), glyph: *glyph, summary: summary.clone(), body: body.clone(), count: 1 });
+        } else if let Some(n) = out.iter_mut().find(|n| n.app == *app) {
+            n.count += 1;
+        } else {
+            out.push(LockNote { app: app.clone(), glyph: *glyph, summary: String::new(), body: String::new(), count: 1 });
+        }
+    }
+    out.truncate(NOTES);
+    out
+}
+
+fn note_card(n: &LockNote) -> Element<LockMsg> {
+    let n2 = n.clone();
+    let label = if n.summary.is_empty() { format!("{} {}", n.app, count_words(n.count)) } else { format!("{} {}", n.app, n.summary) };
+    drawn(NOTE_W, NOTE_H, (&n.app, &n.summary, &n.body, n.count), move |cx| {
+        let c = aizome_kit::theme::color;
+        let night = aizome_theme::NIGHT;
+        let b = cx.bounds();
+        let card = Rect::new(0.0, 0.0, b.x1, NOTE_H - 6.0);
+        cx.canvas.fill_rect(card, c(aizome_theme::Rgba::hexa(0x1f2335, 0.85)));
+        aizome_kit::draw::border(cx.canvas, card, c(night.line2), 1.0);
+        n2.glyph.draw(cx.canvas, Point::new(10.0, 12.0), 16.0, c(night.text2));
+        let ns = look::ui(12.5, typeface::WEIGHT_SEMIBOLD, c(night.text));
+        let right = card.x1 - 10.0;
+        if n2.summary.is_empty() {
+            let w = cx.draw_text_in(&n2.app, &ns, Rect::new(34.0, 0.0, right, card.y1), Align::Start);
+            let ms = look::ui(12.5, typeface::WEIGHT_REGULAR, c(night.text3));
+            cx.draw_text_in(&count_words(n2.count), &ms, Rect::new(34.0 + w + 8.0, 0.0, right, card.y1), Align::Start);
+        } else {
+            let w = cx.draw_text_in(&n2.app, &ns, Rect::new(34.0, 3.0, right, 21.0), Align::Start);
+            let ss = look::ui(12.5, typeface::WEIGHT_REGULAR, c(night.text));
+            cx.draw_text_in(&n2.summary, &ss, Rect::new(34.0 + w + 8.0, 3.0, right, 21.0), Align::Start);
+            let bs = look::ui(12.0, typeface::WEIGHT_REGULAR, c(night.text3));
+            cx.draw_text_in(&n2.body, &bs, Rect::new(34.0, 20.0, right, card.y1 - 2.0), Align::Start);
+        }
+    })
+    .text(label, SemanticRole::Label)
+    .into()
+}
+
+fn count_words(n: usize) -> String {
+    if n == 1 { "1 notification".to_owned() } else { format!("{n} notifications") }
 }
 
 const FIELD_W: f64 = 260.0;
@@ -108,7 +181,11 @@ pub fn view(v: &LockView) -> Element<LockMsg> {
         let _ = t;
     });
     let (time, date) = (v.time.clone(), v.date.clone());
-    let clock = drawn(size.width, 120.0, (time.clone(), date.clone()), move |cx| {
+    let show_clock = v.show_clock;
+    let clock = drawn(size.width, 120.0, (time.clone(), date.clone(), show_clock), move |cx| {
+        if !show_clock {
+            return;
+        }
         let t = cx.theme();
         let b = cx.bounds();
         let ts = look::digits(64.0, typeface::WEIGHT_SEMIBOLD, aizome_kit::theme::color(aizome_theme::NIGHT.text));
@@ -117,7 +194,7 @@ pub fn view(v: &LockView) -> Element<LockMsg> {
         cx.draw_text_in(&date, &ds, Rect::new(0.0, 86.0, b.x1, 116.0), Align::Center);
         let _ = t;
     })
-    .text(v.time.clone(), SemanticRole::Label);
+    .text(if show_clock { v.time.clone() } else { String::new() }, SemanticRole::Label);
     let mut column: Vec<Element<LockMsg>> = vec![clock.into()];
     if v.main {
         let (initial, picture, name) = (v.initial.clone(), v.picture.clone(), v.name.clone());
@@ -172,8 +249,13 @@ pub fn view(v: &LockView) -> Element<LockMsg> {
             }
         });
         column.push(line.into());
+        // What came while locked, under the field.
+        for n in &v.notes {
+            column.push(aizome_kit::container(note_card(n)).padding([0.0, 0.0, 0.0, ((size.width - NOTE_W) / 2.0).max(0.0)]).into());
+        }
     }
-    let block_h = if v.main { 120.0 + 120.0 + 34.0 + 30.0 } else { 120.0 };
+    let notes_h = if v.main { v.notes.len() as f64 * NOTE_H } else { 0.0 };
+    let block_h = if v.main { 120.0 + 120.0 + 34.0 + 30.0 + notes_h } else { 120.0 };
     let top = ((size.height - block_h) / 2.0 - 40.0).max(24.0);
     let main = v.main;
     let mark = drawn(size.width, 40.0, main, move |cx| {
@@ -214,6 +296,7 @@ impl Shell {
         self.lock.password.clear();
         self.lock.error = None;
         self.lock.focused = self.focused_screen().map(|s| s.output.id);
+        self.lock.since = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
         for s in self.screens.clone() {
             let k = cx.open_window(WindowSpec::lock(s.output.id));
             self.surfaces.insert(k, Surface::Lock { output: s.output.id });
@@ -313,6 +396,21 @@ impl Shell {
         !a.reduced_motion && a.effects != aizome_theme::Effects::Austere
     }
 
+    /// The notifications that came since the screen locked, as the lock
+    /// screen shows them (`[notifications] previews_when_locked`).
+    pub fn lock_notes(&self) -> Vec<LockNote> {
+        let notes: Vec<(String, Icon, String, String)> = self
+            .notes
+            .unread_since(self.lock.since)
+            .into_iter()
+            .map(|n| {
+                let (name, glyph, _) = self.app_look(&n.filed_under);
+                (name, glyph, n.summary.clone(), n.first_line().to_owned())
+            })
+            .collect();
+        lock_notes(&notes, self.notes_cfg.previews_when_locked)
+    }
+
     pub fn lock_view(&self, output: u32) -> Element<Msg> {
         let Some(screen) = self.screens.iter().find(|s| s.output.id == output) else { return aizome_kit::space(0.0) };
         let main = self.lock.focused.unwrap_or(output) == output;
@@ -332,6 +430,8 @@ impl Shell {
             shake: shake_offset(self.lock.shake),
             wallpaper: self.wallpaper(),
             size: screen.output.frame.size(),
+            show_clock: self.lock_cfg.show_clock,
+            notes: self.lock_notes(),
         };
         view(&v).map(Msg::Lock)
     }

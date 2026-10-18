@@ -10,7 +10,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use zbus::object_server::SignalEmitter;
 use zbus::zvariant::{OwnedValue, Value};
 
-use super::store::{CloseReason, Incoming, NoteImage, Urgency};
+use super::store::{CloseReason, Incoming, NoteImage, NoteSound, Urgency};
 
 const PATH: &str = "/org/freedesktop/Notifications";
 const NAME: &str = "org.freedesktop.Notifications";
@@ -32,7 +32,7 @@ struct Notifications {
 #[zbus::interface(name = "org.freedesktop.Notifications")]
 impl Notifications {
     fn get_capabilities(&self) -> Vec<String> {
-        ["actions", "body", "body-markup", "body-hyperlinks", "icon-static", "persistence"].iter().map(|s| s.to_string()).collect()
+        ["actions", "body", "body-markup", "body-hyperlinks", "icon-static", "persistence", "sound"].iter().map(|s| s.to_string()).collect()
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -105,6 +105,11 @@ pub fn incoming(
         expire_timeout,
         transient: b("transient"),
         resident: b("resident"),
+        sound: if b("suppress-sound") {
+            None
+        } else {
+            s("sound-file").map(|p| NoteSound::File(path_of(&p))).or_else(|| s("sound-name").map(NoteSound::Named))
+        },
         pid,
     }
 }
