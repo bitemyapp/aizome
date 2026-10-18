@@ -632,6 +632,10 @@ def notifications():
     assert S.control("notifications", "banner-time", role="tablist").get("value") == "12 s"
     S.click(S.control("notifications", "dnd", role="switch"))
     until("do_not_disturb = false", lambda: setting("notifications.do_not_disturb") is False)
+    # The quiet hours (22:00 to 07:00) hold banners back too, whatever the
+    # VM's clock says: off.
+    S.click(S.control("notifications", "schedule", role="switch"))
+    until("no quiet hours", lambda: setting("notifications.quiet_from") is None)
     alice("notify-send 'Hello again' 'Shown now'")
     until("the bar to show it", lambda: any("Hello again" in t for t in shell_surface("Toolchest")))
     S.quit()
