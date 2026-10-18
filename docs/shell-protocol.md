@@ -59,7 +59,7 @@ An item:
 | `shortcut` | object | none | `key` (a character such as `"N"` or `","`, or a name: `Enter`, `Tab`, `Space`, `Escape`, `Backspace`, `Delete`, `Up`, `Down`, `Left`, `Right`, `Home`, `End`, `PageUp`, `PageDown`, `F1`…), and `command` (❖, Super), `shift`, `alt`, `ctrl`, each `false` if left out. Printed ⌃ ⌥ ⇧ ❖ then the key. |
 | `enabled` | bool | `true` | The kit settles the Edit items' states from the focused widget (Copy is enabled while there's a selection). |
 | `checked` | bool | `false` | |
-| `role` | string | none | What the item is to the system: `about`, `settings`, `services`, `hide`, `hide-others`, `show-all`, `quit`, `undo`, `redo`, `cut`, `copy`, `paste`, `paste-as-plain-text`, `delete`, `select-all`, `find`, `find-next`, `find-previous`, `use-selection-for-find`, `replace`, `minimise`, `fill`, `stack-with`, `bring-all-to-front`, `close-window`, `window-list`, `help-search`, `help`. The shell may do some itself (Hide, Minimise) and the palette shows them. |
+| `role` | string | none | What the item is to the system: `about`, `settings`, `services`, `hide`, `hide-others`, `show-all`, `quit`, `undo`, `redo`, `cut`, `copy`, `paste`, `paste-as-plain-text`, `delete`, `select-all`, `find`, `find-next`, `find-previous`, `use-selection-for-find`, `replace`, `minimise`, `fill`, `stack-with`, `bring-all-to-front`, `close-window`, `window-list`, `help-search` (the app asks the shell for its palette on its commands), `help`, `tour` (the app starts `aizome-annai`). The shell may do some itself (Hide, Minimise) and the palette shows them. |
 | `icon` | string | none | A Lucide icon's name (`wifi`, `folder-open`). |
 | `items` | array | `[]` | A submenu's items. |
 

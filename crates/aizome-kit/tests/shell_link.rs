@@ -98,6 +98,17 @@ fn menus_go_to_the_shell_and_its_choices_come_back() {
     assert!(find(&menus, "Save").enabled);
     // No in-window bar with a shell.
     assert!(!h.texts(w).iter().any(|t| t == "File"));
+    // Help ▸ Search asks the shell for its palette, on the app's commands.
+    let search = find(&menus, "Search");
+    assert_eq!(search.role.as_deref(), Some("help-search"));
+    assert_eq!(find(&menus, "Aizome Tour").role.as_deref(), Some("tour"));
+    writer.write_all(proto::encode(&proto::ShellMessage::Activate { id: search.id }).as_bytes()).unwrap();
+    assert_eq!(h.pump_shell(Duration::from_secs(5)), 1);
+    let asked = read(&mut lines);
+    assert_eq!(
+        asked,
+        proto::AppMessage::Request { request: proto::ShellRequest::Palette { scope: Some("commands".into()), query: String::new() } }
+    );
     let _ = std::fs::remove_dir_all(&dir);
 }
 

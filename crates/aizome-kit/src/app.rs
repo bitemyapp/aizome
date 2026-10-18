@@ -155,6 +155,10 @@ impl<P: Program> Runtime<P> {
                     self.core.close_key(key, platform);
                 }
             }
+            KitMsg::AskShell(request) => match &mut self.shell {
+                Some(s) => s.send(&aizome_shell_proto::AppMessage::Request { request }),
+                None => log::debug!("no shell to ask {request:?}"),
+            },
             other => self.core.kit(other, platform),
         }
     }

@@ -51,6 +51,8 @@ pub(crate) enum KitMsg {
     Quit,
     /// Close a window as if the user asked (the program may refuse).
     CloseRequest(WindowKey),
+    /// Ask the shell to do something (Help ▸ Search); nothing without one.
+    AskShell(aizome_shell_proto::ShellRequest),
 }
 
 /// What a timer is for.
@@ -1738,6 +1740,18 @@ impl Core {
                 }
             }
             MenuRole::About => crate::dialogs::show_about(self, app),
+            // The shell's palette, on the app's commands.
+            MenuRole::HelpSearch => {
+                let request = aizome_shell_proto::ShellRequest::Palette { scope: Some("commands".into()), query: String::new() };
+                self.queue.push_back(Box::new(KitMsg::AskShell(request)));
+            }
+            MenuRole::Tour => match std::process::Command::new("aizome-annai").spawn() {
+                Ok(mut child) => {
+                    // Reaped when it ends.
+                    std::thread::spawn(move || child.wait());
+                }
+                Err(e) => log::warn!("the tour (aizome-annai): {e}"),
+            },
             MenuRole::Hide | MenuRole::HideOthers | MenuRole::ShowAll | MenuRole::Fill | MenuRole::StackWith | MenuRole::BringAllToFront => {
                 if let Some(wm) = &mut self.wm {
                     wm.perform(role, app);
@@ -1779,7 +1793,7 @@ impl Core {
             KitMsg::AlertChoice { alert, index } => crate::dialogs::alert_chosen(self, alert, index),
             KitMsg::Panel { panel, msg } => crate::dialogs::panel_message(self, panel, msg, platform),
             // The runtime handles these (they need the program).
-            KitMsg::Quit | KitMsg::CloseRequest(_) => {}
+            KitMsg::Quit | KitMsg::CloseRequest(_) | KitMsg::AskShell(_) => {}
         }
     }
 

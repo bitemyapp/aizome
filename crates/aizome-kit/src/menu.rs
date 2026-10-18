@@ -195,8 +195,11 @@ pub enum MenuRole {
     CloseWindow,
     /// The Window menu's list of windows (the kit fills it).
     WindowList,
+    /// Help ▸ Search: the shell's palette, searching the app's commands.
     HelpSearch,
     Help,
+    /// Help ▸ Aizome Tour: Annai's welcome and tour of the desktop.
+    Tour,
 }
 
 impl MenuRole {
@@ -251,6 +254,7 @@ impl MenuRole {
             MenuRole::WindowList => "window-list",
             MenuRole::HelpSearch => "help-search",
             MenuRole::Help => "help",
+            MenuRole::Tour => "tour",
         }
     }
 }
@@ -551,8 +555,11 @@ impl<Msg> MenuBar<Msg> {
             .item(i("Bring All to Front", MenuRole::BringAllToFront))
             .separator()
             .item(i("Windows", MenuRole::WindowList).enabled(false));
-        let help =
-            Menu::new(HELP).item(i("Search", MenuRole::HelpSearch)).item(i(&format!("{name} Help"), MenuRole::Help));
+        let help = Menu::new(HELP)
+            .item(i("Search", MenuRole::HelpSearch))
+            .item(i(&format!("{name} Help"), MenuRole::Help))
+            .separator()
+            .item(i("Aizome Tour", MenuRole::Tour));
         MenuBar { menus: vec![app.spec, edit.spec, window.spec, help.spec], _m: PhantomData }
     }
 
