@@ -4,6 +4,7 @@
 pub mod actions;
 pub mod app;
 pub mod browser;
+pub mod clipboard;
 pub mod dnd;
 pub mod fileview;
 pub mod instance;

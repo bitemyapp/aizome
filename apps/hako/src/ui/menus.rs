@@ -232,7 +232,7 @@ pub fn item_menu(h: &Hako, w: WindowKey) -> Menu<Msg> {
 }
 
 impl Hako {
-    pub(crate) fn item_menu(&self, w: WindowKey) -> Menu<Msg> {
+    pub fn item_menu(&self, w: WindowKey) -> Menu<Msg> {
         item_menu(self, w)
     }
 }

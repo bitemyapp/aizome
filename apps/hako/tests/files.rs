@@ -393,3 +393,49 @@ fn live_updates_follow_the_disk() {
     assert!(wait_for(&mut h, |p| p.browser(w).unwrap().columns[0].rows.iter().any(|e| e.display == "new.txt")), "a file made outside shows");
     let _ = &mut h;
 }
+
+#[test]
+fn the_operations_window_pauses_and_stops_jobs() {
+    let s = Sandbox::new("ops");
+    populate(&s);
+    s.file("home/Documents/notes.txt", "already here");
+    let (mut h, w) = open(&s, "work/notes.txt", Layout::Column);
+    h.command(w, 'c');
+    h.send(Msg::GoPath(w, s.home().join("Documents")));
+    settle(&mut h);
+    // The paste waits on the conflict; the operations window comes after
+    // a moment.
+    h.command(w, 'v');
+    assert!(wait_for(&mut h, |p| p.jobs.first().is_some_and(|j| j.question.is_some())));
+    h.advance(std::time::Duration::from_millis(700));
+    let ops = h.program().ops_window.expect("the operations window");
+    assert!(h.texts(ops).iter().any(|t| t.contains("Copying “notes.txt” to “Documents”")), "{:?}", h.texts(ops));
+    assert!(h.texts(ops).iter().any(|t| t == "Waiting for an answer"));
+    let id = h.program().jobs[0].id;
+    h.send(Msg::PauseJob(id));
+    assert!(h.program().jobs[0].paused());
+    h.save_png(ops, out("operations-night.png"), 2.0);
+    // Stop: the question goes, the job ends, nothing came, the window closes.
+    h.send(Msg::CancelJob(id));
+    settle(&mut h);
+    assert!(h.program().jobs.is_empty());
+    assert!(h.program().ops_window.is_none());
+    assert_eq!(std::fs::read_to_string(s.home().join("Documents/notes.txt")).unwrap(), "already here");
+    assert_eq!(std::fs::read_dir(s.home().join("Documents")).unwrap().count(), 4, "nothing else came");
+}
+
+#[test]
+fn context_menus_offer_what_fits() {
+    let s = Sandbox::new("menus");
+    populate(&s);
+    let (h, w) = open(&s, "Downloads/fonts.tar.gz", Layout::List);
+    let labels = |m: &aizome_kit::Menu<Msg>| m.spec().items.iter().filter_map(|i| match i {
+        aizome_kit::menu::ItemSpec::Action(a) => Some(a.label.clone()),
+        _ => None,
+    }).collect::<Vec<String>>();
+    let m = h.program().item_menu(w);
+    let l = labels(&m);
+    for want in ["Open", "Get Info", "Rename…", "Duplicate", "Compress “fonts.tar.gz”", "Extract Here", "Copy", "Move to Trash"] {
+        assert!(l.iter().any(|x| x == want), "{want} in {l:?}");
+    }
+}

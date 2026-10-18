@@ -540,11 +540,10 @@ impl Program for Hako {
                 }
                 self.answer(cx, id, None);
             }
-            Msg::ShowOperations => {
-                if self.jobs.iter().any(|j| j.started.elapsed() >= Duration::from_millis(500)) {
+            Msg::ShowOperations => self.show_operations(cx),
+            Msg::JobSlow(id) => {
+                if self.jobs.iter().any(|j| j.id == id) {
                     self.show_operations(cx);
-                } else if !self.jobs.is_empty() {
-                    cx.after(Duration::from_millis(300), Msg::ShowOperations);
                 }
             }
             Msg::Key(w, k) => self.on_key(cx, w, &k),

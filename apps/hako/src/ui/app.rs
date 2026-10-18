@@ -246,6 +246,8 @@ pub enum Msg {
     PauseJob(u64),
     CancelJob(u64),
     ShowOperations,
+    /// A job has run a while: if it still runs, show the operations.
+    JobSlow(u64),
     // The keyboard.
     Key(WindowKey, KeyEvent),
 }
@@ -666,7 +668,7 @@ impl Hako {
         let tx = cx.stream();
         let (control, answers) = jobs::start(id, work, self.opts.trash.clone(), tx, Msg::Job);
         self.jobs.push(Job { id, title, window: w, control, progress: Default::default(), question: None, sheet: None, answers, started: Instant::now() });
-        cx.after(Duration::from_millis(600), Msg::ShowOperations);
+        cx.after(Duration::from_millis(600), Msg::JobSlow(id));
     }
 
     pub(crate) fn on_job(&mut self, cx: &mut Cx<Msg>, id: u64, ev: JobEvent) {
@@ -870,6 +872,7 @@ impl Hako {
         }
         let text = uri::plain_paths(&paths);
         cx.set_clipboard_text(&text);
+        super::clipboard::offer_files(&paths, cut, &text);
         self.cut_paths = if cut { paths.iter().cloned().collect() } else { HashSet::new() };
         self.clip = Some(FileClip { paths, cut, text });
     }
@@ -880,12 +883,14 @@ impl Hako {
         let (paths, cut) = match &self.clip {
             Some(c) if c.text == text => (c.paths.clone(), c.cut),
             _ => {
-                // Another program's: paths or file URIs, a line each.
-                let ps: Vec<PathBuf> = uri::parse_uri_list(&text).into_iter().filter(|p| std::fs::symlink_metadata(p).is_ok()).collect();
+                // Another program's: files as a file manager puts them (a
+                // cut moves), else paths or file URIs as text, a line each.
+                let (cut, ps) = super::clipboard::foreign_files().unwrap_or_else(|| (false, uri::parse_uri_list(&text)));
+                let ps: Vec<PathBuf> = ps.into_iter().filter(|p| std::fs::symlink_metadata(p).is_ok()).collect();
                 if ps.is_empty() {
                     return;
                 }
-                (ps, false)
+                (ps, cut)
             }
         };
         let mode = if cut || force_move { Mode::Move } else { Mode::Copy };
