@@ -547,7 +547,7 @@ fn a_drag_out_of_the_window_goes_on_as_the_desktop_s() {
     let folder =
         |h: &Harness<Hako>, name: &str| row_at(h, w, 0, names(h, w, 0).iter().position(|n| n == name).unwrap());
     let (first, files) = drag_out(&mut h);
-    assert_eq!(files, [notes.clone()]);
+    assert_eq!(files, std::slice::from_ref(&notes));
     assert!(notes.exists(), "nothing moved");
     // Dropped nowhere, it's over: the same files dropped later come from
     // another program, and are copied.
