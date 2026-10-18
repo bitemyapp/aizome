@@ -1152,6 +1152,7 @@ impl Program for Sumi {
                     if let Ok(mut h) = d.highlight.lock() {
                         h.incomplete = false;
                         h.scheduled = false;
+                        h.pump = true;
                     }
                     d.styles += 1;
                 }
