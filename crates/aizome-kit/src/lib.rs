@@ -43,6 +43,7 @@ pub(crate) mod engine;
 pub mod fonts;
 pub mod hash;
 pub mod icons;
+pub mod inspect;
 pub mod layout;
 pub mod menu;
 pub mod platform;

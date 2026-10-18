@@ -690,6 +690,13 @@ impl<P: Program> Harness<P> {
         w.tree.nodes.iter().filter(|n| !n.dead).filter_map(|n| n.widget.text().map(str::to_owned)).collect()
     }
 
+    /// The elements a window writes for outside tests with
+    /// `AIZOME_KIT_INSPECT` (see [`crate::inspect`]).
+    pub fn inspected(&self, key: WindowKey) -> Vec<serde_json::Value> {
+        let Some(w) = self.rt.core.wins.get(&self.win(key)) else { return Vec::new() };
+        crate::inspect::describe(&w.tree, w.focused)
+    }
+
     /// What assistive technology would be told, element by element.
     pub fn semantics(&self, key: WindowKey) -> Vec<(Semantics, Rect)> {
         let Some(w) = self.rt.core.wins.get(&self.win(key)) else { return Vec::new() };

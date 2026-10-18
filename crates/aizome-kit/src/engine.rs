@@ -384,6 +384,9 @@ impl Core {
 
     fn close_win(&mut self, win: WinId, platform: &mut dyn Platform) {
         let Some(w) = self.wins.remove(&win) else { return };
+        if crate::inspect::enabled() {
+            crate::inspect::closed(&self.info.app_id, win);
+        }
         for p in w.popups {
             self.close_win(p, platform);
         }
@@ -2126,7 +2129,44 @@ impl Core {
                 canvas.restore();
             }
         }
+        if crate::inspect::enabled() {
+            self.inspect(win);
+        }
         self.stats.paint(started.elapsed());
+    }
+
+    /// Write what window `win` shows for tests that drive the app from
+    /// outside (`AIZOME_KIT_INSPECT`).
+    fn inspect(&self, win: WinId) {
+        let Some(w) = self.wins.get(&win) else { return };
+        let (kind, owner) = match &w.kind {
+            WinKind::App { spec, .. } => (
+                match spec.kind {
+                    WindowKind::Normal => "window",
+                    WindowKind::Dialog { .. } => "dialog",
+                    WindowKind::Utility => "utility",
+                    _ => "surface",
+                },
+                None,
+            ),
+            WinKind::Popup { owner, kind } => (
+                match kind {
+                    PopupKind::Menu { .. } => "menu",
+                    PopupKind::Popover { .. } => "popover",
+                    PopupKind::Tooltip => "tooltip",
+                },
+                Some(*owner),
+            ),
+        };
+        let header = serde_json::json!({
+            "title": w.title,
+            "kind": kind,
+            "owner": owner,
+            "size": [w.size.width, w.size.height],
+            "menu_strip": self.menu_strip_of(win),
+            "has_keyboard": w.has_keyboard,
+        });
+        crate::inspect::painted(&self.info.app_id, win, header, &w.tree, w.focused);
     }
 
     // Re-theming.
