@@ -182,8 +182,10 @@ fn clicking_focuses_and_dragging_the_tab_moves() {
         events: vec![Synthetic::PointerMotion { x: p.0, y: p.1 }, Synthetic::Click { button: "left".into() }],
     });
     c.wait_windows("a focused by a click", |ws| ws.iter().any(|w| w.id == wa.id && w.focused));
-    // Drag A by its tab.
-    let tab = (wa.geometry.x as f64 + 60.0, wa.geometry.y as f64 - 12.0);
+    // Drag A by its tab, on the title just past the close box: the tab is
+    // only as wide as the title, so further along, in Archivo, is the
+    // zoom box.
+    let tab = (wa.geometry.x as f64 + 30.0, wa.geometry.y as f64 - 12.0);
     c.ok(Request::Synthesize {
         events: vec![
             Synthetic::PointerMotion { x: tab.0, y: tab.1 },
