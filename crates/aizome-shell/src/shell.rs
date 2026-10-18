@@ -1304,9 +1304,14 @@ impl Shell {
         if !self.opts.live {
             return;
         }
+        // Only this session's foot, one whose WAYLAND_DISPLAY is ours: the
+        // user may have another session (a headless or nested Aizome beside
+        // their usual desktop) whose terminals aren't ours to recolour.
+        let display = std::env::var("WAYLAND_DISPLAY").ok();
         std::thread::spawn(move || {
             let signal = if day { libc::SIGUSR2 } else { libc::SIGUSR1 };
-            if let Ok(rd) = std::fs::read_dir("/proc") {
+            if let (Some(display), Ok(rd)) = (display, std::fs::read_dir("/proc")) {
+                let wanted = format!("WAYLAND_DISPLAY={display}");
                 let me = unsafe { libc::getuid() };
                 for e in rd.flatten() {
                     let Ok(pid) = e.file_name().to_string_lossy().parse::<i32>() else { continue };
@@ -1315,8 +1320,12 @@ impl Shell {
                         Ok(m) => m,
                         Err(_) => continue,
                     });
-                    if comm.trim() == "foot" && owner == me {
-                        // SAFETY: a signal to the user's own foot.
+                    if comm.trim() != "foot" || owner != me {
+                        continue;
+                    }
+                    let environ = std::fs::read(e.path().join("environ")).unwrap_or_default();
+                    if environ.split(|&b| b == 0).any(|var| var == wanted.as_bytes()) {
+                        // SAFETY: a signal to the user's own foot, in this session.
                         unsafe { libc::kill(pid, signal) };
                     }
                 }
