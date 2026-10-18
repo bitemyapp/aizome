@@ -11,6 +11,8 @@ use aizome_kit::{Anchors, KeyboardInteractivity, Layer, LayerOptions};
 struct Bar {
     bar: Option<WindowKey>,
     heard: Vec<String>,
+    /// The bar's title whose menu is open, as F10 and the arrows move it.
+    title: Option<i32>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -22,6 +24,9 @@ enum Msg {
     Closed(u32),
     Choose(&'static str),
     Typed(String),
+    /// F10: the bar's first menu, from the keyboard.
+    Keyboard,
+    Side(i32),
 }
 
 fn menu() -> Menu<Msg> {
@@ -58,6 +63,18 @@ impl Program for Bar {
             Msg::Closed(n) => self.heard.push(format!("closed {n}")),
             Msg::Choose(c) => self.heard.push(c.to_owned()),
             Msg::Typed(s) => self.heard.push(format!("typed {s}")),
+            Msg::Keyboard | Msg::Side(_) => {
+                // Three titles, 40pt apart; the arrows wrap round.
+                let i = match (msg, self.title) {
+                    (Msg::Side(d), Some(t)) => (t + d).rem_euclid(3),
+                    _ => 0,
+                };
+                self.title = Some(i);
+                self.heard.push(format!("title {i}"));
+                let x = 40.0 * i as f64;
+                let style = MenuStyle::below().from_keyboard().on_side(Msg::Side);
+                cx.show_menu(bar, Rect::new(x, 0.0, x + 40.0, 24.0), menu(), style);
+            }
         }
     }
     fn view(&self, _w: WindowKey) -> Element<Msg> {
@@ -148,4 +165,42 @@ fn a_launchers_menu_hands_typing_over() {
     h.type_text(bar, "rec");
     assert_eq!(h.popups(bar).len(), 1);
     assert!(heard(&mut h).is_empty());
+}
+
+#[test]
+fn a_bars_menus_follow_the_arrows_across_its_titles() {
+    let mut h = Harness::new(Bar::default());
+    let bar = h.window();
+    h.send(Msg::Keyboard);
+    assert_eq!(heard(&mut h), ["title 0"]);
+    let (_, at) = h.popups(bar)[0];
+    assert_eq!(at.x0, 0.0);
+    // Opened from the keyboard, its first row is highlighted already.
+    h.named(bar, NamedKey::Enter, Modifiers::NONE);
+    assert_eq!(heard(&mut h), ["new"]);
+    assert!(h.popups(bar).is_empty());
+
+    // → on a row without a submenu: the next title's menu.
+    h.send(Msg::Keyboard);
+    h.named(bar, NamedKey::ArrowRight, Modifiers::NONE);
+    assert_eq!(heard(&mut h), ["title 0", "title 1"]);
+    let popups = h.popups(bar);
+    assert_eq!(popups.len(), 1, "one menu at a time");
+    assert_eq!(popups[0].1.x0, 40.0);
+    // ← from the menu itself: the title before, round to the last.
+    h.named(bar, NamedKey::ArrowLeft, Modifiers::NONE);
+    h.named(bar, NamedKey::ArrowLeft, Modifiers::NONE);
+    assert_eq!(heard(&mut h), ["title 0", "title 2"]);
+
+    // In a submenu, ← closes it, and → on its rows goes on to the next title.
+    h.named(bar, NamedKey::ArrowUp, Modifiers::NONE);
+    h.named(bar, NamedKey::ArrowRight, Modifiers::NONE);
+    assert_eq!(h.popups(bar).len(), 2, "Open Recent opened");
+    h.named(bar, NamedKey::ArrowLeft, Modifiers::NONE);
+    assert_eq!(h.popups(bar).len(), 1);
+    assert!(heard(&mut h).is_empty());
+    h.named(bar, NamedKey::ArrowRight, Modifiers::NONE);
+    h.named(bar, NamedKey::ArrowRight, Modifiers::NONE);
+    assert_eq!(heard(&mut h), ["title 0"]);
+    assert_eq!(h.popups(bar).len(), 1);
 }

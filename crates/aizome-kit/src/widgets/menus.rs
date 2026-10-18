@@ -10,8 +10,10 @@
 //! at the pointer and palettes have a `menu_title` strip with their name,
 //! a close box and a pin.
 //!
-//! Behaviour: ↑↓ move, → opens a submenu, ← closes it, Return or Space
-//! activates, Escape clears what's typed and then closes; typing filters
+//! Behaviour: ↑↓ move, → opens a submenu, ← closes it (and past either
+//! end a menu bar's menu goes to the title beside: [`MenuStyle::on_side`]),
+//! Return or Space activates, Escape clears what's typed and then closes;
+//! typing filters
 //! the rows (and the submenus', flattened with their paths), or goes to
 //! whoever showed the menu ([`MenuStyle::on_type`]); moving toward an open
 //! submenu across other rows doesn't close it.
@@ -114,6 +116,13 @@ impl<Msg> MenuStyle<Msg> {
         self.look.mark = true;
         self
     }
+
+    /// Opened from the keyboard: its first row highlighted, as a menu a
+    /// key opens has (F10 to a menu bar).
+    pub fn from_keyboard(mut self) -> Self {
+        self.look.keyboard = true;
+        self
+    }
 }
 
 impl<Msg: Clone + Send + 'static> MenuStyle<Msg> {
@@ -141,6 +150,14 @@ impl<Msg: Clone + Send + 'static> MenuStyle<Msg> {
         self.look.typed = Some(MsgMap::new(f));
         self
     }
+
+    /// ← in the menu, and → on a row without a submenu (in it or in a
+    /// submenu of it), send `f(-1)` or `f(1)`: a menu bar moving to the
+    /// title beside. (← in a submenu still closes it.)
+    pub fn on_side(mut self, f: impl Fn(i32) -> Msg + 'static) -> Self {
+        self.look.side = Some(MsgMap::new(f));
+        self
+    }
 }
 
 /// What a menu looks like and does besides its items (type-erased).
@@ -157,12 +174,24 @@ pub(crate) struct MenuLook {
     pub closed: Option<MsgFn>,
     /// What's typed goes here instead of filtering (submenus' too).
     pub typed: Option<MsgMap<String>>,
+    /// ← and → past the menu: to the title beside (submenus' → too).
+    pub side: Option<MsgMap<i32>>,
+    /// It's a submenu (← closes it).
+    pub is_sub: bool,
+    /// Opened from the keyboard: the first row highlighted.
+    pub keyboard: bool,
 }
 
 impl MenuLook {
     /// A submenu's look: titled with its own name if its parent was.
     pub fn sub(&self, title: &str) -> MenuLook {
-        MenuLook { title: self.title.as_ref().map(|_| title.to_owned()), typed: self.typed.clone(), ..MenuLook::default() }
+        MenuLook {
+            title: self.title.as_ref().map(|_| title.to_owned()),
+            typed: self.typed.clone(),
+            side: self.side.clone(),
+            is_sub: true,
+            ..MenuLook::default()
+        }
     }
 }
 
@@ -779,12 +808,17 @@ impl Widget for MenuView {
                             self.open_sub(cx, i);
                             let window = cx.window_id();
                             cx.emit_any(Box::new(KitMsg::MenuFocusSub { window }));
+                        } else if let Some(side) = &self.look.side {
+                            cx.emit_any(side.make(1));
                         }
                     }
-                    Key::Named(NamedKey::ArrowLeft) => {
-                        let window = cx.window_id();
-                        cx.emit_any(Box::new(KitMsg::MenuBack { window }));
-                    }
+                    Key::Named(NamedKey::ArrowLeft) => match &self.look.side {
+                        Some(side) if !self.look.is_sub => cx.emit_any(side.make(-1)),
+                        _ => {
+                            let window = cx.window_id();
+                            cx.emit_any(Box::new(KitMsg::MenuBack { window }));
+                        }
+                    },
                     Key::Named(NamedKey::Escape) => {
                         if cx.state::<MenuState>().query.is_empty() {
                             self.close(cx);

@@ -750,7 +750,28 @@ impl Core {
         self.close_menus(win, platform);
         self.settle_menu(&mut spec);
         let root = MenuView::element(spec.clone(), look.clone());
-        self.open_popup(win, anchor, placement, true, PopupKind::Menu { spec, look, bar: None }, root, mapper, platform)
+        let keyboard = look.keyboard;
+        let menu = self.open_popup(win, anchor, placement, true, PopupKind::Menu { spec, look, bar: None }, root, mapper, platform);
+        if keyboard {
+            self.highlight_first_row(menu, platform);
+        }
+        menu
+    }
+
+    /// A menu opened from the keyboard (or a submenu by →): its first
+    /// row highlighted, as ↓ would.
+    fn highlight_first_row(&mut self, menu: WinId, platform: &mut dyn Platform) {
+        let Some(root) = self.wins.get(&menu).and_then(|w| w.tree.root) else { return };
+        let down = KeyEvent {
+            key: Key::Named(NamedKey::ArrowDown),
+            text: None,
+            pressed: true,
+            repeat: false,
+            code: 0,
+            modifiers: Modifiers::NONE,
+            composing: None,
+        };
+        self.send(menu, root, &Event::Key(down), platform);
     }
 
     /// Open the in-window menu bar's menu `index`.
@@ -1739,19 +1760,8 @@ impl Core {
                 }
             }
             KitMsg::MenuFocusSub { window } => {
-                if let Some(&sub) = self.menu_popups_of(window).last()
-                    && let Some(root) = self.wins.get(&sub).and_then(|w| w.tree.root)
-                {
-                    let down = KeyEvent {
-                        key: Key::Named(NamedKey::ArrowDown),
-                        text: None,
-                        pressed: true,
-                        repeat: false,
-                        code: 0,
-                        modifiers: Modifiers::NONE,
-                        composing: None,
-                    };
-                    self.send(sub, root, &Event::Key(down), platform);
+                if let Some(&sub) = self.menu_popups_of(window).last() {
+                    self.highlight_first_row(sub, platform);
                 }
             }
             KitMsg::MenuBack { window } => {
