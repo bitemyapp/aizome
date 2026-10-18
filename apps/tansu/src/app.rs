@@ -187,6 +187,9 @@ pub struct Tansu {
     pub listener: Option<std::os::unix::net::UnixListener>,
     /// Paths handed over before the window opened.
     start_paths: Vec<PathBuf>,
+    /// The drive to show first: a drive, or a block device on it
+    /// (`--show`, from the desktop's disk icons).
+    start_show: Option<String>,
     /// Follow UDisks on the system bus once the window opens.
     live: bool,
     /// Filesystems this system lacks the tools to make: the missing
@@ -224,6 +227,7 @@ impl Tansu {
             notice: None,
             listener: None,
             start_paths: Vec::new(),
+            start_show: None,
             live: false,
             sel_at: None,
             missing: Default::default(),
@@ -245,6 +249,29 @@ impl Tansu {
     pub fn with_paths(mut self, paths: Vec<PathBuf>) -> Tansu {
         self.start_paths = paths;
         self
+    }
+
+    /// Show this drive first: a drive's object path, or a block device's
+    /// (object path or `/dev` node) on it, a partition or an unlocked
+    /// volume included.
+    pub fn with_show(mut self, what: Option<String>) -> Tansu {
+        self.start_show = what;
+        self.refresh_show();
+        self
+    }
+
+    /// Choose the drive `--show` asked for, once the drives are known.
+    fn refresh_show(&mut self) {
+        let Some(what) = self.start_show.clone() else { return };
+        if self.drives.is_empty() {
+            return;
+        }
+        self.start_show = None;
+        if let Some(key) = crate::drives::entry_for(&self.state, &self.drives, &what) {
+            self.drive = Some(key);
+            self.sel = None;
+            self.relayout();
+        }
     }
 
     // --- Reading the state --------------------------------------------------
@@ -281,6 +308,7 @@ impl Tansu {
             }
         }
         self.relayout();
+        self.refresh_show();
     }
 
     /// The preview of the selected drive, its rows, and the selection's

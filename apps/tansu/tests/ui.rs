@@ -57,6 +57,26 @@ fn sheet_kind(h: &Harness<Tansu>) -> Option<&'static str> {
 }
 
 #[test]
+fn show_picks_the_drive_holding_a_device() {
+    // As the desktop's disk icon asks: by a partition's /dev node, through
+    // its encryption, by a drive, and an image by its loop device.
+    let at = |what: &str| {
+        let mock = Rc::new(Mock::default());
+        let h = Harness::new(Tansu::new(mock).with_show(Some(what.into())));
+        let p = h.program();
+        p.drives.iter().find(|d| Some(&d.key) == p.drive.as_ref()).map(|d| d.name.clone()).unwrap_or_default()
+    };
+    assert_eq!(at("/dev/nvme0n1p2"), "Samsung SSD 990 PRO 1TB");
+    assert_eq!(at("/org/freedesktop/UDisks2/block_devices/dm_2d0"), "Samsung SSD 990 PRO 1TB");
+    assert_eq!(at("/org/freedesktop/UDisks2/block_devices/loop0"), "sekka-nightly.iso");
+    let (h, _) = start();
+    let sd = h.program().drives.iter().find(|d| d.name == "SD SC64G").unwrap().key.clone();
+    assert_eq!(at(&sd), "SD SC64G");
+    // Nothing it knows: the first drive, as without --show.
+    assert_eq!(at("/dev/nothing"), "Samsung SSD 990 PRO 1TB");
+}
+
+#[test]
 fn the_sidebar_lists_drives_then_images() {
     let (h, _) = start();
     let names: Vec<&str> = h.program().drives.iter().map(|d| d.name.as_str()).collect();

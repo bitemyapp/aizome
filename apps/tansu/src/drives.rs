@@ -82,6 +82,29 @@ pub fn kind_of(drive: &Drive, device: &str) -> Kind {
 
 /// The sidebar's rows: drives in UDisks's order (internal first), then
 /// attached images.
+/// The entry holding `what`: a drive's object path, a whole disk's, or
+/// a block device's (object path or `/dev` node) on one, through its
+/// partition table and encryption.
+pub fn entry_for(state: &DisksState, entries: &[Entry], what: &str) -> Option<String> {
+    let by_key = |p: &str| entries.iter().find(|e| e.key == p || e.disk.as_deref() == Some(p)).map(|e| e.key.clone());
+    if let Some(k) = by_key(what) {
+        return Some(k);
+    }
+    let mut block = state.block(what).or_else(|| state.block_by_device(what))?;
+    if let Some(k) = state.drive_of(block).and_then(|d| by_key(&d.path)) {
+        return Some(k);
+    }
+    for _ in 0..8 {
+        if let Some(k) = by_key(&block.path) {
+            return Some(k);
+        }
+        let next =
+            block.crypto_backing_device.as_deref().or_else(|| block.partition.as_ref().map(|p| p.table.as_str()))?;
+        block = state.block(next)?;
+    }
+    None
+}
+
 pub fn entries(state: &DisksState) -> Vec<Entry> {
     let mut out = Vec::new();
     for drive in &state.drives {
