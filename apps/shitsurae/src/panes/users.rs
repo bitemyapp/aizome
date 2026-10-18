@@ -4,8 +4,6 @@
 //! agent); accounts the system configuration fixes
 //! (`users.mutableUsers = false`) say so.
 
-use std::cell::RefCell;
-use std::collections::HashMap;
 use std::path::PathBuf;
 
 use aizome_kit::prelude::*;
@@ -28,7 +26,7 @@ enum Sheet {
 pub struct Users {
     sheet: Option<Sheet>,
     name_draft: Option<String>,
-    pictures: RefCell<HashMap<String, Option<Image>>>,
+    pictures: crate::widgets::Pictures,
     /// A password to set once a new account appears.
     pending_password: Option<(String, String)>,
 }
@@ -119,8 +117,7 @@ fn account_label(t: AccountType) -> &'static str {
 
 impl Users {
     fn picture(&self, path: Option<&str>) -> Option<Image> {
-        let path = path?;
-        self.pictures.borrow_mut().entry(path.to_owned()).or_insert_with(|| Image::open(path).ok()).clone()
+        self.pictures.get(path?)
     }
 
     fn user(cx: &PaneCx<Msg>, name: &str) -> Option<User> {

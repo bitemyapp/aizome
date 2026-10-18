@@ -103,7 +103,8 @@ pub struct Shitsurae {
     start: Start,
     /// The socket later launches hand their arguments to.
     pub listener: Option<std::os::unix::net::UnixListener>,
-    picture: Option<(String, Image)>,
+    picture: Option<Image>,
+    pictures: crate::widgets::Pictures,
     watcher: Option<aizome_config::Watcher>,
     started: bool,
 }
@@ -128,6 +129,7 @@ impl Shitsurae {
             start,
             listener: None,
             picture: None,
+            pictures: Default::default(),
             watcher: None,
             started: false,
         }
@@ -245,13 +247,7 @@ impl Shitsurae {
 
     fn refresh_picture(&mut self) {
         let me = self.shared.sys.accounts.me();
-        match me.picture {
-            Some(path) if self.picture.as_ref().is_none_or(|(p, _)| *p != path) => {
-                self.picture = Image::open(&path).ok().map(|i| (path, i));
-            }
-            Some(_) => {}
-            None => self.picture = None,
-        }
+        self.picture = me.picture.and_then(|path| self.pictures.get(&path));
     }
 
     // The view.
@@ -277,7 +273,7 @@ impl Shitsurae {
 
     fn user_card(&self) -> Element<AppMsg> {
         let me = self.shared.sys.accounts.me();
-        let picture = self.picture.as_ref().map(|(_, i)| i.clone());
+        let picture = self.picture.clone();
         let name = if me.display_name().is_empty() { "You".to_owned() } else { me.display_name().to_owned() };
         let selected = self.pane_id() == "users" && self.query.is_empty();
         let line = row![

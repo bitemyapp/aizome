@@ -842,3 +842,54 @@ pub fn app_glyph(id: &str) -> Icon {
         _ => Icon::AppWindow,
     }
 }
+
+/// Pictures read from files, each kept until its file changes:
+/// AccountsService keeps every new picture of a user at the same path
+/// (`/var/lib/AccountsService/icons/<user>`), so a path alone would show
+/// the old one.
+#[derive(Default)]
+pub struct Pictures(
+    std::cell::RefCell<std::collections::HashMap<String, (Option<std::time::SystemTime>, Option<Image>)>>,
+);
+
+impl Pictures {
+    /// The picture at `path`, read again when the file has changed.
+    pub fn get(&self, path: &str) -> Option<Image> {
+        let stamp = std::fs::metadata(path).and_then(|m| m.modified()).ok();
+        let mut map = self.0.borrow_mut();
+        if let Some((s, image)) = map.get(path)
+            && *s == stamp
+        {
+            return image.clone();
+        }
+        let image = Image::open(path).ok();
+        map.insert(path.to_owned(), (stamp, image.clone()));
+        image
+    }
+}
+
+#[cfg(test)]
+mod picture_tests {
+    use super::Pictures;
+
+    fn png(path: &std::path::Path, side: u32) {
+        let rgba = vec![200u8; (side * side * 4) as usize];
+        aizome_kit::testing::write_png(path, side, side, &rgba).unwrap();
+    }
+
+    #[test]
+    fn a_picture_replaced_at_the_same_path_is_read_again() {
+        let dir = std::env::temp_dir().join(format!("shitsurae-pictures-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("alice");
+        png(&path, 4);
+        let pictures = Pictures::default();
+        let first = pictures.get(path.to_str().unwrap()).expect("a picture");
+        // AccountsService writes the new one over the old, later.
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        png(&path, 8);
+        let second = pictures.get(path.to_str().unwrap()).expect("a picture");
+        assert_ne!(first.pixel_size(), second.pixel_size());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}
