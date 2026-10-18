@@ -130,6 +130,31 @@ pkgs.testers.runNixOSTest {
         print(as_alice("aizomectl windows"))
         capture("03-apps")
 
+    with subtest("aizomectl reload swaps the window manager and the shell under the open apps"):
+        windows = ipc("windows")["windows"]
+        foot = sorted(w["id"] for w in windows if w["app_id"] == "foot")
+        assert foot, windows
+        compositor = machine.succeed("pgrep -u alice -x aizome").strip()
+        old_shell = machine.succeed("pgrep -u alice -x aizome-shell").split()[0]
+        # Nothing changed since the login: nothing to reload.
+        print(as_alice("aizomectl reload"))
+        # Asked for anyway: a fresh logic from its saved state, a new shell.
+        report = ipc("reload --logic --shell")["report"]
+        print(report)
+        assert report["logic"]["action"] == "reloaded", report
+        assert report["shell"]["action"] == "restarted", report
+        assert report["core"]["action"] == "same", report
+        machine.wait_until_fails(f"kill -0 {old_shell}", timeout=30)
+        new_shell = machine.wait_until_succeeds("pgrep -u alice -x aizome-shell", timeout=30).split()[0]
+        assert new_shell != old_shell
+        assert machine.succeed("pgrep -u alice -x aizome").strip() == compositor, "the compositor is the same"
+        windows = ipc("windows")["windows"]
+        assert sorted(w["id"] for w in windows if w["app_id"] == "foot") == foot, windows
+        machine.succeed("pgrep -u alice -x foot")
+        logic = ipc("stats")["stats"]["logic"]
+        assert logic["reloads"] == 1 and logic["healthy"], logic
+        capture("03-reloaded")
+
     with subtest("the lock screen locks and unlocks with the password"):
         as_alice("aizomectl lock")
         machine.sleep(3)

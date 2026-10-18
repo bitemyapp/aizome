@@ -172,6 +172,10 @@ in
     # Koyomi's alerts, as notifications, whether or not Koyomi is open
     # (the unit comes with the package).
     systemd.user.services.aizome-koyomi-agent.wantedBy = [ "graphical-session.target" ];
+    # After `nixos-rebuild switch`, a notification offers to reload Aizome
+    # (its window manager and shell) without closing anything; a changed
+    # compositor core waits for the next login (docs/reload.md).
+    systemd.user.paths.aizome-update.wantedBy = [ "aizome-session.target" ];
     # An alarm can wake the computer (Tokei's "Wake the computer"), which
     # needs CAP_WAKE_ALARM for the user's timers.
     systemd.services."user@".serviceConfig.AmbientCapabilities = lib.mkIf cfg.alarmsWakeSystem [

@@ -58,6 +58,7 @@
           ./crates
           ./icons
           ./etc
+          ./scripts
           (lib.fileset.maybeMissing ./apps)
           (lib.fileset.maybeMissing ./session)
         ];
@@ -68,6 +69,7 @@
         aizome = pkgs.callPackage ./nix/package.nix {
           inherit src sidestep;
           version = "0.1.0-${self.shortRev or self.dirtyShortRev or "dirty"}";
+          rev = self.rev or self.dirtyRev or null;
         };
         archivo = pkgs.callPackage ./nix/fonts.nix { };
         default = aizome;
