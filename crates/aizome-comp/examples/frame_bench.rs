@@ -69,9 +69,9 @@ fn main() {
         .env("XDG_RUNTIME_DIR", &dir)
         .env("XDG_CONFIG_HOME", dir.join("config"))
         .env("XDG_STATE_HOME", dir.join("state"))
-        .env("AIZOME_LOG", "warn")
+        .env("AIZOME_LOG", "warn").envs(std::env::vars().filter(|(k, _)| k.starts_with("AIZOME_X_")))
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
+        .stderr(if std::env::var_os("AIZOME_TRACE").is_some() { Stdio::inherit() } else { Stdio::null() })
         .spawn()
         .expect("start aizome");
     let mut kill = Kill(vec![comp]);

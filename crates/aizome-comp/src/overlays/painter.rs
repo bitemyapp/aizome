@@ -116,6 +116,7 @@ where
         y: f64,
         max_w: f64,
     ) -> f64 {
+        if std::env::var_os("AIZOME_X_NOTEXT").is_some() { return 0.0; }
         let fitted = az.labels.fit(text, style.face, style.size(), max_w);
         let Some(label) = az.labels.get(&fitted, style, self.scale, max_w + 1.0) else { return 0.0 };
         let loc: Point<i32, Physical> =
@@ -191,6 +192,7 @@ where
 
     /// A window's live content scaled into a box.
     pub fn thumbnail(&mut self, az: &Aizome, renderer: &mut R, id: WinId, b: Box2, alpha: f32) {
+        if std::env::var_os("AIZOME_X_NOTHUMB").is_some() { return; }
         let e = crate::render::thumbnail_elements(
             az,
             renderer,

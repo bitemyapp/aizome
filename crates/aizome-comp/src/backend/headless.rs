@@ -242,10 +242,20 @@ impl Headless {
             (HeadlessRenderer::Pixman(r), Target::Pixman(img)) => {
                 let (elements, clear) =
                     scene_for::<_, smithay::reexports::pixman::Image<'static, 'static>>(r, az, output);
-                match r.bind(img) {
+                let collected = started.elapsed();
+                let res = match r.bind(img) {
                     Ok(mut fb) => render_frame(r, &mut fb, &mut hs.tracker, age, &elements, clear, started, false),
                     Err(e) => Err(format!("bind: {e:?}")),
+                };
+                if std::env::var_os("AIZOME_TRACE").is_some() {
+                    eprintln!(
+                        "TRACE collect {:?} total {:?} elems {}",
+                        collected,
+                        started.elapsed(),
+                        elements.len()
+                    );
                 }
+                res
             }
             _ => Err("renderer and target disagree".into()),
         };
