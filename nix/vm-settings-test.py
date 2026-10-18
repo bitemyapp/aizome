@@ -1004,16 +1004,28 @@ def network():
     S.quit()
 
 
+def controller_named(alias):
+    """The address of the BlueZ controller with this name (btvirt makes two)."""
+    for mac in re.findall(r"Controller (\S+)", machine.succeed("bluetoothctl list")):
+        if f"Alias: {alias}\n" in machine.succeed(f"bluetoothctl show {mac}"):
+            return mac
+    return None
+
+
 @part("Bluetooth: turning it off and on reaches BlueZ; the controller's name too; discovery runs while open")
 def bluetooth():
     S.open("bluetooth")
-    show = lambda: machine.succeed("bluetoothctl show")  # noqa: E731
+    # The controller the pane shows (after airplane mode, not always BlueZ's
+    # first: the default is the first that's on).
+    mac = until("the pane's controller", lambda: controller_named(S.wait(name="bluetooth-name").get("value")))
+    show = lambda: machine.succeed(f"bluetoothctl show {mac}")  # noqa: E731
     until("discovery while the pane is open", lambda: "Discovering: yes" in show(), timeout=30)
     switch = S.control("bluetooth", "bluetooth", role="switch")
     assert switch.get("checked") is ("Powered: yes" in show())
     S.click(switch)
     until("powered off", lambda: "Powered: no" in show())
-    # The switch is back to be used once the change is done.
+    # The switch is back to be used once the change is done, and stays off
+    # though the other controller is on.
     off = until(
         "the switch off and usable",
         lambda: (lambda c: c if c.get("checked") is False and not c.get("disabled") else None)(
