@@ -10,6 +10,184 @@ are from this laptop, debug builds unless said (dependencies at
 `opt-level = 2`, the workspace's own crates unoptimised), so they're upper
 bounds. Exceptions to the budget are written up with their reasons.
 
+## At a glance
+
+Every part below was measured again on 18 October 2026 between 00:00 and
+00:21, release builds (thin LTO) of commit `fd62197`, with Aizome's fonts
+(`AIZOME_FONT_DIR`), on this laptop (Intel Core Ultra 7 365, 8 threads;
+Mesa Intel graphics for GLES). Another agent's builds and tests shared the
+machine: the one-minute load average was 4–9 during the harness runs and
+the compositor's bench, 0.2–0.5 during the live Yukimi and Shashin runs
+and 9–15 during the live shell runs; an earlier pass at load 21–25 was
+thrown away (six of its budget tests failed). Two
+kinds of number:
+
+- **Harness**: each part's own test (the command is in its section below)
+  times one frame from the event through update, view, layout and diff to
+  rasterising the damage at 2× through the offscreen renderer. These are
+  upper bounds: some apps rasterise the damage's bounding box rather than
+  its rectangles, and a frame that covers the window also pays for the
+  harness's offscreen buffer, about 1 ms (p95 up to 6.7 ms; the kit's
+  `perf` test measures it), which a window on screen doesn't.
+- **Live**: the compositor's CPU per output frame from
+  `crates/aizome-comp/examples/frame_bench.rs` (headless, 2880 × 1800 at
+  scale 2, GLES on the render node and pixman); and, where the table says
+  so, Sidestep's frame statistics (`SIDESTEP_FRAME_STATS=1`: record,
+  rasterise and present, summed per frame and summarised every five
+  seconds) from a release app on Aizome's headless compositor at
+  2880 × 1800, scale 2, driven with `aizomectl input`.
+
+| Part | Typical interaction | p50 ms | p95 ms | 4 ms |
+|---|---|---|---|---|
+| Compositor, GLES | Moving a window | 0.46 | 0.61 | within |
+| | A client drawing every frame (800 × 500) | 0.37 | 0.56 | within |
+| | Switching Desks (slides) | 0.45 | 0.75 | within |
+| | The Desks overview opening and closing | 1.34 | 2.73 | within |
+| | Ten windows, one moving | 0.76 | 0.95 | within |
+| | A full-screen client drawing every frame | 0.44 | 0.60 | within |
+| Compositor, pixman | Moving a window | 0.45 | 0.69 | within |
+| | A client drawing every frame (800 × 500) | 0.85 | 1.00 | within |
+| | Switching Desks (slides) | 0.57 | 1.04 | within |
+| | The Desks overview opening and closing | 4.8–6.9 | 19.1–19.7 | **over** (1) |
+| | Ten windows, one moving | 0.75 | 0.96 | within |
+| | A full-screen client drawing every frame | 1.9–2.3 | 2.0–3.7 | within (2) |
+| Shell | The clock's tick (bar and Deskbar) | 0.11 | 0.13 | within |
+| | A CPU meter's bar moving | 0.05 | 0.06 | within |
+| | A window opening or closing (the Deskbar and the bar) | 0.56 | 1.72 | within |
+| | A key typed in the palette | 0.74 | 1.80 | within |
+| | ↑ or ↓ in the palette | 0.23 | 0.29 | within |
+| | The palette's first opening (live) | 6.4 | | **once** (4) |
+| Kit | Toggling a switch | 0.04 | 0.04 | within |
+| | A character typed in a text field | 0.38 | 0.41 | within |
+| | A character typed in a 2,000-line editor | 0.29 | 0.51 | within |
+| | Scrolling a 10,000-row list a notch | 0.15 | 0.20 | within |
+| | Moving a 10,000-row list's selection | 0.11 | 0.14 | within |
+| Shitsurae | Flipping a switch | 0.20 | 0.23 | within |
+| | A key in the sidebar's search | 0.22 | 0.94 | within |
+| | Another pane | 3.05 | 3.76 | within |
+| | Network: the Wi-Fi switch | 1.88 | 3.67 | within |
+| | Displays: dragging a display | 0.24 | 0.51 | within |
+| | Sound: the input meter's tick | 0.12 | 0.12 | within |
+| | Bluetooth: a device's options | 1.48 | 2.84 | within |
+| Yukimi | Scrolling Installed | 3.20 | 3.57 | within |
+| | Typing in Discover's search | 0.42 | 0.94 | within |
+| | Opening a generation in History | 1.26 | 1.83 | within |
+| | A frame of falling snow | 0.97 | 1.08 | within |
+| | Switching pages (harness) | 4.78 | 5.95 | **over** (6) |
+| | Switching pages (live) | 1.7–2.4 | 3.8–5.0 | **at** (6) |
+| Hako | ↓ in a column of 10,000 | 2.28 | 2.44 | within |
+| | Scrolling that column | 0.40 | 0.42 | within |
+| | ↓ in a list of 10,000 | 1.21 | 1.27 | within |
+| Sumi | Typing in the board's document | 0.75 | 0.88 | within |
+| | Scrolling it | 0.78 | 0.91 | within |
+| | Typing at the end of a 10 MB file | 2.03 | (max 7.6) | within |
+| | ❖↓ to the end of a 10 MB file | 8.7 | | **once** (7) |
+| Fusen | Typing in a note | 0.08 | 0.10 | within |
+| Koyomi | Next or previous month | 2.48 | 2.71 | within |
+| | Next or previous week | 2.46 | 2.92 | within |
+| | A step of dragging an event | 0.001 | 0.14 | within |
+| | Dropping it | 0.30 | 0.53 | within |
+| Tokei | The world clock's tick | 0.04 | 0.06 | within |
+| | A stopwatch frame | 0.03 | 0.08 | within |
+| Soroban | A key, Basic | 0.12 | 1.20 | within |
+| | A key, Scientific | 0.31 | 0.69 | within |
+| | A key, Programmer | 0.58 | 2.55 | within |
+| Tenki | Choosing another place | 1.95 | 3.46 | within |
+| | Hovering, dragging places, scrolling the hours, the minute's tick | 0.08–0.24 | 0.08–0.27 | within |
+| Tansu | A click on the partition map | 1.30 | 1.53 | within |
+| | ← → along the map | 0.62 | 0.65 | within |
+| | Queueing an operation and undoing it | 1.44 | 2.85 | within |
+| | Switching drives | 1.61 | 4.45 | **over** (8) |
+| Kura | Moving over the rings | 0.92 | 1.41 | within |
+| | Arrow keys in the folder's list | 1.30 | 2.38 | within |
+| | Going into a folder and back up | 1.62 | 4.56 | **over** (9) |
+| | Opening or closing a hint's paths | 1.63 | 5.50 | **over** (9) |
+| | Ticking a path | 0.18 | 0.39 | within |
+| | Picking a hint | 5.09 | 11.4 | **over** (9) |
+| Myaku | A new reading (600 processes) | 2.61 | 2.99 | within |
+| | A click on a row | 0.20 | 0.30 | within |
+| | Scrolling the table | 0.29 | 0.34 | within |
+| Shashin | Showing a fitted 3000 × 2000 photo | 3.30 | 3.68 | within (10) |
+| | Panning at 100% | 3.25 | 3.56 | within (10) |
+| | Pinching | 4.23 | 4.57 | **over** (10) |
+| | A zoom step, ❖+ ❖− (live, 6000 × 4000 JPEG) | 1.2–1.5 | 1.6–2.2 | within (10) |
+| | The next picture | 3.27 | 3.98 | within |
+| Annai | A frame of a scene | 0.43 | 0.57 | within |
+| | Turning a page | 1.00 | 1.09 | within |
+
+Ranges are over several runs or five-second summaries. A live p95 over a
+summary of six or seven frames is in effect its largest frame.
+
+### Every exception
+
+1. **The Desks overview under pixman** (compositor). Opening and closing
+   it: p50 4.8–6.9 ms, p95 19.1–19.7 ms, max 20–30 ms over three runs at
+   load 0.2–7. Each of its frames damages the whole output and scales
+   every window's buffer into a thumbnail on the CPU. The evening run of
+   17 October had p95 14.8 ms; the compositor built from that run's commit
+   (`d4dcb61`) measures 21–29 ms at p95 today, so the overview's own code
+   hasn't got slower: the machine, or the Sidestep both build against, has.
+   *Accepted*: pixman is the fallback without a usable GPU, the overview
+   redraws only when it opens, closes, filters or takes a drop, and GLES
+   does the same frames in 1.3/2.7 ms.
+2. **Full-output damage under pixman** (compositor): a full-screen client
+   redrawing every frame, p50 1.9–2.3 ms, p95 2.0–3.7 ms (3.6–4.4 ms
+   before; 11.6 ms on a busier machine once). *Within now*, but close: a
+   full-screen video or game without a GPU sits near the budget.
+3. **First frames of new labels** (compositor): a frame that first shows
+   a title or caption rasterises it offscreen; the overview's GLES
+   maximum, 5.9 ms (8–13 ms before), is its first opening. *Accepted*:
+   once per label, which is cached.
+4. **The palette's first opening** (shell): 6.4 ms live at load 9 (record
+   0.7, rasterise 5.1; 5.4 ms written before, at load 17), 6.3 ms in the
+   harness after 4.0 ms of warming at idle; opened again, 1.7 ms live.
+   Rasterising its whole 1446 × 966-pixel surface the first time is what's
+   left. *Accepted*: once per session. Another first frame, the desktop's
+   (its surface fills the output), measured 8.9–11 ms live today at load
+   9–15 (record 0.07 ms; the rest rasterising into a new 2880 × 1800
+   buffer), against 2.8 ms written before: once per output at start-up,
+   *open* (not investigated).
+5. **The desktop's wallpaper frame** (shell): a 2880 × 1800 copy, 4.7 ms
+   under load, once per output size and theme. *Accepted*. (Not measured
+   again: the headless run had no wallpaper.)
+6. **Switching pages in Yukimi**: harness p50 4.78 ms, p95 5.95 ms (97%
+   of the window); live at 2×, the frames of a page switch every 1.2 s
+   were p50 1.7–2.4 ms with the largest 3.8–5.0 ms (rasterising 55–64% of
+   the window; Yukimi's update, view and layout 0.15–0.65 ms). Before
+   Sidestep's faster repaint it was 4.9/5.8 ms in the harness and p95
+   6.8–13 ms live. *Accepted*: a deliberate click a few times a minute, now
+   at the budget live.
+7. **❖↓ to the end of a 10 MB file in Sumi**: 8.7 ms once (8.9 ms before):
+   3 ms working out line colours, the rest shaping a screen of lines
+   nothing has shown yet; the colours settle over the next 15 frames.
+   *Accepted*. (Debug builds of typing and scrolling also exceed the budget
+   at p95; release builds don't.)
+8. **Switching drives in Tansu**: p50 1.61 ms, p95 4.45 ms (5.2 ms
+   before): the map, legend, table and details all change, 1744 × 1300
+   pixels at 2×. *Accepted*: a click in the sidebar.
+9. **Kura's rings**: going into a folder and back up p95 4.56 ms (the rings
+   move over the motion time, redrawn whole without antialiasing),
+   opening a hint's paths p95 5.50 ms (the panel lays out again), and
+   picking a hint p50 5.09 ms, p95 11.4 ms (20 ms before, at load 24): it
+   moves the rings to the hint's folder and dims the rest, drawing the
+   whole sunburst (about 4 ms at 2× by itself) and the panel. Lighting the
+   largest segments, which once set the hover p95, is 1.41 ms now.
+   *Accepted*: deliberate clicks, not under the hand.
+10. **Shashin's full-window pictures**: *fixed*. Before Sidestep drew
+    images landing one to one on whole pixels as row copies, any frame
+    redrawing a full-window photo at 2× took 18–30 ms (showing it 22/29 ms,
+    zoom steps live 24.7/30.8 ms). Now: showing a fitted photo 3.30/3.68 ms
+    and panning 3.25/3.56 ms in the harness (each paying the harness's
+    full-window buffer), and zoom steps live 1.2–1.5/1.6–2.2 ms. Left over:
+    pinching in the harness, 4.23/4.57 ms, drawn from what's there with
+    nearest-pixel scaling while the drawing for the new zoom is made; and
+    the harness's frame between a zoom step and its new drawing, 8.7/9.4
+    ms, which didn't show live (one frame per step).
+
+Within the budget now, though written up below as exceptions earlier:
+Hako's preview column (↓ p95 2.44 ms), Tenki's choosing a place (p95
+3.46 ms) and the shell's window opening and closing (p95 1.72 ms).
+
 ## The kit
 
 `aizome-kit`'s own measures (the full tables, and how they're made, are
@@ -81,6 +259,29 @@ the scene's elements, rendering what's damaged and submitting it.
   Intel graphics (Panther Lake) through EGL on the render node; pixman on
   the same CPU. Effects tier Lean (hard shadows, 80 ms motion).
 
+### Results (2026-10-18, 00:01, load 4–7)
+
+Commit `fd62197`, the same bench on a quieter machine (another agent's
+builds still running), milliseconds of compositor CPU per rendered frame:
+
+| Scenario | GLES p50 | p95 | p99 | max | pixman p50 | p95 | p99 | max |
+|---|---|---|---|---|---|---|---|---|
+| Idle, 2 s | – | – | – | – | – | – | – | – |
+| Moving a 320 × 200 window, 240 steps | 0.46 | 0.61 | 0.71 | 1.16 | 0.45 | 0.69 | 0.79 | 1.19 |
+| A client drawing every frame (800 × 500) | 0.37 | 0.56 | 0.59 | 0.74 | 0.85 | 1.00 | 1.63 | 17.3 |
+| Switching Desks (slides), 12 | 0.45 | 0.75 | 1.03 | 1.03 | 0.57 | 1.04 | 1.12 | 1.12 |
+| Overview open and close, 8 | 1.34 | 2.73 | 5.87 | 5.87 | 4.84 | 19.1 | 21.4 | 21.4 |
+| 10 windows, one moving | 0.76 | 0.95 | 0.99 | 1.00 | 0.75 | 0.96 | 1.01 | 1.05 |
+| A full-screen client drawing every frame | 0.44 | 0.60 | 0.70 | 0.83 | 2.31 | 3.48 | 3.79 | 3.95 |
+
+Two more pixman runs at load 0.2–0.3: the overview p50 5.2–6.9, p95
+19.5–19.7, max 20–30 ms; the full-screen client p50 1.9, p95 2.0–3.7 ms.
+GLES's GPU time (the fence) was p50 0.8–2.5 ms, p99 1.0–4.0 ms. The
+overview under pixman is slower than in the evening run below; the
+compositor built from that run's commit (`d4dcb61`) measured p95 21–29 ms
+under pixman the same night, so it's the machine (or the Sidestep both
+build against), not the overview's code.
+
 ### Results (2026-10-17, evening run)
 
 Milliseconds of compositor CPU per rendered frame. Other agents were
@@ -143,14 +344,16 @@ What these show:
 
 1. **Full-output damage under pixman at 2880 × 1800** (a full-screen
    client redrawing every frame: p50 2.5–3.5 ms, p95 3.6–4.4 ms, max 4–5.6 ms;
-   an earlier run on a busier machine had p95 11.6 ms). Each frame composites
+   an earlier run on a busier machine had p95 11.6 ms; on 18 October p50
+   1.9–2.3 ms, p95 2.0–3.7 ms, inside the budget). Each frame composites
    5.2 million pixels on the CPU; the cost is memory traffic, not the
    scene. GLES does the same frame in 0.4 ms (1.8 ms in the morning run,
    when the client's upload was part of the frame). Full-screen video or games
    without a usable GPU sit at or over the budget; ordinary windows
    (partial damage) don't.
 2. **The Desks overview under pixman** (p50 3.1–3.8 ms, p95 12.8–14.8 ms,
-   max 15–18.5 ms; up to 57 ms in the earliest run). Opening and closing it
+   max 15–18.5 ms; up to 57 ms in the earliest run; on 18 October p50
+   4.8–6.9 ms, p95 19.1–19.7 ms, max 20–30 ms). Opening and closing it
    damages the whole output, and its thumbnails are window buffers scaled
    down at composition, which pixman filters on the CPU. It redraws only
    when opened, closed, filtered or dragged in, never continuously, so the
@@ -158,7 +361,7 @@ What these show:
 3. **First frames of new labels.** A frame that first shows a label (a new
    title, the overview's captions) rasterizes it with Sidestep's offscreen
    canvas and uploads it: the 8–13 ms overview maximum under GLES is its
-   first opening, setting a dozen captions. Labels are cached per text,
+   first opening, setting a dozen captions (5.9 ms on 18 October). Labels are cached per text,
    style and scale (and dropped half a minute after they were last
    drawn), so these are one-off costs; fonts load at start-up.
 4. **GPU time** under headless GLES is the wait for the frame's fence,
@@ -221,12 +424,23 @@ Overview's snow falling, 184 frames in 5 s, total p50 0.93 ms, p95
 2.4 ms; while switching pages every 1.2 s (through the instance socket),
 p50 1.7–2.1 ms, p95 6.8–13 ms.
 
+Again on 18 October (commit `fd62197`, load 4–9), after Sidestep's faster
+repaint: the harness's page switch p50 4.78 ms, p95 5.95 ms, max 7.26 ms
+(97% drawn, the harness's own full-window buffer included); scrolling
+3.20/3.57, typing a search 0.42/0.94, a generation 1.26/1.83, snow
+0.97/1.08 ms. Live, the release build with `--sample` on Aizome's headless
+compositor (GLES) at 2880 × 1800, scale 2, ❖2 to ❖6 through `aizomectl
+input` every 1.2 s for 30 s at load 0.3: total p50 1.7–2.4 ms, p95 3.8–5.0
+ms per five-second summary (six or seven frames each, so the p95 is the
+largest page), damage 55–64%, almost all of it rasterising.
+
 Exception: **switching pages**. A new page repaints the whole content
 area (and the toolbar and the sidebar's selection) at 2×. Yukimi's part,
 the update, the view and the layout, is 0.15–0.65 ms of it (Discover's
 catalog, 47 cards, is the most); the rest is rasterising about 3.4
-million pixels, which costs Sidestep's renderer about 3.5–4.5 ms for any
-full window, however simple (History, the plainest page, 3.65 ms).
+million pixels of text and cards: 3.5–4.5 ms before Sidestep's faster
+repaint, now 1.6–2.3 ms at the median live and 3.7–4.9 ms for the
+largest pages.
 Switching pages is a deliberate act a few times a minute, not something
 repeated under the hand, so it is left at that rather than made to draw
 less than the page that's new.
@@ -357,6 +571,13 @@ through the list afterwards are the cheap paths above. Actions and the
 rescans after them run on the kit's threads; the window only takes the
 result.
 
+Again on 18 October (release, commit `fd62197`, load 4–9, the same
+tests): picking a hint p50 5.09 ms, p95 11.4 ms, max 15.5; opening or
+closing a hint's paths 1.63/5.50 ms (the panel laying out again: over the
+budget at the tail, a click on a card too); ticking a path 0.18/0.39 ms.
+The rings: moving over them 0.92/1.41 ms, the list's arrows 1.30/2.38 ms,
+going in and back up 1.62/4.56 ms (the rings moving, as above).
+
 ## Shell
 
 The shell's surfaces (bar, Deskbar, desktop, palette, menus, panels, OSD,
@@ -437,7 +658,16 @@ minutes, or when its folders or the ones it skips change.
   render thread: 5.4 ms on a loaded machine, against 0.9 ms once the
   surface exists. Laying its text out ahead removed the main thread's part
   (record 16.5 ms cold before, 0.7 ms now); what's left is pixels, which
-  only a smaller palette would cut.
+  only a smaller palette would cut. On 18 October (release, commit
+  `fd62197`, Aizome's headless compositor at 2880 × 1800, scale 2, ❖Space
+  through `aizomectl input` four seconds after start, load 9): 6.4 ms
+  (record 0.7, rasterise 5.1, present 0.65), opened again 1.7 ms; in the
+  harness, warming 4.0 ms, the first opening 6.3 ms, again 3.65 ms. The
+  same run's first frame of the desktop (its colour and icons, no
+  wallpaper) was 8.9–11 ms, nearly all rasterising into the new
+  2880 × 1800 surface, where 2.8 ms was written above: once per output,
+  not investigated yet.
+
 - **The desktop's wallpaper frame** copies 2880 × 1800 pixels (4.7 ms
   under load); it happens once per output size and theme, and the desktop
   redraws only an icon's rectangle after.
@@ -525,7 +755,8 @@ under headless sway (pixman, 1×, release, typing with `wtype`), Sidestep's
 frame stats: total p50 0.11 ms, p95 0.96 ms, max 2.1 ms, average damage
 24%.
 
-Exception: ❖↓ to the end of a 10 MB file costs 8.9 ms once (release):
+Exception: ❖↓ to the end of a 10 MB file costs 8.9 ms once (release;
+8.7 ms again on 18 October, the colours exact 15 frames and 44 ms later):
 3 ms working out line colours (the rest are guessed, as if nothing were
 open, and worked out over the next 16 frames, 47 ms in all), the rest
 shaping a screen of lines nothing has shown yet. Debug builds of typing
@@ -557,6 +788,10 @@ Exception: switching drives redraws the whole content area (the map,
 legend, table and details all change), 1744 × 1300 pixels at 2×: under
 2 ms at the median, up to 5.4 ms at the tail while the machine was busy.
 It happens on a click in the sidebar, not while typing or dragging.
+
+Again on 18 October (release, commit `fd62197`, load 4–9): a click on the
+map 1.30/1.53 ms (p50/p95), ← → 0.62/0.65, queueing and undoing
+1.44/2.85, switching drives 1.61/4.45 ms (max 4.72).
 
 ## Myaku (Activity)
 
@@ -599,7 +834,8 @@ Headlessly, `apps/shashin/tests/budget.rs` (`cargo test --release -p
 aizome-shashin --test budget -- --nocapture`), a 3000 × 2000 camera JPEG in
 a 1440 × 900 window, from the event to the damage rasterised at 2× (the
 picture fills 2880 × 1740 pixels of it). Release build, with Aizome's
-fonts:
+fonts, on 17 October, before Sidestep's fast path for images landing one
+to one (the numbers since are under the exception below):
 
 | Interaction | frame p50 | p95 | max | Shashin's part p50 / p95 | drawn |
 |---|---|---|---|---|---|
@@ -623,18 +859,32 @@ Live, the release build under headless sway (pixman) at 2× on a 2880 ×
 1800 output, a 6000 × 4000 JPEG, Sidestep's frame stats: ❖+ and ❖− steps,
 23 frames, rasterise p50 24.7 ms, p95 30.8 ms, record 23 µs, damage 95%.
 
-Exception: **a picture filling a window at 2×**. All of a frame's cost is
-Sidestep rasterising the picture: it draws images through tiny-skia's
-pattern pipeline at about 4 ns a device pixel whatever the scale or
-filter (`apps/shashin/examples/drawbench.rs`: a one-to-one 2800 × 1800
-blit takes 21 ms, 18 ms with `Copy`; a solid fill of the same area
-0.3 ms), so any frame that redraws a full-window photo at 2× (opening it,
-panning, zooming) takes 18–30 ms, and a 1× window a quarter of that. The
-fix belongs in Sidestep: a fast path in `raster::images::draw` for images
-whose pixels land one to one on whole device pixels (a row copy for
-`Copy` or opaque pictures, a straight blend otherwise) would bring these
-frames to about 2 ms, since Shashin already draws every frame at rest
-that way.
+Exception, now fixed: **a picture filling a window at 2×**. All of a
+frame's cost was Sidestep rasterising the picture: it drew images through
+tiny-skia's pattern pipeline at about 4 ns a device pixel whatever the
+scale or filter (`apps/shashin/examples/drawbench.rs`: a one-to-one
+2800 × 1800 blit took 21 ms, 18 ms with `Copy`; a solid fill of the same
+area 0.3 ms), so any frame that redrew a full-window photo at 2× (opening
+it, panning, zooming) took 18–30 ms. Sidestep now copies images whose
+pixels land one to one on whole device pixels row by row (and composites
+translucent ones in integers), which is how Shashin draws every frame at
+rest.
+
+Measured again on 18 October (release, commit `fd62197`, load 4–9), the
+same test: showing a fitted photo p50 3.30 ms, p95 3.68 ms (22.2/28.8
+before); panning at 100% 3.25/3.56 (24.2/30.2); pinching 4.23/4.57
+(30.3/38.8); the next picture 3.27/3.98; Shashin's own part still
+0.02–0.19 ms. Each of these frames covers the window and so also pays for
+the harness's own 2880 × 1800 buffer (about 1 ms). The harness's zoom step
+(the frame drawn from the old drawing, scaled to the new zoom, before the
+drawing for it arrives) is 8.72/9.43 ms. Live, the release build on
+Aizome's headless compositor (GLES) at 2880 × 1800, scale 2, a 6000 × 4000
+JPEG, ❖+ ❖+ ❖− ❖− every 0.7 s for 30 s through `aizomectl input` at load
+0.5: one frame per step, total p50 1.2–1.5 ms, p95 1.6–2.2 ms per
+five-second summary (24.7/30.8 ms before), damage 93%. Pinching, at 4.6 ms
+p95 in the harness (not measured live), is the one interaction left above
+the budget.
+
 
 ## Annai (Welcome)
 
