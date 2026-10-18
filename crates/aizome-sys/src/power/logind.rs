@@ -44,6 +44,10 @@ pub enum Can {
     Challenge,
     /// Not allowed.
     No,
+    /// Possible, but something holds a block inhibitor for it now (an app
+    /// keeping the machine awake). Asking anyway overrides the inhibitor,
+    /// which polkit may want a password for.
+    Inhibited,
     /// Not supported on this machine (no swap to hibernate to).
     #[default]
     NotApplicable,
@@ -55,13 +59,14 @@ impl Can {
             "yes" => Can::Yes,
             "challenge" => Can::Challenge,
             "no" => Can::No,
+            "inhibited" => Can::Inhibited,
             _ => Can::NotApplicable,
         }
     }
 
     /// Whether to offer the action.
     pub fn offered(self) -> bool {
-        matches!(self, Can::Yes | Can::Challenge)
+        matches!(self, Can::Yes | Can::Challenge | Can::Inhibited)
     }
 }
 
@@ -498,4 +503,23 @@ pub(crate) fn session_path(bus: &Bus) -> Option<String> {
 /// This process's login session id, for registering per-session agents.
 pub(crate) fn session_id(bus: &Bus) -> Option<String> {
     find_session(bus, None).map(|(id, _)| id).filter(|id| !id.is_empty())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn can_answers_parse() {
+        assert_eq!(Can::parse("yes"), Can::Yes);
+        assert_eq!(Can::parse("challenge"), Can::Challenge);
+        assert_eq!(Can::parse("no"), Can::No);
+        assert_eq!(Can::parse("na"), Can::NotApplicable);
+        // Newer logind answers "inhibited" while a block inhibitor holds
+        // the action (here, an app keeping the machine awake): the machine
+        // can still sleep, so it mustn't read as unsupported.
+        assert_eq!(Can::parse("inhibited"), Can::Inhibited);
+        assert!(Can::Inhibited.offered());
+        assert!(!Can::NotApplicable.offered() && !Can::No.offered());
+    }
 }
