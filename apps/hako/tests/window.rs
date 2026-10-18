@@ -45,3 +45,37 @@ fn day() {
     settle(&mut h);
     h.save_png(w, out("columns-day.png"), 2.0);
 }
+
+#[test]
+fn volumes_show_in_the_sidebar_with_eject_buttons() {
+    let s = Sandbox::new("volumes");
+    populate(&s);
+    let stick = s.dir("media/SEKKA");
+    let mut h = harness(&s, ThemeChoice::Night);
+    let w = h.window();
+    {
+        let p = h.program_mut();
+        p.volumes = vec![
+            aizome_sys::disks::Volume {
+                block: "/org/freedesktop/UDisks2/block_devices/sdb1".into(),
+                name: "SEKKA".into(),
+                icon_name: "drive-removable-media".into(),
+                mount_point: Some(stick.to_string_lossy().into_owned()),
+                ejectable: true,
+                ..Default::default()
+            },
+            aizome_sys::disks::Volume {
+                block: "/org/freedesktop/UDisks2/block_devices/loop0".into(),
+                name: "sekka-nightly.iso".into(),
+                icon_name: "media-optical".into(),
+                image_file: Some("/home/u/Downloads/sekka-nightly.iso".into()),
+                ..Default::default()
+            },
+        ];
+    }
+    h.send(Msg::GoPath(w, stick.clone()));
+    settle(&mut h);
+    assert!(h.texts(w).iter().any(|t| t == "SEKKA"));
+    assert!(h.texts(w).iter().any(|t| t == "sekka-nightly.iso"));
+    h.save_png(w, out("volumes-night.png"), 2.0);
+}

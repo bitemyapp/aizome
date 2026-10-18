@@ -151,7 +151,18 @@ fn crumbs(h: &Hako, b: &Browser) -> Vec<(String, Option<Icon>, Option<PathBuf>)>
     match b.location() {
         Some(Loc::Folder(p)) => {
             let home = &h.opts.home;
-            let (start, rest) = if p.starts_with(home) {
+            // A volume's folders start at the volume.
+            let volume = h
+                .volumes
+                .iter()
+                .filter_map(|v| v.mount_point.as_ref().map(|m| (PathBuf::from(m), v)))
+                .filter(|(m, _)| p.starts_with(m) && m != Path::new("/"))
+                .max_by_key(|(m, _)| m.as_os_str().len());
+            let (start, rest) = if let Some((m, v)) = volume.filter(|(m, _)| !home.starts_with(m)) {
+                let icon = if v.image_file.is_some() { Icon::Disc } else { Icon::Usb };
+                out.push((v.name.clone(), Some(icon), Some(m.clone())));
+                (m.clone(), p.strip_prefix(&m).unwrap_or(Path::new("")).to_path_buf())
+            } else if p.starts_with(home) {
                 out.push(("Home".to_owned(), Some(Icon::House), Some(home.clone())));
                 (home.clone(), p.strip_prefix(home).unwrap_or(Path::new("")).to_path_buf())
             } else {
