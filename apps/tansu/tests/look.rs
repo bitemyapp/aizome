@@ -168,7 +168,7 @@ fn smart() {
 /// the machine: `cargo test -p aizome-tansu --test look -- --ignored`
 /// writes `this-computer-*.png` to the target's temporary directory.
 #[test]
-#[ignore]
+#[ignore = "reads this machine's drives through UDisks2: a picture to look at, not a check"]
 fn this_computer() {
     let disks = aizome_sys::disks::Disks::new(aizome_sys::Wake::none());
     let start = std::time::Instant::now();

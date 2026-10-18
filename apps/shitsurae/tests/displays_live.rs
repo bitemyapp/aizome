@@ -55,7 +55,7 @@ fn arrangement(h: &Harness<Shitsurae>) -> String {
 }
 
 #[test]
-#[ignore]
+#[ignore = "needs a headless Aizome compositor, named by SHITSURAE_COMPOSITOR_SETTINGS"]
 fn arranges_and_applies_on_a_headless_compositor() {
     let Some(path) = std::env::var_os("SHITSURAE_COMPOSITOR_SETTINGS").map(PathBuf::from) else {
         eprintln!("skipping: SHITSURAE_COMPOSITOR_SETTINGS isn't set");

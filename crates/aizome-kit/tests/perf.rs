@@ -177,7 +177,7 @@ fn report(name: &str, t: &[f64]) {
 }
 
 #[test]
-#[ignore]
+#[ignore = "a measurement for docs/kit.md, run in a release build"]
 fn interactions_stay_within_four_milliseconds() {
     aizome_kit::fonts::install();
     println!("| Interaction | p50 ms | p95 ms | max ms |");

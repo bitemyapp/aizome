@@ -11,7 +11,7 @@ mod common;
 use aizome_kit::layout::Size;
 
 #[test]
-#[ignore]
+#[ignore = "reads this machine's services: pictures to look at, with SHITSURAE_LIVE_SNAPSHOT=1"]
 fn panes_over_a_copy_of_this_machine() {
     if std::env::var_os("SHITSURAE_LIVE_SNAPSHOT").is_none() {
         eprintln!("skipping: SHITSURAE_LIVE_SNAPSHOT isn't set");
