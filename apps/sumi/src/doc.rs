@@ -238,7 +238,9 @@ impl Doc {
 
     pub fn name(&self) -> String {
         match &self.path {
-            Some(p) => p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| p.display().to_string()),
+            Some(p) => {
+                p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| p.display().to_string())
+            }
             None if self.untitled <= 1 => "Untitled".to_owned(),
             None => format!("Untitled {}", self.untitled),
         }
@@ -328,7 +330,8 @@ impl Doc {
                 let r = after.range();
                 let s = h.min(r.start);
                 let e_new = r.end.max(s);
-                let e_old = (e_new as isize + old.len_chars() as isize - new.len_chars() as isize).max(s as isize) as usize;
+                let e_old =
+                    (e_new as isize + old.len_chars() as isize - new.len_chars() as isize).max(s as isize) as usize;
                 (s, e_old, e_new)
             }
             None => diff(old, new),

@@ -24,16 +24,15 @@ impl Query {
     pub fn compile(&self) -> Result<Regex, String> {
         let body = if self.regex { self.text.clone() } else { regex::escape(&self.text) };
         let body = if self.word { format!(r"\b(?:{body})\b") } else { body };
-        RegexBuilder::new(&body)
-            .case_insensitive(!self.case)
-            .multi_line(true)
-            .size_limit(1 << 24)
-            .build()
-            .map_err(|e| match e {
-                regex::Error::Syntax(s) => s.lines().last().unwrap_or("Not a regular expression").trim_start_matches("error: ").to_owned(),
+        RegexBuilder::new(&body).case_insensitive(!self.case).multi_line(true).size_limit(1 << 24).build().map_err(
+            |e| match e {
+                regex::Error::Syntax(s) => {
+                    s.lines().last().unwrap_or("Not a regular expression").trim_start_matches("error: ").to_owned()
+                }
                 regex::Error::CompiledTooBig(_) => "The expression is too big".to_owned(),
                 _ => "Not a regular expression".to_owned(),
-            })
+            },
+        )
     }
 }
 

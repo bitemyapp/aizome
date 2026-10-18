@@ -149,7 +149,11 @@ impl Highlight {
             if next < self.states.len() {
                 if !changed_here && self.states[next] == s {
                     // As before: right up to the next change.
-                    let to = self.pending.iter().find(|&&(first, _)| first > j).map_or(self.states.len() - 1, |&(first, _)| first);
+                    let to = self
+                        .pending
+                        .iter()
+                        .find(|&&(first, _)| first > j)
+                        .map_or(self.states.len() - 1, |&(first, _)| first);
                     self.valid = to.max(next).min(self.states.len() - 1);
                     continue;
                 }

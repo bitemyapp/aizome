@@ -47,7 +47,12 @@ impl Places {
     /// The user's: `$XDG_STATE_HOME/aizome/sumi`, `$XDG_DATA_HOME/recently-used.xbel`,
     /// `$XDG_CONFIG_HOME/aizome/sumi.toml`.
     pub fn user() -> Places {
-        Places { state: Some(autosave::default_dir()), recent: Some(recent::default_path()), settings: Some(settings::default_path()), documents: None }
+        Places {
+            state: Some(autosave::default_dir()),
+            recent: Some(recent::default_path()),
+            settings: Some(settings::default_path()),
+            documents: None,
+        }
     }
 }
 
@@ -240,7 +245,9 @@ impl Sumi {
 
     /// A new window with a document in it.
     fn new_window(&mut self, cx: &mut Cx<Msg>, id: String, untitled: u32) -> WindowKey {
-        let w = cx.open_window(WindowSpec::new("Untitled").size(WINDOW_SIZE.width, WINDOW_SIZE.height).min_size(360.0, 200.0));
+        let w = cx.open_window(
+            WindowSpec::new("Untitled").size(WINDOW_SIZE.width, WINDOW_SIZE.height).min_size(360.0, 200.0),
+        );
         let mut d = Doc::new(id, w, untitled);
         d.content.soft_tabs = self.settings.soft_tabs;
         if let Ok(mut h) = d.highlight.lock() {
@@ -343,7 +350,8 @@ impl Sumi {
     }
 
     fn failed_to_open(&mut self, path: &Path, why: &str, cx: &mut Cx<Msg>) {
-        let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| path.display().to_string());
+        let name =
+            path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| path.display().to_string());
         let alert = Alert::new(format!("“{name}” couldn't be opened."), why.to_owned());
         match self.target(cx) {
             Some(w) => cx.alert(w, alert),
@@ -374,7 +382,14 @@ impl Sumi {
     }
 
     fn write_session(&self) {
-        let session = Session { documents: self.docs.values().filter(|d| d.loading.is_none() || d.path.is_some()).map(Doc::session).collect() };
+        let session = Session {
+            documents: self
+                .docs
+                .values()
+                .filter(|d| d.loading.is_none() || d.path.is_some())
+                .map(Doc::session)
+                .collect(),
+        };
         self.store.write_session(&session);
     }
 
@@ -479,9 +494,12 @@ impl Sumi {
                 let enc = d.encoding.name();
                 cx.alert(
                     w,
-                    Alert::new(format!("“{}” can't be saved in {enc}.", u.ch), format!("{enc} has no “{}” (character {}). Save it in UTF-8 instead?", u.ch, u.at + 1))
-                        .default_button("Save as UTF-8", Msg::SaveUtf8(w))
-                        .cancel_button("Cancel"),
+                    Alert::new(
+                        format!("“{}” can't be saved in {enc}.", u.ch),
+                        format!("{enc} has no “{}” (character {}). Save it in UTF-8 instead?", u.ch, u.at + 1),
+                    )
+                    .default_button("Save as UTF-8", Msg::SaveUtf8(w))
+                    .cancel_button("Cancel"),
                 );
                 return false;
             }
@@ -527,11 +545,16 @@ impl Sumi {
             (None, Language::Markdown) => format!("{}.md", d.name()),
             (None, _) => format!("{}.txt", d.name()),
         };
-        let dir = d.path.as_ref().and_then(|p| p.parent().map(Path::to_path_buf)).or_else(|| self.places.documents.clone()).or_else(|| {
-            let home = std::env::var_os("HOME").map(PathBuf::from)?;
-            let docs = home.join("Documents");
-            Some(if docs.is_dir() { docs } else { home })
-        });
+        let dir = d
+            .path
+            .as_ref()
+            .and_then(|p| p.parent().map(Path::to_path_buf))
+            .or_else(|| self.places.documents.clone())
+            .or_else(|| {
+                let home = std::env::var_os("HOME").map(PathBuf::from)?;
+                let docs = home.join("Documents");
+                Some(if docs.is_dir() { docs } else { home })
+            });
         let mut dialog = FileDialog::new().title("Save As").file_name(name);
         if let Some(dir) = dir {
             dialog = dialog.directory(dir);
@@ -610,7 +633,9 @@ impl Sumi {
             let found = find::search(&find::text_of(&rope), &re, find::LIMIT);
             self.found(w, seq, version, Ok(Arc::new(found)));
         } else {
-            cx.spawn(move || Msg::Searched(w, seq, version, Ok(Arc::new(find::search(&find::text_of(&rope), &re, find::LIMIT)))));
+            cx.spawn(move || {
+                Msg::Searched(w, seq, version, Ok(Arc::new(find::search(&find::text_of(&rope), &re, find::LIMIT))))
+            });
         }
     }
 
@@ -632,7 +657,12 @@ impl Sumi {
         d.find.version = Some(version);
         // The match at or after the selection is the current one.
         let sel = d.content.selection().range();
-        d.find.current = d.find.matches.iter().position(|r| *r == sel).or_else(|| d.find.matches.iter().position(|r| r.start >= sel.start));
+        d.find.current = d
+            .find
+            .matches
+            .iter()
+            .position(|r| *r == sel)
+            .or_else(|| d.find.matches.iter().position(|r| r.start >= sel.start));
         if d.find.current.is_none() && !d.find.matches.is_empty() {
             d.find.current = Some(0);
         }
@@ -640,7 +670,10 @@ impl Sumi {
 
     /// The matches, searched again if the text changed since.
     fn fresh_matches(&mut self, w: WindowKey, cx: &mut Cx<Msg>) {
-        let stale = self.docs.get(&w).is_some_and(|d| d.find.version != Some(d.content.version()) && !d.find.query.text.is_empty());
+        let stale = self
+            .docs
+            .get(&w)
+            .is_some_and(|d| d.find.version != Some(d.content.version()) && !d.find.query.text.is_empty());
         if stale {
             self.search(w, cx);
         }
@@ -659,7 +692,10 @@ impl Sumi {
         let i = if backwards {
             m.iter().rposition(|r| r.end <= sel.start && *r != sel).unwrap_or(n - 1)
         } else {
-            m.iter().position(|r| r.start >= sel.end && *r != sel).or_else(|| m.iter().position(|r| r.start > sel.start)).unwrap_or(0)
+            m.iter()
+                .position(|r| r.start >= sel.end && *r != sel)
+                .or_else(|| m.iter().position(|r| r.start > sel.start))
+                .unwrap_or(0)
         };
         let r = m[i].clone();
         d.find.current = Some(i);
@@ -737,9 +773,12 @@ impl Sumi {
                 let name = d.name();
                 cx.alert(
                     w,
-                    Alert::new(format!("Revert to the saved “{name}”?"), "The changes made since it was saved will be lost.")
-                        .destructive_button("Revert", Msg::Reload(w, None))
-                        .cancel_button("Cancel"),
+                    Alert::new(
+                        format!("Revert to the saved “{name}”?"),
+                        "The changes made since it was saved will be lost.",
+                    )
+                    .destructive_button("Revert", Msg::Reload(w, None))
+                    .cancel_button("Cancel"),
                 );
             }
             Command::Reopen(e) => {
@@ -748,9 +787,12 @@ impl Sumi {
                     let name = self.docs[&w].name();
                     cx.alert(
                         w,
-                        Alert::new(format!("Reopen “{name}” as {}?", e.name()), "The changes made since it was saved will be lost.")
-                            .destructive_button("Reopen", Msg::Reload(w, Some(e)))
-                            .cancel_button("Cancel"),
+                        Alert::new(
+                            format!("Reopen “{name}” as {}?", e.name()),
+                            "The changes made since it was saved will be lost.",
+                        )
+                        .destructive_button("Reopen", Msg::Reload(w, Some(e)))
+                        .cancel_button("Cancel"),
                     );
                 } else {
                     self.update(Msg::Reload(w, Some(e)), cx);
@@ -793,9 +835,17 @@ impl Sumi {
             Command::Link if md => {
                 let r = sel.range();
                 let selected: String = rope.slice(r.clone()).to_string();
-                let looks_like_url = |s: &str| s.starts_with("http://") || s.starts_with("https://") || s.starts_with("mailto:");
-                let clip = cx.clipboard_text().map(|c| c.trim().to_owned()).filter(|c| looks_like_url(c) && !c.contains(char::is_whitespace));
-                let (text, url) = if looks_like_url(selected.trim()) { (String::new(), selected.trim().to_owned()) } else { (selected, clip.unwrap_or_default()) };
+                let looks_like_url =
+                    |s: &str| s.starts_with("http://") || s.starts_with("https://") || s.starts_with("mailto:");
+                let clip = cx
+                    .clipboard_text()
+                    .map(|c| c.trim().to_owned())
+                    .filter(|c| looks_like_url(c) && !c.contains(char::is_whitespace));
+                let (text, url) = if looks_like_url(selected.trim()) {
+                    (String::new(), selected.trim().to_owned())
+                } else {
+                    (selected, clip.unwrap_or_default())
+                };
                 let key = cx.show_sheet(w);
                 let focus = if text.is_empty() { "link-text" } else { "link-url" };
                 self.sheets.insert(key, Sheet::Link { parent: w, text, url, range: r });
@@ -818,7 +868,8 @@ impl Sumi {
                 if c == Command::ShiftRight && sel.is_empty() {
                     let line = rope.char_to_line(sel.head);
                     let start = rope.line_to_char(line);
-                    let unit = if self.settings.soft_tabs > 0 { " ".repeat(self.settings.soft_tabs) } else { "\t".to_owned() };
+                    let unit =
+                        if self.settings.soft_tabs > 0 { " ".repeat(self.settings.soft_tabs) } else { "\t".to_owned() };
                     let n = unit.chars().count();
                     if let Some(d) = self.docs.get_mut(&w) {
                         d.replace(start..start, unit, Selection::caret(sel.head + n));
@@ -843,7 +894,11 @@ impl Sumi {
                     d.find.query.text = if d.find.query.regex { regex::escape(&s) } else { s };
                 }
                 self.search(w, cx);
-                cx.focus(if c == Command::ReplaceShow && !self.docs[&w].find.query.text.is_empty() { "replace" } else { "find" });
+                cx.focus(if c == Command::ReplaceShow && !self.docs[&w].find.query.text.is_empty() {
+                    "replace"
+                } else {
+                    "find"
+                });
             }
             Command::FindHide => {
                 if let Some(d) = self.docs.get_mut(&w) {
@@ -991,7 +1046,12 @@ impl Program for Sumi {
                 self.new_doc(cx);
             }
             Msg::Open => {
-                let dir = self.focused_doc().and_then(|d| d.path.as_ref()).and_then(|p| p.parent()).map(Path::to_path_buf).or_else(|| self.places.documents.clone());
+                let dir = self
+                    .focused_doc()
+                    .and_then(|d| d.path.as_ref())
+                    .and_then(|p| p.parent())
+                    .map(Path::to_path_buf)
+                    .or_else(|| self.places.documents.clone());
                 let mut dialog = FileDialog::new().title("Open").multiple();
                 if let Some(d) = dir {
                     dialog = dialog.directory(d);

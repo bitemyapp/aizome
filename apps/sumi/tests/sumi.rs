@@ -331,7 +331,12 @@ fn encodings_and_line_endings_survive_open_and_save() {
 #[test]
 fn autosave_brings_everything_back_after_a_crash() {
     let dir = scratch("autosave");
-    let places = Places { state: Some(dir.join("state")), recent: Some(dir.join("recently-used.xbel")), settings: Some(dir.join("sumi.toml")), documents: None };
+    let places = Places {
+        state: Some(dir.join("state")),
+        recent: Some(dir.join("recently-used.xbel")),
+        settings: Some(dir.join("sumi.toml")),
+        documents: None,
+    };
     let file = dir.join("notes.md");
     std::fs::write(&file, "# Notes\n").unwrap();
     {
@@ -397,11 +402,16 @@ fn one_instance_takes_the_seconds_files() {
     let sock = dir.join("sumi.sock");
     let file = dir.join("handed.md");
     std::fs::write(&file, "handed over\n").unwrap();
-    let aizome_sumi::instance::Claim::First(listener) = aizome_sumi::instance::claim_at(sock.clone(), &[]) else { panic!("first") };
+    let aizome_sumi::instance::Claim::First(listener) = aizome_sumi::instance::claim_at(sock.clone(), &[]) else {
+        panic!("first")
+    };
     let mut a = app(Places::default());
     a.instance = Some(listener);
     let mut h = Harness::new(a);
-    assert!(matches!(aizome_sumi::instance::claim_at(sock, &[file.display().to_string()]), aizome_sumi::instance::Claim::Handed));
+    assert!(matches!(
+        aizome_sumi::instance::claim_at(sock, &[file.display().to_string()]),
+        aizome_sumi::instance::Claim::Handed
+    ));
     settle(&mut h, |h| h.program().docs.values().any(|d| d.path.as_deref() == Some(file.as_path())));
 }
 
@@ -416,7 +426,9 @@ fn menus_are_the_boards() {
         .items
         .iter()
         .map(|i| match i {
-            aizome_kit::menu::ItemSpec::Action(a) => format!("{}{}", a.label, a.shortcut.map(|s| format!(" {}", s.label())).unwrap_or_default()),
+            aizome_kit::menu::ItemSpec::Action(a) => {
+                format!("{}{}", a.label, a.shortcut.map(|s| format!(" {}", s.label())).unwrap_or_default())
+            }
             aizome_kit::menu::ItemSpec::Submenu(m) => format!("{} ▸", m.title),
             aizome_kit::menu::ItemSpec::Separator => "—".into(),
             aizome_kit::menu::ItemSpec::Header(t) => t.clone(),
@@ -425,8 +437,19 @@ fn menus_are_the_boards() {
     assert_eq!(
         items,
         [
-            "Font ▸", "Paragraph ▸", "—", "Bold ❖B", "Italic ❖I", "Code ❖E", "Link… ❖K", "—", "Heading ▸", "Quote ⇧❖'", "—",
-            "Copy Style ⌥❖C", "Paste Style ⌥❖V"
+            "Font ▸",
+            "Paragraph ▸",
+            "—",
+            "Bold ❖B",
+            "Italic ❖I",
+            "Code ❖E",
+            "Link… ❖K",
+            "—",
+            "Heading ▸",
+            "Quote ⇧❖'",
+            "—",
+            "Copy Style ⌥❖C",
+            "Paste Style ⌥❖V"
         ]
     );
 }
@@ -495,7 +518,10 @@ fn a_large_file_opens_quickly_and_stays_quick() {
         passes += 1;
         assert!(passes < 100_000);
     }
-    eprintln!("sumi: jump to the end of 10 MB in {jump:?}; its colours exact after {passes} more frames ({:?})", t.elapsed());
+    eprintln!(
+        "sumi: jump to the end of 10 MB in {jump:?}; its colours exact after {passes} more frames ({:?})",
+        t.elapsed()
+    );
 }
 
 /// Typing and scrolling in the board's document, measured as Soroban's
@@ -544,7 +570,11 @@ fn typing_and_scrolling_fit_the_frame_budget() {
     };
     let (t50, t95, tmax) = stats(&mut typing);
     let (s50, s95, smax) = stats(&mut scrolling);
-    eprintln!("sumi typing: p50 {t50:?} p95 {t95:?} max {tmax:?} (n={}); scrolling: p50 {s50:?} p95 {s95:?} max {smax:?} (n={}) at 2x", typing.len(), scrolling.len());
+    eprintln!(
+        "sumi typing: p50 {t50:?} p95 {t95:?} max {tmax:?} (n={}); scrolling: p50 {s50:?} p95 {s95:?} max {smax:?} (n={}) at 2x",
+        typing.len(),
+        scrolling.len()
+    );
     if !cfg!(debug_assertions) {
         assert!(t95 < Duration::from_millis(4), "typing p95 {t95:?}");
     }
@@ -587,7 +617,12 @@ fn save_and_open_through_the_panels() {
     assert!(h.click_text(w, "other.txt"));
     h.named(w, NamedKey::Enter, NONE);
     assert_eq!(h.windows().len(), 2);
-    let other = h.program().docs.values().find(|d| d.path.as_deref() == Some(dir.join("other.txt").as_path())).expect("other.txt open");
+    let other = h
+        .program()
+        .docs
+        .values()
+        .find(|d| d.path.as_deref() == Some(dir.join("other.txt").as_path()))
+        .expect("other.txt open");
     assert_eq!(other.content.text(), "other text\n");
     assert_eq!(other.language, Language::Plain);
 }

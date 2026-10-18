@@ -347,7 +347,9 @@ fn inline(line: &str, from: usize, table: bool, out: &mut Out) -> bool {
                 if let Some(e) = line[i + 1..].find('>') {
                     let inner = &line[i + 1..i + 1 + e];
                     let auto = !inner.contains(' ')
-                        && (inner.contains("://") || (inner.contains('@') && inner.contains('.')) || inner.starts_with("mailto:"));
+                        && (inner.contains("://")
+                            || (inner.contains('@') && inner.contains('.'))
+                            || inner.starts_with("mailto:"));
                     if auto {
                         out.push(i..i + e + 2, Kind::LinkText);
                         i += e + 2;
@@ -357,7 +359,8 @@ fn inline(line: &str, from: usize, table: bool, out: &mut Out) -> bool {
             }
             b'!' | b'[' => {
                 let s = if c == b'!' { i + 1 } else { i };
-                if s < n && b[s] == b'['
+                if s < n
+                    && b[s] == b'['
                     && let Some(end) = link(line, i, s, out)
                 {
                     i = end;
@@ -367,8 +370,10 @@ fn inline(line: &str, from: usize, table: bool, out: &mut Out) -> bool {
             b'h' | b'w' if i == 0 || !b[i - 1].is_ascii_alphanumeric() => {
                 let rest = &line[i..];
                 if rest.starts_with("https://") || rest.starts_with("http://") || rest.starts_with("www.") {
-                    let mut end = rest.find(|ch: char| ch.is_whitespace() || ch == '<' || ch == '>').map_or(n, |e| i + e);
-                    while end > i && matches!(b[end - 1], b'.' | b',' | b';' | b':' | b'!' | b'?' | b')' | b'"' | b'\'') {
+                    let mut end =
+                        rest.find(|ch: char| ch.is_whitespace() || ch == '<' || ch == '>').map_or(n, |e| i + e);
+                    while end > i && matches!(b[end - 1], b'.' | b',' | b';' | b':' | b'!' | b'?' | b')' | b'"' | b'\'')
+                    {
                         end -= 1;
                     }
                     out.push(i..end, Kind::LinkText);
@@ -487,7 +492,9 @@ fn emphasis(delims: &mut [Delim], out: &mut Out) {
         let mut closer = delims[d];
         if closer.close {
             while closer.left > 0 {
-                let Some(pos) = stack.iter().rposition(|&o| delims[o].ch == closer.ch && delims[o].left > 0) else { break };
+                let Some(pos) = stack.iter().rposition(|&o| delims[o].ch == closer.ch && delims[o].left > 0) else {
+                    break;
+                };
                 let o = stack[pos];
                 let opener = delims[o];
                 // Strikethrough needs two on each side.

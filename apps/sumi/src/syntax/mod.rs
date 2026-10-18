@@ -128,7 +128,9 @@ impl Language {
             match name.as_str() {
                 "cargo.lock" | "poetry.lock" | "uv.lock" => return Language::Toml,
                 "flake.lock" | "package-lock.json" | ".eslintrc" | "tsconfig.json" => return Language::Json,
-                ".bashrc" | ".bash_profile" | ".profile" | ".zshrc" | ".zprofile" | ".envrc" | "pkgbuild" => return Language::Shell,
+                ".bashrc" | ".bash_profile" | ".profile" | ".zshrc" | ".zprofile" | ".envrc" | "pkgbuild" => {
+                    return Language::Shell;
+                }
                 "readme" | "changelog" => return Language::Markdown,
                 _ => {}
             }

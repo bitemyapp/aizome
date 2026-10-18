@@ -181,7 +181,12 @@ pub fn new_id() -> String {
     use std::sync::atomic::{AtomicU64, Ordering};
     static N: AtomicU64 = AtomicU64::new(0);
     let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default();
-    format!("{:x}-{:x}-{:x}", now.as_secs(), std::process::id(), N.fetch_add(1, Ordering::Relaxed) + u64::from(now.subsec_nanos() % 4096))
+    format!(
+        "{:x}-{:x}-{:x}",
+        now.as_secs(),
+        std::process::id(),
+        N.fetch_add(1, Ordering::Relaxed) + u64::from(now.subsec_nanos() % 4096)
+    )
 }
 
 #[cfg(test)]
@@ -193,7 +198,14 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("sumi-autosave-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         let store = Store::new(Some(dir.clone()));
-        let doc = SessionDoc { id: new_id(), untitled: 1, language: "markdown".into(), unsaved: true, selection: (3, 3), ..Default::default() };
+        let doc = SessionDoc {
+            id: new_id(),
+            untitled: 1,
+            language: "markdown".into(),
+            unsaved: true,
+            selection: (3, 3),
+            ..Default::default()
+        };
         store.write_text(&doc.id, Rope::from_str("# Draft\n"));
         store.write_session(&Session { documents: vec![doc.clone()] });
         store.flush();

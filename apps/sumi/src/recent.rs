@@ -26,8 +26,27 @@ pub fn file_uri(path: &Path) -> String {
     let mut s = String::from("file://");
     for b in path.as_os_str().as_encoded_bytes() {
         match b {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'/' | b'-' | b'_' | b'.' | b'~' | b'!' | b'$' | b'&' | b'\'' | b'('
-            | b')' | b'*' | b'+' | b',' | b';' | b'=' | b':' | b'@' => s.push(char::from(*b)),
+            b'A'..=b'Z'
+            | b'a'..=b'z'
+            | b'0'..=b'9'
+            | b'/'
+            | b'-'
+            | b'_'
+            | b'.'
+            | b'~'
+            | b'!'
+            | b'$'
+            | b'&'
+            | b'\''
+            | b'('
+            | b')'
+            | b'*'
+            | b'+'
+            | b','
+            | b';'
+            | b'='
+            | b':'
+            | b'@' => s.push(char::from(*b)),
             _ => s.push_str(&format!("%{b:02X}")),
         }
     }
@@ -113,9 +132,14 @@ fn attr<'a>(tag: &'a str, name: &str) -> Option<&'a str> {
 pub fn add_to(text: &str, path: &Path, mime: &str, app: &str, exec: &str, now: SystemTime) -> String {
     let t = iso8601(now);
     let uri = file_uri(path);
-    let mut text = if text.contains("<xbel") && text.contains("</xbel>") { text.to_owned() } else { format!("{HEADER}</xbel>\n") };
+    let mut text =
+        if text.contains("<xbel") && text.contains("</xbel>") { text.to_owned() } else { format!("{HEADER}</xbel>\n") };
     let href = format!("href=\"{uri}\"");
-    let app_tag = format!("<bookmark:application name=\"{}\" exec=\"{}\" modified=\"{t}\" count=\"1\"/>", escape(app), escape(exec));
+    let app_tag = format!(
+        "<bookmark:application name=\"{}\" exec=\"{}\" modified=\"{t}\" count=\"1\"/>",
+        escape(app),
+        escape(exec)
+    );
     if let Some(at) = text.find(&href) {
         let start = text[..at].rfind("<bookmark ").unwrap_or(at);
         let end = text[start..].find("</bookmark>").map(|e| start + e + "</bookmark>".len());
@@ -148,7 +172,10 @@ pub fn add_to(text: &str, path: &Path, mime: &str, app: &str, exec: &str, now: S
             }
         }
     } else {
-        let entry = format!("  <bookmark {href} added=\"{t}\" modified=\"{t}\" visited=\"{t}\">\n{}  </bookmark>\n", info(mime, &app_tag));
+        let entry = format!(
+            "  <bookmark {href} added=\"{t}\" modified=\"{t}\" visited=\"{t}\">\n{}  </bookmark>\n",
+            info(mime, &app_tag)
+        );
         let at = text.rfind("</xbel>").unwrap_or(text.len());
         text.insert_str(at, &entry);
     }
@@ -204,7 +231,9 @@ pub fn forget(text: &str, app: &str) -> String {
     while let Some(s) = rest.find("<bookmark ") {
         out.push_str(&rest[..s]);
         let tail = &rest[s..];
-        let end = tail.find("</bookmark>").map_or_else(|| tail.find("/>").map_or(tail.len(), |e| e + 2), |e| e + "</bookmark>".len());
+        let end = tail
+            .find("</bookmark>")
+            .map_or_else(|| tail.find("/>").map_or(tail.len(), |e| e + 2), |e| e + "</bookmark>".len());
         let entry = &tail[..end];
         let apps = entry.matches("<bookmark:application ").count();
         if entry.contains(&key) && apps <= 1 {

@@ -138,7 +138,11 @@ pub fn toggle_inline(rope: &Rope, sel: Selection, style: Inline) -> Option<Edit>
         // The caret stays in its word.
         let shift = if edit.1 { -(mc as isize) } else { mc as isize };
         let at = (caret as isize + shift).max(0) as usize;
-        return Some(Edit { range: ls + edit.0.start..ls + edit.0.end, text: edit.2, select: Selection::caret(ls + at) });
+        return Some(Edit {
+            range: ls + edit.0.start..ls + edit.0.end,
+            text: edit.2,
+            select: Selection::caret(ls + at),
+        });
     }
     // Emphasis can't start or end with a space: wrap what's inside them.
     while a < b && cs[a].is_whitespace() {
@@ -187,7 +191,12 @@ fn wrap_or_unwrap(cs: &[char], a: usize, b: usize, style: Inline) -> Option<(Ran
 
 /// The range to replace, whether markers came off, the text, and where
 /// the selected text ends up (line columns).
-fn wrap_or_unwrap_sel(cs: &[char], a: usize, b: usize, style: Inline) -> Option<(Range<usize>, bool, String, Range<usize>)> {
+fn wrap_or_unwrap_sel(
+    cs: &[char],
+    a: usize,
+    b: usize,
+    style: Inline,
+) -> Option<(Range<usize>, bool, String, Range<usize>)> {
     let m = style.marker();
     let mc = chars(m);
     let inner: String = cs[a..b].iter().collect();
@@ -195,7 +204,11 @@ fn wrap_or_unwrap_sel(cs: &[char], a: usize, b: usize, style: Inline) -> Option<
         // Inside the markers: take them off.
         return Some((a - mc..b + mc, true, inner, a - mc..b - mc));
     }
-    if b - a >= 2 * mc && marked(cs, a, m) && marked(cs, b - mc, m) && (style != Inline::Italic || !(marked(cs, a, "**") && marked(cs, b - 2, "**")) || b - a >= 6) {
+    if b - a >= 2 * mc
+        && marked(cs, a, m)
+        && marked(cs, b - mc, m)
+        && (style != Inline::Italic || !(marked(cs, a, "**") && marked(cs, b - 2, "**")) || b - a >= 6)
+    {
         // The markers are selected too.
         let text: String = cs[a + mc..b - mc].iter().collect();
         let len = chars(&text);
@@ -285,7 +298,9 @@ fn split_prefix(t: &str) -> (&str, BlockStyle) {
         style.list = Some(if marker.is_ascii_digit() { List::Numbered } else { List::Bullet });
         i += m;
         let rest = &t[i..];
-        if (rest.starts_with("[ ]") || rest.starts_with("[x]") || rest.starts_with("[X]")) && matches!(rest.as_bytes().get(3), None | Some(b' ')) {
+        if (rest.starts_with("[ ]") || rest.starts_with("[x]") || rest.starts_with("[X]"))
+            && matches!(rest.as_bytes().get(3), None | Some(b' '))
+        {
             style.list = Some(List::Task);
             i = (i + 4).min(t.len());
         }
@@ -399,11 +414,7 @@ pub fn toggle_list(rope: &Rope, sel: Selection, kind: List) -> Option<Edit> {
         t.trim().is_empty() || split_prefix(&t).1.list == Some(kind)
     });
     restyle_lines(rope, sel, |s, blank| {
-        if blank {
-            s
-        } else {
-            BlockStyle { list: if all { None } else { Some(kind) }, heading: 0, ..s }
-        }
+        if blank { s } else { BlockStyle { list: if all { None } else { Some(kind) }, heading: 0, ..s } }
     })
 }
 
@@ -459,7 +470,8 @@ pub fn continue_list(rope: &Rope, sel: Selection) -> Option<Edit> {
     }
     let indent: String = t.chars().take_while(|c| *c == ' ' || *c == '\t').collect();
     let n = if style.list == Some(List::Numbered) {
-        let digits: String = t.trim_start().trim_start_matches(['>', ' ']).chars().take_while(char::is_ascii_digit).collect();
+        let digits: String =
+            t.trim_start().trim_start_matches(['>', ' ']).chars().take_while(char::is_ascii_digit).collect();
         digits.parse::<usize>().unwrap_or(0) + 1
     } else {
         0
@@ -517,10 +529,11 @@ pub fn paste_style(rope: &Rope, sel: Selection, style: &Style) -> Option<Edit> {
     let start = rope.line_to_char(lines.start);
     let end = line_end(rope, lines.end - 1);
     // The lines restyled, and where the selection went in them.
-    let (mut text, select) = match restyle_lines(rope, sel, |_, blank| if blank { BlockStyle::default() } else { style.block }) {
-        Some(e) => (e.text, e.select),
-        None => (rope.slice(start..end).to_string(), sel),
-    };
+    let (mut text, select) =
+        match restyle_lines(rope, sel, |_, blank| if blank { BlockStyle::default() } else { style.block }) {
+            Some(e) => (e.text, e.select),
+            None => (rope.slice(start..end).to_string(), sel),
+        };
     let mut select = select;
     if !select.is_empty() && !style.inline.is_empty() && lines.len() == 1 {
         let cs: Vec<char> = text.chars().collect();
@@ -570,13 +583,31 @@ mod tests {
 
     #[test]
     fn bold_italic_code_toggle() {
-        assert_eq!(run("a word here", (2, 6), |r, s| toggle_inline(r, s, Inline::Bold)), ("a **word** here".into(), "word".into()));
-        assert_eq!(run("a **word** here", (4, 8), |r, s| toggle_inline(r, s, Inline::Bold)), ("a word here".into(), "word".into()));
-        assert_eq!(run("a **word** here", (2, 10), |r, s| toggle_inline(r, s, Inline::Bold)), ("a word here".into(), "word".into()));
-        assert_eq!(run("a word here", (2, 6), |r, s| toggle_inline(r, s, Inline::Italic)), ("a *word* here".into(), "word".into()));
+        assert_eq!(
+            run("a word here", (2, 6), |r, s| toggle_inline(r, s, Inline::Bold)),
+            ("a **word** here".into(), "word".into())
+        );
+        assert_eq!(
+            run("a **word** here", (4, 8), |r, s| toggle_inline(r, s, Inline::Bold)),
+            ("a word here".into(), "word".into())
+        );
+        assert_eq!(
+            run("a **word** here", (2, 10), |r, s| toggle_inline(r, s, Inline::Bold)),
+            ("a word here".into(), "word".into())
+        );
+        assert_eq!(
+            run("a word here", (2, 6), |r, s| toggle_inline(r, s, Inline::Italic)),
+            ("a *word* here".into(), "word".into())
+        );
         // Italic inside bold adds a star; it doesn't take bold's off.
-        assert_eq!(run("a **word** here", (4, 8), |r, s| toggle_inline(r, s, Inline::Italic)), ("a ***word*** here".into(), "word".into()));
-        assert_eq!(run("a ***word*** here", (5, 9), |r, s| toggle_inline(r, s, Inline::Italic)), ("a **word** here".into(), "word".into()));
+        assert_eq!(
+            run("a **word** here", (4, 8), |r, s| toggle_inline(r, s, Inline::Italic)),
+            ("a ***word*** here".into(), "word".into())
+        );
+        assert_eq!(
+            run("a ***word*** here", (5, 9), |r, s| toggle_inline(r, s, Inline::Italic)),
+            ("a **word** here".into(), "word".into())
+        );
         // The word at the caret.
         let (t, _) = run("a word here", (4, 4), |r, s| toggle_inline(r, s, Inline::Code));
         assert_eq!(t, "a `word` here");

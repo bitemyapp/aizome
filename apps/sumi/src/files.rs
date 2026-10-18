@@ -25,7 +25,8 @@ pub enum Encoding {
 }
 
 impl Encoding {
-    pub const ALL: [Encoding; 5] = [Encoding::Utf8, Encoding::Utf8Bom, Encoding::Utf16Le, Encoding::Utf16Be, Encoding::Latin1];
+    pub const ALL: [Encoding; 5] =
+        [Encoding::Utf8, Encoding::Utf8Bom, Encoding::Utf16Le, Encoding::Utf16Be, Encoding::Latin1];
 
     /// As the menus name it.
     pub fn name(self) -> &'static str {
@@ -134,7 +135,11 @@ pub fn detect(bytes: &[u8]) -> Encoding {
 }
 
 fn decode_utf16(bytes: &[u8], big_endian: bool) -> Option<String> {
-    let units = bytes.as_chunks::<2>().0.iter().map(|c| if big_endian { u16::from_be_bytes(*c) } else { u16::from_le_bytes(*c) });
+    let units = bytes
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|c| if big_endian { u16::from_be_bytes(*c) } else { u16::from_le_bytes(*c) });
     char::decode_utf16(units).collect::<Result<String, _>>().ok()
 }
 
@@ -194,13 +199,19 @@ pub fn decode(bytes: &[u8], encoding: Option<Encoding>) -> Decoded {
         }
         Encoding::Utf16Le | Encoding::Utf16Be => {
             let be = encoding == Encoding::Utf16Be;
-            let body = if bytes.starts_with(if be { &[0xfe, 0xff] } else { &[0xff, 0xfe] }) { &bytes[2..] } else { bytes };
-            let units = body.as_chunks::<2>().0.iter().map(|c| if be { u16::from_be_bytes(*c) } else { u16::from_le_bytes(*c) });
+            let body =
+                if bytes.starts_with(if be { &[0xfe, 0xff] } else { &[0xff, 0xfe] }) { &bytes[2..] } else { bytes };
+            let units = body
+                .as_chunks::<2>()
+                .0
+                .iter()
+                .map(|c| if be { u16::from_be_bytes(*c) } else { u16::from_le_bytes(*c) });
             char::decode_utf16(units).map(|r| r.unwrap_or(char::REPLACEMENT_CHARACTER)).collect()
         }
         Encoding::Latin1 => bytes.iter().map(|b| char::from(*b)).collect(),
     };
-    let binary = text.bytes().take(65536).any(|c| c == 0 || (c < 0x20 && !matches!(c, b'\n' | b'\r' | b'\t' | 0x0c | 0x1b)));
+    let binary =
+        text.bytes().take(65536).any(|c| c == 0 || (c < 0x20 && !matches!(c, b'\n' | b'\r' | b'\t' | 0x0c | 0x1b)));
     let (text, line_ending, mixed) = normalize_line_endings(text);
     Decoded { text, encoding, line_ending, mixed, binary }
 }
@@ -405,7 +416,11 @@ mod tests {
         assert_eq!(fs::read_to_string(&file).unwrap(), "new");
         assert!(fs::symlink_metadata(&link).unwrap().file_type().is_symlink(), "the link is still a link");
         assert_eq!(fs::metadata(&file).unwrap().permissions().mode() & 0o777, 0o750);
-        let leftovers: Vec<_> = fs::read_dir(&dir).unwrap().filter_map(|e| e.ok()).filter(|e| e.file_name().to_string_lossy().ends_with(".tmp")).collect();
+        let leftovers: Vec<_> = fs::read_dir(&dir)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_name().to_string_lossy().ends_with(".tmp"))
+            .collect();
         assert!(leftovers.is_empty());
         save_atomic(&dir.join("new.txt"), b"fresh").unwrap();
         assert_eq!(fs::read_to_string(dir.join("new.txt")).unwrap(), "fresh");

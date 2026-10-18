@@ -88,8 +88,16 @@ fn find_bar(doc: &Doc) -> Element<Msg> {
         toggle("W", f.query.word, Command::FindWord, "Whole Words"),
         toggle(".*", f.query.regex, Command::FindRegex, "Regular Expression").mono(),
         text(summary).mono().tabular().size(11.0).role(summary_role).min_width(84.0).max_width(220.0),
-        icon_button(Icon::ChevronLeft).toolbar().on_press(on(Command::FindPrevious)).tooltip("Find Previous (⇧❖G)").label("Find Previous"),
-        icon_button(Icon::ChevronRight).toolbar().on_press(on(Command::FindNext)).tooltip("Find Next (❖G)").label("Find Next"),
+        icon_button(Icon::ChevronLeft)
+            .toolbar()
+            .on_press(on(Command::FindPrevious))
+            .tooltip("Find Previous (⇧❖G)")
+            .label("Find Previous"),
+        icon_button(Icon::ChevronRight)
+            .toolbar()
+            .on_press(on(Command::FindNext))
+            .tooltip("Find Next (❖G)")
+            .label("Find Next"),
         button("Done").compact().on_press(on(Command::FindHide)),
     ]
     .spacing(4.0)
@@ -106,7 +114,11 @@ fn find_bar(doc: &Doc) -> Element<Msg> {
                     .id("replace")
                     .width(Length::Fill),
                 button("Replace").compact().enabled(!f.matches.is_empty()).on_press(on(Command::ReplaceOne)),
-                button("All").compact().enabled(!f.matches.is_empty()).on_press(on(Command::ReplaceAll)).tooltip("Replace All"),
+                button("All")
+                    .compact()
+                    .enabled(!f.matches.is_empty())
+                    .on_press(on(Command::ReplaceAll))
+                    .tooltip("Replace All"),
             ]
             .spacing(4.0)
             .width(Length::Fill)
@@ -164,7 +176,9 @@ pub fn window(doc: &Doc, settings: &Settings) -> Element<Msg> {
 fn key_command(k: &KeyEvent, find_shown: bool) -> Option<Command> {
     let m = k.modifiers;
     match &k.key {
-        Key::Named(NamedKey::Escape) if find_shown && !m.super_key() && !m.alt() && !m.control() => Some(Command::FindHide),
+        Key::Named(NamedKey::Escape) if find_shown && !m.super_key() && !m.alt() && !m.control() => {
+            Some(Command::FindHide)
+        }
         Key::Character(c) if m.super_key() && !m.control() => match c.as_str() {
             "\"" if m.shift() && !m.alt() => Some(Command::Quote),
             "+" if !m.alt() => Some(Command::ZoomIn),
@@ -181,18 +195,35 @@ pub fn sheet(key: WindowKey, sheet: &Sheet) -> Element<Msg> {
     match sheet {
         Sheet::Link { text: t, url, .. } => column![
             text("Link").semibold().size(15.0),
-            row![text("Text").role(Role::Text2).width(40.0), text_field(t).on_change(Msg::LinkText).on_submit(Msg::LinkDone(true)).id("link-text").width(Length::Fill)]
-                .spacing(8.0)
-                .width(Length::Fill),
             row![
-                text("URL").role(Role::Text2).width(40.0),
-                text_field(url).mono().placeholder("https://").on_change(Msg::LinkUrl).on_submit(Msg::LinkDone(true)).id("link-url").width(Length::Fill)
+                text("Text").role(Role::Text2).width(40.0),
+                text_field(t)
+                    .on_change(Msg::LinkText)
+                    .on_submit(Msg::LinkDone(true))
+                    .id("link-text")
+                    .width(Length::Fill)
             ]
             .spacing(8.0)
             .width(Length::Fill),
-            row![spacer(), button("Cancel").cancel().on_press(Msg::LinkDone(false)), button("Insert Link").default().on_press(Msg::LinkDone(true))]
-                .spacing(8.0)
-                .width(Length::Fill),
+            row![
+                text("URL").role(Role::Text2).width(40.0),
+                text_field(url)
+                    .mono()
+                    .placeholder("https://")
+                    .on_change(Msg::LinkUrl)
+                    .on_submit(Msg::LinkDone(true))
+                    .id("link-url")
+                    .width(Length::Fill)
+            ]
+            .spacing(8.0)
+            .width(Length::Fill),
+            row![
+                spacer(),
+                button("Cancel").cancel().on_press(Msg::LinkDone(false)),
+                button("Insert Link").default().on_press(Msg::LinkDone(true))
+            ]
+            .spacing(8.0)
+            .width(Length::Fill),
         ]
         .spacing(12.0)
         .padding(16.0)
@@ -207,9 +238,13 @@ pub fn sheet(key: WindowKey, sheet: &Sheet) -> Element<Msg> {
                 .on_submit(Msg::GotoDone(true))
                 .id("goto-line")
                 .width(Length::Fill),
-            row![spacer(), button("Cancel").cancel().on_press(Msg::GotoDone(false)), button("Go").default().on_press(Msg::GotoDone(true))]
-                .spacing(8.0)
-                .width(Length::Fill),
+            row![
+                spacer(),
+                button("Cancel").cancel().on_press(Msg::GotoDone(false)),
+                button("Go").default().on_press(Msg::GotoDone(true))
+            ]
+            .spacing(8.0)
+            .width(Length::Fill),
         ]
         .spacing(12.0)
         .padding(16.0)
@@ -219,7 +254,10 @@ pub fn sheet(key: WindowKey, sheet: &Sheet) -> Element<Msg> {
 }
 
 /// A widget round the window that hears keys nothing in it took.
-pub fn keys<Msg: Clone + Send + 'static>(child: impl Into<Element<Msg>>, on_key: impl Fn(&KeyEvent) -> Option<Msg> + 'static) -> Element<Msg> {
+pub fn keys<Msg: Clone + Send + 'static>(
+    child: impl Into<Element<Msg>>,
+    on_key: impl Fn(&KeyEvent) -> Option<Msg> + 'static,
+) -> Element<Msg> {
     Element::new(Catcher { on_key: Rc::new(on_key) }, vec![child.into()]).width(Length::Fill).height(Length::Fill)
 }
 

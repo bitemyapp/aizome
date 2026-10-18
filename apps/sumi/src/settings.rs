@@ -39,7 +39,10 @@ pub fn default_path() -> PathBuf {
 
 impl Settings {
     pub fn load(path: Option<&Path>) -> Settings {
-        let mut s: Settings = path.and_then(|p| std::fs::read_to_string(p).ok()).and_then(|t| toml::from_str(&t).ok()).unwrap_or_default();
+        let mut s: Settings = path
+            .and_then(|p| std::fs::read_to_string(p).ok())
+            .and_then(|t| toml::from_str(&t).ok())
+            .unwrap_or_default();
         if !(6.0..=72.0).contains(&s.size) {
             s.size = DEFAULT_SIZE;
         }

@@ -9,7 +9,10 @@ use aizome_kit::MsgSender;
 
 /// The socket of app `name`.
 pub fn socket_path(name: &str) -> PathBuf {
-    let dir = std::env::var_os("XDG_RUNTIME_DIR").filter(|v| !v.is_empty()).map(PathBuf::from).unwrap_or_else(std::env::temp_dir);
+    let dir = std::env::var_os("XDG_RUNTIME_DIR")
+        .filter(|v| !v.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(std::env::temp_dir);
     dir.join(format!("aizome-app.{name}.sock"))
 }
 
@@ -48,7 +51,11 @@ pub fn claim_at(path: PathBuf, args: &[String]) -> Claim {
 }
 
 /// Answer later launches on a thread of its own: each sends `msg(args)`.
-pub fn serve<Msg: Send + 'static>(listener: UnixListener, tx: MsgSender<Msg>, msg: impl Fn(Vec<String>) -> Msg + Send + 'static) {
+pub fn serve<Msg: Send + 'static>(
+    listener: UnixListener,
+    tx: MsgSender<Msg>,
+    msg: impl Fn(Vec<String>) -> Msg + Send + 'static,
+) {
     let _ = std::thread::Builder::new().name("instance".into()).spawn(move || {
         for stream in listener.incoming() {
             let Ok(mut s) = stream else { continue };

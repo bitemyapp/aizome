@@ -45,13 +45,51 @@ pub struct Spec {
 const RUST: Spec = Spec {
     flavour: Flavour::Rust,
     keywords: &[
-        "as", "async", "await", "break", "const", "continue", "crate", "dyn", "else", "enum", "extern", "fn", "for", "gen", "if",
-        "impl", "in", "let", "loop", "macro_rules", "match", "mod", "move", "mut", "pub", "ref", "return", "self", "Self",
-        "static", "struct", "super", "trait", "try", "type", "union", "unsafe", "use", "where", "while", "yield",
+        "as",
+        "async",
+        "await",
+        "break",
+        "const",
+        "continue",
+        "crate",
+        "dyn",
+        "else",
+        "enum",
+        "extern",
+        "fn",
+        "for",
+        "gen",
+        "if",
+        "impl",
+        "in",
+        "let",
+        "loop",
+        "macro_rules",
+        "match",
+        "mod",
+        "move",
+        "mut",
+        "pub",
+        "ref",
+        "return",
+        "self",
+        "Self",
+        "static",
+        "struct",
+        "super",
+        "trait",
+        "try",
+        "type",
+        "union",
+        "unsafe",
+        "use",
+        "where",
+        "while",
+        "yield",
     ],
     types: &[
-        "bool", "char", "str", "u8", "u16", "u32", "u64", "u128", "usize", "i8", "i16", "i32", "i64", "i128", "isize", "f32",
-        "f64",
+        "bool", "char", "str", "u8", "u16", "u32", "u64", "u128", "usize", "i8", "i16", "i32", "i64", "i128", "isize",
+        "f32", "f64",
     ],
     constants: &["true", "false"],
     line_comments: &["//"],
@@ -68,9 +106,9 @@ const RUST: Spec = Spec {
 const PYTHON: Spec = Spec {
     flavour: Flavour::Python,
     keywords: &[
-        "and", "as", "assert", "async", "await", "break", "case", "class", "continue", "def", "del", "elif", "else", "except",
-        "finally", "for", "from", "global", "if", "import", "in", "is", "lambda", "match", "nonlocal", "not", "or", "pass",
-        "raise", "return", "try", "type", "while", "with", "yield",
+        "and", "as", "assert", "async", "await", "break", "case", "class", "continue", "def", "del", "elif", "else",
+        "except", "finally", "for", "from", "global", "if", "import", "in", "is", "lambda", "match", "nonlocal", "not",
+        "or", "pass", "raise", "return", "try", "type", "while", "with", "yield",
     ],
     types: &["int", "float", "str", "bool", "bytes", "list", "dict", "set", "tuple", "object", "complex", "frozenset"],
     constants: &["True", "False", "None", "self", "cls", "NotImplemented", "Ellipsis"],
@@ -86,10 +124,48 @@ const PYTHON: Spec = Spec {
 };
 
 const JS_KEYWORDS: &[&str] = &[
-    "as", "async", "await", "break", "case", "catch", "class", "const", "continue", "debugger", "default", "delete", "do",
-    "else", "export", "extends", "finally", "for", "from", "function", "get", "if", "import", "in", "instanceof", "let",
-    "new", "of", "return", "set", "static", "super", "switch", "this", "throw", "try", "typeof", "var", "void", "while",
-    "with", "yield",
+    "as",
+    "async",
+    "await",
+    "break",
+    "case",
+    "catch",
+    "class",
+    "const",
+    "continue",
+    "debugger",
+    "default",
+    "delete",
+    "do",
+    "else",
+    "export",
+    "extends",
+    "finally",
+    "for",
+    "from",
+    "function",
+    "get",
+    "if",
+    "import",
+    "in",
+    "instanceof",
+    "let",
+    "new",
+    "of",
+    "return",
+    "set",
+    "static",
+    "super",
+    "switch",
+    "this",
+    "throw",
+    "try",
+    "typeof",
+    "var",
+    "void",
+    "while",
+    "with",
+    "yield",
 ];
 
 const JAVASCRIPT: Spec = Spec {
@@ -111,11 +187,66 @@ const JAVASCRIPT: Spec = Spec {
 const TYPESCRIPT: Spec = Spec {
     flavour: Flavour::Js,
     keywords: &[
-        "abstract", "as", "asserts", "async", "await", "break", "case", "catch", "class", "const", "continue", "debugger",
-        "declare", "default", "delete", "do", "else", "enum", "export", "extends", "finally", "for", "from", "function", "get",
-        "if", "implements", "import", "in", "infer", "instanceof", "interface", "is", "keyof", "let", "module", "namespace",
-        "new", "of", "override", "private", "protected", "public", "readonly", "return", "satisfies", "set", "static", "super",
-        "switch", "this", "throw", "try", "type", "typeof", "var", "void", "while", "with", "yield",
+        "abstract",
+        "as",
+        "asserts",
+        "async",
+        "await",
+        "break",
+        "case",
+        "catch",
+        "class",
+        "const",
+        "continue",
+        "debugger",
+        "declare",
+        "default",
+        "delete",
+        "do",
+        "else",
+        "enum",
+        "export",
+        "extends",
+        "finally",
+        "for",
+        "from",
+        "function",
+        "get",
+        "if",
+        "implements",
+        "import",
+        "in",
+        "infer",
+        "instanceof",
+        "interface",
+        "is",
+        "keyof",
+        "let",
+        "module",
+        "namespace",
+        "new",
+        "of",
+        "override",
+        "private",
+        "protected",
+        "public",
+        "readonly",
+        "return",
+        "satisfies",
+        "set",
+        "static",
+        "super",
+        "switch",
+        "this",
+        "throw",
+        "try",
+        "type",
+        "typeof",
+        "var",
+        "void",
+        "while",
+        "with",
+        "yield",
     ],
     types: &["string", "number", "boolean", "any", "unknown", "never", "object", "symbol", "bigint"],
     constants: &["true", "false", "null", "undefined", "NaN", "Infinity"],
@@ -131,16 +262,77 @@ const TYPESCRIPT: Spec = Spec {
 };
 
 const C_KEYWORDS: &[&str] = &[
-    "auto", "break", "case", "const", "continue", "default", "do", "else", "enum", "extern", "for", "goto", "if", "inline",
-    "register", "restrict", "return", "sizeof", "static", "struct", "switch", "typedef", "union", "volatile", "while",
-    "_Alignas", "_Alignof", "_Atomic", "_Generic", "_Noreturn", "_Static_assert", "_Thread_local", "alignas", "alignof",
-    "static_assert", "thread_local", "typeof",
+    "auto",
+    "break",
+    "case",
+    "const",
+    "continue",
+    "default",
+    "do",
+    "else",
+    "enum",
+    "extern",
+    "for",
+    "goto",
+    "if",
+    "inline",
+    "register",
+    "restrict",
+    "return",
+    "sizeof",
+    "static",
+    "struct",
+    "switch",
+    "typedef",
+    "union",
+    "volatile",
+    "while",
+    "_Alignas",
+    "_Alignof",
+    "_Atomic",
+    "_Generic",
+    "_Noreturn",
+    "_Static_assert",
+    "_Thread_local",
+    "alignas",
+    "alignof",
+    "static_assert",
+    "thread_local",
+    "typeof",
 ];
 
 const C_TYPES: &[&str] = &[
-    "void", "char", "short", "int", "long", "float", "double", "signed", "unsigned", "bool", "_Bool", "size_t", "ssize_t",
-    "ptrdiff_t", "intptr_t", "uintptr_t", "int8_t", "int16_t", "int32_t", "int64_t", "uint8_t", "uint16_t", "uint32_t",
-    "uint64_t", "wchar_t", "char8_t", "char16_t", "char32_t", "FILE", "off_t", "pid_t",
+    "void",
+    "char",
+    "short",
+    "int",
+    "long",
+    "float",
+    "double",
+    "signed",
+    "unsigned",
+    "bool",
+    "_Bool",
+    "size_t",
+    "ssize_t",
+    "ptrdiff_t",
+    "intptr_t",
+    "uintptr_t",
+    "int8_t",
+    "int16_t",
+    "int32_t",
+    "int64_t",
+    "uint8_t",
+    "uint16_t",
+    "uint32_t",
+    "uint64_t",
+    "wchar_t",
+    "char8_t",
+    "char16_t",
+    "char32_t",
+    "FILE",
+    "off_t",
+    "pid_t",
 ];
 
 const C: Spec = Spec {
@@ -162,13 +354,75 @@ const C: Spec = Spec {
 const CPP: Spec = Spec {
     flavour: Flavour::C,
     keywords: &[
-        "alignas", "alignof", "and", "asm", "auto", "break", "case", "catch", "class", "co_await", "co_return", "co_yield",
-        "concept", "const", "const_cast", "consteval", "constexpr", "constinit", "continue", "decltype", "default", "delete",
-        "do", "dynamic_cast", "else", "enum", "explicit", "export", "extern", "final", "for", "friend", "goto", "if", "inline",
-        "mutable", "namespace", "new", "noexcept", "not", "operator", "or", "override", "private", "protected", "public",
-        "register", "reinterpret_cast", "requires", "return", "sizeof", "static", "static_assert", "static_cast", "struct",
-        "switch", "template", "this", "thread_local", "throw", "try", "typedef", "typeid", "typename", "union", "using",
-        "virtual", "volatile", "while",
+        "alignas",
+        "alignof",
+        "and",
+        "asm",
+        "auto",
+        "break",
+        "case",
+        "catch",
+        "class",
+        "co_await",
+        "co_return",
+        "co_yield",
+        "concept",
+        "const",
+        "const_cast",
+        "consteval",
+        "constexpr",
+        "constinit",
+        "continue",
+        "decltype",
+        "default",
+        "delete",
+        "do",
+        "dynamic_cast",
+        "else",
+        "enum",
+        "explicit",
+        "export",
+        "extern",
+        "final",
+        "for",
+        "friend",
+        "goto",
+        "if",
+        "inline",
+        "mutable",
+        "namespace",
+        "new",
+        "noexcept",
+        "not",
+        "operator",
+        "or",
+        "override",
+        "private",
+        "protected",
+        "public",
+        "register",
+        "reinterpret_cast",
+        "requires",
+        "return",
+        "sizeof",
+        "static",
+        "static_assert",
+        "static_cast",
+        "struct",
+        "switch",
+        "template",
+        "this",
+        "thread_local",
+        "throw",
+        "try",
+        "typedef",
+        "typeid",
+        "typename",
+        "union",
+        "using",
+        "virtual",
+        "volatile",
+        "while",
     ],
     types: C_TYPES,
     constants: &["NULL", "true", "false", "nullptr"],
@@ -186,12 +440,55 @@ const CPP: Spec = Spec {
 const GO: Spec = Spec {
     flavour: Flavour::Go,
     keywords: &[
-        "break", "case", "chan", "const", "continue", "default", "defer", "else", "fallthrough", "for", "func", "go", "goto",
-        "if", "import", "interface", "map", "package", "range", "return", "select", "struct", "switch", "type", "var",
+        "break",
+        "case",
+        "chan",
+        "const",
+        "continue",
+        "default",
+        "defer",
+        "else",
+        "fallthrough",
+        "for",
+        "func",
+        "go",
+        "goto",
+        "if",
+        "import",
+        "interface",
+        "map",
+        "package",
+        "range",
+        "return",
+        "select",
+        "struct",
+        "switch",
+        "type",
+        "var",
     ],
     types: &[
-        "any", "bool", "byte", "comparable", "complex64", "complex128", "error", "float32", "float64", "int", "int8", "int16",
-        "int32", "int64", "rune", "string", "uint", "uint8", "uint16", "uint32", "uint64", "uintptr",
+        "any",
+        "bool",
+        "byte",
+        "comparable",
+        "complex64",
+        "complex128",
+        "error",
+        "float32",
+        "float64",
+        "int",
+        "int8",
+        "int16",
+        "int32",
+        "int64",
+        "rune",
+        "string",
+        "uint",
+        "uint8",
+        "uint16",
+        "uint32",
+        "uint64",
+        "uintptr",
     ],
     constants: &["true", "false", "nil", "iota"],
     line_comments: &["//"],
@@ -224,9 +521,9 @@ const NIX: Spec = Spec {
 const SHELL: Spec = Spec {
     flavour: Flavour::Shell,
     keywords: &[
-        "if", "then", "else", "elif", "fi", "case", "esac", "for", "while", "until", "do", "done", "in", "function", "select",
-        "time", "return", "break", "continue", "local", "export", "readonly", "declare", "typeset", "unset", "shift", "exit",
-        "source", "alias", "set", "trap", "eval", "exec",
+        "if", "then", "else", "elif", "fi", "case", "esac", "for", "while", "until", "do", "done", "in", "function",
+        "select", "time", "return", "break", "continue", "local", "export", "readonly", "declare", "typeset", "unset",
+        "shift", "exit", "source", "alias", "set", "trap", "eval", "exec",
     ],
     types: &[],
     constants: &["true", "false"],
@@ -277,7 +574,9 @@ pub(crate) const YAML: Spec = Spec {
     flavour: Flavour::Yaml,
     keywords: &[],
     types: &[],
-    constants: &["true", "false", "null", "True", "False", "Null", "TRUE", "FALSE", "NULL", "yes", "no", "on", "off", "~"],
+    constants: &[
+        "true", "false", "null", "True", "False", "Null", "TRUE", "FALSE", "NULL", "yes", "no", "on", "off", "~",
+    ],
     line_comments: &["#"],
     block_comment: None,
     nested_comments: false,
@@ -318,7 +617,8 @@ fn ident_char(spec: &Spec, c: u8) -> bool {
         || c == b'_'
         || c >= 0x80
         || (c == b'$' && spec.flavour == Flavour::Js)
-        || (matches!(spec.flavour, Flavour::Nix | Flavour::Toml | Flavour::Yaml) && (c == b'-' || (c == b'\'' && spec.flavour == Flavour::Nix)))
+        || (matches!(spec.flavour, Flavour::Nix | Flavour::Toml | Flavour::Yaml)
+            && (c == b'-' || (c == b'\'' && spec.flavour == Flavour::Nix)))
 }
 
 fn skip_spaces(b: &[u8], mut i: usize) -> usize {
@@ -444,7 +744,9 @@ pub fn lex(spec: &Spec, mut mode: Mode, line: &str, out: &mut Out) -> Mode {
                 if matches!(spec.flavour, Flavour::Json | Flavour::Yaml | Flavour::Toml) {
                     let j = skip_spaces(b, i);
                     let key = match spec.flavour {
-                        Flavour::Toml => j < n && b[j] == b'=' && b[..from].iter().all(|c| matches!(c, b' ' | b'\t' | b'.')),
+                        Flavour::Toml => {
+                            j < n && b[j] == b'=' && b[..from].iter().all(|c| matches!(c, b' ' | b'\t' | b'.'))
+                        }
                         _ => j < n && b[j] == b':',
                     };
                     if key {
@@ -456,7 +758,9 @@ pub fn lex(spec: &Spec, mut mode: Mode, line: &str, out: &mut Out) -> Mode {
                 let mut j = i;
                 let mut closed = None;
                 while j < n {
-                    if b[j] == b'"' && b[j + 1..].iter().take(hashes as usize).filter(|c| **c == b'#').count() == hashes as usize {
+                    if b[j] == b'"'
+                        && b[j + 1..].iter().take(hashes as usize).filter(|c| **c == b'#').count() == hashes as usize
+                    {
                         closed = Some(j + 1 + hashes as usize);
                         break;
                     }
@@ -587,7 +891,9 @@ fn normal(spec: &Spec, b: &[u8], line: &str, i: &mut usize, out: &mut Out) -> Op
                 }
                 continue;
             }
-            (Flavour::Rust, b'#') if b.get(s + 1) == Some(&b'[') || (b.get(s + 1) == Some(&b'!') && b.get(s + 2) == Some(&b'[')) => {
+            (Flavour::Rust, b'#')
+                if b.get(s + 1) == Some(&b'[') || (b.get(s + 1) == Some(&b'!') && b.get(s + 2) == Some(&b'[')) =>
+            {
                 let end = if b[s + 1] == b'!' { s + 3 } else { s + 2 };
                 out.push(s..end, Kind::Meta);
                 *i = end;
@@ -604,7 +910,8 @@ fn normal(spec: &Spec, b: &[u8], line: &str, i: &mut usize, out: &mut Out) -> Op
                 *i = j;
                 if *word == "include" {
                     let k = skip_spaces(b, j);
-                    if k < n && b[k] == b'<'
+                    if k < n
+                        && b[k] == b'<'
                         && let Some(e) = line[k..].find('>')
                     {
                         out.push(k..k + e + 1, Kind::String);
@@ -618,7 +925,9 @@ fn normal(spec: &Spec, b: &[u8], line: &str, i: &mut usize, out: &mut Out) -> Op
                 let mut j = s + 1;
                 if j < n && b[j] == b'{' {
                     j = line[j..].find('}').map_or(n, |e| j + e + 1);
-                } else if j < n && (b[j].is_ascii_digit() || matches!(b[j], b'@' | b'?' | b'#' | b'*' | b'$' | b'!' | b'-')) {
+                } else if j < n
+                    && (b[j].is_ascii_digit() || matches!(b[j], b'@' | b'?' | b'#' | b'*' | b'$' | b'!' | b'-'))
+                {
                     j += 1;
                 } else {
                     while j < n && (b[j].is_ascii_alphanumeric() || b[j] == b'_') {
@@ -762,7 +1071,10 @@ fn classify(spec: &Spec, b: &[u8], line: &str, s: usize, j: usize, first: usize)
             return spec.constants.contains(&word).then_some(Kind::Constant);
         }
         Flavour::Toml => {
-            if next < n && (b[next] == b'=' || b[next] == b'.') && line[..s].trim_start().chars().all(|c| c.is_alphanumeric() || matches!(c, '.' | '_' | '-' | '"')) {
+            if next < n
+                && (b[next] == b'=' || b[next] == b'.')
+                && line[..s].trim_start().chars().all(|c| c.is_alphanumeric() || matches!(c, '.' | '_' | '-' | '"'))
+            {
                 return Some(Kind::Key);
             }
         }
@@ -773,7 +1085,9 @@ fn classify(spec: &Spec, b: &[u8], line: &str, s: usize, j: usize, first: usize)
             if next < n && b[next] == b'.' && b.get(next + 1).is_some_and(|c| ident_start(spec, *c)) {
                 // a.b.c = …: the path's parts are keys if it ends in '='.
                 let rest = &line[next..];
-                let path_end = rest.find(|ch: char| !(ch.is_alphanumeric() || matches!(ch, '.' | '_' | '-' | '\''))).unwrap_or(rest.len());
+                let path_end = rest
+                    .find(|ch: char| !(ch.is_alphanumeric() || matches!(ch, '.' | '_' | '-' | '\'')))
+                    .unwrap_or(rest.len());
                 let after = skip_spaces(b, next + path_end);
                 if after < n && b[after] == b'=' && b.get(after + 1) != Some(&b'=') {
                     return Some(Kind::Key);
@@ -802,7 +1116,10 @@ fn classify(spec: &Spec, b: &[u8], line: &str, s: usize, j: usize, first: usize)
     if spec.capitalized_types && upper {
         return Some(Kind::Type);
     }
-    if spec.calls && next < n && (b[next] == b'(' || (fl == Flavour::Rust && b[next] == b':' && line[next..].starts_with("::<"))) {
+    if spec.calls
+        && next < n
+        && (b[next] == b'(' || (fl == Flavour::Rust && b[next] == b':' && line[next..].starts_with("::<")))
+    {
         return Some(Kind::Function);
     }
     // Go's and C's declarations: `func name(`, handled by the call rule.
@@ -825,7 +1142,8 @@ mod tests {
 
     #[test]
     fn rust() {
-        let l = r#"pub fn parse<'a>(s: &'a str) -> Result<u32, Error> { let x = 0x1F_u32; println!("{x} \"q\""); 'c' }"#;
+        let l =
+            r#"pub fn parse<'a>(s: &'a str) -> Result<u32, Error> { let x = 0x1F_u32; println!("{x} \"q\""); 'c' }"#;
         assert!(has(Language::Rust, l, "pub", Kind::Keyword));
         assert!(has(Language::Rust, l, "fn", Kind::Keyword));
         assert!(has(Language::Rust, l, "parse", Kind::Function));

@@ -4,8 +4,8 @@
 //! ❖E is Code, as on the board's Format menu, so Use Selection for Find
 //! (❖E on a Mac) moves to ⌥❖E, beside Find and Replace's ⌥❖F.
 
-use aizome_kit::prelude::*;
 use aizome_kit::menu::{EDIT, HELP, WINDOW};
+use aizome_kit::prelude::*;
 
 use crate::app::{Command, Msg, Sumi};
 use crate::files::{Encoding, LineEnding};
@@ -96,8 +96,16 @@ pub fn menus(app: &Sumi) -> MenuBar<Msg> {
         .item(cmd("Find…", Command::FindShow).role(MenuRole::Find).shortcut(Shortcut::cmd('F')))
         .item(cmd("Find and Replace…", Command::ReplaceShow).role(MenuRole::Replace).shortcut(Shortcut::cmd('F').alt()))
         .item(cmd("Find Next", Command::FindNext).role(MenuRole::FindNext).shortcut(Shortcut::cmd('G')))
-        .item(cmd("Find Previous", Command::FindPrevious).role(MenuRole::FindPrevious).shortcut(Shortcut::cmd('G').shift()))
-        .item(cmd("Use Selection for Find", Command::UseSelection).role(MenuRole::UseSelectionForFind).shortcut(Shortcut::cmd('E').alt()));
+        .item(
+            cmd("Find Previous", Command::FindPrevious)
+                .role(MenuRole::FindPrevious)
+                .shortcut(Shortcut::cmd('G').shift()),
+        )
+        .item(
+            cmd("Use Selection for Find", Command::UseSelection)
+                .role(MenuRole::UseSelectionForFind)
+                .shortcut(Shortcut::cmd('E').alt()),
+        );
     let edit = Menu::new(EDIT)
         .item(role("Undo", MenuRole::Undo).shortcut(Shortcut::cmd('Z')))
         .item(role("Redo", MenuRole::Redo).shortcut(Shortcut::cmd('Z').shift()))
@@ -150,7 +158,9 @@ pub fn menus(app: &Sumi) -> MenuBar<Msg> {
         .item(f("Quote", Command::Quote).shortcut(Shortcut::cmd('\'').shift()))
         .separator()
         .item(f("Copy Style", Command::CopyStyle).shortcut(Shortcut::cmd('C').alt()))
-        .item(f("Paste Style", Command::PasteStyle).shortcut(Shortcut::cmd('V').alt()).enabled(md && app.style.is_some()));
+        .item(
+            f("Paste Style", Command::PasteStyle).shortcut(Shortcut::cmd('V').alt()).enabled(md && app.style.is_some()),
+        );
 
     let current_lang = doc.map(|d| d.language);
     let mut languages = Menu::new("Language");
