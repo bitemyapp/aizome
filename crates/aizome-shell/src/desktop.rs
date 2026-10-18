@@ -191,21 +191,24 @@ fn icon_el(icon: &DeskIcon, selected: bool) -> Element<DesktopMsg> {
     .into()
 }
 
-/// The wallpaper, scaled to cover the output and cropped.
-fn ground(image: Option<Image>, size: Size) -> Element<DesktopMsg> {
-    let key = image.as_ref().map(|i| i.pixel_size());
+/// The wallpaper (scaled to cover the output and cropped already, so it
+/// lands one to one on the output's pixels), else the desktop colour.
+/// `image` carries which picture it is, for redrawing when it changes.
+fn ground(image: Option<(Image, u64)>, size: Size) -> Element<DesktopMsg> {
+    let key = image.as_ref().map(|(_, id)| *id);
     drawn(size.width, size.height, key, move |cx| {
         let t = cx.theme();
         let b = cx.bounds();
-        cx.canvas.fill_rect(b, aizome_kit::theme::color(t.palette.desktop));
-        if let Some(img) = &image {
-            let s = img.size();
-            if s.width > 0.0 && s.height > 0.0 {
+        match &image {
+            Some((img, _)) if img.pixel_size().0 > 0 && img.pixel_size().1 > 0 => {
+                // The part of it the output shows, in its pixels.
+                let s = Size::new(img.pixel_size().0 as f64, img.pixel_size().1 as f64);
                 let k = (b.width() / s.width).max(b.height() / s.height);
                 let (cw, ch) = (b.width() / k, b.height() / k);
                 let src = Rect::new((s.width - cw) / 2.0, (s.height - ch) / 2.0, (s.width + cw) / 2.0, (s.height + ch) / 2.0);
                 cx.canvas.draw_image_with(img, Some(src), b, aizome_kit::sidestep_ui::ImageOptions::default());
             }
+            _ => cx.canvas.fill_rect(b, aizome_kit::theme::color(t.palette.desktop)),
         }
     })
     .on_drag(DesktopMsg::Band)
@@ -217,7 +220,7 @@ fn ground(image: Option<Image>, size: Size) -> Element<DesktopMsg> {
 }
 
 /// One output's desktop.
-pub fn view(icons: &[DeskIcon], state: &DesktopState, wallpaper: Option<Image>, size: Size) -> Element<DesktopMsg> {
+pub fn view(icons: &[DeskIcon], state: &DesktopState, wallpaper: Option<(Image, u64)>, size: Size) -> Element<DesktopMsg> {
     let points = layout(icons, &state.positions, size.height);
     let mut placed: Vec<(Point, Element<DesktopMsg>)> = icons
         .iter()

@@ -11,6 +11,7 @@ use crate::actions::{Action, DiskVerb};
 use crate::desktop::{self, DeskIcon, DesktopMsg, IconKind};
 use crate::menus::model::{Entry, Menu as ShellMenu};
 use crate::shell::{Msg, Shell, at_point};
+use crate::wallpaper::WallKey;
 use crate::widgets::drawn::DragPhase;
 
 impl Shell {
@@ -30,25 +31,84 @@ impl Shell {
             .collect()
     }
 
-    /// The wallpaper for the theme showing, decoded once.
-    pub fn wallpaper(&self) -> Option<Image> {
-        let path = desktop::wallpaper_path(&self.settings, self.theme_day)?;
-        self.wallpapers.get(&path).cloned()
+    /// Which wallpapers there are, Night's and Day's (the settings', else
+    /// `$AIZOME_WALLPAPER_NIGHT` and `_DAY`).
+    pub fn refresh_wall_paths(&mut self) {
+        let paths = [desktop::wallpaper_path(&self.settings, false), desktop::wallpaper_path(&self.settings, true)];
+        if paths != self.wall_paths {
+            self.wall_failed.clear();
+        }
+        self.wall_paths = paths;
     }
 
-    /// Open the wallpapers' files (the render thread decodes them, once per
-    /// size it draws them at).
+    /// The wallpaper output `output` wants now: the theme's, at its size
+    /// in pixels.
+    fn wall_key(&self, screen: &crate::shell::Screen) -> Option<WallKey> {
+        let path = self.wall_paths[self.theme_day as usize].clone()?;
+        let o = &screen.output;
+        let scale = o.scale.max(0.25);
+        Some(WallKey { path, width: (o.frame.width() * scale).round() as u32, height: (o.frame.height() * scale).round() as u32 })
+    }
+
+    /// Output `output`'s wallpaper, if it's ready (until it is, the desktop
+    /// shows its colour).
+    pub fn wallpaper_for(&self, output: u32) -> Option<(Image, u64)> {
+        let screen = self.screens.iter().find(|s| s.output.id == output)?;
+        let key = self.wall_key(screen)?;
+        let id = {
+            use std::hash::{Hash, Hasher};
+            let mut h = std::collections::hash_map::DefaultHasher::new();
+            key.hash(&mut h);
+            h.finish()
+        };
+        Some((self.wallpapers.get(&key)?.clone(), id))
+    }
+
+    /// Whether every output's wallpaper is ready.
+    pub fn wallpapers_ready(&self) -> bool {
+        self.screens.iter().filter_map(|s| self.wall_key(s)).all(|k| self.wallpapers.contains_key(&k) || self.wall_failed.contains(&k.path))
+    }
+
+    /// Scale the wallpapers the outputs want, on threads, and let go of
+    /// the ones nothing wants.
+    pub fn prepare_wallpapers(&mut self, cx: &mut Cx<Msg>) {
+        let wanted: Vec<(WallKey, f64)> = self.screens.iter().filter_map(|s| Some((self.wall_key(s)?, s.output.scale))).collect();
+        self.wallpapers.retain(|k, _| wanted.iter().any(|(w, _)| w == k));
+        for (key, scale) in wanted {
+            if self.wallpapers.contains_key(&key) || self.wall_pending.contains(&key) || self.wall_failed.contains(&key.path) {
+                continue;
+            }
+            self.wall_pending.insert(key.clone());
+            cx.spawn(move || {
+                let image = crate::wallpaper::prepare(&key.path, key.width, key.height)
+                    .and_then(|rgba| crate::wallpaper::image(&rgba, key.width, key.height, scale));
+                Msg::Wallpaper(key, image)
+            });
+        }
+    }
+
+    /// A wallpaper was scaled (or didn't read).
+    pub fn wallpaper_ready(&mut self, key: WallKey, image: Option<Image>) {
+        self.wall_pending.remove(&key);
+        match image {
+            Some(i) => {
+                self.wallpapers.insert(key, i);
+            }
+            None => {
+                log::warn!("the wallpaper {} doesn't read", key.path.display());
+                self.wall_failed.insert(key.path);
+            }
+        }
+    }
+
+    /// Scale the outputs' wallpapers now, on this thread (tests).
     pub fn load_wallpapers(&mut self) {
-        for day in [false, true] {
-            if let Some(p) = desktop::wallpaper_path(&self.settings, day)
-                && !self.wallpapers.contains_key(&p)
-            {
-                match Image::open(&p) {
-                    Ok(img) => {
-                        self.wallpapers.insert(p, img);
-                    }
-                    Err(e) => log::warn!("the wallpaper {}: {e}", p.display()),
-                }
+        self.refresh_wall_paths();
+        let wanted: Vec<(WallKey, f64)> = self.screens.iter().filter_map(|s| Some((self.wall_key(s)?, s.output.scale))).collect();
+        for (key, scale) in wanted {
+            if !self.wallpapers.contains_key(&key) {
+                let image = crate::wallpaper::prepare(&key.path, key.width, key.height).and_then(|rgba| crate::wallpaper::image(&rgba, key.width, key.height, scale));
+                self.wallpaper_ready(key, image);
             }
         }
     }
@@ -57,7 +117,7 @@ impl Shell {
         let Some(screen) = self.screens.iter().find(|s| s.output.id == output) else { return aizome_kit::space(0.0) };
         let size = screen.output.frame.size();
         let icons = self.desktop_icons();
-        desktop::view(&icons, &self.desktop, self.wallpaper(), size).map(move |m| Msg::Desktop(output, m))
+        desktop::view(&icons, &self.desktop, self.wallpaper_for(output), size).map(move |m| Msg::Desktop(output, m))
     }
 
     fn icon(&self, key: &str) -> Option<DeskIcon> {

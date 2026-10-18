@@ -33,6 +33,7 @@ pub mod shell;
 pub mod sys;
 pub mod systray;
 pub mod tearoff;
+pub mod wallpaper;
 pub mod widgets;
 pub mod wm;
 

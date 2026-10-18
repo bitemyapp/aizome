@@ -69,6 +69,8 @@ pub enum Msg {
     /// selection), for a menu waiting on it.
     Selection(u64, Option<String>),
     Note(crate::notifications::server::NoteEvent),
+    /// An output's wallpaper, scaled (or not: it didn't read).
+    Wallpaper(crate::wallpaper::WallKey, Option<aizome_kit::Image>),
     /// The bell's flash of generation `n` has shown long enough.
     FlashDone(u64),
     /// logind's `HandlePowerKey`, read.
@@ -192,7 +194,13 @@ pub struct Shell {
     pub media: Option<crate::systray::panels::Media>,
     pub osd: Option<crate::osd::OsdState>,
     pub desktop: crate::desktop::DesktopState,
-    pub(crate) wallpapers: HashMap<PathBuf, aizome_kit::Image>,
+    /// Each output's wallpaper, scaled to it (see `wallpaper`).
+    pub(crate) wallpapers: HashMap<crate::wallpaper::WallKey, aizome_kit::Image>,
+    /// Wallpapers being scaled, and ones that didn't read.
+    pub(crate) wall_pending: std::collections::HashSet<crate::wallpaper::WallKey>,
+    pub(crate) wall_failed: std::collections::HashSet<PathBuf>,
+    /// The wallpapers' files, Night's and Day's.
+    pub(crate) wall_paths: [Option<PathBuf>; 2],
     pub trash_full: bool,
     /// The user: login and full name.
     pub user: (String, String),
@@ -296,6 +304,9 @@ impl Shell {
             osd: None,
             desktop: Default::default(),
             wallpapers: HashMap::new(),
+            wall_pending: Default::default(),
+            wall_failed: Default::default(),
+            wall_paths: [None, None],
             trash_full: false,
             user: crate::pam::current_user(),
             drag_grab: aizome_kit::Vec2::ZERO,
@@ -713,7 +724,7 @@ impl Shell {
         self.desktop.load_positions(&crate::desktop::DesktopState::path());
         self.tearoffs = crate::tearoff::load(&crate::tearoff::store_path());
         self.recent = aizome_search::recent::load(aizome_search::recent::default_path()).into_iter().take(12).map(|r| r.path).collect();
-        self.load_wallpapers();
+        self.refresh_wall_paths();
         self.start_palette_threads(cx);
         {
             let tx = tx.clone();
@@ -859,9 +870,7 @@ impl Shell {
         self.read_settings();
         self.sync_power_key();
         self.tray = self.sys.tray(&self.bar_cfg);
-        if self.opts.live {
-            self.load_wallpapers();
-        }
+        self.refresh_wall_paths();
         let day = self.settings.appearance.theme.resolve(aizome_kit::theme::local_hour()) == aizome_theme::ThemeName::Day;
         self.theme_changed(day);
     }
@@ -1066,6 +1075,7 @@ impl Program for Shell {
             Msg::MenuClosed(n) => self.menu_closed(n),
             Msg::Agenda(a) => self.agenda = a,
             Msg::FlashDone(n) => self.flash_done(n, cx),
+            Msg::Wallpaper(key, image) => self.wallpaper_ready(key, image),
             Msg::LogindPowerKey(k) => self.logind_power_key = k,
             Msg::BarSide(d) => self.bar_side(d, cx),
             Msg::ToolchestTyped(text) => self.toolchest_typed(text, cx),
@@ -1209,6 +1219,7 @@ impl Shell {
     /// geometry drags need.
     pub fn after_update(&mut self, cx: &mut Cx<Msg>) {
         self.find_icons();
+        self.prepare_wallpapers(cx);
         for a in std::mem::take(&mut self.pending_actions) {
             self.run(a, cx);
         }

@@ -168,7 +168,8 @@ pub fn view(v: &LockView) -> Element<LockMsg> {
         let b = cx.bounds();
         cx.canvas.fill_rect(b, aizome_kit::theme::color(aizome_theme::Rgba::hex(0x16161e)));
         if let Some(img) = &wall {
-            let s = img.size();
+            // In its pixels: it was scaled to the output already.
+            let s = Size::new(img.pixel_size().0 as f64, img.pixel_size().1 as f64);
             if s.width > 0.0 && s.height > 0.0 {
                 let k = (b.width() / s.width).max(b.height() / s.height);
                 let (cw, ch) = (b.width() / k, b.height() / k);
@@ -428,7 +429,7 @@ impl Shell {
             error: self.lock.error.clone(),
             caps: self.lock.caps,
             shake: shake_offset(self.lock.shake),
-            wallpaper: self.wallpaper(),
+            wallpaper: self.wallpaper_for(output).map(|(i, _)| i),
             size: screen.output.frame.size(),
             show_clock: self.lock_cfg.show_clock,
             notes: self.lock_notes(),
