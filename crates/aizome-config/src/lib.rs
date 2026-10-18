@@ -18,7 +18,9 @@ use std::time::{Duration, SystemTime};
 
 pub use aizome_theme::{Effects, FocusColor, ThemeName};
 
+pub mod compositor;
 pub mod shell;
+pub use compositor::{NightLight, NightSchedule, RendererChoice, Sun, TabDoubleClick, sun_times, temperature_rgb};
 pub use shell::{
     ClockFormat, DeskbarSettings, LockSettings, MenubarSettings, NotificationSettings, PaletteSettings, SYSTRAY_WIDGETS,
 };
@@ -37,6 +39,8 @@ pub struct Settings {
     pub keys: Keys,
     pub windows: Windows,
     pub idle: Idle,
+    /// Warmer colours at night.
+    pub night_light: NightLight,
     pub menubar: toml::Table,
     pub deskbar: toml::Table,
     pub notifications: toml::Table,

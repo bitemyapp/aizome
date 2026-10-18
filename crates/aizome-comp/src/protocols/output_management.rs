@@ -141,12 +141,17 @@ fn new_head(az: &Aizome, inst: &mut Instance, output: &smithay::output::Output) 
 /// The head's changing state: enabled, mode, position, transform, scale.
 fn send_state(az: &Aizome, inst: &Instance, output: &smithay::output::Output) {
     let Some((h, modes)) = inst.heads.get(&output.name()) else { return };
+    if az.disabled_outputs.contains(output) {
+        h.enabled(0);
+        return;
+    }
     h.enabled(1);
     if let Some(cur) = output.current_mode()
         && let Some((mr, _)) = modes.iter().find(|(_, m)| *m == cur) {
             h.current_mode(mr);
         }
-    let r = az.output_rect(output);
+    // A mirror sits where its source does.
+    let r = az.output_rect(&az.mirror_source(output).unwrap_or_else(|| output.clone()));
     h.position(r.x, r.y);
     h.transform(transform_to_wl(output.current_transform()));
     h.scale(output.current_scale().fractional_scale());
@@ -157,7 +162,7 @@ pub fn outputs_changed(az: &mut Aizome) {
     let mut st = std::mem::replace(&mut az.output_management, OutputManagementState { instances: Vec::new(), serial: 0 });
     st.serial = st.serial.wrapping_add(1);
     st.instances.retain(|i| i.manager.is_alive());
-    let outputs = az.outputs.clone();
+    let outputs = az.known_outputs();
     for inst in &mut st.instances {
         // Gone.
         let gone: Vec<String> = inst.heads.keys().filter(|n| !outputs.iter().any(|o| &o.name() == *n)).cloned().collect();
@@ -185,7 +190,7 @@ impl GlobalDispatch<Manager, GlobalData> for State {
     fn bind(state: &mut State, _: &DisplayHandle, _: &Client, resource: New<Manager>, _: &GlobalData, init: &mut DataInit<'_, State>) {
         let manager = init.init(resource, ());
         let mut inst = Instance { manager: manager.clone(), heads: HashMap::new() };
-        for o in state.az.outputs.clone() {
+        for o in state.az.known_outputs() {
             new_head(&state.az, &mut inst, &o);
         }
         manager.done(state.az.output_management.serial);
@@ -273,7 +278,7 @@ impl Dispatch<Configuration, ConfigData> for State {
                     .collect();
                 drop(inner);
                 let ok = changes.iter().all(|ch| {
-                    ch.scale.is_none_or(|s| (0.5..=4.0).contains(&s)) && state.az.output_by_name(&ch.name).is_some() && ch.enabled != Some(false)
+                    ch.scale.is_none_or(|s| (0.5..=4.0).contains(&s)) && state.az.known_output(&ch.name).is_some()
                 });
                 if !ok || test {
                     if ok { c.succeeded() } else { c.failed() }
@@ -281,7 +286,7 @@ impl Dispatch<Configuration, ConfigData> for State {
                 }
                 let mut failed = false;
                 for ch in &changes {
-                    if let Err(e) = state.backend.configure_output(&mut state.az, ch) {
+                    if let Err(e) = state.configure_output(ch) {
                         warn!("output management: {e}");
                         failed = true;
                     }

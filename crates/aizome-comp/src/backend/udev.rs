@@ -50,10 +50,10 @@ use smithay::wayland::dmabuf::DmabufFeedbackBuilder;
 use smithay::wayland::presentation::Refresh;
 use tracing::{error, info, warn};
 
-use super::{Capture, Frame, capture_with, post_frame, take_feedback};
+use super::{Capture, Frame, capture_with, post_frame, scene_for, take_feedback};
 use crate::cli::RendererKind;
 use crate::outputs::{OutputChange, OutputSerial};
-use crate::render::{OutputElement, Purpose, clear_color, output_elements};
+use crate::render::OutputElement;
 use crate::state::{Aizome, State};
 
 const GLES_FORMATS: &[Fourcc] = &[Fourcc::Abgr2101010, Fourcc::Argb2101010, Fourcc::Abgr8888, Fourcc::Argb8888];
@@ -125,6 +125,9 @@ pub struct Udev {
     libinput: Libinput,
     input_devices: Vec<libinput::Device>,
     powered: bool,
+    /// Outputs turned off, by name: the device, connector and CRTC kept
+    /// for turning them on.
+    disabled: HashMap<String, (DrmNode, connector::Handle, crtc::Handle)>,
 }
 
 impl Udev {
@@ -218,12 +221,14 @@ impl Udev {
                             }
                         }
                         state.az.queue_redraw_all();
+                        // Another session may have left its own gamma.
+                        state.update_night_light(true);
                     }
                 }
             })
             .map_err(|e| e.to_string())?;
 
-        Ok(Udev { session, seat, primary_gpu, renderers, devices: HashMap::new(), libinput, input_devices: Vec::new(), powered: true })
+        Ok(Udev { session, seat, primary_gpu, renderers, devices: HashMap::new(), libinput, input_devices: Vec::new(), powered: true, disabled: HashMap::new() })
     }
 
     /// Opens every GPU, sets up the outputs connected now, the dmabuf
@@ -384,8 +389,7 @@ impl Udev {
                 };
                 match renderer {
                     Ok(mut r) => {
-                        let elements = output_elements(az, &mut r, output, Purpose::Screen);
-                        let clear = clear_color(az);
+                        let (elements, clear) = scene_for::<_, GlesRenderbuffer>(&mut r, az, output);
                         match drm.render_frame(&mut r, &elements, clear, FrameFlags::DEFAULT) {
                             Ok(res) => {
                                 let damaged = !res.is_empty;
@@ -400,8 +404,7 @@ impl Udev {
                 }
             }
             (Renderers::Pixman(r), SurfaceOutput::Pixman(drm)) => {
-                let elements = output_elements(az, r, output, Purpose::Screen);
-                let clear = clear_color(az);
+                let (elements, clear) = scene_for::<_, smithay::reexports::pixman::Image<'static, 'static>>(r, az, output);
                 match drm.render_frame(r, &elements, clear, FrameFlags::DEFAULT) {
                     Ok(res) => {
                         let damaged = !res.is_empty;
@@ -436,6 +439,32 @@ impl Udev {
         }
     }
 
+    /// Night Light: a temperature through every CRTC's gamma ramp.
+    pub fn set_temperature(&mut self, az: &mut Aizome, kelvin: u32) {
+        for d in self.devices.values() {
+            let drm = match &d.manager {
+                Manager::Gles(m) => m.device(),
+                Manager::Pixman(m) => m.device(),
+            };
+            for (crtc, s) in &d.surfaces {
+                let size = drm.get_crtc(*crtc).map(|c| c.gamma_length() as usize).unwrap_or(0);
+                let ok = size > 1 && {
+                    let (r, g, b) = crate::night::ramps(kelvin, size);
+                    match drm.set_gamma(*crtc, &r, &g, &b) {
+                        Ok(()) => true,
+                        Err(e) => {
+                            tracing::debug!("gamma on {}: {e}", s.output.name());
+                            false
+                        }
+                    }
+                };
+                if let Some(o) = az.out.get_mut(&s.output) {
+                    o.gamma = ok;
+                }
+            }
+        }
+    }
+
     pub fn set_power(&mut self, az: &mut Aizome, on: bool) {
         self.powered = on;
         for d in self.devices.values_mut() {
@@ -457,12 +486,30 @@ impl Udev {
         }
     }
 
-    /// Mode, scale, position and transform; turning outputs off isn't
-    /// supported yet.
+    /// Mode, scale, position and transform; turning an output off (its
+    /// CRTC disabled, out of the layout). Turning one on goes through
+    /// `enable_output`, which sets it up afresh.
     pub fn configure_output(&mut self, az: &mut Aizome, change: &OutputChange) -> Result<(), String> {
-        let output = az.output_by_name(&change.name).ok_or_else(|| format!("no output {}", change.name))?;
+        let output = az.known_output(&change.name).ok_or_else(|| format!("no output {}", change.name))?;
+        if az.disabled_outputs.contains(&output) {
+            return if change.enabled == Some(true) { Err("turn it on with enable_output".into()) } else { Ok(()) };
+        }
         if change.enabled == Some(false) {
-            return Err("turning outputs off isn't supported yet".into());
+            let id = *output.user_data().get::<UdevOutputId>().ok_or("not a DRM output")?;
+            let device = self.devices.get_mut(&id.node).ok_or("no device")?;
+            if let Some(mut s) = device.surfaces.remove(&id.crtc) {
+                let res = match &mut s.drm {
+                    SurfaceOutput::Gles(o) => o.with_compositor(|c| c.clear()).map_err(|e| format!("{e:?}")),
+                    SurfaceOutput::Pixman(o) => o.with_compositor(|c| c.clear()).map_err(|e| format!("{e:?}")),
+                };
+                if let Err(e) = res {
+                    warn!("turning {} off: {e}", change.name);
+                }
+                self.disabled.insert(change.name.clone(), (id.node, s.connector, id.crtc));
+            }
+            info!("output {} turned off", change.name);
+            crate::outputs::disable(az, &output);
+            return Ok(());
         }
         if let Some((w, h, refresh)) = change.mode {
             let primary = self.primary_gpu;
@@ -687,6 +734,30 @@ pub fn auto_scale(width_px: i32, width_mm: i32) -> f64 {
 }
 
 fn connector_connected(state: &mut State, node: DrmNode, info: connector::Info, crtc: crtc::Handle) {
+    connector_connected_as(state, node, info, crtc, false, None);
+}
+
+/// Turns an output that was turned off back on: set up afresh, at the
+/// place asked for or right of the others.
+pub fn enable_output(state: &mut State, name: &str, position: Option<(i32, i32)>) -> Result<(), String> {
+    let crate::backend::Backend::Udev(u) = &mut state.backend else { return Err("not on udev".into()) };
+    let (node, conn, crtc) = u.disabled.remove(name).ok_or_else(|| format!("{name} isn't off"))?;
+    let device = u.devices.get(&node).ok_or("its device is gone")?;
+    let drm = match &device.manager {
+        Manager::Gles(m) => m.device(),
+        Manager::Pixman(m) => m.device(),
+    };
+    let info = drm.get_connector(conn, true).map_err(|e| e.to_string())?;
+    state.az.disabled_outputs.retain(|o| o.name() != name);
+    connector_connected_as(state, node, info, crtc, true, position);
+    if state.az.output_by_name(name).is_none() {
+        return Err(format!("{name} didn't come on"));
+    }
+    info!("output {name} turned on");
+    Ok(())
+}
+
+fn connector_connected_as(state: &mut State, node: DrmNode, info: connector::Info, crtc: crtc::Handle, force_on: bool, position: Option<(i32, i32)>) {
     let name = format!("{}-{}", info.interface().as_str(), info.interface_id());
     let crate::backend::Backend::Udev(u) = &mut state.backend else { return };
     let primary = u.primary_gpu;
@@ -701,10 +772,7 @@ fn connector_connected(state: &mut State, node: DrmNode, info: connector::Info, 
         return;
     }
     let cfg = state.az.settings.output(&name, &make, &model, &serial).cloned();
-    if cfg.as_ref().and_then(|c| c.enabled) == Some(false) {
-        info!("{name} is disabled in the settings");
-        return;
-    }
+    let off = !force_on && cfg.as_ref().and_then(|c| c.enabled) == Some(false);
     let preferred = modes.iter().find(|m| m.mode_type().contains(ModeTypeFlags::PREFERRED)).copied().unwrap_or(modes[0]);
     let drm_mode = cfg
         .as_ref()
@@ -730,6 +798,15 @@ fn connector_connected(state: &mut State, node: DrmNode, info: connector::Info, 
     output.user_data().insert_if_missing(|| OutputSerial(serial.clone()));
     let wl_mode = WlMode::from(drm_mode);
     output.change_current_state(Some(wl_mode), None, None, None);
+    if off {
+        // Known, so Settings can turn it on, but not driven.
+        info!("{name} is off in the settings");
+        u.disabled.insert(name.clone(), (node, info.handle(), crtc));
+        state.az.disabled_outputs.retain(|o| o.name() != name);
+        state.az.disabled_outputs.push(output);
+        crate::outputs::outputs_changed(&mut state.az);
+        return;
+    }
     let render_node = device.render_node.unwrap_or(primary);
     let drm_output = match (&mut u.renderers, &mut device.manager) {
         (Renderers::Gles(gpus), Manager::Gles(m)) => {
@@ -754,17 +831,25 @@ fn connector_connected(state: &mut State, node: DrmNode, info: connector::Info, 
     device.surfaces.insert(crtc, Surface { output: output.clone(), connector: info.handle(), drm: drm_output, redraw: Redraw::Idle, modes });
     let scale = cfg.as_ref().and_then(|c| c.scale).unwrap_or_else(|| auto_scale(wl_mode.size.w, mm_w as i32));
     let x = state.az.outputs.iter().map(|o| state.az.output_rect(o).right()).max().unwrap_or(0);
-    let pos = cfg.as_ref().and_then(|c| c.position).map(|p| (p[0], p[1])).unwrap_or((x, 0));
+    let pos = position.or(cfg.as_ref().and_then(|c| c.position).map(|p| (p[0], p[1]))).unwrap_or((x, 0));
     info!(name, make, model, ?pos, scale, "output connected");
     crate::outputs::add_output(&mut state.az, &output, wl_mode, scale, pos, &serial);
     if let Some(t) = cfg.and_then(|c| c.transform) {
         output.change_current_state(None, Some(crate::outputs::transform_from_config(t)), None, None);
     }
     crate::actions::rescue_windows(&mut state.az);
+    state.update_night_light(true);
 }
 
 fn connector_disconnected(state: &mut State, node: DrmNode, crtc: crtc::Handle) {
     let crate::backend::Backend::Udev(u) = &mut state.backend else { return };
+    // One that was turned off goes for good.
+    let gone: Vec<String> = u.disabled.iter().filter(|(_, (n, _, c))| *n == node && *c == crtc).map(|(k, _)| k.clone()).collect();
+    for name in gone {
+        u.disabled.remove(&name);
+        state.az.disabled_outputs.retain(|o| o.name() != name);
+        crate::outputs::outputs_changed(&mut state.az);
+    }
     let Some(device) = u.devices.get_mut(&node) else { return };
     let Some(surface) = device.surfaces.remove(&crtc) else { return };
     device.connectors.retain(|_, c| *c != crtc);

@@ -21,9 +21,8 @@ use smithay::utils::{DeviceFd, Size};
 use smithay::wayland::dmabuf::DmabufFeedbackBuilder;
 use tracing::{info, warn};
 
-use super::{Capture, capture_with, post_frame, render_frame};
+use super::{Capture, capture_with, post_frame, render_frame, scene_for};
 use crate::cli::{HeadlessOutput, RendererKind};
-use crate::render::{Purpose, output_elements};
 use crate::state::{Aizome, State};
 
 pub enum HeadlessRenderer {
@@ -133,13 +132,32 @@ impl Headless {
         );
     }
 
-    /// Re-creates an output's buffer after a mode change.
+    /// Mode, scale, position, transform, and turning outputs off and on
+    /// (an output off has no buffer and no place in the layout).
     pub fn configure_output(&mut self, az: &mut Aizome, change: &crate::outputs::OutputChange) -> Result<(), String> {
-        let output = az.output_by_name(&change.name).ok_or_else(|| format!("no output {}", change.name))?;
+        let output = az.known_output(&change.name).ok_or_else(|| format!("no output {}", change.name))?;
+        let off = az.disabled_outputs.contains(&output);
+        if change.enabled == Some(false) {
+            if !off {
+                crate::outputs::disable(az, &output);
+                self.outputs.remove(&output);
+            }
+            return Ok(());
+        }
         if let Some((w, h, _)) = change.mode {
             let mode = Mode { size: (w, h).into(), refresh: 60_000 };
             output.add_mode(mode);
             output.change_current_state(Some(mode), None, None, None);
+        }
+        if off {
+            if change.enabled != Some(true) {
+                return Ok(());
+            }
+            let refresh = output.current_mode().map(|m| m.refresh).unwrap_or(60_000);
+            az.out.insert(output.clone(), crate::state::OutputState::new(refresh));
+            let pos = crate::outputs::free_position(az, change.position);
+            output.change_current_state(None, None, None, Some(pos.into()));
+            crate::outputs::attach(az, &output);
         }
         crate::outputs::apply_logical(az, change)?;
         self.outputs.remove(&output);
@@ -201,16 +219,16 @@ impl Headless {
         let result = match (&mut self.renderer, &mut hs.target) {
             (HeadlessRenderer::Gles(r), Target::Gles(rb)) => {
                 let r = r.as_mut();
-                let elements = output_elements(az, r, output, Purpose::Screen);
+                let (elements, clear) = scene_for::<_, GlesRenderbuffer>(r, az, output);
                 match r.bind(rb) {
-                    Ok(mut fb) => render_frame(az, r, &mut fb, &mut hs.tracker, age, output, &elements, started, true),
+                    Ok(mut fb) => render_frame(az, r, &mut fb, &mut hs.tracker, age, output, &elements, clear, started, true),
                     Err(e) => Err(format!("bind: {e:?}")),
                 }
             }
             (HeadlessRenderer::Pixman(r), Target::Pixman(img)) => {
-                let elements = output_elements(az, r, output, Purpose::Screen);
+                let (elements, clear) = scene_for::<_, smithay::reexports::pixman::Image<'static, 'static>>(r, az, output);
                 match r.bind(img) {
-                    Ok(mut fb) => render_frame(az, r, &mut fb, &mut hs.tracker, age, output, &elements, started, false),
+                    Ok(mut fb) => render_frame(az, r, &mut fb, &mut hs.tracker, age, output, &elements, clear, started, false),
                     Err(e) => Err(format!("bind: {e:?}")),
                 }
             }

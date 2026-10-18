@@ -55,6 +55,10 @@ session
   reload-config
   output NAME [--mode WxH[@Hz]] [--scale S] [--position X,Y]
               [--transform normal|90|180|270|flipped|flipped-90|...] [--on|--off]
+  mirror NAME SOURCE|--off      show SOURCE's picture on NAME, scaled to fit
+  primary NAME                  the main display, for this session
+  night-light [on|off] [--temperature K]
+                                Night Light: change it, then show it
   power-off-monitors | power-on-monitors
   lock                          ask the shell to lock
   action NAME                   run a key-binding action by name
@@ -345,6 +349,25 @@ fn parse(command: &str, mut args: Vec<String>) -> Result<Request, String> {
             need(&args, 1, "an output name")?;
             Request::OutputConfig { name: args[0].clone(), mode, scale, position, transform, enabled }
         }
+        "mirror" => {
+            let off = flag(&mut args, "--off");
+            need(&args, if off { 1 } else { 2 }, "an output and the output to mirror (or --off)")?;
+            Request::MirrorOutput { name: args[0].clone(), source: if off { None } else { Some(args[1].clone()) } }
+        }
+        "primary" => {
+            need(&args, 1, "an output name")?;
+            Request::SetPrimaryOutput { name: args[0].clone() }
+        }
+        "night-light" => {
+            let temperature = opt(&mut args, "--temperature")?.map(|t| t.parse::<u32>().map_err(|_| format!("bad temperature {t}"))).transpose()?;
+            let enabled = match args.first().map(String::as_str) {
+                Some("on") => Some(true),
+                Some("off") => Some(false),
+                None => None,
+                Some(o) => return Err(format!("{o}: on or off")),
+            };
+            Request::NightLight { enabled, temperature }
+        }
         "power-off-monitors" => Request::PowerOffMonitors,
         "power-on-monitors" => Request::PowerOnMonitors,
         "lock" => Request::Lock,
@@ -455,6 +478,9 @@ fn print_response(r: &Response) -> ExitCode {
         }
         Response::Stats { stats } => {
             println!("{} on {}", stats.renderer, stats.backend);
+            if stats.renderer_after_restart {
+                println!("renderer setting: {} (after the next login)", stats.renderer_setting);
+            }
             for o in &stats.outputs {
                 println!(
                     "{}: {} frames rendered, {} skipped (no damage), {} samples",
@@ -468,6 +494,16 @@ fn print_response(r: &Response) -> ExitCode {
         }
         Response::Screenshot { path } => println!("{path}"),
         Response::Spawned { pid } => println!("{pid}"),
+        Response::NightLight { state } => {
+            let on = if state.enabled { "on" } else { "off" };
+            let now = if state.active { "warm now" } else { "neutral now" };
+            println!("night light {on}, {} K, {} schedule; {now} ({} K)", state.temperature, state.schedule, state.current);
+            if state.outputs.is_empty() {
+                println!("no display here can show it");
+            } else {
+                println!("on {}", state.outputs.join(", "));
+            }
+        }
     }
     ExitCode::SUCCESS
 }
@@ -490,7 +526,17 @@ fn print_output(o: &OutputInfo) {
         .as_ref()
         .map(|m| format!("{}x{} @ {:.3} Hz", m.width, m.height, m.refresh as f64 / 1000.0))
         .unwrap_or_else(|| "off".into());
-    println!("{} \"{} {}\" {}", o.name, o.make, o.model, if o.enabled { "" } else { "(disabled)" });
+    let mut tags = Vec::new();
+    if !o.enabled {
+        tags.push("(disabled)".to_string());
+    }
+    if o.primary {
+        tags.push("(primary)".to_string());
+    }
+    if let Some(m) = &o.mirror {
+        tags.push(format!("(mirrors {m})"));
+    }
+    println!("{} \"{} {}\" {}", o.name, o.make, o.model, tags.join(" "));
     println!("  mode      {mode}");
     println!("  scale     {}", o.scale);
     println!("  transform {:?}", o.transform);
@@ -592,6 +638,7 @@ fn describe_event(e: &Event) -> String {
         Event::Idle { kind } => format!("idle {kind}"),
         Event::Resumed => "resumed".into(),
         Event::LockStateChanged { locked } => format!("locked {locked}"),
+        Event::NightLightChanged { state } => format!("night-light {} {} K now", if state.enabled { "on" } else { "off" }, state.current),
     }
 }
 

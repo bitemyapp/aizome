@@ -814,6 +814,7 @@ mod tests {
             usable: aizome_ipc::Rect::new(x, 0, lw, lh),
             physical_size_mm: (300, 190),
             powered: true,
+            ..OutputInfo::default()
         }
     }
 

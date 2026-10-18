@@ -139,7 +139,15 @@ impl Backend {
         match self {
             Backend::Udev(u) => u.configure_output(az, change),
             Backend::Headless(h) => h.configure_output(az, change),
+            Backend::Winit(_) if change.enabled == Some(false) => Err("the window's output can't be turned off".into()),
             Backend::Winit(_) => crate::outputs::apply_logical(az, change),
+        }
+    }
+
+    /// Night Light's temperature on the displays that take gamma ramps.
+    pub fn set_temperature(&mut self, az: &mut Aizome, kelvin: u32) {
+        if let Backend::Udev(u) = self {
+            u.set_temperature(az, kelvin);
         }
     }
 
@@ -169,13 +177,14 @@ pub struct Frame {
 /// Draws an output's elements through a damage tracker into a bound
 /// framebuffer, timing it.
 pub fn render_frame<R>(
-    az: &mut Aizome,
+    _az: &mut Aizome,
     renderer: &mut R,
     framebuffer: &mut R::Framebuffer<'_>,
     tracker: &mut OutputDamageTracker,
     age: usize,
     output: &Output,
     elements: &[OutputElement<R>],
+    clear: [f32; 4],
     started: Instant,
     wait_gpu: bool,
 ) -> Result<Frame, String>
@@ -183,7 +192,6 @@ where
     R: Renderer + ImportAll + ImportMem,
     R::TextureId: Clone + Send + 'static,
 {
-    let clear = clear_color(az);
     let res = tracker.render_output(renderer, framebuffer, age, elements, clear).map_err(|e| format!("{e:?}"))?;
     let cpu = started.elapsed();
     let damaged = res.damage.is_some_and(|d| !d.is_empty());
@@ -213,6 +221,16 @@ pub fn post_frame(az: &mut Aizome, output: &Output, frame: &Frame, presented: bo
             o.damaged_frames += 1;
         }
         o.last_frame = Some(Instant::now());
+    }
+    if az.mirror_source(output).is_some() {
+        // A mirror shows a copy: its source's frame did the rest.
+        return;
+    }
+    if frame.damaged {
+        let mirrors: Vec<Output> = az.mirrors.iter().filter(|(_, s)| s == output).map(|(m, _)| m.clone()).collect();
+        for m in mirrors {
+            az.queue_redraw(&m);
+        }
     }
     update_primary_outputs(az, output, &frame.states);
     send_frames(az, output);
@@ -317,11 +335,15 @@ where
     let mode = output.current_mode().ok_or("the output has no mode")?;
     let size = output.current_transform().transform_size(mode.size);
     let scale = output.current_scale().fractional_scale();
-    let elements = output_elements(az, renderer, output, Purpose::Capture { cursor });
+    // A mirror's picture is its source's, fitted.
+    let (elements, clear) = if az.mirror_source(output).is_some() {
+        scene_for::<R, T>(renderer, az, output)
+    } else {
+        (output_elements(az, renderer, output, Purpose::Capture { cursor }), clear_color(az))
+    };
     let buffer_size: Size<i32, BufferCoords> = Size::from((size.w, size.h));
     let mut target: T = renderer.create_buffer(Fourcc::Abgr8888, buffer_size).map_err(|e| format!("offscreen buffer: {e:?}"))?;
     let mut tracker = OutputDamageTracker::new(size, scale, Transform::Normal);
-    let clear = clear_color(az);
     let rgba = {
         let mut fb = renderer.bind(&mut target).map_err(|e| format!("bind: {e:?}"))?;
         let res = tracker.render_output(renderer, &mut fb, 0, &elements, clear).map_err(|e| format!("render: {e:?}"))?;
@@ -354,4 +376,67 @@ pub fn fresh_shm_buffers(surface: &WlSurface) -> Vec<WlBuffer> {
         |_, _, _| true,
     );
     out
+}
+
+/// What an output shows and the colour behind it: the scene, or for a
+/// mirror its source's picture rendered afresh, scaled to fit and
+/// letterboxed in black. (A mirror costs a second render of its source and
+/// a read-back each frame; it redraws whenever its source does.)
+pub fn scene_for<R, T>(renderer: &mut R, az: &mut Aizome, output: &Output) -> (Vec<OutputElement<R>>, [f32; 4])
+where
+    R: Renderer + ImportAll + ImportMem + Offscreen<T> + Bind<T> + ExportMem,
+    R::TextureId: Clone + Send + 'static,
+{
+    let Some(source) = az.mirror_source(output) else {
+        return (output_elements(az, renderer, output, Purpose::Screen), clear_color(az));
+    };
+    let black = [0.0, 0.0, 0.0, 1.0];
+    match mirror_elements::<R, T>(renderer, az, output, &source) {
+        Ok(e) => (e, black),
+        Err(e) => {
+            tracing::warn!("mirroring {} on {}: {e}", source.name(), output.name());
+            (Vec::new(), black)
+        }
+    }
+}
+
+fn mirror_elements<R, T>(renderer: &mut R, az: &mut Aizome, mirror: &Output, source: &Output) -> Result<Vec<OutputElement<R>>, String>
+where
+    R: Renderer + ImportAll + ImportMem + Offscreen<T> + Bind<T> + ExportMem,
+    R::TextureId: Clone + Send + 'static,
+{
+    use smithay::backend::renderer::element::Kind;
+    use smithay::backend::renderer::element::memory::{MemoryRenderBuffer, MemoryRenderBufferRenderElement};
+    let cap = capture_with::<R, T>(renderer, az, source, true)?;
+    let mode = mirror.current_mode().ok_or("the mirror has no mode")?;
+    let size = mirror.current_transform().transform_size(mode.size);
+    let (fit, at) = letterbox((cap.width as i32, cap.height as i32), (size.w, size.h));
+    let scale = mirror.current_scale().fractional_scale();
+    let buffer = MemoryRenderBuffer::from_slice(&cap.rgba, Fourcc::Abgr8888, (cap.width as i32, cap.height as i32), 1, Transform::Normal, None);
+    let logical = Size::<f64, smithay::utils::Logical>::from((fit.0 as f64 / scale, fit.1 as f64 / scale)).to_i32_round();
+    // All of the picture (src), into the fitted size.
+    let src = smithay::utils::Rectangle::<f64, smithay::utils::Logical>::from_size((cap.width as f64, cap.height as f64).into());
+    let e = MemoryRenderBufferRenderElement::from_buffer(renderer, (at.0 as f64, at.1 as f64), &buffer, None, Some(src), Some(logical), Kind::Unspecified)
+        .map_err(|e| format!("{e:?}"))?;
+    Ok(vec![OutputElement::Memory(e)])
+}
+
+/// A picture of size `src` fitted into `dst`: its size and where it goes.
+pub fn letterbox(src: (i32, i32), dst: (i32, i32)) -> ((i32, i32), (i32, i32)) {
+    if src.0 <= 0 || src.1 <= 0 {
+        return ((0, 0), (0, 0));
+    }
+    let k = (dst.0 as f64 / src.0 as f64).min(dst.1 as f64 / src.1 as f64);
+    let w = (src.0 as f64 * k).round() as i32;
+    let h = (src.1 as f64 * k).round() as i32;
+    ((w, h), ((dst.0 - w) / 2, (dst.1 - h) / 2))
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn letterboxing() {
+        assert_eq!(super::letterbox((2880, 1800), (1920, 1080)), ((1728, 1080), (96, 0)));
+        assert_eq!(super::letterbox((1920, 1080), (1920, 1200)), ((1920, 1080), (0, 60)));
+    }
 }

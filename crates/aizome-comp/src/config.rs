@@ -98,19 +98,25 @@ impl State {
         if old.outputs != s.outputs {
             self.apply_output_settings();
         }
+        if old.night_light != s.night_light {
+            self.update_night_light(true);
+        }
 
         self.az.idle.reset_timers(&s);
         info!("settings applied");
         self.az.ipc.emit(&Event::ConfigChanged);
     }
 
-    /// Applies the settings' output entries to the outputs present.
+    /// Applies the settings' output entries to the outputs present: modes,
+    /// scale, place and transform, on or off, then mirroring.
     pub fn apply_output_settings(&mut self) {
-        let outputs = self.az.outputs.clone();
-        for o in outputs {
+        let entry = |az: &crate::state::Aizome, o: &smithay::output::Output| {
             let props = o.physical_properties();
             let serial = o.user_data().get::<crate::outputs::OutputSerial>().map(|s| s.0.clone()).unwrap_or_default();
-            let Some(cfg) = self.az.settings.output(&o.name(), &props.make, &props.model, &serial).cloned() else { continue };
+            az.settings.output(&o.name(), &props.make, &props.model, &serial).cloned()
+        };
+        for o in self.az.known_outputs() {
+            let Some(cfg) = entry(&self.az, &o) else { continue };
             let change = crate::outputs::OutputChange {
                 name: o.name(),
                 mode: cfg.parsed_mode(),
@@ -119,9 +125,22 @@ impl State {
                 transform: cfg.transform.map(crate::outputs::transform_from_config),
                 enabled: cfg.enabled,
             };
-            if let Err(e) = self.backend.configure_output(&mut self.az, &change) {
+            if let Err(e) = self.configure_output(&change) {
                 warn!("output {}: {e}", o.name());
             }
         }
+        for o in self.az.known_outputs() {
+            if self.az.disabled_outputs.contains(&o) {
+                continue;
+            }
+            let want = entry(&self.az, &o).and_then(|c| c.mirror().map(str::to_owned));
+            let have = self.az.mirror_source(&o).map(|s| s.name());
+            if want != have
+                && let Err(e) = self.mirror_output(&o.name(), want.as_deref())
+            {
+                warn!("output {}: {e}", o.name());
+            }
+        }
+        crate::outputs::outputs_changed(&mut self.az);
     }
 }

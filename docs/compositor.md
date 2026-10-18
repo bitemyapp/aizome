@@ -103,6 +103,32 @@ Notes for client authors:
   without the desktop; lock surfaces get the output's size and all input.
   A locker that dies leaves the session locked.
 
+## Displays
+
+- **On and off**: `output-config` with `enabled` (or `enabled = false` in an
+  `[[outputs]]` entry, or wlr-output-management) takes an output out of the
+  layout and, on udev, disables its CRTC; it stays listed (`enabled:
+  false`) to be turned on again. Windows on it move to the main display.
+- **Mirroring**: `mirror = "eDP-1"` in an `[[outputs]]` entry (or
+  `mirror-output`) shows another output's picture, rendered afresh and
+  scaled to fit with black bars, pointer included; the mirror has no place
+  in the layout and no wl_output. It costs a second render of the source
+  and a read-back per frame, and redraws when the source does.
+- **Main display**: `primary = true` (or `set-primary-output`); else the
+  first output. The pointer starts in its middle, and windows from outputs
+  that go move there; the IPC reports it for the shell's Deskbar.
+- **Night Light**: `[night_light]` `enabled`, `temperature` (K, default
+  4000), `schedule` (`sunset` from `latitude` and `longitude`, 19:00–07:00
+  without them; `manual` from `from` to `to`, `"HH:MM"`; `always`),
+  checked every minute and on changes; `night-light` over IPC changes it
+  for the session. It goes through the CRTC's gamma LUT (legacy gamma
+  ioctl), the same under GLES and pixman, and re-applies after a VT
+  switch; outputs without gamma (headless, winit, virtio-gpu) can't show
+  it, and the IPC says which can. Screenshots are untinted.
+- **Renderer**: `[performance] renderer` (`auto`, `gpu`, `software`) picks
+  GLES or pixman at start-up unless `--renderer` or `AIZOME_RENDERER` say
+  otherwise; `stats` reports when it differs from the running one.
+
 ## Window management in brief
 
 - **Placement**: centred on the usable area (inside exclusive zones),
@@ -160,6 +186,9 @@ nix develop --command cargo test -p aizome-comp
 - `tests/overlays.rs`: the switcher, the overview and the marking menu.
 - `tests/keys.rs`: ❖ as Ctrl, Ctrl+Shift in terminals, ❖ for kit apps,
   system and shell chords.
+- `tests/displays.rs`: outputs off and on (from IPC and the settings),
+  mirroring scaled and letterboxed, the main display, Night Light's IPC
+  and schedule, the renderer setting.
 - `tests/protocols.rs`: wl_shm formats, shm buffers released after upload
   (GLES) or kept (pixman), drag and drop with an icon and actions.
 - `tests/focus.rs`: a shell-like wayland-client (layer surfaces and their

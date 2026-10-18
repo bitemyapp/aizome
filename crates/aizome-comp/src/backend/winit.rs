@@ -109,7 +109,7 @@ impl WinitBackend {
         let result = match self.backend.bind() {
             Ok((renderer, mut fb)) => {
                 let elements = output_elements(az, renderer, output, Purpose::Screen);
-                render_frame(az, renderer, &mut fb, tracker, age, output, &elements, started, false)
+                render_frame(az, renderer, &mut fb, tracker, age, output, &elements, crate::render::clear_color(az), started, false)
             }
             Err(e) => Err(format!("bind: {e}")),
         };

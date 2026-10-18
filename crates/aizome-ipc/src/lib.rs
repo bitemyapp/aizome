@@ -299,6 +299,26 @@ pub enum Request {
     /// Feeds input through the compositor as if it came from a device:
     /// bindings, focus, grabs and all (tests and automation).
     Synthesize { events: Vec<Synthetic> },
+    /// Shows another output's picture on this one, scaled to fit
+    /// (letterboxed); `source: null` gives it a picture of its own again.
+    /// For this session (Settings writes `mirror` in the file).
+    MirrorOutput {
+        name: String,
+        #[serde(default)]
+        source: Option<String>,
+    },
+    /// Makes an output the main one for this session (Settings writes
+    /// `primary` in the file).
+    SetPrimaryOutput { name: String },
+    /// Night Light: changes what's given (for this session), then
+    /// reports it. → [`Response::NightLight`].
+    NightLight {
+        #[serde(default)]
+        enabled: Option<bool>,
+        /// The warm temperature, in Kelvin (1900–6500).
+        #[serde(default)]
+        temperature: Option<u32>,
+    },
 }
 
 /// An input event for [`Request::Synthesize`].
@@ -340,6 +360,7 @@ pub enum Response {
     Stats { stats: Stats },
     Screenshot { path: String },
     Spawned { pid: u32 },
+    NightLight { state: NightLightState },
 }
 
 impl Response {
@@ -423,6 +444,32 @@ pub struct OutputInfo {
     pub usable: Rect,
     pub physical_size_mm: (i32, i32),
     pub powered: bool,
+    /// The main display: `primary = true` in the settings, else the first.
+    #[serde(default)]
+    pub primary: bool,
+    /// The output whose picture this one shows (it has no place in the
+    /// layout of its own then).
+    #[serde(default)]
+    pub mirror: Option<String>,
+    /// Night Light (and gamma ramps) reach this display.
+    #[serde(default)]
+    pub gamma: bool,
+}
+
+/// Night Light, as `night-light` reports it.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct NightLightState {
+    pub enabled: bool,
+    /// The warm temperature, Kelvin.
+    pub temperature: u32,
+    /// `sunset`, `manual` or `always`.
+    pub schedule: String,
+    /// Warm now: enabled, and the schedule says so.
+    pub active: bool,
+    /// What the displays show now, Kelvin (6500 is neutral).
+    pub current: u32,
+    /// The outputs that can show it (DRM gamma); the others can't.
+    pub outputs: Vec<String>,
 }
 
 /// Frame-time statistics, per output.
@@ -431,6 +478,14 @@ pub struct Stats {
     pub renderer: String,
     pub backend: String,
     pub outputs: Vec<OutputStats>,
+    /// What the settings ask for (`[performance] renderer`: `auto`,
+    /// `gpu` or `software`); it takes effect at the next start.
+    #[serde(default)]
+    pub renderer_setting: String,
+    /// The setting asks for another renderer than the one running: it
+    /// applies after logging out and in.
+    #[serde(default)]
+    pub renderer_after_restart: bool,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -490,6 +545,8 @@ pub enum Event {
     Idle { kind: String },
     Resumed,
     LockStateChanged { locked: bool },
+    /// Night Light turned on or off, warmed or cooled.
+    NightLightChanged { state: NightLightState },
 }
 
 /// `$XDG_RUNTIME_DIR/aizome.$WAYLAND_DISPLAY.sock`.

@@ -146,6 +146,8 @@ pub struct OutputState {
     pub damaged_frames: u64,
     pub last_frame: Option<Instant>,
     pub refresh: Duration,
+    /// The display takes gamma ramps (Night Light).
+    pub gamma: bool,
 }
 
 impl OutputState {
@@ -164,6 +166,7 @@ impl OutputState {
             damaged_frames: 0,
             last_frame: None,
             refresh,
+            gamma: false,
         }
     }
 }
@@ -247,6 +250,14 @@ pub struct Aizome {
     pub seat: Seat<State>,
     pub popups: PopupManager,
     pub outputs: Vec<Output>,
+    /// Outputs turned off: out of the layout, kept to turn on again.
+    pub disabled_outputs: Vec<Output>,
+    /// Outputs showing another's picture: (mirror, source). Out of the
+    /// layout; the backend still drives them.
+    pub mirrors: Vec<(Output, Output)>,
+    /// The main display, as chosen for this session over IPC.
+    pub primary_override: Option<String>,
+    pub night: crate::night::Night,
     pub out: HashMap<Output, OutputState>,
 
     pub wm: wm::Model,
@@ -461,6 +472,10 @@ impl State {
             seat,
             popups: PopupManager::default(),
             outputs: Vec::new(),
+            disabled_outputs: Vec::new(),
+            mirrors: Vec::new(),
+            primary_override: None,
+            night: crate::night::Night::default(),
             out: HashMap::new(),
             wm,
             windows: HashMap::new(),
@@ -522,7 +537,8 @@ impl State {
 
     /// Renders the outputs whose redraw is queued and due.
     pub fn redraw_due(&mut self) {
-        let outputs: Vec<Output> = self.az.outputs.clone();
+        let mut outputs: Vec<Output> = self.az.outputs.clone();
+        outputs.extend(self.az.mirrors.iter().map(|(m, _)| m.clone()));
         for output in outputs {
             let queued = self.az.out.get(&output).is_some_and(|o| o.redraw_queued);
             if queued {

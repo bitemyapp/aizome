@@ -649,7 +649,8 @@ pub fn desk_infos(az: &Aizome) -> Vec<DeskInfo> {
 
 /// Brings windows that ended up off every output back onto the first.
 pub fn rescue_windows(az: &mut Aizome) {
-    let Some(first) = az.outputs.first().cloned() else { return };
+    // To the main display.
+    let Some(first) = az.primary_output() else { return };
     let usable = az.usable_area(&first);
     let ids: Vec<WinId> = az.wm.windows().map(|w| w.id).collect();
     for id in ids {

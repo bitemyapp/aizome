@@ -54,6 +54,7 @@ pub fn sample_outputs() -> SampleOutputs {
         usable: aizome_ipc::Rect::new(0, 204, 1440, 876),
         physical_size_mm: (300, 190),
         powered: true,
+        ..OutputInfo::default()
     };
     let monitor = OutputInfo {
         name: "DP-2".into(),
@@ -76,6 +77,7 @@ pub fn sample_outputs() -> SampleOutputs {
         usable: aizome_ipc::Rect::new(1440, 24, 1920, 1056),
         physical_size_mm: (597, 336),
         powered: true,
+        ..OutputInfo::default()
     };
     SampleOutputs { on: vec![laptop, monitor], off: Vec::new(), requests: Vec::new() }
 }

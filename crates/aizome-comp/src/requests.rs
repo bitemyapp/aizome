@@ -226,7 +226,7 @@ impl State {
                 } else if let Some(a) = area {
                     What::Area(Rect::new(a.x, a.y, a.w, a.h))
                 } else if let Some(name) = output {
-                    What::Output(self.az.output_by_name(&name).ok_or_else(|| format!("no output {name}"))?)
+                    What::Output(self.az.known_output(&name).filter(|o| !self.az.disabled_outputs.contains(o)).ok_or_else(|| format!("no output {name}"))?)
                 } else {
                     What::Screen
                 };
@@ -250,8 +250,33 @@ impl State {
                     transform: transform.map(transform_from_ipc),
                     enabled,
                 };
-                self.backend.configure_output(&mut self.az, &change)?;
+                self.configure_output(&change)?;
                 Response::Ok
+            }
+            Request::MirrorOutput { name, source } => {
+                self.mirror_output(&name, source.as_deref())?;
+                Response::Ok
+            }
+            Request::SetPrimaryOutput { name } => {
+                self.az.output_by_name(&name).ok_or_else(|| format!("no output {name} in the layout"))?;
+                self.az.primary_override = Some(name);
+                crate::outputs::outputs_changed(&mut self.az);
+                Response::Ok
+            }
+            Request::NightLight { enabled, temperature } => {
+                if let Some(t) = temperature {
+                    if !(1900..=6500).contains(&t) {
+                        return Err(format!("{t} K is out of range (1900–6500)"));
+                    }
+                    self.az.night.temperature = Some(t);
+                }
+                if let Some(e) = enabled {
+                    self.az.night.enabled = Some(e);
+                }
+                if enabled.is_some() || temperature.is_some() {
+                    self.update_night_light(true);
+                }
+                Response::NightLight { state: self.night_state() }
             }
             Request::Stats { reset } => {
                 let outputs = self
@@ -260,7 +285,19 @@ impl State {
                     .iter()
                     .filter_map(|o| self.az.out.get(o).map(|s| s.stats.report(&o.name())))
                     .collect();
-                let stats = Stats { renderer: self.backend.renderer_name(), backend: self.backend.name().into(), outputs };
+                let renderer = self.backend.renderer_name();
+                let choice = self.az.settings.renderer_choice();
+                let renderer_after_restart = match choice {
+                    aizome_config::RendererChoice::Auto => false,
+                    aizome_config::RendererChoice::Gpu => renderer != "gles",
+                    aizome_config::RendererChoice::Software => renderer != "pixman",
+                };
+                let renderer_setting = match choice {
+                    aizome_config::RendererChoice::Auto => "auto",
+                    aizome_config::RendererChoice::Gpu => "gpu",
+                    aizome_config::RendererChoice::Software => "software",
+                };
+                let stats = Stats { renderer, backend: self.backend.name().into(), outputs, renderer_setting: renderer_setting.into(), renderer_after_restart };
                 if reset {
                     for o in self.az.out.values_mut() {
                         o.stats.reset();

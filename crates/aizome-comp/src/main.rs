@@ -18,6 +18,7 @@ mod input;
 mod ipc;
 mod memory;
 mod outputs;
+mod night;
 mod overlays;
 mod popups;
 mod protocols;
@@ -80,6 +81,15 @@ fn main() -> ExitCode {
         }
     };
 
+    // The command line or AIZOME_RENDERER, else the settings' choice.
+    let mut opts = opts;
+    if opts.renderer.is_none() {
+        opts.renderer = match settings.renderer_choice() {
+            aizome_config::RendererChoice::Auto => None,
+            aizome_config::RendererChoice::Gpu => Some(cli::RendererKind::Gles),
+            aizome_config::RendererChoice::Software => Some(cli::RendererKind::Pixman),
+        };
+    }
     let backend = match opts.backend {
         BackendKind::Headless => Backend::Headless(backend::headless::Headless::new(opts.renderer, opts.headless_outputs.clone())),
         BackendKind::Winit => match backend::winit::WinitBackend::new(&event_loop) {
@@ -124,6 +134,8 @@ fn main() -> ExitCode {
     });
 
     state.apply_output_settings();
+    state.place_pointer_on_primary();
+    state.update_night_light(true);
     idle::start(&mut state);
     session::start(&mut state);
 

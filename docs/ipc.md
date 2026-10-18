@@ -66,7 +66,7 @@ Protocol version: **1** (`version` reports it).
 | `spawn` | `argv`, `cwd?`, `in_desk_folder` (default true) | `spawned {pid}`; with the session's environment, in `cwd`, else the current Desk's folder, else home |
 | `screenshot` | `output?`, `path?`, `window?`, `area? {x,y,w,h}`, `clipboard` (bool) | `screenshot {path}`; PNG of one output, a window (with its tab, frame and shadow), an area, or (none given) every output side by side; default path `~/Pictures/Screenshots/Screenshot YYYY-MM-DD at HH.MM.SS.png`; also emits `screenshot-taken` |
 | `reload-config` | | `ok`; re-reads `settings.toml`, applies it, emits `config-changed` |
-| `output-config` | `name`, `mode?` (`"WxH"` or `"WxH@Hz"`), `scale?`, `position? [x,y]`, `transform?`, `enabled?` | `ok`; for this session (Settings writes the file) |
+| `output-config` | `name`, `mode?` (`"WxH"` or `"WxH@Hz"`), `scale?`, `position? [x,y]`, `transform?`, `enabled?` | `ok`; for this session (Settings writes the file). `enabled: false` turns the output off (its CRTC disabled on udev; out of the layout, its windows moved to the main display); `true` turns it on again, at `position` or right of the others |
 | `stats` | `reset` (bool) | `stats {stats}`: frame times per output |
 | `quit` | | `ok`; ends the session |
 | `power-off-monitors` / `power-on-monitors` | | `ok` |
@@ -74,6 +74,9 @@ Protocol version: **1** (`version` reports it).
 | `subscribe` | | `ok`, then events |
 | `action` | `action` (a binding action name, below) | `ok`; as if its keys were pressed |
 | `synthesize` | `events: [Synthetic]` | `ok`; input through the compositor's own paths (bindings, focus, grabs): for tests and automation |
+| `mirror-output` | `name`, `source?` | `ok`; `name` shows `source`'s picture, scaled to fit and letterboxed in black, and leaves the layout (no wl_output, no windows or layer surfaces of its own); `source: null` gives it its own picture back, right of the others. For this session; Settings writes `mirror = "…"` in the output's `[[outputs]]` entry |
+| `set-primary-output` | `name` | `ok`; the main display for this session (Settings writes `primary = true`) |
+| `night-light` | `enabled?`, `temperature?` (Kelvin, 1900–6500) | `night-light {state: NightLightState}`, after changing what's given for this session (Settings writes `[night_light]`) |
 
 `desk` is a 1-based position (`2`) or a name (`"Mail"`). `transform` is
 `normal`, `90`, `180`, `270`, `flipped`, `flipped-90`, `flipped-180` or
@@ -129,7 +132,21 @@ counting sticky ones), `current`.
 `name`, `make`, `model`, `serial`, `enabled`, `current_mode {width, height,
 refresh (mHz), preferred}`, `modes`, `scale`, `transform`, `logical {x,y,w,h}`
 (in points), `usable {x,y,w,h}` (minus layer-shell exclusive zones),
-`physical_size_mm`, `powered`.
+`physical_size_mm`, `powered`, `primary` (the main display: `primary = true`
+in the settings or `set-primary-output`, else the first in the layout; the
+Deskbar's, and where windows rescued from outputs that go end up),
+`mirror` (the output whose picture it shows; `logical` and `usable` are then
+the source's), `gamma` (it takes gamma ramps, so Night Light shows).
+`enabled: false` outputs (turned off with `output-config` or `enabled =
+false` in the settings) are listed so they can be turned on again; they
+have no place in the layout.
+
+### NightLightState
+
+`enabled`, `temperature` (the warm temperature, K), `schedule` (`sunset`,
+`manual`, `always`), `active` (warm now), `current` (what the displays show
+now, K; 6500 is neutral), `outputs` (those that can show it: DRM outputs
+whose CRTC takes a gamma LUT; headless and winit outputs can't).
 
 ### Stats
 
@@ -137,6 +154,9 @@ refresh (mHz), preferred}`, `modes`, `scale`, `transform`, `logical {x,y,w,h}`
 output: `name`, `frames_rendered`, `frames_skipped` (redraws that found no
 damage), `cpu_us` and `gpu_us` (when measurable) as `{p50, p95, p99, max,
 mean}` in microseconds over the last 4096 frames, `samples`.
+`renderer_setting` is `[performance] renderer` (`auto`, `gpu`, `software`);
+it applies at the next start, and `renderer_after_restart` says it asks for
+another renderer than the one running.
 
 ## Events
 
@@ -155,6 +175,7 @@ mean}` in microseconds over the last 4096 frames, `samples`.
 | `idle` | `kind` (`lock` or `monitors-off`) | no input for the configured minutes |
 | `resumed` | | input after `idle` |
 | `lock-state-changed` | `locked` | an ext-session-lock client locked or unlocked |
+| `night-light-changed` | `state` | Night Light turned on or off, or warmed or cooled (the schedule) |
 
 ## Bindings
 

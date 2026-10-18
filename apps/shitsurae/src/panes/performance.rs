@@ -61,6 +61,7 @@ fn sample_stats() -> Stats {
             aizome_ipc::OutputStats { name: "eDP-1".into(), frames_rendered: 48_211, frames_skipped: 3_904, cpu_us: p(610.0, 1_480.0), gpu_us: Some(p(820.0, 1_900.0)), samples: 4096 },
             aizome_ipc::OutputStats { name: "DP-2".into(), frames_rendered: 12_007, frames_skipped: 811, cpu_us: p(940.0, 2_610.0), gpu_us: None, samples: 4096 },
         ],
+        ..Stats::default()
     }
 }
 
