@@ -524,7 +524,11 @@ impl Aizome {
     /// The usable area and decoration insets for placing a window.
     pub fn usable_for(&self, id: WinId) -> (Rect, crate::wm::Insets) {
         let rect = self.wm.get(id).map(|w| w.rect).unwrap_or_default();
-        let usable = self.output_for_rect(rect).map(|o| self.usable_area(&o)).unwrap_or(rect);
+        // Filling and splitting leave the Deskbar clear.
+        let usable = self
+            .output_for_rect(rect)
+            .map(|o| crate::wm::beside(self.usable_area(&o), self.deskbar_rect(&o)))
+            .unwrap_or(rect);
         (usable, self.insets_for(id))
     }
 

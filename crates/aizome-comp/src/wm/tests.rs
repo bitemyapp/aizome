@@ -106,6 +106,20 @@ fn placement_avoids_the_deskbar() {
 }
 
 #[test]
+fn filling_leaves_the_deskbar_clear() {
+    let deskbar = Rect::new(1440 - 232, 24, 232, 600);
+    assert_eq!(beside(USABLE, Some(deskbar)), Rect::new(0, 24, 1440 - 232, 876));
+    assert_eq!(beside(USABLE, None), USABLE);
+    // On another output, or floating in the middle, it takes nothing.
+    assert_eq!(beside(USABLE, Some(Rect::new(1440, 24, 232, 600))), USABLE);
+    assert_eq!(beside(USABLE, Some(Rect::new(600, 300, 232, 200))), USABLE);
+    let mut m = model();
+    let a = add(&mut m, "a");
+    let filled = m.set_fill(a, None, beside(USABLE, Some(deskbar)), INSETS).unwrap();
+    assert!(filled.right() + INSETS.right <= deskbar.x, "{filled:?} runs under the Deskbar");
+}
+
+#[test]
 fn placement_keeps_the_tab_on_screen() {
     let m = model();
     let r = m.place((1400, 2000), USABLE, &[], INSETS, None);

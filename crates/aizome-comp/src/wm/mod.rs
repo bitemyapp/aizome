@@ -896,6 +896,22 @@ impl Model {
     }
 }
 
+/// The part of a usable area beside the Deskbar, for filling and splitting
+/// (as Haiku's zoom leaves its Deskbar clear): the Deskbar stands against
+/// one side, so the area stops at its edge. A Deskbar that stands against
+/// neither side, or isn't there (collapsed), leaves the area whole.
+pub fn beside(usable: Rect, deskbar: Option<Rect>) -> Rect {
+    let Some(d) = deskbar.filter(|d| d.intersects(usable)) else { return usable };
+    let mut r = usable;
+    if d.right() >= usable.right() && d.x > usable.x + usable.w / 2 {
+        r.w = d.x - usable.x;
+    } else if d.x <= usable.x && d.right() < usable.x + usable.w / 2 {
+        r.w = usable.right() - d.right();
+        r.x = d.right();
+    }
+    r
+}
+
 /// Moves a content rect so its frame and tab lie inside `area`, as far as
 /// they fit.
 pub fn clamp_into(mut r: Rect, area: Rect, insets: Insets) -> Rect {
