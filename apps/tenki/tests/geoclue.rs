@@ -22,7 +22,11 @@ struct TestBus {
 
 impl TestBus {
     fn start() -> Option<TestBus> {
-        let dir = std::env::temp_dir().join(format!("tenki-bus-{}-{}", std::process::id(), COUNTER.fetch_add(1, Ordering::SeqCst)));
+        let dir = std::env::temp_dir().join(format!(
+            "tenki-bus-{}-{}",
+            std::process::id(),
+            COUNTER.fetch_add(1, Ordering::SeqCst)
+        ));
         std::fs::create_dir_all(&dir).ok()?;
         let config = dir.join("bus.conf");
         std::fs::write(
@@ -69,7 +73,10 @@ impl TestBus {
     }
 
     fn connect(&self) -> zbus::blocking::Connection {
-        zbus::blocking::connection::Builder::address(self.address.as_str()).expect("an address").build().expect("connected")
+        zbus::blocking::connection::Builder::address(self.address.as_str())
+            .expect("an address")
+            .build()
+            .expect("connected")
     }
 }
 

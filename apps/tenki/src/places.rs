@@ -11,7 +11,12 @@ pub const RESULTS: usize = 10;
 
 /// The query for places named like `name`.
 pub fn query(name: &str) -> Vec<(&'static str, String)> {
-    vec![("name", name.trim().to_owned()), ("count", RESULTS.to_string()), ("language", "en".into()), ("format", "json".into())]
+    vec![
+        ("name", name.trim().to_owned()),
+        ("count", RESULTS.to_string()),
+        ("language", "en".into()),
+        ("format", "json".into()),
+    ]
 }
 
 /// A place a search found.
@@ -144,7 +149,8 @@ pub fn coordinates(lat: f64, lon: f64) -> String {
 /// The machine's time zone: `$TZ`, else where `/etc/localtime` points
 /// (`…/zoneinfo/America/Chicago`).
 pub fn system_timezone() -> Option<String> {
-    if let Some(tz) = std::env::var("TZ").ok().map(|t| t.trim_start_matches(':').to_owned()).filter(|t| t.contains('/')) {
+    if let Some(tz) = std::env::var("TZ").ok().map(|t| t.trim_start_matches(':').to_owned()).filter(|t| t.contains('/'))
+    {
         return Some(tz.rsplit_once("zoneinfo/").map_or(tz.clone(), |(_, z)| z.to_owned()));
     }
     let target = std::fs::canonicalize("/etc/localtime").ok()?;

@@ -6,10 +6,10 @@
 
 use std::sync::Arc;
 
+use aizome_tenki::Tenki;
 use aizome_tenki::instance::{self, Claim};
 use aizome_tenki::services::{Live, record};
 use aizome_tenki::store::Store;
-use aizome_tenki::Tenki;
 
 /// What the tests' fixtures hold: Tokyo, Chicago and Reykjavík (warm,
 /// middling and cold), and searches for a city and a time zone's city.

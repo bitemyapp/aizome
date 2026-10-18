@@ -48,7 +48,8 @@ pub fn condition(code: u8, is_day: bool) -> Condition {
     }
 }
 
-const POINTS: [&str; 16] = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"];
+const POINTS: [&str; 16] =
+    ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"];
 
 /// The compass point wind from `degrees` comes from: "NNW".
 pub fn compass(degrees: f64) -> &'static str {
@@ -114,10 +115,16 @@ impl UvBand {
 
 /// The UV scale's stops (0 to 11+), for a bar along it.
 pub fn uv_stops(t: &Theme) -> Vec<(f32, Color)> {
-    [(0.0, UvBand::Low), (0.3, UvBand::Moderate), (0.55, UvBand::High), (0.75, UvBand::VeryHigh), (1.0, UvBand::Extreme)]
-        .into_iter()
-        .map(|(at, b)| (at, b.color(t)))
-        .collect()
+    [
+        (0.0, UvBand::Low),
+        (0.3, UvBand::Moderate),
+        (0.55, UvBand::High),
+        (0.75, UvBand::VeryHigh),
+        (1.0, UvBand::Extreme),
+    ]
+    .into_iter()
+    .map(|(at, b)| (at, b.color(t)))
+    .collect()
 }
 
 // The dye ramp.

@@ -23,8 +23,8 @@ use aizome_tenki::location::{LocateError, Located};
 use aizome_tenki::places::{CURRENT_ID, Found, Origin, Place, parse_search};
 use aizome_tenki::services::{Recorded, Services};
 use aizome_tenki::store::{Consent, Settings, State, Store};
-use aizome_tenki::units::Units;
 use aizome_tenki::ui::widgets::PLACE_ROW;
+use aizome_tenki::units::Units;
 use aizome_tenki::{Msg, Tenki};
 
 fn fixtures() -> PathBuf {
@@ -296,7 +296,14 @@ fn the_window_menus_hold_every_command() {
     assert_eq!(titles, ["Tenki", "Places", "Edit", "View", "Window", "Help"]);
     let labels: Vec<String> =
         bar.menus().iter().flat_map(|m| m.actions().into_iter().map(|a| a.label.clone()).collect::<Vec<_>>()).collect();
-    for l in ["Add Place…", "Remove Place", "Show Current Location", "Refresh", "Metric (°C, km/h, mm)", "Imperial (°F, mph, in)"] {
+    for l in [
+        "Add Place…",
+        "Remove Place",
+        "Show Current Location",
+        "Refresh",
+        "Metric (°C, km/h, mm)",
+        "Imperial (°F, mph, in)",
+    ] {
         assert!(labels.iter().any(|x| x == l), "{l} in {labels:?}");
     }
 }

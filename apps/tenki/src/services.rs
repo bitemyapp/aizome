@@ -14,8 +14,11 @@ use crate::location::{LocateError, Located};
 use crate::places::cache_key;
 
 /// Who Tenki says it is to Open-Meteo.
-pub const USER_AGENT: &str =
-    concat!("Aizome-Tenki/", env!("CARGO_PKG_VERSION"), " (Aizome desktop weather; +https://github.com/bitemyapp/aizome)");
+pub const USER_AGENT: &str = concat!(
+    "Aizome-Tenki/",
+    env!("CARGO_PKG_VERSION"),
+    " (Aizome desktop weather; +https://github.com/bitemyapp/aizome)"
+);
 
 /// Why a fetch failed.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -99,9 +102,7 @@ impl Live {
             | ureq::Error::Protocol(_)
             | ureq::Error::Tls(_)
             | ureq::Error::Rustls(_)
-            | ureq::Error::BodyStalled => {
-                FetchError::Offline(e.to_string())
-            }
+            | ureq::Error::BodyStalled => FetchError::Offline(e.to_string()),
             other => FetchError::Bad(other.to_string()),
         })?;
         let status = resp.status().as_u16();
@@ -216,14 +217,14 @@ impl Recorded {
         if self.st().offline {
             return Err(FetchError::Offline("offline (test)".into()));
         }
-        std::fs::read_to_string(self.dir.join(name)).map_err(|_| FetchError::Status(404, format!("no recording {name}")))
+        std::fs::read_to_string(self.dir.join(name))
+            .map_err(|_| FetchError::Status(404, format!("no recording {name}")))
     }
 }
 
 /// The file a search for `name` is recorded in.
 pub fn search_file(name: &str) -> String {
-    let slug: String =
-        name.trim().to_lowercase().chars().map(|c| if c.is_alphanumeric() { c } else { '-' }).collect();
+    let slug: String = name.trim().to_lowercase().chars().map(|c| if c.is_alphanumeric() { c } else { '-' }).collect();
     format!("search-{slug}.json")
 }
 

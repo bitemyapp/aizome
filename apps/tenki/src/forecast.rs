@@ -14,8 +14,7 @@ use crate::time::LocalTime;
 pub const FORECAST_URL: &str = "https://api.open-meteo.com/v1/forecast";
 
 const CURRENT: &str = "temperature_2m,apparent_temperature,relative_humidity_2m,dew_point_2m,is_day,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,uv_index";
-const HOURLY: &str =
-    "temperature_2m,apparent_temperature,precipitation_probability,precipitation,weather_code,wind_speed_10m,relative_humidity_2m,uv_index,is_day";
+const HOURLY: &str = "temperature_2m,apparent_temperature,precipitation_probability,precipitation,weather_code,wind_speed_10m,relative_humidity_2m,uv_index,is_day";
 const DAILY: &str = "weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,sunrise,sunset,uv_index_max,wind_speed_10m_max,wind_direction_10m_dominant";
 
 /// Hours of the hourly forecast.

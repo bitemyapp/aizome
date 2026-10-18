@@ -38,10 +38,9 @@ pub struct Store {
 }
 
 fn xdg(var: &str, fallback: &str) -> PathBuf {
-    std::env::var_os(var)
-        .map(PathBuf::from)
-        .filter(|p| p.is_absolute())
-        .unwrap_or_else(|| std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(std::env::temp_dir).join(fallback))
+    std::env::var_os(var).map(PathBuf::from).filter(|p| p.is_absolute()).unwrap_or_else(|| {
+        std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(std::env::temp_dir).join(fallback)
+    })
 }
 
 impl Store {

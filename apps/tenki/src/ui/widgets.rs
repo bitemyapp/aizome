@@ -14,7 +14,9 @@ use aizome_kit::hash::PaintHasher;
 use aizome_kit::layout::{Align, Constraints, Point, Rect, Size};
 use aizome_kit::menu::MenuSpec;
 use aizome_kit::sidestep_ui::kurbo::{BezPath, Circle, Line, Shape};
-use aizome_kit::sidestep_ui::{Cursor, Key, LineCap, LineJoin, LinearGradient, NamedKey, Paint, PointerButton, StrokeStyle};
+use aizome_kit::sidestep_ui::{
+    Cursor, Key, LineCap, LineJoin, LinearGradient, NamedKey, Paint, PointerButton, StrokeStyle,
+};
 use aizome_kit::text::TextSpec;
 use aizome_kit::theme::{FontSpec, Role, Theme};
 use aizome_kit::widget::{
@@ -220,7 +222,12 @@ impl Widget for PlaceList {
             let name = TextSpec::new(ui(t.metrics.body, 600.0), t.text());
             let detail = TextSpec::new(ui(t.metrics.small, 400.0), t.text3());
             cx.draw_text_in(&l.name, &name, Rect::new(r.x0 + 12.0, r.y0 + 7.0, r.x1 - 10.0, r.y0 + 25.0), Align::Start);
-            cx.draw_text_in(&l.detail, &detail, Rect::new(r.x0 + 12.0, r.y0 + 25.0, r.x1 - 10.0, r.y0 + 41.0), Align::Start);
+            cx.draw_text_in(
+                &l.detail,
+                &detail,
+                Rect::new(r.x0 + 12.0, r.y0 + 25.0, r.x1 - 10.0, r.y0 + 41.0),
+                Align::Start,
+            );
         }
     }
 
@@ -506,7 +513,10 @@ impl Widget for HourCell {
         if self.day_start {
             cx.canvas.fill_rect(Rect::new(0.0, 0.0, 1.0, self.height()), t.line2());
         }
-        let label = TextSpec::new(mono(11.0, if self.strong { 600.0 } else { 400.0 }), if self.strong { t.text() } else { t.text3() });
+        let label = TextSpec::new(
+            mono(11.0, if self.strong { 600.0 } else { 400.0 }),
+            if self.strong { t.text() } else { t.text3() },
+        );
         cx.draw_text_in(&self.label, &label, Rect::new(0.0, 0.0, w, 16.0), Align::Center);
         let s = 22.0;
         self.icon.draw(cx.canvas, Point::new(((w - s) / 2.0).round(), 24.0), s, glyph_color(t, self.icon));
@@ -522,7 +532,10 @@ impl Widget for HourCell {
         let blue = aizome_kit::theme::color(t.palette.blue);
         if let Some(p) = self.probability.filter(|p| *p >= 1.0) {
             let h = (track.height() * (p / 100.0).clamp(0.0, 1.0)).round().max(1.0);
-            cx.canvas.fill_rect(Rect::new(track.x0, base - h, track.x1, base), blue.with_alpha(0.35 + 0.6 * (p as f32 / 100.0)));
+            cx.canvas.fill_rect(
+                Rect::new(track.x0, base - h, track.x1, base),
+                blue.with_alpha(0.35 + 0.6 * (p as f32 / 100.0)),
+            );
         }
         let pct = match self.probability {
             Some(p) if p >= 5.0 => format!("{:.0}%", p),
@@ -535,7 +548,8 @@ impl Widget for HourCell {
     }
 
     fn hash(&self, h: &mut PaintHasher) {
-        h.add(&(&self.label, self.strong, self.day_start, self.icon, &self.temp, self.bars)).f64(self.probability.unwrap_or(-1.0));
+        h.add(&(&self.label, self.strong, self.day_start, self.icon, &self.temp, self.bars))
+            .f64(self.probability.unwrap_or(-1.0));
     }
 
     fn semantics(&self) -> Option<Semantics> {
@@ -689,7 +703,11 @@ impl Widget for Gauge {
         match *self {
             Gauge::Uv(uv) => {
                 let at = uv / 11.0;
-                let g = LinearGradient { start: Point::new(track.x0, 6.0), end: Point::new(track.x1, 6.0), stops: crate::weather::uv_stops(t) };
+                let g = LinearGradient {
+                    start: Point::new(track.x0, 6.0),
+                    end: Point::new(track.x1, 6.0),
+                    stops: crate::weather::uv_stops(t),
+                };
                 cx.canvas.fill(&track, Paint::Linear(g));
                 let x = (track.x0 + track.width() * at.clamp(0.0, 1.0)).round();
                 let m = Rect::new(x - 4.0, 0.0, x + 4.0, 12.0);
@@ -879,7 +897,13 @@ impl Widget for Grid {
             let row: Vec<usize> = (i..(i + cols).min(n)).collect();
             let mut h: f64 = 0.0;
             for &j in &row {
-                h = h.max(cx.layout_child(j, Constraints { min: Size::new(col_w, 0.0), max: Size::new(col_w, f64::INFINITY) }).height);
+                h = h.max(
+                    cx.layout_child(
+                        j,
+                        Constraints { min: Size::new(col_w, 0.0), max: Size::new(col_w, f64::INFINITY) },
+                    )
+                    .height,
+                );
             }
             for (k, &j) in row.iter().enumerate() {
                 // Every tile in a row as tall as the tallest.

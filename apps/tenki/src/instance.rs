@@ -10,7 +10,10 @@ use aizome_kit::MsgSender;
 
 /// The socket of app `name`.
 pub fn socket_path(name: &str) -> PathBuf {
-    let dir = std::env::var_os("XDG_RUNTIME_DIR").filter(|v| !v.is_empty()).map(PathBuf::from).unwrap_or_else(std::env::temp_dir);
+    let dir = std::env::var_os("XDG_RUNTIME_DIR")
+        .filter(|v| !v.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(std::env::temp_dir);
     dir.join(format!("aizome-app.{name}.sock"))
 }
 

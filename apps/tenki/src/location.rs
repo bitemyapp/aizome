@@ -12,8 +12,8 @@
 
 use std::time::{Duration, Instant};
 
-use zbus::blocking::{Connection, Proxy};
 use zbus::blocking::proxy::Builder;
+use zbus::blocking::{Connection, Proxy};
 use zbus::proxy::CacheProperties;
 use zbus::zvariant::OwnedObjectPath;
 
@@ -70,7 +70,11 @@ fn classify(e: zbus::Error) -> LocateError {
     let s = e.to_string();
     if s.contains("AccessDenied") || s.contains("NotAuthorized") || s.contains("PermissionDenied") {
         LocateError::Denied
-    } else if s.contains("ServiceUnknown") || s.contains("NameHasNoOwner") || s.contains("Spawn") || s.contains("No such file") {
+    } else if s.contains("ServiceUnknown")
+        || s.contains("NameHasNoOwner")
+        || s.contains("Spawn")
+        || s.contains("No such file")
+    {
         LocateError::Unavailable(s)
     } else {
         LocateError::Failed(s)
@@ -90,7 +94,11 @@ pub fn locate(desktop_id: &str, timeout: Duration) -> Result<Located, LocateErro
 /// Ask the GeoClue on `conn`'s bus (tests serve a fake one on a private
 /// bus).
 pub fn locate_on(conn: &Connection, desktop_id: &str, timeout: Duration) -> Result<Located, LocateError> {
-    let manager = proxy(conn, "/org/freedesktop/GeoClue2/Manager".try_into().expect("a path"), "org.freedesktop.GeoClue2.Manager")?;
+    let manager = proxy(
+        conn,
+        "/org/freedesktop/GeoClue2/Manager".try_into().expect("a path"),
+        "org.freedesktop.GeoClue2.Manager",
+    )?;
     let client_path: OwnedObjectPath = manager.call("GetClient", &()).map_err(classify)?;
     let client = proxy(conn, client_path, "org.freedesktop.GeoClue2.Client")?;
     client.set_property("DesktopId", desktop_id).map_err(fdo)?;

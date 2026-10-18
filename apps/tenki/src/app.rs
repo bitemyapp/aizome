@@ -627,32 +627,32 @@ impl Program for Tenki {
                 self.ensure_timezone_city(cx);
             }
             Msg::ToggleLocation => {
-                let msg = if self.settings.location == Consent::Allowed { Msg::DeclineLocation } else { Msg::AllowLocation };
+                let msg =
+                    if self.settings.location == Consent::Allowed { Msg::DeclineLocation } else { Msg::AllowLocation };
                 cx.send(msg);
             }
             Msg::Locate => self.locate(cx),
-            Msg::Located(r) => {
-                match r {
-                    Ok(l) => {
-                        self.locating = Locating::Idle;
-                        let p = current_place(l.latitude, l.longitude, l.description);
-                        self.load_cached(&p.cache_key());
-                        self.current = Some(p.clone());
-                        self.save_state();
-                        if self.settings.location == Consent::Allowed {
-                            self.refresh(vec![p], STALE, cx);
-                        }
-                    }
-                    Err(e) => {
-                        log::info!("no location: {e:?}");
-                        self.locating = Locating::Failed(e);
+            Msg::Located(r) => match r {
+                Ok(l) => {
+                    self.locating = Locating::Idle;
+                    let p = current_place(l.latitude, l.longitude, l.description);
+                    self.load_cached(&p.cache_key());
+                    self.current = Some(p.clone());
+                    self.save_state();
+                    if self.settings.location == Consent::Allowed {
+                        self.refresh(vec![p], STALE, cx);
                     }
                 }
-            }
+                Err(e) => {
+                    log::info!("no location: {e:?}");
+                    self.locating = Locating::Failed(e);
+                }
+            },
             Msg::TimezoneFound(tz, r) => {
                 self.timezone_busy = false;
                 let Ok(found) = r else { return };
-                let pick = places::in_timezone(&found, &tz).or_else(|| found.iter().max_by_key(|f| f.population.unwrap_or(0)));
+                let pick =
+                    places::in_timezone(&found, &tz).or_else(|| found.iter().max_by_key(|f| f.population.unwrap_or(0)));
                 let Some(f) = pick else { return };
                 if self.places.is_empty() {
                     let p = f.place(Origin::TimeZone);
@@ -721,7 +721,10 @@ impl Program for Tenki {
             .separator()
             .header("Units")
             .item(MenuItem::new(Units::Metric.label(), Msg::SetUnits(Units::Metric)).checked(units == Units::Metric))
-            .item(MenuItem::new(Units::Imperial.label(), Msg::SetUnits(Units::Imperial)).checked(units == Units::Imperial));
+            .item(
+                MenuItem::new(Units::Imperial.label(), Msg::SetUnits(Units::Imperial))
+                    .checked(units == Units::Imperial),
+            );
         // The app menu as standard, its Settings… opening Tenki's.
         let role = |label: &str, role: MenuRole| MenuItem::role_item(label, role);
         let app = Menu::new("Tenki")

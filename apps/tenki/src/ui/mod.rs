@@ -54,7 +54,10 @@ fn sidebar(app: &Tenki) -> Element<Msg> {
 fn places(app: &Tenki) -> Element<Msg> {
     let rows = app.rows();
     if rows.is_empty() {
-        return container(text("Search above to add a city.").size(12.0).role(Role::Text3).wrap()).padding([4.0, 12.0]).width(Fill).into();
+        return container(text("Search above to add a city.").size(12.0).role(Role::Text3).wrap())
+            .padding([4.0, 12.0])
+            .width(Fill)
+            .into();
     }
     let now = app.now();
     let units = app.units();
@@ -113,7 +116,9 @@ fn place_row(app: &Tenki, p: &Place, now: i64, units: Units) -> Element<Msg> {
 
 fn results(app: &Tenki) -> Element<Msg> {
     let s = &app.search;
-    let note = |t: String| -> Element<Msg> { container(text(t).size(12.0).role(Role::Text3).wrap()).padding([4.0, 12.0]).width(Fill).into() };
+    let note = |t: String| -> Element<Msg> {
+        container(text(t).size(12.0).role(Role::Text3).wrap()).padding([4.0, 12.0]).width(Fill).into()
+    };
     let typed = s.text.trim();
     if typed.chars().count() < 2 {
         return note("Type a city's name.".into());
@@ -136,8 +141,11 @@ fn results(app: &Tenki) -> Element<Msg> {
         .map(|(i, f)| {
             let region = f.region();
             let label = format!("{}, {}", f.name, region);
-            let body = column![text(f.name.clone()).size(13.0).semibold(), text(region).size(11.0).role(Role::Text3)].spacing(2.0);
-            click_row(container(body).padding([6.0, 12.0]).width(Fill), Msg::Add(i), label).key(f.id).id(format!("result-{i}"))
+            let body = column![text(f.name.clone()).size(13.0).semibold(), text(region).size(11.0).role(Role::Text3)]
+                .spacing(2.0);
+            click_row(container(body).padding([6.0, 12.0]).width(Fill), Msg::Add(i), label)
+                .key(f.id)
+                .id(format!("result-{i}"))
         })
         .collect();
     let mut col = aizome_kit::widgets::layout::column(rows).width(Fill);
@@ -257,7 +265,9 @@ fn location_banner() -> Element<Msg> {
 
 /// A quiet message in the middle of the main view.
 fn notice(glyph: Icon, title: String, lines: Vec<String>, buttons: Vec<Element<Msg>>, busy: bool) -> Element<Msg> {
-    let mut col = column![icon(glyph).size(40.0).role(Role::Faint), text(title).size(17.0).semibold()].spacing(8.0).align(Align::Center);
+    let mut col = column![icon(glyph).size(40.0).role(Role::Faint), text(title).size(17.0).semibold()]
+        .spacing(8.0)
+        .align(Align::Center);
     for l in lines {
         col = col.push(text(l).size(13.0).role(Role::Text2).center().wrap().width(Fill));
     }
@@ -275,7 +285,13 @@ fn empty_state(app: &Tenki) -> Element<Msg> {
     if app.settings.location != Consent::Allowed {
         buttons.insert(0, button("Use My Location").on_press(Msg::AllowLocation).into());
     }
-    notice(Icon::MapPin, "No places yet".into(), vec!["Search for a city in the sidebar to see its weather.".into()], buttons, false)
+    notice(
+        Icon::MapPin,
+        "No places yet".into(),
+        vec!["Search for a city in the sidebar to see its weather.".into()],
+        buttons,
+        false,
+    )
 }
 
 fn locating_state(app: &Tenki) -> Element<Msg> {
@@ -290,7 +306,13 @@ fn locating_state(app: &Tenki) -> Element<Msg> {
             ],
             false,
         ),
-        _ => notice(Icon::LocateFixed, "Finding where you are…".into(), vec!["GeoClue is looking.".into()], Vec::new(), true),
+        _ => notice(
+            Icon::LocateFixed,
+            "Finding where you are…".into(),
+            vec!["GeoClue is looking.".into()],
+            Vec::new(),
+            true,
+        ),
     }
 }
 
@@ -316,7 +338,12 @@ fn forecast_view(app: &Tenki, place: &Place, f: &Forecast, w: &Weather) -> Eleme
     let details = grid(detail_tiles(f, &shown, now, units, app.clock), 200.0, 12.0);
     column![
         hero(place, f, &shown, now, units, app.clock),
-        tile(Icon::Clock, "Next 48 hours", &dry_note(f.hours_from(now)), hourly(f.hours_from(now), now, f, app.clock, units)),
+        tile(
+            Icon::Clock,
+            "Next 48 hours",
+            &dry_note(f.hours_from(now)),
+            hourly(f.hours_from(now), now, f, app.clock, units)
+        ),
         columns(ten, details, 1000.0, 0.52, GAP),
     ]
     .spacing(GAP)
@@ -352,9 +379,16 @@ fn hero(place: &Place, f: &Forecast, n: &Now, now: i64, units: Units, clock: Clo
     }
     let mut cond_row = hrow(Vec::new()).spacing(8.0);
     if let Some(c) = cond {
-        cond_row = cond_row.push(icon(c.icon).size(28.0).role(widgets::glyph_role(c.icon))).push(text(c.text).size(19.0).weight(500.0));
+        cond_row = cond_row
+            .push(icon(c.icon).size(28.0).role(widgets::glyph_role(c.icon)))
+            .push(text(c.text).size(19.0).weight(500.0));
     }
-    let side = column![cond_row, text(hl).mono().tabular().size(14.0).weight(500.0).role(Role::Text2), text(feels).size(13.0).role(Role::Text3)].spacing(6.0);
+    let side = column![
+        cond_row,
+        text(hl).mono().tabular().size(14.0).weight(500.0).role(Role::Text2),
+        text(feels).size(13.0).role(Role::Text3)
+    ]
+    .spacing(6.0);
     column![
         text(place.name.clone()).size(24.0).semibold(),
         text(sub.join(" · ")).size(13.0).role(Role::Text3),
@@ -377,7 +411,10 @@ fn dry_note(hours: &[Hour]) -> String {
 
 fn hourly(hours: &[Hour], now: i64, f: &Forecast, clock: Clock, units: Units) -> Element<Msg> {
     if hours.is_empty() {
-        return text("The hourly forecast has run out: it comes back when Tenki can update.").size(12.0).role(Role::Text3).into();
+        return text("The hourly forecast has run out: it comes back when Tenki can update.")
+            .size(12.0)
+            .role(Role::Text3)
+            .into();
     }
     let this_hour = f.local(now).hour_start();
     let bars = !is_dry(hours);
@@ -416,7 +453,11 @@ fn hourly(hours: &[Hour], now: i64, f: &Forecast, clock: Clock, units: Units) ->
             .key(h.time)
         })
         .collect();
-    scroll(hrow(cells).align(Align::Start)).horizontal().height(if bars { widgets::HOUR_HEIGHT } else { widgets::HOUR_HEIGHT_DRY } + 12.0).key("hours").into()
+    scroll(hrow(cells).align(Align::Start))
+        .horizontal()
+        .height(if bars { widgets::HOUR_HEIGHT } else { widgets::HOUR_HEIGHT_DRY } + 12.0)
+        .key("hours")
+        .into()
 }
 
 fn ten_days(days: &[Day], f: &Forecast, n: &Now, now: i64, units: Units) -> Element<Msg> {
@@ -457,7 +498,14 @@ fn ten_days(days: &[Day], f: &Forecast, n: &Now, now: i64, units: Units) -> Elem
 
 /// A detail tile: its caption, a value large, a line or two, and a
 /// picture of it.
-fn detail(icon_: Icon, title: &str, value: Element<Msg>, lines: Vec<String>, picture: Option<Element<Msg>>, key: &str) -> Element<Msg> {
+fn detail(
+    icon_: Icon,
+    title: &str,
+    value: Element<Msg>,
+    lines: Vec<String>,
+    picture: Option<Element<Msg>>,
+    key: &str,
+) -> Element<Msg> {
     let mut col = column![caption_row(icon_, title), value].spacing(6.0).width(Fill);
     for l in lines.into_iter().filter(|l| !l.is_empty()) {
         col = col.push(text(l).size(12.0).role(Role::Text2).max_lines(2));
@@ -465,7 +513,16 @@ fn detail(icon_: Icon, title: &str, value: Element<Msg>, lines: Vec<String>, pic
     if let Some(p) = picture {
         col = col.push(spacer()).push(p);
     }
-    container(col).padding([12.0, 14.0]).fill(Tone::Chrome).border(Edge::Line).bevel().width(Fill).height(Fill).min_height(132.0).key(key).into()
+    container(col)
+        .padding([12.0, 14.0])
+        .fill(Tone::Chrome)
+        .border(Edge::Line)
+        .bevel()
+        .width(Fill)
+        .height(Fill)
+        .min_height(132.0)
+        .key(key)
+        .into()
 }
 
 /// A tile's value: the number large and light, its unit small.
@@ -485,14 +542,23 @@ fn detail_tiles(f: &Forecast, n: &Now, now: i64, units: Units, clock: Clock) -> 
     // Feels like.
     let feels_line = match (n.apparent, n.temperature) {
         (Some(a), Some(t)) if (a - t).abs() < 1.5 => "Close to the actual temperature.".to_owned(),
-        (Some(a), Some(t)) if a < t && n.wind_speed.unwrap_or(0.0) >= 10.0 => "The wind makes it feel colder.".to_owned(),
+        (Some(a), Some(t)) if a < t && n.wind_speed.unwrap_or(0.0) >= 10.0 => {
+            "The wind makes it feel colder.".to_owned()
+        }
         (Some(a), Some(t)) if a < t => "Feels colder than it is.".to_owned(),
         (Some(_), Some(_)) if n.humidity.unwrap_or(0.0) >= 60.0 => "Humidity makes it feel warmer.".to_owned(),
         (Some(_), Some(_)) => "Feels warmer than it is.".to_owned(),
         _ => String::new(),
     };
     let actual = n.temperature.map(|t| format!("Actual {}", units.degrees(t))).unwrap_or_default();
-    tiles.push(detail(Icon::Thermometer, "Feels like", value(n.apparent.map_or_else(dash, |a| units.degrees(a)), ""), vec![feels_line, actual], None, "feels"));
+    tiles.push(detail(
+        Icon::Thermometer,
+        "Feels like",
+        value(n.apparent.map_or_else(dash, |a| units.degrees(a)), ""),
+        vec![feels_line, actual],
+        None,
+        "feels",
+    ));
 
     // UV.
     let uv = n.uv.or(today.and_then(|d| d.uv_max));
@@ -503,7 +569,14 @@ fn detail_tiles(f: &Forecast, n: &Now, now: i64, units: Units, clock: Clock) -> 
         today.and_then(|d| d.uv_max).map(|m| format!("Today's high {:.0}", m.round())).unwrap_or_default(),
     ];
     let uv_picture = uv.map(|u| gauge(Gauge::Uv(u)));
-    tiles.push(detail(Icon::Sun, "UV index", value(uv_value, band.map_or("", UvBand::name)), uv_lines, uv_picture, "uv"));
+    tiles.push(detail(
+        Icon::Sun,
+        "UV index",
+        value(uv_value, band.map_or("", UvBand::name)),
+        uv_lines,
+        uv_picture,
+        "uv",
+    ));
 
     // Wind.
     let wind_value = n.wind_speed.map_or_else(dash, |s| units.speed_value(s));
@@ -517,7 +590,12 @@ fn detail_tiles(f: &Forecast, n: &Now, now: i64, units: Units, clock: Clock) -> 
     let wind = container(
         row![
             column![caption_row(Icon::Wind, "Wind"), value(wind_value, units.speed_unit())]
-                .push(aizome_kit::widgets::layout::column(wind_lines.into_iter().map(|l| text(l).size(12.0).role(Role::Text2).into()).collect()).spacing(6.0))
+                .push(
+                    aizome_kit::widgets::layout::column(
+                        wind_lines.into_iter().map(|l| text(l).size(12.0).role(Role::Text2).into()).collect()
+                    )
+                    .spacing(6.0)
+                )
                 .spacing(6.0)
                 .width(Fill),
             compass(n.wind_direction),
@@ -556,7 +634,8 @@ fn detail_tiles(f: &Forecast, n: &Now, now: i64, units: Units, clock: Clock) -> 
     } else {
         "None expected in the next 24 h".to_owned()
     };
-    let chance = today.and_then(|d| d.precipitation_probability).map(|p| format!("{p:.0}% chance today")).unwrap_or_default();
+    let chance =
+        today.and_then(|d| d.precipitation_probability).map(|p| format!("{p:.0}% chance today")).unwrap_or_default();
     tiles.push(detail(
         Icon::Umbrella,
         "Precipitation",
@@ -580,17 +659,45 @@ struct SunTimes {
 
 /// The sun tile: the next of sunrise and sunset large, the other below,
 /// the day's length, and how far through it the sun is.
-fn sun_times(rise: Option<LocalTime>, set: Option<LocalTime>, local: LocalTime, f: &Forecast, clock: Clock, now: i64) -> SunTimes {
+fn sun_times(
+    rise: Option<LocalTime>,
+    set: Option<LocalTime>,
+    local: LocalTime,
+    f: &Forecast,
+    clock: Clock,
+    now: i64,
+) -> SunTimes {
     let (Some(r), Some(s)) = (rise, set) else {
-        return SunTimes { icon: Icon::Sunrise, title: "Sunrise", value: "—".into(), unit: "", lines: vec!["No sunrise or sunset today here.".into()], at: None };
+        return SunTimes {
+            icon: Icon::Sunrise,
+            title: "Sunrise",
+            value: "—".into(),
+            unit: "",
+            lines: vec!["No sunrise or sunset today here.".into()],
+            at: None,
+        };
     };
     let length = s.seconds() - r.seconds();
     let at = (local.seconds() - r.seconds()) as f64 / length.max(1) as f64;
     let daylight = format!("{} of daylight", time::duration(length / 60));
     if local < r {
-        SunTimes { icon: Icon::Sunrise, title: "Sunrise", value: clock.time(r), unit: "", lines: vec![format!("Sunset {}", clock.time(s)), daylight], at: Some(at) }
+        SunTimes {
+            icon: Icon::Sunrise,
+            title: "Sunrise",
+            value: clock.time(r),
+            unit: "",
+            lines: vec![format!("Sunset {}", clock.time(s)), daylight],
+            at: Some(at),
+        }
     } else if local < s {
-        SunTimes { icon: Icon::Sunset, title: "Sunset", value: clock.time(s), unit: "", lines: vec![format!("Sunrise {}", clock.time(r)), daylight], at: Some(at) }
+        SunTimes {
+            icon: Icon::Sunset,
+            title: "Sunset",
+            value: clock.time(s),
+            unit: "",
+            lines: vec![format!("Sunrise {}", clock.time(r)), daylight],
+            at: Some(at),
+        }
     } else {
         let tomorrow = f.days_from(now).get(1).and_then(|d| d.sunrise);
         SunTimes {
