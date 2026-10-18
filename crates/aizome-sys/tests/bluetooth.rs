@@ -19,6 +19,8 @@ struct Shared {
     /// The registered agent: its bus name and path.
     agent: Option<(String, OwnedObjectPath)>,
     default_agent: bool,
+    /// A busy bluetoothd: how long registering an agent takes.
+    slow: std::time::Duration,
 }
 
 struct AgentManager {
@@ -34,6 +36,8 @@ impl AgentManager {
         #[zbus(header)] header: zbus::message::Header<'_>,
     ) -> fdo::Result<()> {
         assert_eq!(capability, "KeyboardDisplay");
+        let slow = self.shared.lock().unwrap().slow;
+        std::thread::sleep(slow);
         let sender = header.sender().map(|s| s.to_string()).unwrap_or_default();
         self.shared.lock().unwrap().agent = Some((sender, agent));
         Ok(())
@@ -313,6 +317,7 @@ fn pairing_asks_the_agent() {
             }
         });
     })
+    .wait()
     .unwrap();
     assert!(shared.lock().unwrap().default_agent);
 
@@ -323,8 +328,31 @@ fn pairing_asks_the_agent() {
     bt.disconnect(SPEAKER).wait().unwrap();
     assert!(eventually(|| bt.snapshot().device(SPEAKER).is_some_and(|d| !d.connected)));
 
-    bt.unregister_agent();
+    bt.unregister_agent().wait().unwrap();
     assert!(shared.lock().unwrap().agent.is_none());
+}
+
+/// Settings registers the agent when its Bluetooth pane shows, from its UI
+/// thread: a busy bluetoothd mustn't stop the window drawing or moving.
+#[test]
+fn registering_the_agent_never_waits_for_bluez() {
+    let bus = test_bus!();
+    let (_fake, shared) = serve(&bus);
+    shared.lock().unwrap().slow = std::time::Duration::from_millis(800);
+    let bt = Bluetooth::with_bus(bus.bus(), Wake::none());
+    assert!(eventually(|| bt.available()));
+    let asked = std::time::Instant::now();
+    let first = bt.register_agent(|_| {});
+    // The pane hidden and shown again at once: done in that order, so
+    // the agent ends up registered.
+    let _ = bt.unregister_agent();
+    let again = bt.register_agent(|_| {});
+    let took = asked.elapsed();
+    assert!(took < std::time::Duration::from_millis(200), "the caller waited on BlueZ for {took:?}");
+    first.wait().unwrap();
+    again.wait().unwrap();
+    assert!(shared.lock().unwrap().agent.is_some());
+    assert!(shared.lock().unwrap().default_agent);
 }
 
 #[test]
@@ -334,7 +362,7 @@ fn a_rejected_code_fails_pairing() {
     let bt = Bluetooth::with_bus(bus.bus(), Wake::none());
     assert!(eventually(|| bt.available()));
     // Dropping the responder rejects.
-    bt.register_agent(drop).unwrap();
+    bt.register_agent(drop).wait().unwrap();
     let result = bt.pair(SPEAKER).wait();
     assert!(matches!(result, Err(Error::Rejected(_))), "{result:?}");
     assert!(!bt.snapshot().device(SPEAKER).unwrap().paired);
@@ -347,7 +375,7 @@ fn without_bluez_nothing_is_there() {
     std::thread::sleep(std::time::Duration::from_millis(200));
     assert!(!bt.available());
     assert!(bt.snapshot().adapters.is_empty());
-    assert!(bt.register_agent(|_| {}).is_err());
+    assert!(bt.register_agent(|_| {}).wait().is_err());
 }
 
 #[test]

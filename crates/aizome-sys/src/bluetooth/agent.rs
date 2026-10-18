@@ -8,12 +8,17 @@
 //! D-Bus call stays pending (BlueZ gives up after about 30 seconds and
 //! sends a [`PairingRequest::Cancelled`] prompt). A responder dropped
 //! without an answer rejects the request.
+//!
+//! Registering and unregistering take several round trips to BlueZ (and
+//! wait for it when it is busy), so they run on a thread of their own
+//! ([`Worker`]), in the order asked; the UI thread never waits on them.
 
 use super::BLUEZ;
 use crate::bus::{Bus, Opts};
 use crate::error::{Error, Result};
 use crate::oneshot;
-use std::sync::Arc;
+use crate::service::{Done, Task, Wake};
+use std::sync::{Arc, Mutex, mpsc};
 use zbus::zvariant::{ObjectPath, OwnedObjectPath};
 
 const AGENT_PATH: &str = "/org/aizome/bluetooth/agent";
@@ -207,6 +212,79 @@ impl Agent {
             responder: Responder::none(),
         });
     }
+}
+
+/// Registers and unregisters the agent on its own thread, one request
+/// after another in the order they were made, so a quick hide and show
+/// can't unregister the agent just registered.
+#[derive(Default)]
+pub(crate) struct Worker {
+    tx: Mutex<Option<mpsc::Sender<Op>>>,
+}
+
+enum Op {
+    Register(Bus, Prompt, Done<()>),
+    Unregister(Done<()>),
+}
+
+impl Worker {
+    /// Serves the agent and makes it BlueZ's default (replacing one
+    /// registered before); the task says how it went.
+    pub(crate) fn register(&self, bus: &Bus, prompt: Prompt, wake: Wake) -> Task<()> {
+        let (task, done) = Task::pending(wake);
+        self.send(Op::Register(bus.clone(), prompt, done));
+        task
+    }
+
+    /// Stops serving it.
+    pub(crate) fn unregister(&self, wake: Wake) -> Task<()> {
+        let (task, done) = Task::pending(wake);
+        self.send(Op::Unregister(done));
+        task
+    }
+
+    fn send(&self, op: Op) {
+        let mut tx = crate::service::lock(&self.tx);
+        if tx.is_none() {
+            let (sender, receiver) = mpsc::channel();
+            let spawned =
+                std::thread::Builder::new().name("aizome-sys BlueZ agent".into()).spawn(move || serve(receiver));
+            if spawned.is_err() {
+                // The op's Done, dropped, finishes its task as cancelled.
+                return;
+            }
+            *tx = Some(sender);
+        }
+        if let Some(sender) = tx.as_ref() {
+            // A dead thread drops the op, which cancels its task.
+            let _ = sender.send(op);
+        }
+    }
+}
+
+fn serve(ops: mpsc::Receiver<Op>) {
+    let mut current: Option<Registration> = None;
+    for op in ops {
+        match op {
+            Op::Register(bus, prompt, done) => {
+                // The one before goes first (its Drop unregisters it).
+                current = None;
+                match register(&bus, prompt) {
+                    Ok(r) => {
+                        current = Some(r);
+                        done.finish(Ok(()));
+                    }
+                    Err(e) => done.finish(Err(e)),
+                }
+            }
+            Op::Unregister(done) => {
+                current = None;
+                done.finish(Ok(()));
+            }
+        }
+    }
+    // The service is gone: so is its agent, unregistered here.
+    drop(current);
 }
 
 /// The agent being served; unregistered when dropped.
