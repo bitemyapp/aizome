@@ -49,8 +49,9 @@ the user's systemd manager (or runs the compositor in a D-Bus session
 without one). Once its Wayland socket and IPC are up the compositor:
 
 - imports `WAYLAND_DISPLAY`, `DISPLAY`, `XDG_CURRENT_DESKTOP=Aizome`,
-  `XDG_SESSION_DESKTOP=aizome`, `XDG_SESSION_TYPE`, `AIZOME_SOCKET` and
-  `AIZOME_SHELL_SOCKET` into systemd and D-Bus activation;
+  `XDG_SESSION_DESKTOP=aizome`, `XDG_SESSION_TYPE`, `AIZOME_SESSION`,
+  `AIZOME_SOCKET` and `AIZOME_SHELL_SOCKET` into systemd and D-Bus
+  activation;
 - tells systemd it's ready (`READY=1` on `$NOTIFY_SOCKET`) and starts
   `aizome-session.target` (bound to `graphical-session.target`);
 - starts `xwayland-satellite :N` (a free display, exported as `DISPLAY`)
@@ -65,6 +66,15 @@ switch` a notification offers to reload what the update changed.
 
 Every program it starts (`spawn`, ❖Return, the shell) gets that
 environment.
+
+`AIZOME_SESSION` is `1` only on udev without `--no-session`, the
+machine's login session, and `0` under headless, winit or `--no-session`.
+Those children still see `XDG_CURRENT_DESKTOP=Aizome`, but they run as the
+same user inside the user's real session, so the shell reads
+`AIZOME_SESSION` and there doesn't register as the polkit agent, take
+logind's sleep delay or lock for logind (`docs/shell.md`, "Real and
+headless sessions"): `scripts/headless-session` and the tests leave the
+developer's session alone.
 
 Under `aizome.service` it feeds systemd's watchdog (`WatchdogSec=10s`)
 from its main loop; a loop stalled that long is stopped (SIGABRT, with a

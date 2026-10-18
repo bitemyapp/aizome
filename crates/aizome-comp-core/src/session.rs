@@ -135,16 +135,20 @@ fn free_x_display() -> Option<u32> {
     })
 }
 
+/// Whether this is someone's login session, on a seat and known to
+/// systemd: only then does the shell serve polkit, hold logind's sleep and
+/// lock for logind (`AIZOME_SESSION=1`). A headless or nested run (tests,
+/// screenshots, trying Aizome inside another desktop) runs as the same user
+/// inside that user's real login session, and must leave all of that alone.
+fn real_session(opts: &crate::cli::Options) -> bool {
+    opts.backend == crate::cli::BackendKind::Udev && !opts.no_session
+}
+
 /// Starts the session's helpers and talks to systemd.
 pub fn start(state: &mut State) {
     let opts = state.az.options.clone();
 
-    // Whether this is someone's login session, on a seat and known to
-    // systemd: only then does the shell serve polkit, hold logind's sleep
-    // and lock for logind. A headless or nested run (tests, screenshots,
-    // trying Aizome inside another desktop) runs as the same user inside
-    // that user's real login session, and must leave all of that alone.
-    let real = opts.backend == crate::cli::BackendKind::Udev && !opts.no_session;
+    let real = real_session(&opts);
     state.az.children.env.push(("AIZOME_SESSION".into(), if real { "1" } else { "0" }.into()));
 
     if !opts.no_xwayland {
@@ -508,5 +512,19 @@ pub fn stop_children(az: &mut Aizome) {
             let _ = c.kill();
             let _ = c.wait();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_a_seat_known_to_systemd_is_a_real_session() {
+        let real = |args: &[&str]| real_session(&crate::cli::parse(args.iter().map(|s| s.to_string())).unwrap());
+        assert!(real(&["--backend", "udev"]));
+        assert!(!real(&["--backend", "udev", "--no-session"]));
+        assert!(!real(&["--backend", "headless"]));
+        assert!(!real(&["--backend", "winit"]));
     }
 }
