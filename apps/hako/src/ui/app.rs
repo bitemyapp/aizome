@@ -565,6 +565,9 @@ impl Hako {
     pub(crate) fn reload_dir(&mut self, cx: &mut Cx<Msg>, dir: &Path) {
         let windows: Vec<WindowKey> = self.windows.keys().copied().collect();
         let in_trash = self.opts.trash.cans().iter().any(|c| c.files() == dir);
+        if in_trash {
+            self.trash_changed();
+        }
         for w in windows {
             let mut any = false;
             if let Some(b) = self.windows.get_mut(&w) {
@@ -848,11 +851,9 @@ impl Hako {
             && let Some(app) = apps.get(&id)
         {
             launch_app(app.clone(), path);
-            remember_recent(path);
             return;
         }
         cx.open_url(&uri::file_uri(path));
-        remember_recent(path);
     }
 
     pub(crate) fn open_selection(&mut self, cx: &mut Cx<Msg>, w: WindowKey) {
@@ -1055,7 +1056,3 @@ pub(crate) fn launch_app(app: aizome_sys::apps::App, path: &Path) {
         }
     });
 }
-
-/// Note a file opened in the recently-used list (a later version; the
-/// list is GTK's to write).
-fn remember_recent(_path: &Path) {}

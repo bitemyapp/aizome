@@ -34,6 +34,7 @@ impl Program for Hako {
         if self.opts.services {
             self.start_services(cx);
         }
+        self.trash_changed();
         if let Some(listener) = self.instance.take() {
             super::instance::serve(listener, cx.stream(), Msg::Requests);
         }
