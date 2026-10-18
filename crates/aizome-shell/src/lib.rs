@@ -20,7 +20,6 @@ pub mod lock;
 pub mod look;
 pub mod menubar;
 pub mod menus;
-pub mod mpris;
 pub mod notifications;
 pub mod osd;
 pub mod palette;

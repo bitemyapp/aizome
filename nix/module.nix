@@ -142,14 +142,23 @@ in
         fi
       '';
       etc.deps = [ "aizomeTimeZoneSave" ];
+      # The link is written as timedated writes it, relative. An absolute
+      # link to /etc/zoneinfo is NixOS's own for time.timeZone, which
+      # Settings reads as the configuration's; one left behind from before
+      # (time.timeZone is null here) is turned into Settings' kind.
       aizomeTimeZoneRestore = {
         deps = [ "etc" ];
         text = ''
-          if [ ! -e /etc/localtime ] && [ -s /var/lib/aizome/timezone ]; then
+          zone=
+          if target=$(readlink /etc/localtime 2>/dev/null); then
+            case "$target" in
+              /etc/zoneinfo/*) zone=''${target#/etc/zoneinfo/} ;;
+            esac
+          elif [ ! -e /etc/localtime ] && [ -s /var/lib/aizome/timezone ]; then
             zone=$(cat /var/lib/aizome/timezone)
-            if [ -e "/etc/zoneinfo/$zone" ]; then
-              ln -sfn "/etc/zoneinfo/$zone" /etc/localtime
-            fi
+          fi
+          if [ -n "$zone" ] && [ -e "/etc/zoneinfo/$zone" ]; then
+            ln -sfn "../etc/zoneinfo/$zone" /etc/localtime
           fi
         '';
       };
