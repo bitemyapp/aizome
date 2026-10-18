@@ -233,6 +233,7 @@ impl TextCache {
                 .wrap(spec.wrap)
                 .alignment(spec.align)
                 .max_lines(spec.max_lines)
+                .ellipsis(spec.max_lines > 0)
                 .line_height_multiple(spec.line_height);
             for r in symbol_runs(text) {
                 b = b.style(r, symbol_style(spec, theme));
@@ -257,6 +258,7 @@ impl TextCache {
                 .wrap(base.wrap)
                 .alignment(base.align)
                 .max_lines(base.max_lines)
+                .ellipsis(base.max_lines > 0)
                 .line_height_multiple(base.line_height);
             let mut at = 0;
             for s in spans {
@@ -587,9 +589,8 @@ impl TextWidget {
             None => theme.role(self.role),
         };
         let mut spec = TextSpec::new(font, color);
-        // One line, or a paragraph, or at most `max_lines` of one. (Sidestep
-        // ends only an unwrapped line in an ellipsis so far: a paragraph
-        // cut short just stops.)
+        // One line, or a paragraph, or at most `max_lines` of one, the last
+        // ending in an ellipsis when text is left out.
         spec.wrap = if self.wrap && self.max_lines != 1 { Wrap::Words } else { Wrap::Truncate };
         spec.max_lines = self.max_lines;
         spec.align = self.align;
@@ -761,5 +762,26 @@ impl Widget for RichWidget {
     fn semantics(&self) -> Option<Semantics> {
         let label: String = self.spans.iter().map(|s| s.text.as_str()).collect();
         Some(Semantics { role: SemanticRole::Label, label: Some(label), ..Default::default() })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::theme::{Appearance, Theme};
+
+    #[test]
+    fn a_paragraph_cut_at_its_line_limit_ends_in_an_ellipsis() {
+        let theme = Theme::new(Appearance::default());
+        let mut cache = TextCache::default();
+        let text = "Operations stay in points. Each window renders at its output's scale: the integer one wherever it can.";
+        let mut spec = TextSpec::new(FontSpec::ui(13.0), theme.text());
+        spec.wrap = Wrap::Words;
+        spec.max_lines = 2;
+        let laid = cache.layout(&theme, text, &spec, Some(120.0));
+        let lines = laid.lines();
+        assert_eq!(lines.len(), 2);
+        // The last line holds the rest, cut short by the ellipsis.
+        assert_eq!(lines[1].range.end, text.len(), "{lines:?}");
     }
 }

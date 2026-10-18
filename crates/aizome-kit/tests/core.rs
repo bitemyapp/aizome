@@ -273,3 +273,4 @@ fn text_limited_to_lines_wraps_up_to_them() {
     assert!(two > one * 1.6 && two < one * 2.4, "two lines: {two} (one: {one})");
     assert!(all > two * 1.5, "unlimited, it takes more: {all}");
 }
+
