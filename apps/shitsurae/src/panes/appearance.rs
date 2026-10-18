@@ -51,7 +51,7 @@ pub const FOCUS_COLORS: [(FocusColor, &str); 4] =
 /// What each tier spends, as the pane says it.
 pub fn effects_text(e: Effects) -> (&'static str, &'static str) {
     match e {
-        Effects::Full => ("Full", "Frosted menus and Deskbar, and slower, softer motion (120 ms)."),
+        Effects::Full => ("Full", "Translucent, frosted menus, panels and Deskbar, and slower, softer motion (120 ms)."),
         Effects::Lean => ("Lean", "Hard shadows and quick motion (80 ms), no frost. The default."),
         Effects::Austere => ("Austere", "No shadows, no motion, nothing see-through: the least to draw."),
     }
