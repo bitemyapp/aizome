@@ -74,14 +74,15 @@ pub enum PaletteEvent {
     Settings(Vec<SettingEntry>),
 }
 
-/// The system actions the palette offers.
-pub fn actions(day: bool, dnd: bool) -> Vec<Item> {
+/// The system actions the palette offers (with Stop Recording instead
+/// of the Record ones while a recording goes).
+pub fn actions(day: bool, dnd: bool, recording: bool) -> Vec<Item> {
     let a = |t: &str, g: Icon, action: Action, kw: &[&str]| {
         Item::new(Scope::Action, t, g, action)
             .keywords(kw.iter().map(|s| s.to_string()).collect())
             .key(format!("act:{t}"))
     };
-    vec![
+    let mut out = vec![
         a("Lock", Icon::Lock, Action::Session(SessionVerb::Lock), &["screen", "away"]),
         a("Sleep", Icon::Moon, Action::Session(SessionVerb::Sleep), &["suspend"]),
         a("Restart…", Icon::RotateCw, Action::Session(SessionVerb::Restart), &["reboot"]),
@@ -102,7 +103,45 @@ pub fn actions(day: bool, dnd: bool) -> Vec<Item> {
         a("New Desk", Icon::Grid2x2, Action::NewDesk, &["workspace"]),
         a("Empty Trash", Icon::Trash, Action::EmptyTrash, &["delete"]),
         a("Show Desktop", Icon::Monitor, Action::ShowDesktop, &["minimise all", "hide windows"]),
-    ]
+    ];
+    out.extend(recording_actions(recording));
+    out
+}
+
+/// Record Screen and Record Area, each without saying (the settings' audio)
+/// and with desktop audio, the microphone or both; or Stop Recording.
+pub fn recording_actions(recording: bool) -> Vec<Item> {
+    use crate::recording::{Ask, Audio, Target, ask_label};
+    let kw = |more: &[&str]| -> Vec<String> {
+        ["video", "screencast", "capture", "recording"].iter().chain(more).map(|s| s.to_string()).collect()
+    };
+    if recording {
+        let stop = Item::new(Scope::Action, "Stop Recording", Icon::Square, Action::StopRecording)
+            .keywords(kw(&["end", "finish", "save"]))
+            .shortcut(Some(crate::menus::model::sc("⌥", "Print")))
+            .key("act:Stop Recording");
+        return vec![stop];
+    }
+    let audios = [
+        (None, &[][..]),
+        (Some(Audio { desktop: true, microphone: false }), &["sound", "system audio"][..]),
+        (Some(Audio { desktop: false, microphone: true }), &["mic", "voice"][..]),
+        (Some(Audio { desktop: true, microphone: true }), &["sound", "mic", "voice"][..]),
+    ];
+    let mut out = Vec::new();
+    for (target, glyph) in [(Target::Screen, Icon::Video), (Target::Pick, Icon::Scan)] {
+        for (audio, more) in audios {
+            let ask = Ask { target: target.clone(), audio };
+            let title = ask_label(&ask);
+            let mut item = Item::new(Scope::Action, title.clone(), glyph, Action::Record(ask)).keywords(kw(more));
+            if target == Target::Pick && audio.is_none() {
+                // ⌥Print: pick an area, or click for a display.
+                item = item.shortcut(Some(crate::menus::model::sc("⌥", "Print")));
+            }
+            out.push(item.key(format!("act:{title}")));
+        }
+    }
+    out
 }
 
 /// A shortcut as keycaps: each modifier, then the key.
@@ -302,7 +341,7 @@ impl Shell {
             out.push(item);
         }
         // Actions.
-        for mut a in actions(self.theme_day, self.notes_cfg.do_not_disturb) {
+        for mut a in actions(self.theme_day, self.notes_cfg.do_not_disturb, self.recording.is_some()) {
             a.boost = a.key.as_deref().map_or(0, |k| self.frecency.boost(k));
             out.push(a);
         }

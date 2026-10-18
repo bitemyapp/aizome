@@ -217,7 +217,9 @@ Sent to subscribers as `binding` events, for the shell:
 | XF86PowerOff (the power key, when logind leaves it to the session) | `power-key` |
 | a client rings xdg-system-bell | `bell`, with the `output` (its window's, else the pointer's) |
 | ⌃❖Q | `lock` |
-| ❖⇧5 | `screenshot-tool` |
+| ❖⇧5 | `screenshot-tool` (the Capture menu: screenshots, recordings, Stop Recording) |
+| ⌥Print | `record` (stop the recording going, or pick an area or a display to record) |
+| — (for `[keys.bindings]`) | `record-screen`, `record-area`, `stop-recording` |
 | volume, mute, mic mute keys | `volume-up`, `volume-down`, `mute`, `mic-mute` |
 | brightness keys | `brightness-up`, `brightness-down` |
 | media keys | `play-pause`, `next`, `previous`, `stop` |

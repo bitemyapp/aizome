@@ -166,6 +166,7 @@ pub fn defaults() -> Vec<(String, String)> {
         ("Super+Shift+4", "screenshot-area"),
         ("Super+Shift+5", "screenshot-tool"),
         ("Print", "screenshot-screen"),
+        ("Alt+Print", "record"),
         ("XF86AudioRaiseVolume", "volume-up"),
         ("XF86AudioLowerVolume", "volume-down"),
         ("XF86AudioMute", "mute"),
@@ -237,9 +238,10 @@ pub fn sections(desks: usize) -> Vec<Section> {
             &[
                 ("screenshot-screen", "The whole screen"),
                 ("screenshot-area", "An area"),
-                ("screenshot-tool", "Screenshot tools"),
+                ("screenshot-tool", "Screenshot and recording tools"),
             ],
         ),
+        s("Screen Recording", &[("record", "Record an area or a display, or stop")]),
         s("Session", &[("terminal", "Open a terminal"), ("lock", "Lock the screen")]),
         s(
             "Media Keys",

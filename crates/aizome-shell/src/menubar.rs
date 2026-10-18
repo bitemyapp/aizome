@@ -167,6 +167,14 @@ pub struct Banner {
     pub body: String,
 }
 
+/// A recording going: the red dot and its time.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RecordBadge {
+    /// `0:42`, or `Saving` while the recorder finishes the file.
+    pub label: String,
+    pub stopping: bool,
+}
+
 /// Everything the bar shows.
 #[derive(Clone, Debug, PartialEq)]
 pub struct BarModel {
@@ -187,6 +195,8 @@ pub struct BarModel {
     pub banner: Option<Banner>,
     /// This bar's output is the one the Deskbar hangs from.
     pub primary: bool,
+    /// A screen recording going (the primary bar's systray shows it).
+    pub recording: Option<RecordBadge>,
 }
 
 fn ui_spec(t: &aizome_kit::Theme, size: f64, weight: f32, c: aizome_kit::Color) -> aizome_kit::text::TextSpec {
@@ -496,6 +506,53 @@ fn tray_icon(widget: TrayWidget, icon: Icon, text: Option<String>, open: bool, l
     .into()
 }
 
+/// The indicator's dot, its gap to the time, and the time's text.
+const DOT: f64 = 8.0;
+const DOT_GAP: f64 = 5.0;
+
+fn record_spec(t: &aizome_kit::Theme, stopping: bool) -> aizome_kit::text::TextSpec {
+    look::digits(11.5 * t.metrics.factor, typeface::WEIGHT_SEMIBOLD, if stopping { t.text2() } else { t.text() })
+}
+
+/// A screen recording going (Tatami's bar indicator, in Aizome's look): a
+/// `red` dot and the time in tabular mono; a click stops it. While the
+/// recorder finishes the file the dot is a ring and the time "Saving".
+/// Alone in its element, so its tick repaints only itself.
+fn recording(badge: &RecordBadge) -> Element<BarMsg> {
+    let label = badge.label.clone();
+    let stopping = badge.stopping;
+    let m = label.clone();
+    drawn(0.0, HEIGHT, (label.clone(), stopping), move |cx| {
+        let t = cx.theme();
+        let b = cx.bounds();
+        if cx.is_hovered() && !stopping {
+            cx.canvas.fill_rect(Rect::new(-3.0, 2.0, b.x1 + 3.0, HEIGHT - 3.0), t.hover(t.bar()));
+        }
+        let red = Hue::Red.color(t);
+        let c = aizome_kit::sidestep_ui::kurbo::Circle::new(Point::new(DOT / 2.0, HEIGHT / 2.0 - 0.5), DOT / 2.0);
+        if stopping {
+            let ring = aizome_kit::sidestep_ui::kurbo::Circle::new(c.center, DOT / 2.0 - 0.75);
+            cx.canvas.stroke(&ring, &aizome_kit::sidestep_ui::StrokeStyle::new(1.5), red);
+        } else {
+            cx.canvas.fill(&c, red);
+        }
+        let spec = record_spec(t, stopping);
+        cx.draw_text_in(&label, &spec, Rect::new(DOT + DOT_GAP, 0.0, b.x1 + 2.0, HEIGHT - 1.0), Align::Start);
+    })
+    .fit(move |cx| {
+        let t = cx.theme();
+        (DOT + DOT_GAP + cx.measure(&m, &record_spec(t, stopping)).width).ceil()
+    })
+    .on_click(BarMsg::Run(Action::StopRecording))
+    .overflow(3.0)
+    .text(
+        if stopping { "Saving the recording".to_owned() } else { format!("Recording {}", badge.label) },
+        SemanticRole::Button,
+    )
+    .key("recording")
+    .into()
+}
+
 /// The clock, alone in its element so its tick repaints only itself.
 fn clock(label: &str, open: bool) -> Element<BarMsg> {
     let s = label.to_owned();
@@ -561,6 +618,9 @@ fn header(model: &BarModel) -> Element<BarMsg> {
     let open = |w: TrayWidget| model.open == Some(Slot::Tray(w));
     let mut items: Vec<Element<BarMsg>> = Vec::new();
     let tray = &model.tray;
+    if let Some(r) = &model.recording {
+        items.push(recording(r));
+    }
     if tray.cpu {
         items.push(cpu_meter(&model.meters));
     }
@@ -690,6 +750,9 @@ pub type Measure<'a> = dyn FnMut(&str, &aizome_kit::text::TextSpec) -> f64 + 'a;
 pub fn header_width(t: &aizome_kit::Theme, m: &mut Measure, model: &BarModel) -> f64 {
     let tray = &model.tray;
     let mut items: Vec<f64> = Vec::new();
+    if let Some(r) = &model.recording {
+        items.push((DOT + DOT_GAP + m(&r.label, &record_spec(t, r.stopping))).ceil());
+    }
     if tray.cpu {
         items.push(model.meters.cores.len().max(1) as f64 * 4.0 - 1.0);
     }

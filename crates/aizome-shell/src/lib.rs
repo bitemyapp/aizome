@@ -26,6 +26,8 @@ pub mod osd;
 pub mod palette;
 pub mod pam;
 pub mod power;
+pub mod recording;
+mod recording_glue;
 pub mod services;
 pub mod shelf;
 pub mod shell;
@@ -47,7 +49,8 @@ lock screen and authentication dialog. The compositor starts it.
 Usage:
   aizome-shell             run the shell (the compositor starts it)
   aizome-shell msg REQ     ask the running shell: palette, toolchest, lock,
-                           dismiss, state, or a JSON request
+                           dismiss, state, stop-recording, or a JSON request
+                           ('{\"request\":\"record\",\"target\":\"screen\"}')
 
 Environment:
   AIZOME_SOCKET          the compositor's IPC socket
