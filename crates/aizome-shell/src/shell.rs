@@ -1058,6 +1058,11 @@ impl Program for Shell {
         false
     }
 
+    /// The shell is where menus go; it doesn't publish to itself.
+    fn menus_to_shell(&self) -> bool {
+        false
+    }
+
     fn session_locked(&mut self, cx: &mut Cx<Msg>) {
         self.lock_confirmed(cx);
     }
