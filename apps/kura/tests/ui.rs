@@ -137,6 +137,7 @@ fn settle(h: &mut Harness<Kura>, done: impl Fn(&Kura) -> bool) {
 /// Kura in `look`, writing only into `out`, with fixed disks and store.
 fn kura(out: &Path, look: Appearance) -> Harness<Kura> {
     let mut k = Kura::sandboxed(out);
+    k.analyse = false;
     k.has_store = true;
     k.index_dir = None;
     let mut h = Harness::with(k, look, false);
@@ -159,7 +160,7 @@ fn day() -> Appearance {
 
 fn with_results(h: &mut Harness<Kura>) {
     h.send(Msg::Scanned(Ok(fake_scan())));
-    h.send(Msg::Indexed(Ok((PathBuf::from("/home/sekka/.cache/aizome/kura/index.json"), 31 * GB))));
+    h.send(Msg::Indexed(Ok(fake_analysis())));
     assert_eq!(h.program().page, Page::Results);
 }
 
@@ -316,7 +317,7 @@ fn moving_to_the_trash_and_writing_the_index() {
     k.duplicates = false;
     let mut h = Harness::new(k);
     h.send(Msg::Scan(home.clone()));
-    settle(&mut h, |k| k.page == Page::Results && matches!(k.index, kura::ui::IndexState::Written { .. }));
+    settle(&mut h, |k| k.page == Page::Results && k.busy == 0 && matches!(k.index, kura::ui::IndexState::Written { .. }));
     let index = out.join("index/index.json");
     assert!(index.exists() && out.join("index/index.md").exists());
     let before = h.program().tree().unwrap().node(NodeId::ROOT).alloc;
@@ -324,7 +325,7 @@ fn moving_to_the_trash_and_writing_the_index() {
     let big = h.program().tree().unwrap().find(&home.join("big")).unwrap();
     h.send(Msg::Collect(big));
     h.send(Msg::Trash);
-    settle(&mut h, |k| k.collector.is_empty() && matches!(k.index, kura::ui::IndexState::Written { .. }));
+    settle(&mut h, |k| k.collector.is_empty() && k.busy == 0 && matches!(k.index, kura::ui::IndexState::Written { .. }));
     assert!(!home.join("big").exists());
     assert!(out.join("Trash/files/big/blob.bin").exists());
     assert!(out.join("Trash/info/big.trashinfo").exists());
@@ -589,6 +590,9 @@ fn what_drawing_the_rings_costs() {
         origin: Rc::default(),
         zone: Rc::default(),
         labels: Rc::default(),
+        marks: Rc::default(),
+        highlight_gen: 0,
+        hint: None,
     };
     let size = Size::new(730.0, 565.0);
     let bounds = aizome_kit::Rect::from_origin_size(Point::ZERO, size);
@@ -728,4 +732,359 @@ fn a_row_collects_by_its_menu_or_by_dragging() {
     h.move_to(w, Point::new(row.center().x - 200.0, row.center().y));
     h.release(w, Point::new(row.center().x - 200.0, row.center().y), PointerButton::Left);
     assert_eq!(h.program().collector.len(), 2);
+}
+
+// Suggestions.
+
+fn hp(path: &str, bytes: u64, note: Option<&str>) -> kura::hints::HintPath {
+    kura::hints::HintPath {
+        path: path.into(),
+        allocated_bytes: bytes,
+        apparent_bytes: bytes,
+        modified: Some("2025-06-01T10:00:00Z".into()),
+        note: note.map(Into::into),
+        command: None,
+    }
+}
+
+fn hint(id: &str, title: &str, summary: &str, risk: kura::hints::Risk, kind: kura::hints::ActionKind, paths: Vec<kura::hints::HintPath>) -> kura::hints::Hint {
+    kura::hints::Hint {
+        id: id.into(),
+        title: title.into(),
+        summary: summary.into(),
+        reclaimable_bytes: paths.iter().map(|p| p.allocated_bytes).sum(),
+        risk,
+        action: kura::hints::Action { kind, command: None, description: "Run each path's command.".into() },
+        paths,
+        more_paths: 0,
+        count: None,
+        count_unit: None,
+        groups: Vec::new(),
+    }
+}
+
+/// Hints for the made-up home, as the analysis would find them.
+fn fake_hints() -> Vec<kura::hints::Hint> {
+    use kura::hints::{ActionKind as K, DuplicateGroup, Risk as R};
+    let mut build = hint(
+        "build-outputs",
+        "Build outputs and dependencies",
+        "Build tools make these again from the project's sources; the next build takes longer.",
+        R::Low,
+        K::Command,
+        vec![hp("/home/sekka/work/aizome/target", 27 * GB, Some("Rust (Cargo) build output of ~/work/aizome"))],
+    );
+    build.paths[0].command = Some("cargo clean --manifest-path /home/sekka/work/aizome/Cargo.toml".into());
+    let caches = hint(
+        "package-caches",
+        "Package managers' caches",
+        "Downloads that pip and Nix keep so the next build needn't fetch them. They're fetched again when needed.",
+        R::Safe,
+        K::Command,
+        vec![hp("/home/sekka/.cache/pip", 800 * MB, Some("pip's cache")), hp("/home/sekka/.cache/nix", 600 * MB, Some("Nix's evaluation and download caches"))],
+    );
+    let browser = hint(
+        "browser-caches",
+        "Browser and app caches",
+        "Web browsers keep copies of pages, scripts and media, and download them again as needed. Quit the browser first.",
+        R::Low,
+        K::Command,
+        vec![hp("/home/sekka/.cache/google-chrome", 1900 * MB, Some("Chrome's cache"))],
+    );
+    let downloads = hint(
+        "old-downloads",
+        "Old downloads in /home/sekka/Downloads",
+        "Files in Downloads not changed for 90 days. Installers and disk images are often done with, but these are yours: choose.",
+        R::Medium,
+        K::Trash,
+        vec![
+            hp("/home/sekka/Downloads/sekka-nightly.iso", 3400 * MB, Some("Disk images, untouched 4 months ago")),
+            hp("/home/sekka/Downloads/old-backup.zip", 1200 * MB, Some("Archives, untouched 1 year ago")),
+        ],
+    );
+    let mut dupes = hint(
+        "duplicates",
+        "Duplicate files",
+        "1 set of files with identical contents, each 1 MB or larger. Keeping one copy of each would free the rest.",
+        R::Medium,
+        K::Trash,
+        vec![hp("/home/sekka/Documents/scans/scan-001.jpg", 15 * MB, Some("a copy of ~/Pictures/2025/IMG-001.jpg"))],
+    );
+    dupes.count = Some(1);
+    dupes.count_unit = Some("sets".into());
+    dupes.groups = vec![DuplicateGroup {
+        bytes_each: 15 * MB,
+        hash: "6c1f0e0a9b3d4e2f8a7c5b1d0e9f8a7c".into(),
+        verified: "full".into(),
+        reclaimable_bytes: 15 * MB,
+        paths: vec!["/home/sekka/Pictures/2025/IMG-001.jpg".into(), "/home/sekka/Documents/scans/scan-001.jpg".into()],
+    }];
+    let trash = hint(
+        "trash",
+        "Trash",
+        "1 item already moved to the Trash still takes space until it's emptied. Emptying it can't be undone.",
+        R::Medium,
+        K::Command,
+        vec![hp("/home/sekka/.local/share/Trash", 1100 * MB, None)],
+    );
+    let mut containers = hint(
+        "containers",
+        "Container storage",
+        "Container images and layers. `podman system df` shows what's in use.",
+        R::Medium,
+        K::Command,
+        vec![hp("/home/sekka/.local/share/containers", 4 * GB, Some("podman storage"))],
+    );
+    containers.action.command = Some("podman image prune".into());
+    containers.action.description = "Ask before pruning: stopped containers and unused images go.".into();
+    let mut gens = hint(
+        "nix-generations",
+        "Old Nix generations",
+        "4 old generations are kept besides the current ones. Never delete store paths by hand: Yukimi's Storage removes old generations safely.",
+        R::Low,
+        K::OpenApp,
+        Vec::new(),
+    );
+    gens.count = Some(4);
+    gens.count_unit = Some("generations".into());
+    vec![build, containers, downloads, browser, caches, trash, dupes, gens]
+}
+
+fn fake_analysis() -> kura::ui::Analysis {
+    let hints = fake_hints();
+    let mut by_risk = std::collections::BTreeMap::new();
+    for h in &hints {
+        *by_risk.entry(h.risk.id().to_owned()).or_insert(0) += h.reclaimable_bytes;
+    }
+    kura::ui::Analysis {
+        json: Some(PathBuf::from("/home/sekka/.cache/aizome/kura/index.json")),
+        reclaimable: hints.iter().map(|h| h.reclaimable_bytes).sum(),
+        by_risk,
+        hints: Arc::new(hints),
+    }
+}
+
+fn hint_named(h: &Harness<Kura>, id: &str) -> usize {
+    h.program().analysis.hints.iter().position(|x| x.id == id).unwrap_or_else(|| panic!("a {id} hint"))
+}
+
+#[test]
+fn suggestions_list_the_hints_and_light_their_paths() {
+    let out = scratch("suggest");
+    let mut h = kura(&out, night());
+    with_results(&mut h);
+    let w = h.window();
+    assert!(h.texts(w).iter().any(|t| t.ends_with("to free")), "the toolbar says what could be freed");
+    h.send(Msg::ShowSide(kura::ui::Side::Suggestions));
+    let texts = h.texts(w);
+    for t in ["Build outputs and dependencies", "Old Nix generations", "Duplicate files", "podman image prune", "Empty Trash…"] {
+        assert!(texts.iter().any(|x| x == t), "{t} in {texts:?}");
+    }
+
+    // Picking build outputs lights the target folder and shows it.
+    let b = hint_named(&h, "build-outputs");
+    h.send(Msg::FocusHint(Some(b)));
+    let k = h.program();
+    let tree = k.tree().unwrap();
+    assert_eq!(tree.name(k.center), "aizome", "the rings move to the folder holding it");
+    assert_eq!(k.highlight.len(), 1);
+    assert!(k.marks.contains(&kura::ui::sunburst::Mark::Lit));
+    // Caches: pip's and Nix's lit, Chrome's (another hint's) faint.
+    let c = hint_named(&h, "package-caches");
+    h.send(Msg::FocusHint(Some(c)));
+    let k = h.program();
+    let tree = k.tree().unwrap();
+    assert_eq!(tree.name(k.center), ".cache");
+    assert_eq!(k.highlight.len(), 2);
+    assert!(k.marks.contains(&kura::ui::sunburst::Mark::Lit));
+    assert!(k.marks.contains(&kura::ui::sunburst::Mark::Dim));
+    assert_golden(&mut h, w, golden("suggestions-night.png"), 2.0);
+    h.set_appearance(day());
+    assert_golden(&mut h, w, golden("suggestions-day.png"), 2.0);
+    h.set_appearance(night());
+
+    // Old downloads and duplicates opened: ticks, and copies side by side.
+    let d = hint_named(&h, "old-downloads");
+    let g = hint_named(&h, "duplicates");
+    h.send(Msg::FocusHint(None));
+    assert!(h.program().marks.is_empty());
+    h.send(Msg::ExpandHint(d, true));
+    let texts = h.texts(w);
+    assert!(texts.iter().any(|x| x == "Tick what to move first"), "old downloads wait for the person's choice");
+    assert!(texts.iter().any(|x| x == "sekka-nightly.iso"));
+    h.send(Msg::Choose("/home/sekka/Downloads/sekka-nightly.iso".into(), true));
+    assert!(h.texts(w).iter().any(|x| x == "Move 1 item to Trash…"));
+    assert_golden(&mut h, w, golden("suggestions-downloads-night.png"), 2.0);
+    // Duplicates, near the end: the copies side by side, one kept.
+    h.send(Msg::ExpandHint(d, false));
+    h.send(Msg::ExpandHint(g, true));
+    let texts = h.texts(w);
+    assert!(texts.iter().any(|x| x == "IMG-001.jpg") && texts.iter().any(|x| x == "scan-001.jpg"));
+    let panel = h.find_id(w, "suggestions").unwrap();
+    h.scroll(w, panel.center(), aizome_kit::Vec2::new(0.0, 5000.0));
+    assert_golden(&mut h, w, golden("suggestions-duplicates-night.png"), 2.0);
+    h.set_appearance(day());
+    assert_golden(&mut h, w, golden("suggestions-duplicates-day.png"), 2.0);
+    h.set_appearance(night());
+
+    // Containers: the command, copied.
+    h.send(Msg::CopyText("podman image prune".into()));
+    assert_eq!(h.platform.clipboard.as_deref(), Some("podman image prune"));
+    // Nothing waits for a yes yet.
+    assert!(h.program().pending.is_none());
+}
+
+/// A home with one of each kind of hint, in a folder of the test's own.
+fn suggest_home(out: &Path) -> (PathBuf, kura::hints::Context) {
+    let h = out.join("home");
+    let write = |p: &Path, n: usize| {
+        std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+        std::fs::write(p, (0..n).map(|i| (i % 251) as u8).collect::<Vec<u8>>()).unwrap();
+    };
+    write(&h.join(".cache/someapp/blob"), 2_000_000);
+    write(&h.join("proj/Cargo.toml"), 10);
+    write(&h.join("proj/target/debug/big.rlib"), 3_000_000);
+    write(&h.join("Downloads/old.iso"), 2_500_000);
+    let t = std::time::SystemTime::now() - Duration::from_secs(400 * 86_400);
+    std::fs::File::options().write(true).open(h.join("Downloads/old.iso")).unwrap().set_modified(t).unwrap();
+    write(&h.join("Pictures/a.jpg"), 1_300_000);
+    std::fs::create_dir_all(h.join("Documents")).unwrap();
+    std::fs::copy(h.join("Pictures/a.jpg"), h.join("Documents/copy-of-a.jpg")).unwrap();
+    write(&h.join(".local/share/Trash/files/gone.bin"), 1_400_000);
+    write(&h.join(".local/share/Trash/info/gone.bin.trashinfo"), 60);
+    let h = std::fs::canonicalize(&h).unwrap();
+    let mut cx = kura::hints::Context::from_env();
+    cx.home = Some(h.clone());
+    cx.cache_home = Some(h.join(".cache"));
+    cx.data_home = Some(h.join(".local/share"));
+    cx.config_home = Some(h.join(".config"));
+    cx.downloads = Some(h.join("Downloads"));
+    cx.trash = Some(h.join(".local/share/Trash"));
+    cx.nix_profiles = Vec::new();
+    cx.nix_store = None;
+    (h, cx)
+}
+
+fn settled(k: &Kura) -> bool {
+    k.page == Page::Results && k.busy == 0 && matches!(k.index, kura::ui::IndexState::Written { .. })
+}
+
+#[test]
+fn suggested_actions_ask_then_act_and_rescan_what_they_touched() {
+    let out = scratch("suggest-act");
+    let (home, places) = suggest_home(&out);
+    let mut k = Kura::sandboxed(&out);
+    k.has_store = false;
+    k.index_dir = None;
+    k.trash_dir = Some(home.join(".local/share/Trash"));
+    k.places = Some(places);
+    let mut h = Harness::new(k);
+    h.send(Msg::Scan(home.clone()));
+    settle(&mut h, settled);
+    let ids: Vec<String> = h.program().analysis.hints.iter().map(|x| x.id.clone()).collect();
+    for id in ["caches", "build-outputs", "old-downloads", "duplicates", "trash"] {
+        assert!(ids.iter().any(|x| x == id), "{id} in {ids:?}");
+    }
+    let trash_before = {
+        let k = h.program();
+        let t = k.tree().unwrap();
+        t.node(t.find(&home.join(".local/share/Trash")).unwrap()).alloc
+    };
+
+    // Build outputs: asked first; nothing moves until the yes.
+    let b = hint_named(&h, "build-outputs");
+    h.send(Msg::Act(b));
+    assert!(matches!(&h.program().pending, Some(kura::ui::Pending::Trash { paths, .. }) if paths == &[home.join("proj/target")]));
+    assert!(home.join("proj/target").exists());
+    // "Cancel" leaves it.
+    h.send(Msg::CancelPending);
+    assert!(h.program().pending.is_none());
+    h.send(Msg::Act(b));
+    h.send(Msg::Confirm);
+    settle(&mut h, settled);
+    assert!(!home.join("proj/target").exists());
+    assert!(home.join(".local/share/Trash/files/target/debug/big.rlib").exists());
+    {
+        let k = h.program();
+        let t = k.tree().unwrap();
+        let gone = t.gone();
+        assert!(t.find(&home.join("proj/target")).is_none_or(|n| gone[n.index()]));
+        // The Trash, inside the scan, was scanned again: it holds the target now.
+        let trash = t.find(&home.join(".local/share/Trash")).unwrap();
+        assert!(t.node(trash).alloc >= trash_before + 3_000_000, "{} after {}", t.node(trash).alloc, trash_before);
+        assert!(t.find(&home.join(".local/share/Trash/files/target/debug/big.rlib")).is_some());
+        assert!(!k.analysis.hints.iter().any(|x| x.id == "build-outputs"), "the hint went with what it named");
+        assert!(k.notice.as_deref().is_some_and(|n| n.starts_with("Moved 1 item to the Trash")));
+    }
+
+    // Old downloads are the person's: nothing is ticked until they choose.
+    let d = hint_named(&h, "old-downloads");
+    h.send(Msg::Act(d));
+    assert!(h.program().pending.is_none());
+    h.send(Msg::Choose(home.join("Downloads/old.iso").display().to_string(), true));
+    h.send(Msg::Act(d));
+    h.send(Msg::Confirm);
+    settle(&mut h, settled);
+    assert!(!home.join("Downloads/old.iso").exists());
+
+    // Duplicates: keep the second copy, the first goes.
+    let g = hint_named(&h, "duplicates");
+    let set = h.program().analysis.hints[g].groups[0].clone();
+    h.send(Msg::Keep(set.hash.clone(), 1));
+    h.send(Msg::ActGroup(g, 0));
+    h.send(Msg::Confirm);
+    settle(&mut h, settled);
+    assert!(!Path::new(&set.paths[0]).exists());
+    assert!(Path::new(&set.paths[1]).exists());
+
+    // Emptying the Trash: for good, after a yes, and only the Trash.
+    let t = hint_named(&h, "trash");
+    h.send(Msg::Act(t));
+    assert_eq!(h.program().pending, Some(kura::ui::Pending::EmptyTrash));
+    h.send(Msg::Confirm);
+    settle(&mut h, settled);
+    assert_eq!(std::fs::read_dir(home.join(".local/share/Trash/files")).unwrap().count(), 0);
+    assert!(home.join("Pictures").exists() && home.join("proj/Cargo.toml").exists());
+    let k = h.program();
+    let t = k.tree().unwrap();
+    let trash = t.find(&home.join(".local/share/Trash")).unwrap();
+    assert!(t.node(trash).alloc < 100_000, "the Trash's size was taken again: {}", t.node(trash).alloc);
+    assert!(!k.analysis.hints.iter().any(|x| x.id == "trash"));
+    assert!(k.notice.as_deref().is_some_and(|n| n.starts_with("Emptied the Trash")));
+}
+
+#[test]
+fn suggestions_fit_the_frame_budget() {
+    let out = scratch("perf-suggest");
+    let mut h = kura(&out, night());
+    with_results(&mut h);
+    let w = h.window();
+    h.send(Msg::ShowSide(kura::ui::Side::Suggestions));
+    let _ = h.render(w, 1.0);
+    let n = h.program().analysis.hints.len();
+    let mut pick = Vec::new();
+    let mut open = Vec::new();
+    let mut tick = Vec::new();
+    for round in 0..4 {
+        for i in 0..n {
+            if let Some(d) = frame(&mut h, |h| h.send(Msg::FocusHint(Some(i)))) {
+                pick.push(d);
+            }
+            if let Some(d) = frame(&mut h, |h| h.send(Msg::ExpandHint(i, round % 2 == 0))) {
+                open.push(d);
+            }
+        }
+        let d = hint_named(&h, "old-downloads");
+        let p = h.program().analysis.hints[d].paths[0].path.clone();
+        if let Some(t) = frame(&mut h, |h| h.send(Msg::Choose(p.clone(), round % 2 == 0))) {
+            tick.push(t);
+        }
+    }
+    let pick50 = report("picking a hint (the rings move and dim)", pick);
+    let open50 = report("opening or closing a hint", open);
+    report("ticking a path", tick);
+    if !cfg!(debug_assertions) {
+        assert!(open50 < Duration::from_millis(4), "opening p50 {open50:?}");
+        let _ = pick50;
+    }
 }

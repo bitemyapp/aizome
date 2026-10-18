@@ -308,6 +308,25 @@ Exceptions:
 - **The first drawing after a scan**, and a resize: the whole window, as
   for any app.
 
+### Suggestions
+
+`suggestions_fit_the_frame_budget` in the same file, release build, the
+made-up home with eight hints, the machine busier still (load average 24):
+
+| Interaction | p50 | p95 | max |
+|---|---|---|---|
+| Opening or closing a hint's paths (the panel lays out again) | 1.8 ms | 6.8 ms | 9.2 ms |
+| Ticking a path in or out | 0.15 ms | 0.30 ms | 0.42 ms |
+| Picking a hint | 5.1 ms | 20 ms | 22 ms |
+
+Exception: **picking a hint**. It moves the rings to the folder holding
+the hint's paths and dims everything else, so the whole sunburst is drawn
+again along with the panel (the rings alone are about 4 ms at 2×). It's a
+deliberate click on a card, not something repeated; hovering and moving
+through the list afterwards are the cheap paths above. Actions and the
+rescans after them run on the kit's threads; the window only takes the
+result.
+
 ## Shell
 
 The shell's surfaces (bar, Deskbar, desktop, palette, menus, panels, OSD,

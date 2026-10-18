@@ -299,7 +299,19 @@ Return to go in, ❖↑ out). Items reach the Collector by dragging a segment
 or a row onto it, by Collect in their menu or ❖K; it holds no item inside
 another, refuses anything in the Nix store, totals what it holds, and
 "Move to Trash…" (❖⌫) asks, then moves it all by the freedesktop Trash
-specification. The command line also has `aizome-kura hints [--json]` and
+specification. Suggestions (the side panel's other half, and the
+toolbar's "179 GB to free") show the index's hints by kind, most
+reclaimable first: each with what it frees, its risk as a badge (safe,
+low risk, your call), what it is in plain words, its paths (ticked by
+default when safe or low risk, never when they're the person's to
+decide) and its action: Move to Trash for caches, build outputs, logs and
+old downloads; Empty Trash; Open Yukimi's Storage for Nix; the command to
+run, with Copy, for containers and Flatpak; and for duplicates, the
+copies of each set side by side to keep one. Every action asks first.
+Picking a hint moves the rings to the folder holding its paths and dims
+everything else; after an action, the folders it touched (and the Trash)
+are scanned again and grafted into the tree, and the hints are found
+anew. The command line also has `aizome-kura hints [--json]` and
 `aizome-kura trash PATH…` (the same Trash, for agents), and `scan`,
 `report` and `hints` take `--output DIR` to keep the index elsewhere.
 Nothing in NixOS needs configuring; `nix` on the `PATH` lets Kura measure

@@ -16,7 +16,7 @@ use aizome_kit::{Constraints, column, row};
 use super::drag::{self, RowActions};
 use super::sunburst::Burst;
 use std::time::Instant;
-use super::{IndexState, Kura, Msg, Page, colors};
+use super::{IndexState, Kura, Msg, Page, Side, colors, suggest_view};
 use crate::format;
 use crate::kinds::{self, FileKind};
 use crate::mounts::Mount;
@@ -64,14 +64,14 @@ fn status(k: &Kura) -> Element<Msg> {
     };
     let right = match &k.index {
         IndexState::None => String::new(),
-        IndexState::Writing => "Writing the index for agents…".into(),
-        IndexState::Written { reclaimable, .. } => {
-            if *reclaimable > 0 {
-                format!("About {} could be freed · index for agents written", format::size(*reclaimable))
-            } else {
-                "Index for agents written".into()
-            }
-        }
+        IndexState::Writing if k.busy > 0 => "Scanning what changed…".into(),
+        IndexState::Writing => "Looking for what could be freed…".into(),
+        IndexState::Written { json, reclaimable } => match (json.is_some(), *reclaimable > 0) {
+            (true, true) => format!("About {} could be freed · index for agents written", format::size(*reclaimable)),
+            (true, false) => "Index for agents written".into(),
+            (false, true) => format!("About {} could be freed", format::size(*reclaimable)),
+            (false, false) => String::new(),
+        },
         IndexState::Failed(e) => format!("The index for agents wasn't written: {e}"),
     };
     aizome_kit::status_bar(vec![
@@ -234,6 +234,7 @@ fn results(k: &Kura) -> Element<Msg> {
     ];
     items.extend(crumbs);
     items.push(spacer().into());
+    items.push(suggest_view::toolbar_button(k));
     items.push(icon_button(Icon::RefreshCw).toolbar().on_press(Msg::Rescan).tooltip("Rescan (❖R)").label("Rescan").into());
     let bar = toolbar(items);
 
@@ -254,6 +255,12 @@ fn results(k: &Kura) -> Element<Msg> {
         origin: k.origin.clone(),
         zone: k.zone.clone(),
         labels: k.labels.clone(),
+        marks: k.marks.clone(),
+        highlight_gen: k.highlight_gen,
+        hint: k.hint_index().map(|i| {
+            let h = &k.analysis.hints[i];
+            (h.title.clone(), h.frees())
+        }),
     };
     let burst: Element<Msg> = aizome_kit::canvas(state, |c, bounds, st: &Burst, theme| st.draw(c, bounds, theme))
         .on_event(|ev, size, st: &Burst| st.event(ev, size))
@@ -264,9 +271,13 @@ fn results(k: &Kura) -> Element<Msg> {
         .id("sunburst")
         .into();
 
-    let side = column![list_header(), nix_note(k, &scan), folder_list(k, scan.clone()), collector(k)]
-        .width(SIDE)
-        .height(Length::Fill);
+    let side: Element<Msg> = match k.side {
+        Side::Contents => column![side_switch(k), list_header(), nix_note(k, &scan), folder_list(k, scan.clone()), collector(k)]
+            .width(SIDE)
+            .height(Length::Fill)
+            .into(),
+        Side::Suggestions => column![side_switch(k), suggest_view::panel(k)].width(suggest_view::WIDTH).height(Length::Fill).into(),
+    };
     let main = row![
         container(burst).fill(Tone::Surface).width(Length::Fill).height(Length::Fill),
         container(side).fill(Tone::Chrome).edges(Edge::BevelLo, Sides::LEFT).height(Length::Fill),
@@ -536,4 +547,19 @@ impl Widget for Dashed {
         let style = StrokeStyle::new(1.0).with_dash(vec![4.0, 3.0], 0.0);
         cx.canvas.stroke(&b.to_path(0.1), &style, edge);
     }
+}
+
+/// Above the side panel: the folder's contents, or the suggestions.
+fn side_switch(k: &Kura) -> Element<Msg> {
+    let n = k.analysis.hints.len();
+    let label = if n == 0 { "Suggestions".to_owned() } else { format!("Suggestions ({n})") };
+    container(
+        segmented(["Contents".to_owned(), label], Some(if k.side == Side::Contents { 0 } else { 1 }))
+            .on_select(|i| Msg::ShowSide(if i == 0 { Side::Contents } else { Side::Suggestions }))
+            .width(Length::Fill),
+    )
+    .padding([6.0, 10.0])
+    .edges(Edge::Line, Sides::BOTTOM)
+    .width(Length::Fill)
+    .into()
 }

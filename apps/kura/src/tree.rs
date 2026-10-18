@@ -346,6 +346,52 @@ impl Tree {
         m.apparent = 0;
     }
 
+    /// Put a fresh scan of folder `at` in place of what the tree held there
+    /// (after something inside it changed): `sub`'s root is `at` scanned
+    /// again. The new nodes go at the end of the arena (children still
+    /// after their parents); the old ones are marked removed and left
+    /// unreachable; the folders above take the difference in size.
+    pub fn graft(&mut self, at: NodeId, sub: &Tree) {
+        let old = self.nodes[at.index()];
+        // The old children go (their own descendants with them).
+        for c in old.first..old.first + old.count {
+            self.nodes[c as usize].flags |= flags::REMOVED;
+        }
+        let new = sub.nodes[0];
+        let offset = self.nodes.len() as u32 - 1;
+        let name_offset = self.names.len() as u32;
+        // The root's name (its whole path) comes first in the names; the rest follow.
+        let name_base = u32::from(new.name_len);
+        self.names.extend_from_slice(&sub.names[name_base as usize..]);
+        for n in &sub.nodes[1..] {
+            let mut m = *n;
+            m.name_at = n.name_at - name_base + name_offset;
+            m.parent = if n.parent == 0 { at.0 } else { n.parent + offset };
+            if m.count > 0 {
+                m.first = n.first + offset;
+            }
+            self.nodes.push(m);
+        }
+        // The difference, up through the folders above.
+        let mut up = at;
+        while let Some(p) = self.parent(up) {
+            let pn = &mut self.nodes[p.index()];
+            pn.alloc = (pn.alloc + new.alloc).saturating_sub(old.alloc);
+            pn.apparent = (pn.apparent + new.apparent).saturating_sub(old.apparent);
+            pn.items = (pn.items + new.items).saturating_sub(old.items);
+            pn.mtime = pn.mtime.max(new.mtime);
+            up = p;
+        }
+        let a = &mut self.nodes[at.index()];
+        a.first = if new.count > 0 { new.first + offset } else { 0 };
+        a.count = new.count;
+        a.alloc = new.alloc;
+        a.apparent = new.apparent;
+        a.items = new.items;
+        a.mtime = new.mtime;
+        a.flags = new.flags;
+    }
+
     /// Which nodes are gone: removed, or inside something removed.
     pub fn gone(&self) -> Vec<bool> {
         let mut v = vec![false; self.nodes.len()];
@@ -404,6 +450,40 @@ mod tests {
         assert_eq!(t.path(deep), PathBuf::from("/r/c/c1/deep"));
         assert_eq!(t.depth(deep), 3);
         assert_eq!(t.node(t.child_named(NodeId::ROOT, "c").unwrap()).mtime, 50);
+    }
+
+    #[test]
+    fn grafting_a_rescan_replaces_a_folder() {
+        let mut t = Tree::new(PathBuf::from("/r"), Kind::Dir, 0, 0, 0);
+        let f = t.push_children(NodeId::ROOT, &[e("keep", Kind::File, 10), e("dir", Kind::Dir, 0)]);
+        let dir = NodeId(f + 1);
+        t.push_children(dir, &[e("old-a", Kind::File, 100), e("old-b", Kind::File, 50)]);
+        t.finish();
+        let dir = t.child_named(NodeId::ROOT, "dir").unwrap();
+        assert_eq!(t.node(NodeId::ROOT).alloc, 160);
+
+        // The folder scanned again: one file went, two came, one deeper.
+        let mut sub = Tree::new(PathBuf::from("/r/dir"), Kind::Dir, 0, 0, 0);
+        let s = sub.push_children(NodeId::ROOT, &[e("old-a", Kind::File, 100), e("new", Kind::Dir, 0), e("c", Kind::File, 1)]);
+        sub.push_children(NodeId(s + 1), &[e("deep", Kind::File, 7)]);
+        sub.finish();
+        t.graft(dir, &sub);
+
+        assert_eq!(t.node(NodeId::ROOT).alloc, 10 + 100 + 7 + 1);
+        assert_eq!(t.node(NodeId::ROOT).items, 2 + 4);
+        assert_eq!(t.node(dir).alloc, 108);
+        let names: Vec<_> = t.sorted_children(dir).iter().map(|&c| t.name(c).into_owned()).collect();
+        assert_eq!(names, ["old-a", "new", "c"]);
+        let deep = t.find(Path::new("/r/dir/new/deep")).unwrap();
+        assert_eq!(t.path(deep), PathBuf::from("/r/dir/new/deep"));
+        assert!(t.find(Path::new("/r/dir/old-b")).is_none());
+        // What was there is gone from every count.
+        let gone = t.gone();
+        let live: u64 = t.nodes().iter().enumerate().filter(|(i, n)| !gone[*i] && n.kind == Kind::File).map(|(_, n)| n.alloc).sum();
+        assert_eq!(live, 118);
+        for i in 1..t.len() {
+            assert!(t.nodes()[i].parent < i as u32, "children come after their parents");
+        }
     }
 
     #[test]

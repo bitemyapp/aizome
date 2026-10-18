@@ -6,6 +6,8 @@ pub mod drag;
 mod instance;
 pub mod rings;
 pub mod sunburst;
+mod suggest;
+mod suggest_view;
 mod view;
 
 use std::cell::Cell;
@@ -63,15 +65,38 @@ pub struct Scanning {
 pub enum IndexState {
     None,
     Writing,
-    Written { json: PathBuf, reclaimable: u64 },
+    /// Analysed; written to `json` when there's an index folder.
+    Written { json: Option<PathBuf>, reclaimable: u64 },
     Failed(String),
 }
 
-/// What moving to the Trash did, by node.
+/// What an analysis found: the hints, and where the index went.
 #[derive(Clone, Debug, Default)]
-pub struct TrashResult {
-    pub moved: Vec<NodeId>,
-    pub refused: Vec<(NodeId, String)>,
+pub struct Analysis {
+    pub json: Option<PathBuf>,
+    pub reclaimable: u64,
+    /// `safe`, `low`, `medium`, `high` → bytes.
+    pub by_risk: std::collections::BTreeMap<String, u64>,
+    pub hints: Arc<Vec<crate::hints::Hint>>,
+}
+
+/// Which side of the results the panel shows.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Side {
+    /// The folder's list and the Collector.
+    #[default]
+    Contents,
+    /// What could be freed, and how.
+    Suggestions,
+}
+
+/// An action waiting for the person's yes.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Pending {
+    /// Move these to the Trash.
+    Trash { paths: Vec<PathBuf>, what: String },
+    /// Empty the Trash for good.
+    EmptyTrash,
 }
 
 #[derive(Clone, Debug)]
@@ -112,8 +137,31 @@ pub enum Msg {
     ClearCollector,
     AskTrash,
     Trash,
-    Trashed(TrashResult),
-    Indexed(Result<(PathBuf, u64), String>),
+    /// What moving to the Trash did.
+    Moved { moved: Vec<PathBuf>, refused: Vec<(PathBuf, String)> },
+    Indexed(Result<Analysis, String>),
+    // Suggestions.
+    ShowSide(Side),
+    /// Pick a hint (its paths light up in the rings), or none.
+    FocusHint(Option<usize>),
+    /// Show (or hide) a hint's paths.
+    ExpandHint(usize, bool),
+    /// Include a path in its hint's action, or leave it out.
+    Choose(String, bool),
+    /// Which copy of a set of duplicates stays (the set's hash, the copy).
+    Keep(String, usize),
+    /// Ask to carry out a hint's action.
+    Act(usize),
+    /// Ask to move the other copies of a set of duplicates to the Trash.
+    ActGroup(usize, usize),
+    /// The person said yes.
+    Confirm,
+    CancelPending,
+    CopyText(String),
+    /// The Trash was emptied: how many items went.
+    Emptied(Result<usize, String>),
+    /// Folders scanned again after an action.
+    Rescanned(Vec<(PathBuf, Arc<crate::tree::Tree>)>),
     OpenYukimi,
     Reveal(NodeId),
     CopyPath(NodeId),
@@ -162,7 +210,37 @@ pub struct Kura {
     pub last_root: Option<PathBuf>,
     /// Whether there's a Nix store here.
     pub has_store: bool,
+    /// Where hints look (home, caches, Downloads, Trash), when not this
+    /// user's own (tests' fixture homes).
+    pub places: Option<crate::hints::Context>,
+    /// Look for hints after each scan (tests showing made-up hints turn it off).
+    pub analyse: bool,
+    // Suggestions.
+    pub side: Side,
+    pub analysis: Analysis,
+    /// The hint picked, by its key ([`hint_key`]).
+    pub focus_hint: Option<String>,
+    /// Hints whose paths show, by key.
+    pub expanded: std::collections::HashSet<String>,
+    /// Paths put in or left out of their hint's action (else by its risk).
+    pub choice: std::collections::HashMap<String, bool>,
+    /// The copy kept of each set of duplicates, by the set's hash.
+    pub keep: std::collections::HashMap<String, usize>,
+    pub pending: Option<Pending>,
+    /// What the picked hint covers, in the tree.
+    pub highlight: Rc<Vec<NodeId>>,
+    /// Each segment's part in the highlight (see [`sunburst::Mark`]).
+    pub marks: Rc<Vec<sunburst::Mark>>,
+    /// Bumped when the highlight changes (the rings draw again).
+    pub highlight_gen: u64,
+    /// Actions and rescans under way.
+    pub busy: u32,
     listener: Option<std::os::unix::net::UnixListener>,
+}
+
+/// A hint's identity across analyses: its id and title.
+pub fn hint_key(h: &crate::hints::Hint) -> String {
+    format!("{}\u{1f}{}", h.id, h.title)
 }
 
 impl Default for Kura {
@@ -204,6 +282,19 @@ impl Kura {
             duplicates: true,
             last_root: None,
             has_store: nix::has_store(),
+            places: None,
+            analyse: true,
+            side: Side::Contents,
+            analysis: Analysis::default(),
+            focus_hint: None,
+            expanded: Default::default(),
+            choice: Default::default(),
+            keep: Default::default(),
+            pending: None,
+            highlight: Rc::new(Vec::new()),
+            marks: Rc::new(Vec::new()),
+            highlight_gen: 0,
+            busy: 0,
             listener: None,
         }
     }
@@ -270,6 +361,7 @@ impl Kura {
         self.segs = Rc::new(segs);
         self.hover = None;
         self.press = None;
+        self.refresh_marks();
     }
 
     /// A click on the sunburst: into a folder, up from the middle, or
@@ -316,18 +408,36 @@ impl Kura {
         }
     }
 
-    /// Write the index for agents from the current tree, in the background.
+    /// Find the hints for the current tree and write the index for agents
+    /// (when there's an index folder), in the background.
     fn write_index(&mut self, cx: &mut Cx<Msg>) {
-        let (Some(scan), Some(dir)) = (self.scan.clone(), self.index_dir.clone()) else { return };
+        let Some(scan) = self.scan.clone().filter(|_| self.analyse) else { return };
+        let dir = self.index_dir.clone();
         let measure = self.measure_store;
         let duplicates = self.duplicates;
+        let places = self.places.clone();
+        let store = self.store.clone();
         self.index = IndexState::Writing;
         cx.spawn(move || {
-            let mut hcx = crate::context(measure, Some(&dir));
+            let mut hcx = match places {
+                Some(p) => crate::hints::Context { nix_store: p.nix_store.clone().or(store), ..p },
+                None => crate::context(measure, dir.as_deref()),
+            };
             hcx.duplicates = duplicates;
             let ix = crate::analyse(&scan, &hcx, None);
-            let reclaimable = ix.reclaimable.total_bytes;
-            Msg::Indexed(crate::index::write(&ix, &dir).map(|(json, _)| (json, reclaimable)).map_err(|e| e.to_string()))
+            let json = match &dir {
+                Some(d) => match crate::index::write(&ix, d) {
+                    Ok((json, _)) => Some(json),
+                    Err(e) => return Msg::Indexed(Err(e.to_string())),
+                },
+                None => None,
+            };
+            Msg::Indexed(Ok(Analysis {
+                json,
+                reclaimable: ix.reclaimable.total_bytes,
+                by_risk: ix.reclaimable.by_risk.clone(),
+                hints: Arc::new(ix.hints),
+            }))
         });
     }
 
@@ -443,6 +553,9 @@ impl Program for Kura {
                         self.transition = None;
                         self.selected = None;
                         self.collector.clear();
+                        self.focus_hint = None;
+                        self.highlight = Rc::new(Vec::new());
+                        self.analysis = Analysis::default();
                         self.refresh_rows();
                         self.page = Page::Results;
                         cx.set_title(self.window, format!("Kura — {}", format::path(&root)));
@@ -566,63 +679,50 @@ impl Program for Kura {
                 cx.alert(self.window, alert);
             }
             Msg::Trash => {
-                let (Some(scan), Some(trash)) = (self.scan.clone(), self.trash_dir.clone()) else { return };
-                let targets = self.trash_targets();
-                self.notice = Some(format!("Moving {} to the Trash…", format::plural(targets.len() as u64, "item", "items")));
-                cx.spawn(move || {
-                    let paths: Vec<PathBuf> = targets.iter().map(|(_, p)| p.clone()).collect();
-                    let sizes = |p: &Path| scan.tree.find(p).map(|id| scan.tree.node(id).apparent);
-                    let out = crate::trash::trash(&paths, &trash, &sizes);
-                    let id_of = |p: &PathBuf| targets.iter().find(|(_, q)| q == p).map(|(n, _)| *n);
-                    Msg::Trashed(TrashResult {
-                        moved: out.trashed.iter().filter_map(|(p, _)| id_of(p)).collect(),
-                        refused: out.refused.iter().filter_map(|(p, why)| id_of(p).map(|n| (n, why.clone()))).collect(),
-                    })
-                });
+                let paths: Vec<PathBuf> = self.trash_targets().into_iter().map(|(_, p)| p).collect();
+                self.move_to_trash(paths, cx);
             }
-            Msg::Trashed(r) => {
-                let freed: u64 = self.tree().map_or(0, |t| r.moved.iter().map(|&n| t.node(n).alloc).sum());
-                if let Some(scan) = &mut self.scan {
-                    let scan = Arc::make_mut(scan);
-                    for &n in &r.moved {
-                        scan.tree.remove(n);
+            Msg::Moved { moved, refused } => self.moved(moved, refused, cx),
+            Msg::Indexed(r) => match r {
+                Ok(a) => {
+                    self.index = IndexState::Written { json: a.json.clone(), reclaimable: a.reclaimable };
+                    self.analysis = a;
+                    self.refresh_highlight();
+                }
+                Err(e) => self.index = IndexState::Failed(e),
+            },
+            Msg::ShowSide(s) => self.side = s,
+            Msg::FocusHint(i) => self.focus_hint(i, cx),
+            Msg::ExpandHint(i, on) => {
+                if let Some(h) = self.analysis.hints.get(i) {
+                    let k = hint_key(h);
+                    if on {
+                        self.expanded.insert(k);
+                    } else {
+                        self.expanded.remove(&k);
                     }
                 }
-                self.generation += 1;
-                self.collector.retain(|n| !r.moved.contains(n));
-                // A centre that went goes up to what's left.
-                if let Some(t) = self.tree() {
-                    let gone = t.gone();
-                    let mut c = self.center;
-                    while gone[c.index()] {
-                        c = t.parent(c).unwrap_or(NodeId::ROOT);
-                    }
-                    let lost_selection = self.selected.is_some_and(|s| gone[s.index()]);
-                    self.center = c;
-                    if lost_selection {
-                        self.selected = None;
-                    }
-                }
-                self.transition = None;
-                self.refresh_rows();
-                let mut notice = format!(
-                    "Moved {} to the Trash ({}, freed when the Trash is emptied).",
-                    format::plural(r.moved.len() as u64, "item", "items"),
-                    format::size(freed)
-                );
-                if let Some((n, why)) = r.refused.first() {
-                    let name = self.tree().map(|t| t.name(*n).into_owned()).unwrap_or_default();
-                    notice = format!("{notice} “{name}” stayed: {why}.");
-                }
-                self.notice = Some(notice);
-                self.write_index(cx);
             }
-            Msg::Indexed(r) => {
-                self.index = match r {
-                    Ok((json, reclaimable)) => IndexState::Written { json, reclaimable },
-                    Err(e) => IndexState::Failed(e),
+            Msg::Choose(path, on) => {
+                self.choice.insert(path, on);
+            }
+            Msg::Keep(hash, i) => {
+                self.keep.insert(hash, i);
+            }
+            Msg::Act(i) => self.ask_act(i, cx),
+            Msg::ActGroup(i, g) => self.ask_group(i, g, cx),
+            Msg::Confirm => {
+                if let Some(p) = self.pending.take() {
+                    self.carry_out(p, cx);
                 }
             }
+            Msg::CancelPending => self.pending = None,
+            Msg::CopyText(t) => {
+                cx.set_clipboard_text(&t);
+                self.notice = Some(format!("Copied `{t}`"));
+            }
+            Msg::Emptied(r) => self.emptied(r, cx),
+            Msg::Rescanned(subs) => self.rescanned(subs, cx),
             Msg::OpenYukimi => {
                 let [cmd, args @ ..] = nix::YUKIMI_STORAGE;
                 if let Err(e) = std::process::Command::new(cmd).args(args).spawn() {

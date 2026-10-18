@@ -119,6 +119,22 @@ pub struct Burst {
     pub origin: Rc<Cell<Option<Point>>>,
     pub zone: ZoneCell,
     pub labels: Rc<RefCell<Labels>>,
+    /// Each segment's part in the picked hint (empty: no hint picked).
+    pub marks: Rc<Vec<Mark>>,
+    pub highlight_gen: u64,
+    /// The picked hint's title and what it frees, for the middle.
+    pub hint: Option<(String, String)>,
+}
+
+/// A segment's part in the picked hint.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Mark {
+    /// Neither in it nor holding it: drawn faint.
+    Dim,
+    /// Holding something that's in it.
+    Plain,
+    /// In it.
+    Lit,
 }
 
 // What's hovered and selected are parts ([`Burst::parts`]): left out, so that
@@ -131,6 +147,8 @@ impl Hash for Burst {
         self.can_up.hash(h);
         self.progress.map(|p| (p * 1000.0) as u32).hash(h);
         self.transition.map(|t| (t.outer, t.inner, t.zoom_in)).hash(h);
+        self.highlight_gen.hash(h);
+        self.hint.hash(h);
     }
 }
 
@@ -283,6 +301,9 @@ impl Burst {
         for (i, seg) in self.segs.iter().enumerate() {
             let (ri, ro) = geo.radii(f64::from(seg.depth));
             let mut fill = Burst::fill(theme, seg);
+            if self.marks.get(i) == Some(&Mark::Dim) {
+                fill = fill.mix(aizome_kit::theme::color(theme.palette.surface), 0.62);
+            }
             if self.hover == Some(Target::Seg(i)) {
                 fill = colors::hovered(fill);
             }
@@ -397,19 +418,24 @@ impl Burst {
                         } else {
                             crate::kinds::classify(tree.name_bytes(n), false).title().to_owned()
                         };
-                        (tree.name(n).into_owned(), node.alloc, format!("{what} · {}", format::percent(node.alloc, total)))
+                        (tree.name(n).into_owned(), format::size(node.alloc), format!("{what} · {}", format::percent(node.alloc, total)))
                     }
                     None => {
                         let bytes = ((seg.x1 - seg.x0) * total as f64) as u64;
-                        ("Smaller items".to_owned(), bytes, format!("in {}", tree.name(seg.parent)))
+                        ("Smaller items".to_owned(), format::size(bytes), format!("in {}", tree.name(seg.parent)))
                     }
                 }
             }
-            _ => {
-                let n = tree.node(self.center);
-                let title = if self.center == tree.root() { format::path(tree.root_path()) } else { tree.name(self.center).into_owned() };
-                (title, n.alloc, format::plural(u64::from(n.items), "item", "items"))
-            }
+            _ => match &self.hint {
+                // A picked hint, in the middle while nothing's pointed at.
+                Some((title, frees)) if self.hover.is_none() => (title.clone(), frees.clone(), "could be freed".to_owned()),
+                _ => {
+                    let n = tree.node(self.center);
+                    let title =
+                        if self.center == tree.root() { format::path(tree.root_path()) } else { tree.name(self.center).into_owned() };
+                    (title, format::size(n.alloc), format::plural(u64::from(n.items), "item", "items"))
+                }
+            },
         };
         let width = (geo.hole * 1.6).floor();
         let mut tf = FontSpec::ui(theme.metrics.body);
@@ -418,7 +444,7 @@ impl Burst {
         let mut sf = FontSpec::ui(theme.metrics.title + 3.0);
         sf.weight = 650.0;
         sf.tabular = true;
-        let size_l = labels.get(theme, &format::size(size), sf, theme.text(), None);
+        let size_l = labels.get(theme, &size, sf, theme.text(), None);
         let detail_l = labels.get(theme, &detail, FontSpec::ui(theme.metrics.small), theme.text3(), Some(width));
         let h = title_l.size().height + size_l.size().height + detail_l.size().height + 2.0;
         let mut y = geo.center.y - h / 2.0;

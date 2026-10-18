@@ -198,6 +198,35 @@ fn local_timestamp() -> String {
     }
 }
 
+/// Empty the trash at `trash` for good: everything in `files/`, `info/`
+/// and `expunged/`, and the `directorysizes` cache. Refuses a folder that
+/// isn't a trash (named `Trash` or `.Trash-…`, holding `files/`). The
+/// number of items deleted.
+pub fn empty(trash: &Path) -> std::io::Result<usize> {
+    let name = trash.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    if !(name == "Trash" || name.starts_with(".Trash")) || !trash.join("files").is_dir() {
+        return Err(std::io::Error::other(format!("{} isn't a trash folder", trash.display())));
+    }
+    let mut count = 0;
+    for part in ["files", "info", "expunged"] {
+        let Ok(rd) = fs::read_dir(trash.join(part)) else { continue };
+        for e in rd.flatten() {
+            let p = e.path();
+            // Never through a link: a link in the trash goes, not its target.
+            let is_dir = fs::symlink_metadata(&p).is_ok_and(|m| m.is_dir());
+            if is_dir { fs::remove_dir_all(&p)? } else { fs::remove_file(&p)? }
+            if part == "files" {
+                count += 1;
+            }
+        }
+    }
+    match fs::remove_file(trash.join("directorysizes")) {
+        Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(e),
+        _ => {}
+    }
+    Ok(count)
+}
+
 /// What's in the trash at `trash`: the items in `files/`.
 pub fn items(trash: &Path) -> Vec<PathBuf> {
     fs::read_dir(trash.join("files")).map(|rd| rd.flatten().map(|e| e.path()).collect()).unwrap_or_default()
@@ -254,6 +283,29 @@ mod tests {
         if let Some(home) = crate::home_dir() {
             assert!(refusal(&home, &trash_dir).is_some());
         }
+    }
+
+    #[test]
+    fn empties_only_a_trash() {
+        let dir = crate::testdir("trash-empty");
+        let trash_dir = dir.join("Trash");
+        let outside = dir.join("outside");
+        fs::write(&outside, b"stays").unwrap();
+        let a = dir.join("a");
+        fs::create_dir_all(a.join("inner")).unwrap();
+        fs::write(a.join("inner/f"), b"x").unwrap();
+        // A link in the trash to something outside: the link goes, not what it names.
+        let link = dir.join("link");
+        std::os::unix::fs::symlink(&outside, &link).unwrap();
+        let out = trash(&[a, link], &trash_dir, &|_| Some(1));
+        assert_eq!(out.trashed.len(), 2);
+        assert_eq!(empty(&trash_dir).unwrap(), 2);
+        assert!(items(&trash_dir).is_empty());
+        assert_eq!(fs::read_dir(trash_dir.join("info")).unwrap().count(), 0);
+        assert!(!trash_dir.join("directorysizes").exists());
+        assert!(outside.exists());
+        // Not a trash: refused.
+        assert!(empty(&dir).is_err());
     }
 
     #[test]
