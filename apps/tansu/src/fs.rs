@@ -2,8 +2,8 @@
 //! made, labelled, checked, repaired and resized through UDisks2 (and
 //! how), and its colour on the partition map.
 
-use aizome_kit::theme::Theme;
 use aizome_kit::Color;
+use aizome_kit::theme::Theme;
 use aizome_sys::disks::types::filesystem_name;
 use aizome_theme::{DYE_RAMP, Rgba};
 
@@ -72,21 +72,33 @@ pub fn resizable(fs: &str) -> Resizable {
         "btrfs" => Resizable {
             grow: false,
             shrink: false,
-            why_not: Some("Btrfs resizes only while mounted (`btrfs filesystem resize`), and Tansu changes only unmounted filesystems."),
+            why_not: Some(
+                "Btrfs resizes only while mounted (`btrfs filesystem resize`), and Tansu changes only unmounted filesystems.",
+            ),
         },
         "xfs" => Resizable {
             grow: false,
             shrink: false,
             why_not: Some("XFS grows only while mounted (`xfs_growfs`) and never shrinks."),
         },
-        "exfat" => Resizable { grow: false, shrink: false, why_not: Some("exFAT can't be resized: copy its files off, then format.") },
-        "swap" => Resizable { grow: false, shrink: false, why_not: Some("Swap can't be resized: delete it and make a new one.") },
+        "exfat" => Resizable {
+            grow: false,
+            shrink: false,
+            why_not: Some("exFAT can't be resized: copy its files off, then format."),
+        },
+        "swap" => Resizable {
+            grow: false,
+            shrink: false,
+            why_not: Some("Swap can't be resized: delete it and make a new one."),
+        },
         "crypto_LUKS" => Resizable {
             grow: false,
             shrink: false,
             why_not: Some("Encrypted volumes resize from inside (cryptsetup resize), which UDisks doesn't offer."),
         },
-        _ => Resizable { grow: false, shrink: false, why_not: Some("Tansu doesn't know how to resize this filesystem.") },
+        _ => {
+            Resizable { grow: false, shrink: false, why_not: Some("Tansu doesn't know how to resize this filesystem.") }
+        }
     }
 }
 

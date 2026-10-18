@@ -342,7 +342,11 @@ pub fn current(state: &DisksState, disk: &str) -> Option<Layout> {
     };
     if d.partition_table.is_some() {
         for p in state.partitions(disk) {
-            let kind = if p.partition.as_ref().is_some_and(|p| p.is_container) { SegKind::Extended } else { SegKind::Partition };
+            let kind = if p.partition.as_ref().is_some_and(|p| p.is_container) {
+                SegKind::Extended
+            } else {
+                SegKind::Partition
+            };
             layout.segs.push(seg_of(state, p, kind));
         }
         layout.fill_free();
@@ -372,8 +376,15 @@ pub const BIOS_BOOT_GPT: &str = "21686148-6449-6e6f-744e-656564454649";
 pub const ESP_DOS: &str = "0xef";
 
 /// DOS types and their hidden twins.
-const DOS_HIDDEN: [(&str, &str); 7] =
-    [("0x01", "0x11"), ("0x04", "0x14"), ("0x06", "0x16"), ("0x07", "0x17"), ("0x0b", "0x1b"), ("0x0c", "0x1c"), ("0x0e", "0x1e")];
+const DOS_HIDDEN: [(&str, &str); 7] = [
+    ("0x01", "0x11"),
+    ("0x04", "0x14"),
+    ("0x06", "0x16"),
+    ("0x07", "0x17"),
+    ("0x0b", "0x1b"),
+    ("0x0c", "0x1c"),
+    ("0x0e", "0x1e"),
+];
 
 fn dos(id: &str) -> String {
     let n = id.strip_prefix("0x").or_else(|| id.strip_prefix("0X")).and_then(|h| u8::from_str_radix(h, 16).ok());
@@ -414,7 +425,8 @@ impl Flags {
     /// off).
     pub fn apply(&self, table: &str, fs: &str, type_id: &str, flag_bits: u64) -> (String, u64) {
         let was = Flags::of(table, type_id, flag_bits);
-        let plain = || aizome_sys::disks::types::type_for_filesystem(table, if fs.is_empty() { "ext4" } else { fs }).to_owned();
+        let plain =
+            || aizome_sys::disks::types::type_for_filesystem(table, if fs.is_empty() { "ext4" } else { fs }).to_owned();
         if table == "dos" {
             let mut t = dos(type_id);
             if self.esp {

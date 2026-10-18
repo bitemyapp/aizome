@@ -81,7 +81,9 @@ impl Expect {
         match self {
             Expect::Gone(p) => s.block(p).is_none(),
             Expect::Present(p) => s.block(p).is_some(),
-            Expect::Table { disk, kind } => s.block(disk).and_then(|b| b.partition_table.as_ref()).is_some_and(|t| &t.kind == kind),
+            Expect::Table { disk, kind } => {
+                s.block(disk).and_then(|b| b.partition_table.as_ref()).is_some_and(|t| &t.kind == kind)
+            }
             Expect::Fs { block, fs, old_uuid } => {
                 s.block(block).is_some_and(|b| &b.id_type == fs && (old_uuid.is_empty() || &b.id_uuid != old_uuid))
             }
@@ -89,9 +91,12 @@ impl Expect {
                 s.block(block).and_then(|b| b.partition.as_ref()).is_some_and(|p| p.size.abs_diff(*size) <= MIB)
             }
             Expect::Label { block, label } => s.block(block).is_some_and(|b| &b.id_label == label),
-            Expect::Partition { block, type_id, flags } => s.block(block).and_then(|b| b.partition.as_ref()).is_some_and(|p| {
-                type_id.as_ref().is_none_or(|t| p.type_id.eq_ignore_ascii_case(t)) && flags.is_none_or(|f| p.flags == f)
-            }),
+            Expect::Partition { block, type_id, flags } => {
+                s.block(block).and_then(|b| b.partition.as_ref()).is_some_and(|p| {
+                    type_id.as_ref().is_none_or(|t| p.type_id.eq_ignore_ascii_case(t))
+                        && flags.is_none_or(|f| p.flags == f)
+                })
+            }
         }
     }
 }
@@ -147,7 +152,14 @@ impl Run {
                     OpKind::Repair => Some(Token::Repair(Confirm::new(b))),
                     _ => None,
                 });
-                Item { op: op.clone(), words: plan.words(op, state), status: Status::Waiting, token, agreed, made: None }
+                Item {
+                    op: op.clone(),
+                    words: plan.words(op, state),
+                    status: Status::Waiting,
+                    token,
+                    agreed,
+                    made: None,
+                }
             })
             .collect();
         Run {
@@ -279,24 +291,34 @@ impl Run {
                 0 => {
                     let Some(Token::Table(c)) = item.token.take() else { return Err(no_token(&item.op)) };
                     let k = if kind == aizome_sys::disks::TableKind::Gpt { "gpt" } else { "dos" };
-                    unit(backend.create_partition_table(c, kind), Some(Expect::Table { disk: target, kind: k.into() }), "Writing the partition table…")
+                    unit(
+                        backend.create_partition_table(c, kind),
+                        Some(Expect::Table { disk: target, kind: k.into() }),
+                        "Writing the partition table…",
+                    )
                 }
                 _ => Ok(Step::Finished),
             },
             OpKind::Create(p) => match step {
                 0 => {
-                    let table = state.block(&target).and_then(|b| b.partition_table.as_ref()).map(|t| t.kind.clone()).unwrap_or_default();
+                    let table = state
+                        .block(&target)
+                        .and_then(|b| b.partition_table.as_ref())
+                        .map(|t| t.kind.clone())
+                        .unwrap_or_default();
                     let (type_id, _) = p.flags.apply(&table, &p.fs, "", 0);
-                    let format = (!p.fs.is_empty()).then(|| FormatSpec {
-                        encrypt: p.encrypt.clone(),
-                        ..FormatSpec::new(&p.fs, &p.label)
-                    });
+                    let format = (!p.fs.is_empty())
+                        .then(|| FormatSpec { encrypt: p.encrypt.clone(), ..FormatSpec::new(&p.fs, &p.label) });
                     let task = backend.create_partition(&target, p.offset, p.size, Some(&type_id), &p.name, format);
                     Ok(Step::Start(InFlight::Path(task), None, "Making the partition…".into()))
                 }
                 1 => {
                     let made = item.made.clone().ok_or("The new partition didn't appear.")?;
-                    let table = state.block(&target).and_then(|b| b.partition_table.as_ref()).map(|t| t.kind.clone()).unwrap_or_default();
+                    let table = state
+                        .block(&target)
+                        .and_then(|b| b.partition_table.as_ref())
+                        .map(|t| t.kind.clone())
+                        .unwrap_or_default();
                     let (_, bits) = p.flags.apply(&table, &p.fs, "", 0);
                     if bits == 0 {
                         return Ok(Step::Finished);
@@ -319,7 +341,11 @@ impl Run {
             OpKind::Format(f) => match step {
                 0 => {
                     let Some(Token::Format(c)) = item.token.take() else { return Err(no_token(&item.op)) };
-                    let keep = item.agreed.as_ref().and_then(|b| b.partition.as_ref()).is_some_and(|p| crate::plan::keeps_type(&p.type_id, &f.fs));
+                    let keep = item
+                        .agreed
+                        .as_ref()
+                        .and_then(|b| b.partition.as_ref())
+                        .is_some_and(|p| crate::plan::keeps_type(&p.type_id, &f.fs));
                     let spec = FormatSpec {
                         erase: f.erase,
                         encrypt: f.encrypt.clone(),
@@ -353,9 +379,15 @@ impl Run {
                     match step {
                         0 => {
                             let Some(Token::Resize(c)) = item.token.take() else { return Err(no_token(&item.op)) };
-                            unit(backend.resize_partition(c, to), Some(Expect::Size { block: target, size: to }), "Moving the partition's end…")
+                            unit(
+                                backend.resize_partition(c, to),
+                                Some(Expect::Size { block: target, size: to }),
+                                "Moving the partition's end…",
+                            )
                         }
-                        1 if has_fs => unit(backend.resize_filesystem(again(&state)?, 0), None, "Growing the filesystem…"),
+                        1 if has_fs => {
+                            unit(backend.resize_filesystem(again(&state)?, 0), None, "Growing the filesystem…")
+                        }
                         _ => Ok(Step::Finished),
                     }
                 } else {
@@ -377,28 +409,48 @@ impl Run {
                                 Some(Token::Resize(c)) => c,
                                 _ => again(&state)?,
                             };
-                            unit(backend.resize_filesystem(c, to.saturating_sub(MIB)), None, "Shrinking the filesystem…")
+                            unit(
+                                backend.resize_filesystem(c, to.saturating_sub(MIB)),
+                                None,
+                                "Shrinking the filesystem…",
+                            )
                         }
                         Some("part") => {
                             let c = match item.token.take() {
                                 Some(Token::Resize(c)) => c,
                                 _ => again(&state)?,
                             };
-                            unit(backend.resize_partition(c, to), Some(Expect::Size { block: target, size: to }), "Moving the partition's end…")
+                            unit(
+                                backend.resize_partition(c, to),
+                                Some(Expect::Size { block: target, size: to }),
+                                "Moving the partition's end…",
+                            )
                         }
-                        Some("fill") => unit(backend.resize_filesystem(again(&state)?, 0), None, "Fitting the filesystem to the partition…"),
+                        Some("fill") => unit(
+                            backend.resize_filesystem(again(&state)?, 0),
+                            None,
+                            "Fitting the filesystem to the partition…",
+                        ),
                         _ => Ok(Step::Finished),
                     }
                 }
             }
             OpKind::Label { label } => match step {
-                0 => unit(backend.set_label(&target, &label), Some(Expect::Label { block: target.clone(), label: label.clone() }), "Labelling…"),
+                0 => unit(
+                    backend.set_label(&target, &label),
+                    Some(Expect::Label { block: target.clone(), label: label.clone() }),
+                    "Labelling…",
+                ),
                 _ => Ok(Step::Finished),
             },
             OpKind::Flags { to, .. } => {
                 let b = state.block(&target).ok_or("The partition is gone.")?;
                 let p = b.partition.as_ref().ok_or("It isn't a partition.")?;
-                let table = state.block(&p.table).and_then(|t| t.partition_table.as_ref()).map(|t| t.kind.clone()).unwrap_or_default();
+                let table = state
+                    .block(&p.table)
+                    .and_then(|t| t.partition_table.as_ref())
+                    .map(|t| t.kind.clone())
+                    .unwrap_or_default();
                 // Each step does what's still to do: the type, then the bits.
                 let (type_id, bits) = to.apply(&table, &b.id_type, &p.type_id, p.flags);
                 if step >= 2 {

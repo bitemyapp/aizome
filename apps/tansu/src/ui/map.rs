@@ -64,7 +64,15 @@ pub fn widths(sizes: &[u64], width: f64) -> Vec<f64> {
             return sizes
                 .iter()
                 .zip(&fixed)
-                .map(|(s, f)| if *f { floor } else if rest == 0 { 0.0 } else { *s as f64 / rest as f64 * room })
+                .map(|(s, f)| {
+                    if *f {
+                        floor
+                    } else if rest == 0 {
+                        0.0
+                    } else {
+                        *s as f64 / rest as f64 * room
+                    }
+                })
                 .collect();
         }
     }
@@ -154,13 +162,24 @@ impl Widget for Map {
                         let label = if seg.kind() == SegKind::Blank { "No partition table" } else { "Unallocated" };
                         let pad = Rect::new(r.x0 + 6.0, r.y0 + 8.0, r.x1 - 4.0, r.y0 + 26.0);
                         let w = cx.layout_text(label, &TextSpec::new(small(500.0), t.text2()), None).size().width;
-                        cx.canvas.fill_rect(Rect::new(pad.x0 - 2.0, pad.y0 + 1.0, (pad.x0 + w + 2.0).min(pad.x1), pad.y1 - 1.0), t.sunk());
+                        cx.canvas.fill_rect(
+                            Rect::new(pad.x0 - 2.0, pad.y0 + 1.0, (pad.x0 + w + 2.0).min(pad.x1), pad.y1 - 1.0),
+                            t.sunk(),
+                        );
                         cx.draw_text_in(label, &TextSpec::new(small(500.0), t.text2()), pad, Align::Start);
                         let size = format_size(seg.size);
                         let pad2 = Rect::new(r.x0 + 6.0, r.y0 + 26.0, r.x1 - 4.0, r.y0 + 42.0);
                         let w = cx.layout_text(&size, &TextSpec::new(small(400.0), t.text3()), None).size().width;
-                        cx.canvas.fill_rect(Rect::new(pad2.x0 - 2.0, pad2.y0 + 1.0, (pad2.x0 + w + 2.0).min(pad2.x1), pad2.y1 - 1.0), t.sunk());
-                        cx.draw_text_in(&size, &TextSpec::new(FontSpec { tabular: true, ..small(400.0) }, t.text3()), pad2, Align::Start);
+                        cx.canvas.fill_rect(
+                            Rect::new(pad2.x0 - 2.0, pad2.y0 + 1.0, (pad2.x0 + w + 2.0).min(pad2.x1), pad2.y1 - 1.0),
+                            t.sunk(),
+                        );
+                        cx.draw_text_in(
+                            &size,
+                            &TextSpec::new(FontSpec { tabular: true, ..small(400.0) }, t.text3()),
+                            pad2,
+                            Align::Start,
+                        );
                     }
                 }
                 SegKind::Extended => {
@@ -177,7 +196,8 @@ impl Widget for Map {
                     let (tint, used, stripe) = tints(&t, if seg.is_locked() { "crypto_LUKS" } else { &shown });
                     cx.canvas.fill_rect(r, tint);
                     if let Some(u) = seg.shown_used() {
-                        let total = seg.crypt.as_ref().and_then(|c| c.unlocked.as_ref()).map_or(seg.size, |i| i.size.max(1));
+                        let total =
+                            seg.crypt.as_ref().and_then(|c| c.unlocked.as_ref()).map_or(seg.size, |i| i.size.max(1));
                         let f = (u as f64 / total as f64).clamp(0.0, 1.0);
                         cx.canvas.fill_rect(Rect::new(r.x0, r.y0 + 4.0, r.x0 + (r.width() * f).round(), r.y1), used);
                     }
@@ -190,9 +210,19 @@ impl Widget for Map {
                             x += 16.0;
                         }
                         let name = seg.short_name();
-                        cx.draw_text_in(&name, &TextSpec::new(small(650.0), t.text()), Rect::new(x, r.y0 + 8.0, r.x1 - 4.0, r.y0 + 26.0), Align::Start);
+                        cx.draw_text_in(
+                            &name,
+                            &TextSpec::new(small(650.0), t.text()),
+                            Rect::new(x, r.y0 + 8.0, r.x1 - 4.0, r.y0 + 26.0),
+                            Align::Start,
+                        );
                         let what = if seg.is_locked() { "LUKS, locked".to_owned() } else { fs::name(&shown) };
-                        cx.draw_text_in(&what, &TextSpec::new(small(400.0), t.text2()), Rect::new(r.x0 + 7.0, r.y0 + 25.0, r.x1 - 4.0, r.y0 + 41.0), Align::Start);
+                        cx.draw_text_in(
+                            &what,
+                            &TextSpec::new(small(400.0), t.text2()),
+                            Rect::new(r.x0 + 7.0, r.y0 + 25.0, r.x1 - 4.0, r.y0 + 41.0),
+                            Align::Start,
+                        );
                         let size = format_size(seg.size);
                         cx.draw_text_in(
                             &size,
@@ -272,7 +302,10 @@ impl Widget for Map {
     }
 
     fn semantics(&self) -> Option<Semantics> {
-        let value = self.selected.and_then(|i| self.layout.segs.get(i)).map(|s| format!("{}, {}", s.short_name(), format_size(s.size)));
+        let value = self
+            .selected
+            .and_then(|i| self.layout.segs.get(i))
+            .map(|s| format!("{}, {}", s.short_name(), format_size(s.size)));
         Some(Semantics { role: SemanticRole::Canvas, label: Some("Partition map".into()), value, ..Default::default() })
     }
 }

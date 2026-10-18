@@ -41,7 +41,13 @@ impl Default for Mock {
 
 impl Mock {
     pub fn new(state: DisksState) -> Mock {
-        Mock { state: RefCell::new(state), generation: Cell::new(1), log: RefCell::default(), fail: RefCell::default(), serial: Cell::new(0) }
+        Mock {
+            state: RefCell::new(state),
+            generation: Cell::new(1),
+            log: RefCell::default(),
+            fail: RefCell::default(),
+            serial: Cell::new(0),
+        }
     }
 
     /// Make the next `call` (`"Format"`, `"Delete"`…) fail with `message`.
@@ -120,7 +126,13 @@ impl Mock {
         }
         b.id_type = if spec.fs_type == "empty" { String::new() } else { spec.fs_type.clone() };
         b.id_label = spec.label.clone();
-        b.id_usage = if b.id_type.is_empty() { String::new() } else if b.id_type == "swap" { "other".into() } else { "filesystem".into() };
+        b.id_usage = if b.id_type.is_empty() {
+            String::new()
+        } else if b.id_type == "swap" {
+            "other".into()
+        } else {
+            "filesystem".into()
+        };
         match b.id_type.as_str() {
             "" => {}
             "swap" => b.swap = Some(Swap { active: false }),
@@ -153,7 +165,8 @@ impl Backend for Mock {
                     let at = format!("/run/media/callen/{name}");
                     f.mount_points = vec![at.clone()];
                     let total = f.size.unwrap_or(b.size);
-                    f.usage = Some(Usage { total, used: total / 5, free: total - total / 5, available: total - total / 5 });
+                    f.usage =
+                        Some(Usage { total, used: total / 5, free: total - total / 5, available: total - total / 5 });
                     out = Ok(at);
                 }
             });
@@ -234,7 +247,12 @@ impl Backend for Mock {
     fn power_off(&self, drive: &str) -> Task<()> {
         let r = self.call(format!("PowerOff {drive}")).map(|()| {
             self.change(|s| {
-                let gone: Vec<String> = s.blocks.iter().filter(|b| s.drive_of(b).is_some_and(|d| d.path == drive)).map(|b| b.path.clone()).collect();
+                let gone: Vec<String> = s
+                    .blocks
+                    .iter()
+                    .filter(|b| s.drive_of(b).is_some_and(|d| d.path == drive))
+                    .map(|b| b.path.clone())
+                    .collect();
                 s.blocks.retain(|b| !gone.contains(&b.path));
                 s.drives.retain(|d| d.path != drive);
             })
@@ -260,7 +278,11 @@ impl Backend for Mock {
                     id_label: if iso { "IMAGE".into() } else { String::new() },
                     id_uuid: uuid,
                     filesystem: iso.then(Filesystem::default),
-                    loop_device: Some(LoopDevice { backing_file: file.display().to_string(), autoclear: false, setup_by_uid: 1000 }),
+                    loop_device: Some(LoopDevice {
+                        backing_file: file.display().to_string(),
+                        autoclear: false,
+                        setup_by_uid: 1000,
+                    }),
                     ..Default::default()
                 })
             });
@@ -272,7 +294,9 @@ impl Backend for Mock {
     fn loop_delete(&self, block: &str) -> Task<()> {
         let r = self.call(format!("LoopDelete {}", self.device(block))).map(|()| {
             self.change(|s| {
-                let gone: Vec<String> = std::iter::once(block.to_owned()).chain(s.dependents(block).iter().map(|b| b.path.clone())).collect();
+                let gone: Vec<String> = std::iter::once(block.to_owned())
+                    .chain(s.dependents(block).iter().map(|b| b.path.clone()))
+                    .collect();
                 s.blocks.retain(|b| !gone.contains(&b.path));
             })
         });
@@ -288,16 +312,19 @@ impl Backend for Mock {
     }
 
     fn smart_attributes(&self, drive: &str) -> Task<Vec<SmartAttribute>> {
-        let nvme = self.state.borrow().drive(drive).and_then(|d| d.smart.as_ref()).is_some_and(|s| s.bad_sectors.is_none());
-        let a = |id: Option<u8>, name: &str, value: &str, n: Option<(i32, i32, i32)>, failing: bool, pre_fail: bool| SmartAttribute {
-            id,
-            name: name.into(),
-            value: value.into(),
-            normalized: n.map(|n| n.0),
-            worst: n.map(|n| n.1),
-            threshold: n.map(|n| n.2),
-            failing,
-            pre_fail,
+        let nvme =
+            self.state.borrow().drive(drive).and_then(|d| d.smart.as_ref()).is_some_and(|s| s.bad_sectors.is_none());
+        let a = |id: Option<u8>, name: &str, value: &str, n: Option<(i32, i32, i32)>, failing: bool, pre_fail: bool| {
+            SmartAttribute {
+                id,
+                name: name.into(),
+                value: value.into(),
+                normalized: n.map(|n| n.0),
+                worst: n.map(|n| n.1),
+                threshold: n.map(|n| n.2),
+                failing,
+                pre_fail,
+            }
         };
         let list = if nvme {
             vec![
@@ -312,7 +339,13 @@ impl Backend for Mock {
                 a(None, "Media and data integrity errors", "0", None, false, false),
             ]
         } else {
-            let bad = self.state.borrow().drive(drive).and_then(|d| d.smart.as_ref()).and_then(|s| s.bad_sectors).unwrap_or(0);
+            let bad = self
+                .state
+                .borrow()
+                .drive(drive)
+                .and_then(|d| d.smart.as_ref())
+                .and_then(|s| s.bad_sectors)
+                .unwrap_or(0);
             vec![
                 a(Some(1), "Raw read error rate", "0", Some((200, 200, 51)), false, true),
                 a(Some(3), "Spin up time", "6.9 s", Some((175, 172, 21)), false, true),
@@ -320,7 +353,14 @@ impl Backend for Mock {
                 a(Some(9), "Power on hours", "1,407 days", Some((52, 52, 0)), false, false),
                 a(Some(12), "Power cycle count", "211", Some((100, 100, 0)), false, false),
                 a(Some(194), "Temperature celsius", "36 °C", Some((114, 102, 0)), false, false),
-                a(Some(197), "Current pending sector", &format!("{} sectors", bad / 2), Some((200, 200, 0)), false, false),
+                a(
+                    Some(197),
+                    "Current pending sector",
+                    &format!("{} sectors", bad / 2),
+                    Some((200, 200, 0)),
+                    false,
+                    false,
+                ),
                 a(Some(199), "UDMA CRC error count", "0", Some((200, 200, 0)), false, false),
             ]
         };
@@ -351,25 +391,32 @@ impl Backend for Mock {
 
     fn create_partition_table(&self, confirm: Confirm<NewPartitionTable>, kind: TableKind) -> Task<()> {
         let path = confirm.block().to_owned();
-        let r = self.call(format!("Format({}) on {}", if kind == TableKind::Gpt { "gpt" } else { "dos" }, self.device(&path))).and_then(|()| {
-            let disk = self.confirmed(&path)?;
-            if disk.partition.is_some() {
-                return Err(Error::InvalidArgument("A partition table goes on a whole disk, not a partition".into()));
-            }
-            self.change(|s| {
-                let gone: Vec<String> = s.dependents(&path).iter().map(|b| b.path.clone()).collect();
-                s.blocks.retain(|b| !gone.contains(&b.path));
-                if let Some(b) = s.blocks.iter_mut().find(|b| b.path == path) {
-                    b.partition_table = Some(PartitionTable { kind: if kind == TableKind::Gpt { "gpt".into() } else { "dos".into() }, partitions: Vec::new() });
-                    b.id_type.clear();
-                    b.id_usage.clear();
-                    b.id_label.clear();
-                    b.filesystem = None;
-                    b.encrypted = None;
+        let r = self
+            .call(format!("Format({}) on {}", if kind == TableKind::Gpt { "gpt" } else { "dos" }, self.device(&path)))
+            .and_then(|()| {
+                let disk = self.confirmed(&path)?;
+                if disk.partition.is_some() {
+                    return Err(Error::InvalidArgument(
+                        "A partition table goes on a whole disk, not a partition".into(),
+                    ));
                 }
+                self.change(|s| {
+                    let gone: Vec<String> = s.dependents(&path).iter().map(|b| b.path.clone()).collect();
+                    s.blocks.retain(|b| !gone.contains(&b.path));
+                    if let Some(b) = s.blocks.iter_mut().find(|b| b.path == path) {
+                        b.partition_table = Some(PartitionTable {
+                            kind: if kind == TableKind::Gpt { "gpt".into() } else { "dos".into() },
+                            partitions: Vec::new(),
+                        });
+                        b.id_type.clear();
+                        b.id_usage.clear();
+                        b.id_label.clear();
+                        b.filesystem = None;
+                        b.encrypted = None;
+                    }
+                });
+                Ok(())
             });
-            Ok(())
-        });
         ready(r)
     }
 
@@ -382,46 +429,61 @@ impl Backend for Mock {
         name: &str,
         format: Option<FormatSpec>,
     ) -> Task<String> {
-        let r = self.call(format!("CreatePartition({offset}, {size}, {}) on {}", format.as_ref().map_or("", |f| f.fs_type.as_str()), self.device(table))).and_then(|()| {
-            let state = self.state.borrow().clone();
-            let disk = state.block(table).cloned().ok_or_else(|| Error::NotFound(table.into()))?;
-            let kind = disk.partition_table.as_ref().map(|t| t.kind.clone()).ok_or_else(|| Error::InvalidArgument("no partition table".into()))?;
-            let fits = state.free_space(table).iter().any(|f| offset >= f.offset && offset + size <= f.offset + f.size);
-            if size == 0 || !fits {
-                return Err(Error::InvalidArgument("The new partition must fit in free space".into()));
-            }
-            let parts = state.partitions(table);
-            let number = parts.iter().filter_map(|p| p.partition.as_ref().map(|p| p.number)).max().unwrap_or(0) + 1;
-            let sep = if disk.device.ends_with(|c: char| c.is_ascii_digit()) { "p" } else { "" };
-            let device = format!("{}{sep}{number}", disk.device);
-            let path = format!("{B}{}", device.trim_start_matches("/dev/"));
-            let type_id = type_id.map(str::to_owned).unwrap_or_else(|| type_for_filesystem(&kind, format.as_ref().map_or("ext4", |f| f.fs_type.as_str())).to_owned());
-            let mut b = BlockDevice {
-                path: path.clone(),
-                device,
-                size,
-                partition: Some(Partition {
-                    number,
-                    type_name: partition_type_name(&type_id),
-                    type_id,
-                    offset,
+        let r = self
+            .call(format!(
+                "CreatePartition({offset}, {size}, {}) on {}",
+                format.as_ref().map_or("", |f| f.fs_type.as_str()),
+                self.device(table)
+            ))
+            .and_then(|()| {
+                let state = self.state.borrow().clone();
+                let disk = state.block(table).cloned().ok_or_else(|| Error::NotFound(table.into()))?;
+                let kind = disk
+                    .partition_table
+                    .as_ref()
+                    .map(|t| t.kind.clone())
+                    .ok_or_else(|| Error::InvalidArgument("no partition table".into()))?;
+                let fits =
+                    state.free_space(table).iter().any(|f| offset >= f.offset && offset + size <= f.offset + f.size);
+                if size == 0 || !fits {
+                    return Err(Error::InvalidArgument("The new partition must fit in free space".into()));
+                }
+                let parts = state.partitions(table);
+                let number = parts.iter().filter_map(|p| p.partition.as_ref().map(|p| p.number)).max().unwrap_or(0) + 1;
+                let sep = if disk.device.ends_with(|c: char| c.is_ascii_digit()) { "p" } else { "" };
+                let device = format!("{}{sep}{number}", disk.device);
+                let path = format!("{B}{}", device.trim_start_matches("/dev/"));
+                let type_id = type_id.map(str::to_owned).unwrap_or_else(|| {
+                    type_for_filesystem(&kind, format.as_ref().map_or("ext4", |f| f.fs_type.as_str())).to_owned()
+                });
+                let mut b = BlockDevice {
+                    path: path.clone(),
+                    device,
                     size,
-                    name: name.to_owned(),
-                    table: table.to_owned(),
-                    is_contained: state.blocks.iter().filter_map(|b| b.partition.as_ref()).any(|p| p.is_container && p.table == table && offset >= p.offset && offset < p.offset + p.size),
+                    partition: Some(Partition {
+                        number,
+                        type_name: partition_type_name(&type_id),
+                        type_id,
+                        offset,
+                        size,
+                        name: name.to_owned(),
+                        table: table.to_owned(),
+                        is_contained: state.blocks.iter().filter_map(|b| b.partition.as_ref()).any(|p| {
+                            p.is_container && p.table == table && offset >= p.offset && offset < p.offset + p.size
+                        }),
+                        ..Default::default()
+                    }),
                     ..Default::default()
-                }),
-                ..Default::default()
-            };
-            if let Some(spec) = &format {
-                Mock::put_fs(&mut b, spec, self.uuid());
-            }
-            self.change(|s| {
-                s.blocks.push(b);
-                s.blocks.sort_by(|a, b| a.device.len().cmp(&b.device.len()).then(a.device.cmp(&b.device)));
+                };
+                if let Some(spec) = &format {
+                    Mock::put_fs(&mut b, spec, self.uuid());
+                }
+                self.change(|s| {
+                    s.blocks.push(b);
+                    s.blocks.sort_by(|a, b| a.device.len().cmp(&b.device.len()).then(a.device.cmp(&b.device)));
+                });
+                Ok(path)
             });
-            Ok(path)
-        });
         ready(r)
     }
 
@@ -432,7 +494,9 @@ impl Backend for Mock {
             if b.partition.is_none() {
                 return Err(Error::InvalidArgument("Not a partition".into()));
             }
-            self.change(|s| s.blocks.retain(|b| b.path != path && b.crypto_backing_device.as_deref() != Some(path.as_str())));
+            self.change(|s| {
+                s.blocks.retain(|b| b.path != path && b.crypto_backing_device.as_deref() != Some(path.as_str()))
+            });
             Ok(())
         });
         ready(r)
@@ -464,7 +528,11 @@ impl Backend for Mock {
             if size > part.size {
                 let state = self.state.borrow().clone();
                 let end = part.offset + part.size;
-                let room = state.free_space(&part.table).iter().find(|f| f.offset >= end && f.offset <= end + MIB).map_or(0, |f| f.offset + f.size - end);
+                let room = state
+                    .free_space(&part.table)
+                    .iter()
+                    .find(|f| f.offset >= end && f.offset <= end + MIB)
+                    .map_or(0, |f| f.offset + f.size - end);
                 if size - part.size > room {
                     return Err(Error::InvalidArgument("There isn't that much free space after the partition".into()));
                 }
@@ -567,7 +635,12 @@ fn part(p: Part, disk: &str, table_kind: &str) -> BlockDevice {
     let fs = (!matches!(p.fs, "" | "swap" | "crypto_LUKS")).then(|| Filesystem {
         mount_points: p.mount.map(|m| vec![m.to_owned()]).unwrap_or_default(),
         size: Some(p.size),
-        usage: p.mount.map(|_| Usage { total: p.size, used: p.used, free: p.size - p.used, available: p.size - p.used }),
+        usage: p.mount.map(|_| Usage {
+            total: p.size,
+            used: p.used,
+            free: p.size - p.used,
+            available: p.size - p.used,
+        }),
     });
     BlockDevice {
         path: format!("{B}{}", p.name),
@@ -615,7 +688,16 @@ fn disk(name: &str, size: u64, drive: &str, table: &str) -> BlockDevice {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn drive(id: &str, vendor: &str, model: &str, size: u64, rotation: Rotation, bus: &str, removable: bool, smart: Option<Smart>) -> Drive {
+fn drive(
+    id: &str,
+    vendor: &str,
+    model: &str,
+    size: u64,
+    rotation: Rotation,
+    bus: &str,
+    removable: bool,
+    smart: Option<Smart>,
+) -> Drive {
     Drive {
         path: format!("{D}{id}"),
         vendor: vendor.into(),
@@ -648,7 +730,9 @@ pub fn sample() -> DisksState {
     let mut s = DisksState {
         available: true,
         version: "2.11.2".into(),
-        supported_filesystems: ["ext4", "ext3", "ext2", "btrfs", "xfs", "vfat", "exfat", "swap", "f2fs"].map(String::from).to_vec(),
+        supported_filesystems: ["ext4", "ext3", "ext2", "btrfs", "xfs", "vfat", "exfat", "swap", "f2fs"]
+            .map(String::from)
+            .to_vec(),
         ..Default::default()
     };
     let good = |temp: f64, hours: u64| Smart {
@@ -662,11 +746,65 @@ pub fn sample() -> DisksState {
     };
     // The NVMe system disk, 1 TB.
     let tb = 1_000_204_886_016u64;
-    s.drives.push(drive("nvme", "", "Samsung SSD 990 PRO 1TB", tb, Rotation::SolidState, "", false, Some(good(41.0, 2210))));
+    s.drives.push(drive(
+        "nvme",
+        "",
+        "Samsung SSD 990 PRO 1TB",
+        tb,
+        Rotation::SolidState,
+        "",
+        false,
+        Some(good(41.0, 2210)),
+    ));
     s.blocks.push(disk("nvme0n1", tb, "nvme", "gpt"));
-    s.blocks.push(part(Part { name: "nvme0n1p1", number: 1, offset: MIB, size: GIB, type_id: ESP, flags: 0, fs: "vfat", label: "ESP", mount: Some("/boot"), used: 248 * MIB }, "nvme0n1", "gpt"));
-    s.blocks.push(part(Part { name: "nvme0n1p2", number: 2, offset: MIB + GIB, size: 860 * GIB, type_id: LUKS, flags: 0, fs: "crypto_LUKS", label: "", mount: None, used: 0 }, "nvme0n1", "gpt"));
-    s.blocks.push(part(Part { name: "nvme0n1p3", number: 3, offset: MIB + 861 * GIB, size: 32 * GIB, type_id: SWAP, flags: 0, fs: "swap", label: "swap", mount: Some("[SWAP]"), used: 0 }, "nvme0n1", "gpt"));
+    s.blocks.push(part(
+        Part {
+            name: "nvme0n1p1",
+            number: 1,
+            offset: MIB,
+            size: GIB,
+            type_id: ESP,
+            flags: 0,
+            fs: "vfat",
+            label: "ESP",
+            mount: Some("/boot"),
+            used: 248 * MIB,
+        },
+        "nvme0n1",
+        "gpt",
+    ));
+    s.blocks.push(part(
+        Part {
+            name: "nvme0n1p2",
+            number: 2,
+            offset: MIB + GIB,
+            size: 860 * GIB,
+            type_id: LUKS,
+            flags: 0,
+            fs: "crypto_LUKS",
+            label: "",
+            mount: None,
+            used: 0,
+        },
+        "nvme0n1",
+        "gpt",
+    ));
+    s.blocks.push(part(
+        Part {
+            name: "nvme0n1p3",
+            number: 3,
+            offset: MIB + 861 * GIB,
+            size: 32 * GIB,
+            type_id: SWAP,
+            flags: 0,
+            fs: "swap",
+            label: "swap",
+            mount: Some("[SWAP]"),
+            used: 0,
+        },
+        "nvme0n1",
+        "gpt",
+    ));
     s.blocks.push(BlockDevice {
         path: format!("{B}dm_2d0"),
         device: "/dev/dm-0".into(),
@@ -690,32 +828,195 @@ pub fn sample() -> DisksState {
 
     // A SATA SSD shared with Windows, 500 GB.
     let ssd = 500_107_862_016u64;
-    s.drives.push(drive("mx500", "Crucial", "CT500MX500SSD1", ssd, Rotation::SolidState, "", false, Some(Smart { bad_sectors: Some(0), attributes_failing: Some(0), attributes_failed_in_past: Some(0), ..good(33.0, 14_200) })));
+    s.drives.push(drive(
+        "mx500",
+        "Crucial",
+        "CT500MX500SSD1",
+        ssd,
+        Rotation::SolidState,
+        "",
+        false,
+        Some(Smart {
+            bad_sectors: Some(0),
+            attributes_failing: Some(0),
+            attributes_failed_in_past: Some(0),
+            ..good(33.0, 14_200)
+        }),
+    ));
     s.blocks.push(disk("sda", ssd, "mx500", "gpt"));
-    s.blocks.push(part(Part { name: "sda1", number: 1, offset: MIB, size: 16 * MIB, type_id: "e3c9e316-0b5c-4db8-817d-f92df00215ae", flags: 0, fs: "", label: "", mount: None, used: 0 }, "sda", "gpt"));
-    s.blocks.push(part(Part { name: "sda2", number: 2, offset: 17 * MIB, size: 280 * GIB, type_id: BASIC, flags: 0, fs: "ntfs", label: "Windows", mount: None, used: 0 }, "sda", "gpt"));
-    s.blocks.push(part(Part { name: "sda3", number: 3, offset: 17 * MIB + 280 * GIB, size: 140 * GIB, type_id: LINUX, flags: 0, fs: "ext4", label: "games", mount: Some("/mnt/games"), used: 96 * GIB }, "sda", "gpt"));
+    s.blocks.push(part(
+        Part {
+            name: "sda1",
+            number: 1,
+            offset: MIB,
+            size: 16 * MIB,
+            type_id: "e3c9e316-0b5c-4db8-817d-f92df00215ae",
+            flags: 0,
+            fs: "",
+            label: "",
+            mount: None,
+            used: 0,
+        },
+        "sda",
+        "gpt",
+    ));
+    s.blocks.push(part(
+        Part {
+            name: "sda2",
+            number: 2,
+            offset: 17 * MIB,
+            size: 280 * GIB,
+            type_id: BASIC,
+            flags: 0,
+            fs: "ntfs",
+            label: "Windows",
+            mount: None,
+            used: 0,
+        },
+        "sda",
+        "gpt",
+    ));
+    s.blocks.push(part(
+        Part {
+            name: "sda3",
+            number: 3,
+            offset: 17 * MIB + 280 * GIB,
+            size: 140 * GIB,
+            type_id: LINUX,
+            flags: 0,
+            fs: "ext4",
+            label: "games",
+            mount: Some("/mnt/games"),
+            used: 96 * GIB,
+        },
+        "sda",
+        "gpt",
+    ));
 
     // An archive hard disk with a few bad sectors, 4 TB.
     let hdd = 4_000_787_030_016u64;
-    s.drives.push(drive("wd40", "WDC", "WD40EFRX-68N32N0", hdd, Rotation::Rpm(5400), "", false, Some(Smart { bad_sectors: Some(8), attributes_failing: Some(0), attributes_failed_in_past: Some(0), ..good(36.0, 33_770) })));
+    s.drives.push(drive(
+        "wd40",
+        "WDC",
+        "WD40EFRX-68N32N0",
+        hdd,
+        Rotation::Rpm(5400),
+        "",
+        false,
+        Some(Smart {
+            bad_sectors: Some(8),
+            attributes_failing: Some(0),
+            attributes_failed_in_past: Some(0),
+            ..good(36.0, 33_770)
+        }),
+    ));
     s.blocks.push(disk("sdb", hdd, "wd40", "gpt"));
-    s.blocks.push(part(Part { name: "sdb1", number: 1, offset: MIB, size: 2400 * GIB, type_id: LINUX, flags: 0, fs: "btrfs", label: "archive", mount: Some("/srv/archive"), used: 1980 * GIB }, "sdb", "gpt"));
-    s.blocks.push(part(Part { name: "sdb2", number: 2, offset: 3000 * GIB, size: 700 * GIB, type_id: LUKS, flags: 0, fs: "crypto_LUKS", label: "", mount: None, used: 0 }, "sdb", "gpt"));
+    s.blocks.push(part(
+        Part {
+            name: "sdb1",
+            number: 1,
+            offset: MIB,
+            size: 2400 * GIB,
+            type_id: LINUX,
+            flags: 0,
+            fs: "btrfs",
+            label: "archive",
+            mount: Some("/srv/archive"),
+            used: 1980 * GIB,
+        },
+        "sdb",
+        "gpt",
+    ));
+    s.blocks.push(part(
+        Part {
+            name: "sdb2",
+            number: 2,
+            offset: 3000 * GIB,
+            size: 700 * GIB,
+            type_id: LUKS,
+            flags: 0,
+            fs: "crypto_LUKS",
+            label: "",
+            mount: None,
+            used: 0,
+        },
+        "sdb",
+        "gpt",
+    ));
 
     // A USB stick, 32 GB, MBR.
     let stick = 31_457_280_000u64;
     s.drives.push(drive("cruzer", "SanDisk", "Cruzer Blade", stick, Rotation::Unknown, "usb", true, None));
     s.blocks.push(disk("sdc", stick, "cruzer", "dos"));
-    s.blocks.push(part(Part { name: "sdc1", number: 1, offset: MIB, size: 14 * GIB, type_id: "0x0c", flags: 0x80, fs: "vfat", label: "STICK", mount: None, used: 0 }, "sdc", "dos"));
-    s.blocks.push(part(Part { name: "sdc2", number: 2, offset: MIB + 14 * GIB, size: 12 * GIB, type_id: "0x07", flags: 0, fs: "exfat", label: "SHARE", mount: Some("/run/media/callen/SHARE"), used: 3 * GIB + 200 * MIB }, "sdc", "dos"));
+    s.blocks.push(part(
+        Part {
+            name: "sdc1",
+            number: 1,
+            offset: MIB,
+            size: 14 * GIB,
+            type_id: "0x0c",
+            flags: 0x80,
+            fs: "vfat",
+            label: "STICK",
+            mount: None,
+            used: 0,
+        },
+        "sdc",
+        "dos",
+    ));
+    s.blocks.push(part(
+        Part {
+            name: "sdc2",
+            number: 2,
+            offset: MIB + 14 * GIB,
+            size: 12 * GIB,
+            type_id: "0x07",
+            flags: 0,
+            fs: "exfat",
+            label: "SHARE",
+            mount: Some("/run/media/callen/SHARE"),
+            used: 3 * GIB + 200 * MIB,
+        },
+        "sdc",
+        "dos",
+    ));
 
     // An SD card, 64 GB.
     let sd = 63_864_569_856u64;
     s.drives.push(drive("sd", "", "SD SC64G", sd, Rotation::Unknown, "sdio", true, None));
     s.blocks.push(disk("mmcblk0", sd, "sd", "dos"));
-    s.blocks.push(part(Part { name: "mmcblk0p1", number: 1, offset: 4 * MIB, size: 256 * MIB, type_id: "0x0c", flags: 0x80, fs: "vfat", label: "bootfs", mount: None, used: 0 }, "mmcblk0", "dos"));
-    s.blocks.push(part(Part { name: "mmcblk0p2", number: 2, offset: 260 * MIB, size: 8 * GIB, type_id: "0x83", flags: 0, fs: "ext4", label: "rootfs", mount: None, used: 0 }, "mmcblk0", "dos"));
+    s.blocks.push(part(
+        Part {
+            name: "mmcblk0p1",
+            number: 1,
+            offset: 4 * MIB,
+            size: 256 * MIB,
+            type_id: "0x0c",
+            flags: 0x80,
+            fs: "vfat",
+            label: "bootfs",
+            mount: None,
+            used: 0,
+        },
+        "mmcblk0",
+        "dos",
+    ));
+    s.blocks.push(part(
+        Part {
+            name: "mmcblk0p2",
+            number: 2,
+            offset: 260 * MIB,
+            size: 8 * GIB,
+            type_id: "0x83",
+            flags: 0,
+            fs: "ext4",
+            label: "rootfs",
+            mount: None,
+            used: 0,
+        },
+        "mmcblk0",
+        "dos",
+    ));
 
     // An attached ISO.
     s.blocks.push(BlockDevice {
@@ -732,7 +1033,11 @@ pub fn sample() -> DisksState {
             size: Some(2_181_038_080),
             usage: Some(Usage { total: 2_181_038_080, used: 2_181_038_080, free: 0, available: 0 }),
         }),
-        loop_device: Some(LoopDevice { backing_file: "/home/callen/Downloads/sekka-nightly.iso".into(), autoclear: true, setup_by_uid: 1000 }),
+        loop_device: Some(LoopDevice {
+            backing_file: "/home/callen/Downloads/sekka-nightly.iso".into(),
+            autoclear: true,
+            setup_by_uid: 1000,
+        }),
         ..Default::default()
     });
     // Each table lists its partitions.

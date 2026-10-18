@@ -14,7 +14,9 @@ use aizome_kit::sidestep_ui::kurbo::{Affine, BezPath};
 use aizome_kit::sidestep_ui::{Canvas, Color, LineCap, LineJoin, PointerButton, StrokeStyle};
 use aizome_kit::text::TextSpec;
 use aizome_kit::theme::{FontSpec, Theme};
-use aizome_kit::widget::{Event, EventCx, Focusable, LayoutCx, PaintCx, SemanticAction, SemanticRole, Semantics, Status, Widget};
+use aizome_kit::widget::{
+    Event, EventCx, Focusable, LayoutCx, PaintCx, SemanticAction, SemanticRole, Semantics, Status, Widget,
+};
 use aizome_kit::{Element, Layoutable};
 use aizome_sys::disks::Health;
 
@@ -49,10 +51,7 @@ fn svg(kind: Kind) -> &'static [&'static str] {
             "M11 5.5v1M13 5.5v1",
         ],
         // An SD card: the cut corner and the contacts.
-        Kind::Sd => &[
-            "M7 3h7.5L18 6.5V20a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z",
-            "M9 6v3M11.5 6v3M14 6v3",
-        ],
+        Kind::Sd => &["M7 3h7.5L18 6.5V20a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z", "M9 6v3M11.5 6v3M14 6v3"],
         Kind::Optical => &[
             "M12 3a9 9 0 1 1 0 18a9 9 0 1 1 0-18z",
             "M12 9.5a2.5 2.5 0 1 1 0 5a2.5 2.5 0 1 1 0-5z",
@@ -230,7 +229,13 @@ impl Widget for DriveRow {
             }
             (t.text(), t.text3())
         };
-        draw(cx.canvas, self.kind, Point::new(10.0, ((r.height() - 22.0) / 2.0).round()), 22.0, if self.selected { fg } else { t.text2() });
+        draw(
+            cx.canvas,
+            self.kind,
+            Point::new(10.0, ((r.height() - 22.0) / 2.0).round()),
+            22.0,
+            if self.selected { fg } else { t.text2() },
+        );
         let right = r.x1 - 26.0;
         let name = TextSpec::new(FontSpec { weight: 600.0, ..FontSpec::ui(t.metrics.body) }, fg);
         cx.draw_text_in(&self.name, &name, Rect::new(42.0, 4.0, right, 23.0), Align::Start);

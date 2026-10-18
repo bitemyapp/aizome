@@ -251,7 +251,11 @@ impl Fs {
     fn mount_points(&self) -> Vec<Vec<u8>> {
         self.mount_points.clone()
     }
-    async fn mount(&mut self, _options: HashMap<String, OwnedValue>, #[zbus(signal_emitter)] emitter: SignalEmitter<'_>) -> fdo::Result<String> {
+    async fn mount(
+        &mut self,
+        _options: HashMap<String, OwnedValue>,
+        #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
+    ) -> fdo::Result<String> {
         self.mount_points = vec![bytes("/run/media/test/STICK")];
         self.mount_points_changed(&emitter).await?;
         Ok("/run/media/test/STICK".into())
@@ -332,7 +336,8 @@ fn format_and_delete(d: &Disks) -> Plan {
     let mut plan = Plan::default();
     let l = plan.preview(&state, &format!("{B}sdx")).unwrap();
     let one = l.segs.iter().position(|s| s.short_name() == "sdx1").unwrap();
-    plan.format(&l, one, NewFs { fs: "ext4".into(), label: "DATA".into(), erase: Erase::Quick, encrypt: None }).unwrap();
+    plan.format(&l, one, NewFs { fs: "ext4".into(), label: "DATA".into(), erase: Erase::Quick, encrypt: None })
+        .unwrap();
     let l = plan.preview(&state, &format!("{B}sdx")).unwrap();
     let two = l.segs.iter().position(|s| s.short_name() == "sdx2").unwrap();
     plan.delete(&l, two).unwrap();

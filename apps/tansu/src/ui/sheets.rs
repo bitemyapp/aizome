@@ -32,7 +32,10 @@ pub fn view(t: &Tansu, sheet: &Sheet) -> Element<Msg> {
     };
     let mut parts = body;
     if let Some(e) = &sheet.error {
-        parts.insert(parts.len().saturating_sub(1), text(e.clone()).role(Role::Danger).wrap().width(Length::Fill).into());
+        parts.insert(
+            parts.len().saturating_sub(1),
+            text(e.clone()).role(Role::Danger).wrap().width(Length::Fill).into(),
+        );
     }
     aizome_kit::widgets::layout::column(parts).spacing(12.0).padding([18.0, 20.0]).width(width).into()
 }
@@ -51,12 +54,16 @@ fn note(t: impl Into<String>) -> Element<Msg> {
 
 /// A warning box: red for loss, amber for risk.
 fn warning(icon_: Icon, role: Role, message: impl Into<String>) -> Element<Msg> {
-    container(row![icon(icon_).size(16.0).role(role), text(message.into()).wrap().width(Length::Fill)].spacing(8.0).align(Align::Start))
-        .padding([8.0, 10.0])
-        .fill(Tone::Sunk)
-        .border(Edge::Line)
-        .width(Length::Fill)
-        .into()
+    container(
+        row![icon(icon_).size(16.0).role(role), text(message.into()).wrap().width(Length::Fill)]
+            .spacing(8.0)
+            .align(Align::Start),
+    )
+    .padding([8.0, 10.0])
+    .fill(Tone::Sunk)
+    .border(Edge::Line)
+    .width(Length::Fill)
+    .into()
 }
 
 fn buttons(confirm: &str, enabled: bool, destructive: bool) -> Element<Msg> {
@@ -103,13 +110,23 @@ fn label_error(fs_type: &str, label: &str) -> Option<String> {
 }
 
 fn encryption(encrypt: bool, pass: &str, pass2: &str) -> Vec<Element<Msg>> {
-    let mut v: Vec<Element<Msg>> = vec![checkbox("Encrypt with LUKS", encrypt).on_toggle(|on| s(SheetMsg::Encrypt(on))).into()];
+    let mut v: Vec<Element<Msg>> =
+        vec![checkbox("Encrypt with LUKS", encrypt).on_toggle(|on| s(SheetMsg::Encrypt(on))).into()];
     if encrypt {
-        v.push(field_row("Passphrase", text_field(pass).password().id("pass").on_change(|p| s(SheetMsg::Pass(p))).width(Length::Fill)));
+        v.push(field_row(
+            "Passphrase",
+            text_field(pass).password().id("pass").on_change(|p| s(SheetMsg::Pass(p))).width(Length::Fill),
+        ));
         let mismatch = (!pass2.is_empty() && pass != pass2).then_some("The passphrases don't match.");
         v.push(field_row(
             "Again",
-            text_field(pass2).password().id("pass2").on_change(|p| s(SheetMsg::Pass2(p))).on_submit(s(SheetMsg::Submit)).error(mismatch).width(Length::Fill),
+            text_field(pass2)
+                .password()
+                .id("pass2")
+                .on_change(|p| s(SheetMsg::Pass2(p)))
+                .on_submit(s(SheetMsg::Submit))
+                .error(mismatch)
+                .width(Length::Fill),
         ));
         v.push(note("Unlocking it will ask for this passphrase. Lost, it can't be recovered — nor can what's inside."));
     }
@@ -122,9 +139,16 @@ fn format(t: &Tansu, f: &FormatForm) -> Vec<Element<Msg>> {
     let new = seg.pending.contains(&crate::layout::Mark::New);
     let mut v = vec![title(&format!("Format {}", seg.short_name())), sub(seg_words(seg))];
     if !new {
-        v.push(warning(Icon::TriangleAlert, Role::Danger, format!("Everything on {} will be erased.", seg.short_name())));
+        v.push(warning(
+            Icon::TriangleAlert,
+            Role::Danger,
+            format!("Everything on {} will be erased.", seg.short_name()),
+        ));
     }
-    v.push(field_row("Filesystem", dropdown(fs_choices(t, false), Some(f.fs)).on_select(|i| s(SheetMsg::Fs(i))).width(Length::Fill)));
+    v.push(field_row(
+        "Filesystem",
+        dropdown(fs_choices(t, false), Some(f.fs)).on_select(|i| s(SheetMsg::Fs(i))).width(Length::Fill),
+    ));
     v.push(note(fs::describe(fs_type)));
     v.push(field_row(
         "Label",
@@ -136,7 +160,9 @@ fn format(t: &Tansu, f: &FormatForm) -> Vec<Element<Msg>> {
             .error(label_error(fs_type, &f.label))
             .width(Length::Fill),
     ));
-    v.push(checkbox("Overwrite every byte with zeros first (slow)", f.erase).on_toggle(|on| s(SheetMsg::Erase(on))).into());
+    v.push(
+        checkbox("Overwrite every byte with zeros first (slow)", f.erase).on_toggle(|on| s(SheetMsg::Erase(on))).into(),
+    );
     if fs_type != "swap" {
         v.extend(encryption(f.encrypt, &f.pass, &f.pass2));
     }
@@ -151,7 +177,12 @@ fn size_controls(size: u64, min: u64, max: u64, text_: &str, unit: usize, id: &s
     column![
         slider((size / MIB) as f64, lo..=hi.max(lo)).step(1.0).on_change(|v| s(SheetMsg::Size(v))).width(Length::Fill),
         row![
-            text_field(text_).id(id.to_owned()).on_change(|v| s(SheetMsg::SizeText(v))).on_submit(s(SheetMsg::Submit)).mono().width(120.0),
+            text_field(text_)
+                .id(id.to_owned())
+                .on_change(|v| s(SheetMsg::SizeText(v)))
+                .on_submit(s(SheetMsg::Submit))
+                .mono()
+                .width(120.0),
             dropdown(UNITS.map(|u| u.0), Some(unit)).on_select(|u| s(SheetMsg::Unit(u))).width(72.0),
             spacer(),
             text(format!("{} to {}", format_size(min), format_size(max))).size(11.5).role(Role::Text3).tabular(),
@@ -175,7 +206,10 @@ fn create(t: &Tansu, f: &CreateForm) -> Vec<Element<Msg>> {
             format_size(f.offset)
         )),
         field_row("Size", size_controls(f.size, MIB, f.max, &f.size_text, f.unit, "create-size")),
-        field_row("Filesystem", dropdown(fs_choices(t, true), Some(f.fs)).on_select(|i| s(SheetMsg::Fs(i))).width(Length::Fill)),
+        field_row(
+            "Filesystem",
+            dropdown(fs_choices(t, true), Some(f.fs)).on_select(|i| s(SheetMsg::Fs(i))).width(Length::Fill),
+        ),
     ];
     if !fs_type.is_empty() {
         v.push(note(fs::describe(fs_type)));
@@ -190,7 +224,13 @@ fn create(t: &Tansu, f: &CreateForm) -> Vec<Element<Msg>> {
         ));
     }
     if t.layout.table == "gpt" {
-        v.push(field_row("Name", text_field(&f.name).placeholder("None (GPT's partition name)").on_change(|n| s(SheetMsg::Name(n))).width(Length::Fill)));
+        v.push(field_row(
+            "Name",
+            text_field(&f.name)
+                .placeholder("None (GPT's partition name)")
+                .on_change(|n| s(SheetMsg::Name(n)))
+                .width(Length::Fill),
+        ));
     }
     if !fs_type.is_empty() && fs_type != "swap" {
         v.extend(encryption(f.encrypt, &f.pass, &f.pass2));
@@ -218,7 +258,11 @@ fn resize(t: &Tansu, f: &ResizeForm) -> Vec<Element<Msg>> {
     ];
     let mut can = Vec::new();
     if r.grow {
-        can.push(if f.max > f.from { format!("It can grow by {} into the free space after it.", format_size(f.max - f.from)) } else { "There's no free space after it to grow into.".into() });
+        can.push(if f.max > f.from {
+            format!("It can grow by {} into the free space after it.", format_size(f.max - f.from))
+        } else {
+            "There's no free space after it to grow into.".into()
+        });
     }
     if r.shrink {
         can.push(match f.last_used {
@@ -230,9 +274,23 @@ fn resize(t: &Tansu, f: &ResizeForm) -> Vec<Element<Msg>> {
     }
     v.push(note(can.join(" ")));
     if f.size != f.from {
-        v.push(warning(Icon::TriangleAlert, Role::Warning, "Resizing rewrites the filesystem. If it's interrupted, data can be lost: back up first."));
+        v.push(warning(
+            Icon::TriangleAlert,
+            Role::Warning,
+            "Resizing rewrites the filesystem. If it's interrupted, data can be lost: back up first.",
+        ));
     }
-    v.push(buttons(if f.size > f.from { "Grow" } else if f.size < f.from { "Shrink" } else { "Resize" }, f.size != f.from, false));
+    v.push(buttons(
+        if f.size > f.from {
+            "Grow"
+        } else if f.size < f.from {
+            "Shrink"
+        } else {
+            "Resize"
+        },
+        f.size != f.from,
+        false,
+    ));
     v
 }
 
@@ -251,7 +309,10 @@ fn label_sheet(t: &Tansu, seg: usize, label: &str) -> Vec<Element<Msg>> {
             .width(Length::Fill)
             .into(),
         note(match limit {
-            Some(n) => format!("{} labels have up to {n} bytes. The label names the volume on the desktop and in Files.", fs::name(&sg.fs)),
+            Some(n) => format!(
+                "{} labels have up to {n} bytes. The label names the volume on the desktop and in Files.",
+                fs::name(&sg.fs)
+            ),
             None => "The label names the volume on the desktop and in Files.".into(),
         }),
         buttons("Add to Pending", true, false),
@@ -262,7 +323,13 @@ fn flags_sheet(t: &Tansu, seg: usize, flags: Flags) -> Vec<Element<Msg>> {
     let Some(sg) = t.layout.segs.get(seg) else { return vec![title("Flags")] };
     let offered = Flags::offered(&t.layout.table);
     let item = |label: &str, on: bool, which: u8, what: &str| -> Element<Msg> {
-        column![checkbox(label.to_owned(), on).on_toggle(move |v| s(SheetMsg::Flag(which, v))), note(format!("      {what}"))].spacing(2.0).width(Length::Fill).into()
+        column![
+            checkbox(label.to_owned(), on).on_toggle(move |v| s(SheetMsg::Flag(which, v))),
+            note(format!("      {what}"))
+        ]
+        .spacing(2.0)
+        .width(Length::Fill)
+        .into()
     };
     let mut v = vec![title(&format!("Flags of {}", sg.short_name())), sub(seg_words(sg))];
     v.push(item(
@@ -272,13 +339,22 @@ fn flags_sheet(t: &Tansu, seg: usize, flags: Flags) -> Vec<Element<Msg>> {
         "An EFI System Partition: where UEFI firmware looks for boot loaders. It should hold FAT.",
     ));
     if offered.bios_grub {
-        v.push(item("BIOS boot", flags.bios_grub, 2, "Room for GRUB on a GPT disk a BIOS boots: about 1 MiB, unformatted."));
+        v.push(item(
+            "BIOS boot",
+            flags.bios_grub,
+            2,
+            "Room for GRUB on a GPT disk a BIOS boots: about 1 MiB, unformatted.",
+        ));
     }
     v.push(item(
         "boot",
         flags.boot,
         0,
-        if t.layout.table == "dos" { "The active partition, which a BIOS boots from." } else { "GPT's legacy BIOS bootable attribute." },
+        if t.layout.table == "dos" {
+            "The active partition, which a BIOS boots from."
+        } else {
+            "GPT's legacy BIOS bootable attribute."
+        },
     ));
     v.push(item("hidden", flags.hidden, 3, "Windows and other systems won't mount it by themselves."));
     v.push(note("The partition's type and attributes change; what's on it doesn't."));
@@ -295,9 +371,17 @@ fn table_sheet(t: &Tansu, kind: TableKind) -> Vec<Element<Msg>> {
         radio("GPT", TableKind::Gpt, Some(kind)).on_select(|k| s(SheetMsg::Table(k))).into(),
         note("      Any size, up to 128 partitions. For any computer from the last fifteen years."),
         radio("MBR (DOS)", TableKind::Dos, Some(kind)).on_select(|k| s(SheetMsg::Table(k))).enabled(!big).into(),
-        note(if big { "      Not for disks over 2 TB.".to_owned() } else { "      Up to 2 TB and four primary partitions: for old computers and some cameras.".to_owned() }),
+        note(if big {
+            "      Not for disks over 2 TB.".to_owned()
+        } else {
+            "      Up to 2 TB and four primary partitions: for old computers and some cameras.".to_owned()
+        }),
     ];
-    let loss = if parts.is_empty() { format!("Anything on {device} will be lost.") } else { format!("Every partition on {device} will be lost: {}.", parts.join(", ")) };
+    let loss = if parts.is_empty() {
+        format!("Anything on {device} will be lost.")
+    } else {
+        format!("Every partition on {device} will be lost: {}.", parts.join(", "))
+    };
     v.push(warning(Icon::TriangleAlert, Role::Danger, loss));
     v.push(buttons("Add to Pending", true, true));
     v
@@ -308,7 +392,14 @@ fn unlock(t: &Tansu, seg: usize, pass: &str) -> Vec<Element<Msg>> {
     vec![
         title(&format!("Unlock {name}")),
         sub("Its passphrase opens the volume until it's locked or the computer restarts."),
-        text_field(pass).password().id("unlock-pass").placeholder("Passphrase").on_change(|p| s(SheetMsg::Pass(p))).on_submit(s(SheetMsg::Submit)).width(Length::Fill).into(),
+        text_field(pass)
+            .password()
+            .id("unlock-pass")
+            .placeholder("Passphrase")
+            .on_change(|p| s(SheetMsg::Pass(p)))
+            .on_submit(s(SheetMsg::Submit))
+            .width(Length::Fill)
+            .into(),
         buttons("Unlock", true, false),
     ]
 }
@@ -316,9 +407,16 @@ fn unlock(t: &Tansu, seg: usize, pass: &str) -> Vec<Element<Msg>> {
 fn attach(path: &str, read_only: bool) -> Vec<Element<Msg>> {
     vec![
         title("Attach a Disk Image"),
-        sub("An .iso or .img file shows as a drive: its partitions can be mounted, and, attached for writing, changed."),
+        sub(
+            "An .iso or .img file shows as a drive: its partitions can be mounted, and, attached for writing, changed.",
+        ),
         row![
-            text_field(path).id("attach-path").placeholder("/path/to/image.iso").on_change(|p| s(SheetMsg::Path(p))).on_submit(s(SheetMsg::Submit)).width(Length::Fill),
+            text_field(path)
+                .id("attach-path")
+                .placeholder("/path/to/image.iso")
+                .on_change(|p| s(SheetMsg::Path(p)))
+                .on_submit(s(SheetMsg::Submit))
+                .width(Length::Fill),
             button("Choose…").on_press(s(SheetMsg::Choose)),
         ]
         .spacing(8.0)
@@ -343,10 +441,28 @@ fn apply(t: &Tansu, f: &crate::app::ApplyForm) -> Vec<Element<Msg>> {
         match &w.loss {
             Loss::Destroys(m) => {
                 destroys = true;
-                lines.push(row![icon(Icon::TriangleAlert).size(14.0).role(Role::Danger), text(m.clone()).size(12.0).role(Role::Danger).wrap().width(Length::Fill)].spacing(6.0).align(Align::Start).width(Length::Fill).into());
+                lines.push(
+                    row![
+                        icon(Icon::TriangleAlert).size(14.0).role(Role::Danger),
+                        text(m.clone()).size(12.0).role(Role::Danger).wrap().width(Length::Fill)
+                    ]
+                    .spacing(6.0)
+                    .align(Align::Start)
+                    .width(Length::Fill)
+                    .into(),
+                );
             }
             Loss::Risk(m) => {
-                lines.push(row![icon(Icon::TriangleAlert).size(14.0).role(Role::Warning), text(m.clone()).size(12.0).role(Role::Warning).wrap().width(Length::Fill)].spacing(6.0).align(Align::Start).width(Length::Fill).into());
+                lines.push(
+                    row![
+                        icon(Icon::TriangleAlert).size(14.0).role(Role::Warning),
+                        text(m.clone()).size(12.0).role(Role::Warning).wrap().width(Length::Fill)
+                    ]
+                    .spacing(6.0)
+                    .align(Align::Start)
+                    .width(Length::Fill)
+                    .into(),
+                );
             }
             Loss::None => {}
         }
@@ -361,9 +477,7 @@ fn apply(t: &Tansu, f: &crate::app::ApplyForm) -> Vec<Element<Msg>> {
             .into(),
         );
     }
-    v.push(
-        well(list, 12.0, 52.0, 300.0),
-    );
+    v.push(well(list, 12.0, 52.0, 300.0));
     for p in t.plan.problems(&t.state) {
         v.push(warning(Icon::CircleX, Role::Danger, p));
     }
@@ -372,8 +486,18 @@ fn apply(t: &Tansu, f: &crate::app::ApplyForm) -> Vec<Element<Msg>> {
         let ok = typed.trim() == name;
         v.push(
             row![
-                text_field(typed).id(format!("type-{i}")).mono().placeholder(name.clone()).on_change(move |x| s(SheetMsg::Typed(i, x))).on_submit(s(SheetMsg::Submit)).width(Length::Fill),
-                icon(if ok { Icon::CircleCheck } else { Icon::Circle }).size(16.0).role(if ok { Role::Success } else { Role::Faint }),
+                text_field(typed)
+                    .id(format!("type-{i}"))
+                    .mono()
+                    .placeholder(name.clone())
+                    .on_change(move |x| s(SheetMsg::Typed(i, x)))
+                    .on_submit(s(SheetMsg::Submit))
+                    .width(Length::Fill),
+                icon(if ok { Icon::CircleCheck } else { Icon::Circle }).size(16.0).role(if ok {
+                    Role::Success
+                } else {
+                    Role::Faint
+                }),
             ]
             .spacing(8.0)
             .width(Length::Fill)
@@ -400,7 +524,12 @@ fn running(t: &Tansu) -> Vec<Element<Msg>> {
         };
         let mut lines: Vec<Element<Msg>> = vec![
             text(item.words.title.clone()).semibold().wrap().width(Length::Fill).into(),
-            text(state).size(12.0).role(if matches!(item.status, Status::Failed(_)) { Role::Danger } else { Role::Text3 }).wrap().width(Length::Fill).into(),
+            text(state)
+                .size(12.0)
+                .role(if matches!(item.status, Status::Failed(_)) { Role::Danger } else { Role::Text3 })
+                .wrap()
+                .width(Length::Fill)
+                .into(),
         ];
         if matches!(item.status, Status::Running(_)) && k == run.current {
             let job = run.working_on().and_then(|p| t.state.jobs_for(p).next());
@@ -421,7 +550,8 @@ fn running(t: &Tansu) -> Vec<Element<Msg>> {
                         let m = r.as_secs() / 60;
                         facts.push(if m >= 1 { format!("about {m} min left") } else { "under a minute left".into() });
                     }
-                    let mut row_: Vec<Element<Msg>> = vec![bar, text(facts.join(" · ")).size(11.5).tabular().role(Role::Text3).into()];
+                    let mut row_: Vec<Element<Msg>> =
+                        vec![bar, text(facts.join(" · ")).size(11.5).tabular().role(Role::Text3).into()];
                     if j.cancelable {
                         row_.push(button("Cancel").compact().on_press(Msg::CancelJob(j.path.clone())).into());
                     }
@@ -430,24 +560,40 @@ fn running(t: &Tansu) -> Vec<Element<Msg>> {
                 None => lines.push(progress_indeterminate().width(Length::Fill).into()),
             }
         }
-        list.push(row![icon(glyph).size(16.0).role(role), aizome_kit::widgets::layout::column(lines).spacing(3.0).width(Length::Fill)].spacing(8.0).align(Align::Start).width(Length::Fill).into());
+        list.push(
+            row![
+                icon(glyph).size(16.0).role(role),
+                aizome_kit::widgets::layout::column(lines).spacing(3.0).width(Length::Fill)
+            ]
+            .spacing(8.0)
+            .align(Align::Start)
+            .width(Length::Fill)
+            .into(),
+        );
     }
-    v.push(
-        well(list, 12.0, 52.0, 340.0),
-    );
+    v.push(well(list, 12.0, 52.0, 340.0));
     match &run.outcome {
         None => {
-            v.push(note(if run.stop_requested { "Stopping once this operation is done." } else { "Keep the drives plugged in until this is done." }));
+            v.push(note(if run.stop_requested {
+                "Stopping once this operation is done."
+            } else {
+                "Keep the drives plugged in until this is done."
+            }));
             v.push(
-                row![spacer(), button("Stop After This One").on_press_maybe((!run.stop_requested).then_some(Msg::StopRun))]
-                    .width(Length::Fill)
-                    .into(),
+                row![
+                    spacer(),
+                    button("Stop After This One").on_press_maybe((!run.stop_requested).then_some(Msg::StopRun))
+                ]
+                .width(Length::Fill)
+                .into(),
             );
         }
         Some(outcome) => {
             let words = match outcome {
                 crate::run::Outcome::Done => "Every operation ran.".to_owned(),
-                crate::run::Outcome::Failed { .. } => "It stopped at the operation that failed; those after it are still pending.".to_owned(),
+                crate::run::Outcome::Failed { .. } => {
+                    "It stopped at the operation that failed; those after it are still pending.".to_owned()
+                }
                 crate::run::Outcome::Stopped => "Stopped: what didn't run is still pending.".to_owned(),
             };
             v.push(note(words));
@@ -457,7 +603,11 @@ fn running(t: &Tansu) -> Vec<Element<Msg>> {
     v
 }
 
-fn smart(t: &Tansu, drive: &str, attrs: Option<&Result<Vec<aizome_sys::disks::SmartAttribute>, String>>) -> Vec<Element<Msg>> {
+fn smart(
+    t: &Tansu,
+    drive: &str,
+    attrs: Option<&Result<Vec<aizome_sys::disks::SmartAttribute>, String>>,
+) -> Vec<Element<Msg>> {
     let d = t.state.drive(drive);
     let name = d.map(|d| d.display_name()).unwrap_or_default();
     let smart = d.and_then(|d| d.smart.as_ref());
@@ -478,9 +628,18 @@ fn smart(t: &Tansu, drive: &str, attrs: Option<&Result<Vec<aizome_sys::disks::Sm
             facts.push(format!("warning: {w}"));
         }
     }
-    v.push(row![super::glyphs::dot(health), text(facts.join(" · ")).wrap().width(Length::Fill)].spacing(8.0).width(Length::Fill).into());
+    v.push(
+        row![super::glyphs::dot(health), text(facts.join(" · ")).wrap().width(Length::Fill)]
+            .spacing(8.0)
+            .width(Length::Fill)
+            .into(),
+    );
     match attrs {
-        None => v.push(row![progress_indeterminate().width(120.0), text("Reading the drive's attributes…").role(Role::Text3)].spacing(8.0).into()),
+        None => v.push(
+            row![progress_indeterminate().width(120.0), text("Reading the drive's attributes…").role(Role::Text3)]
+                .spacing(8.0)
+                .into(),
+        ),
         Some(Err(e)) => v.push(note(e.clone())),
         Some(Ok(list)) => {
             let ata = list.iter().any(|a| a.id.is_some());
@@ -488,22 +647,43 @@ fn smart(t: &Tansu, drive: &str, attrs: Option<&Result<Vec<aizome_sys::disks::Sm
             for a in list {
                 let mut cells: Vec<Element<Msg>> = Vec::new();
                 if ata {
-                    cells.push(text(a.id.map(|i| i.to_string()).unwrap_or_default()).mono().size(11.5).role(Role::Text3).width(32.0).into());
+                    cells.push(
+                        text(a.id.map(|i| i.to_string()).unwrap_or_default())
+                            .mono()
+                            .size(11.5)
+                            .role(Role::Text3)
+                            .width(32.0)
+                            .into(),
+                    );
                 }
-                cells.push(text(a.name.clone()).role(if a.failing { Role::Danger } else { Role::Text }).width(Length::Fill).into());
-                cells.push(text(a.value.clone()).tabular().role(if a.failing { Role::Danger } else { Role::Text2 }).into());
+                cells.push(
+                    text(a.name.clone())
+                        .role(if a.failing { Role::Danger } else { Role::Text })
+                        .width(Length::Fill)
+                        .into(),
+                );
+                cells.push(
+                    text(a.value.clone()).tabular().role(if a.failing { Role::Danger } else { Role::Text2 }).into(),
+                );
                 if ata {
                     let n = |x: Option<i32>| x.map(|x| x.to_string()).unwrap_or_else(|| "—".into());
-                    cells.push(text(format!("{} / {} / {}", n(a.normalized), n(a.worst), n(a.threshold))).mono().size(11.5).role(Role::Text3).width(104.0).into());
+                    cells.push(
+                        text(format!("{} / {} / {}", n(a.normalized), n(a.worst), n(a.threshold)))
+                            .mono()
+                            .size(11.5)
+                            .role(Role::Text3)
+                            .width(104.0)
+                            .into(),
+                    );
                 }
                 rows.push(aizome_kit::widgets::layout::row(cells).spacing(10.0).width(Length::Fill).into());
             }
             if ata {
-                v.push(note("Normalised value / worst / threshold: higher is better; at the threshold, an attribute fails."));
+                v.push(note(
+                    "Normalised value / worst / threshold: higher is better; at the threshold, an attribute fails.",
+                ));
             }
-            v.push(
-                well(rows, 5.0, 18.0, 260.0),
-            );
+            v.push(well(rows, 5.0, 18.0, 260.0));
         }
     }
     if let Some(s) = smart.filter(|s| s.supported) {

@@ -60,7 +60,17 @@ fn sheet_kind(h: &Harness<Tansu>) -> Option<&'static str> {
 fn the_sidebar_lists_drives_then_images() {
     let (h, _) = start();
     let names: Vec<&str> = h.program().drives.iter().map(|d| d.name.as_str()).collect();
-    assert_eq!(names, ["Samsung SSD 990 PRO 1TB", "Crucial CT500MX500SSD1", "WDC WD40EFRX-68N32N0", "SanDisk Cruzer Blade", "SD SC64G", "sekka-nightly.iso"]);
+    assert_eq!(
+        names,
+        [
+            "Samsung SSD 990 PRO 1TB",
+            "Crucial CT500MX500SSD1",
+            "WDC WD40EFRX-68N32N0",
+            "SanDisk Cruzer Blade",
+            "SD SC64G",
+            "sekka-nightly.iso"
+        ]
+    );
     let w = h.window();
     let texts = h.texts(w);
     for want in ["Samsung SSD 990 PRO 1TB", "nvme0n1p1", "nvme0n1p2", "dm-0", "Unallocated", "/boot"] {
@@ -148,7 +158,9 @@ fn a_new_partition_is_made_in_free_space_with_its_flags() {
     sheet(&mut h, SheetMsg::Label("EFI".into()));
     sheet(&mut h, SheetMsg::Submit);
     assert_eq!(sheet_kind(&h), None);
-    let Some(tansu::app::Sel::Target(Target::New(id))) = h.program().sel.clone() else { panic!("the new partition is selected") };
+    let Some(tansu::app::Sel::Target(Target::New(id))) = h.program().sel.clone() else {
+        panic!("the new partition is selected")
+    };
     let i = h.program().layout.find(&Target::New(id)).unwrap();
     let size = h.program().layout.segs[i].size;
     assert!((size as f64 - 5.0 * GB).abs() < 2.0 * 1_048_576.0, "{size}");
@@ -276,7 +288,11 @@ fn unlocking_mounting_and_images_happen_at_once() {
     assert_eq!(sheet_kind(&h), Some("unlock"));
     sheet(&mut h, SheetMsg::Pass("wrong".into()));
     sheet(&mut h, SheetMsg::Submit);
-    assert!(h.program().notice.as_ref().is_some_and(|(n, e)| *e && n.contains("wrong passphrase")), "{:?}", h.program().notice);
+    assert!(
+        h.program().notice.as_ref().is_some_and(|(n, e)| *e && n.contains("wrong passphrase")),
+        "{:?}",
+        h.program().notice
+    );
     h.send(Msg::Do(Action::Unlock));
     sheet(&mut h, SheetMsg::Pass("correct horse".into()));
     sheet(&mut h, SheetMsg::Submit);

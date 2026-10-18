@@ -286,7 +286,11 @@ impl Tansu {
     /// The preview of the selected drive, its rows, and the selection's
     /// place in it.
     fn relayout(&mut self) {
-        let layout = self.entry().and_then(|e| e.disk.clone()).and_then(|d| self.plan.preview(&self.state, &d)).unwrap_or_default();
+        let layout = self
+            .entry()
+            .and_then(|e| e.disk.clone())
+            .and_then(|d| self.plan.preview(&self.state, &d))
+            .unwrap_or_default();
         let mut rows = Vec::new();
         for (i, s) in layout.segs.iter().enumerate() {
             rows.push(Row { seg: i, inner: false });
@@ -309,7 +313,13 @@ impl Tansu {
         }
         if self.selected().is_none() {
             // Something a click would pick: the first partition.
-            self.sel = self.layout.segs.iter().position(|s| !s.is_free()).or(if self.layout.segs.is_empty() { None } else { Some(0) }).map(|i| self.sel_of(i));
+            self.sel = self
+                .layout
+                .segs
+                .iter()
+                .position(|s| !s.is_free())
+                .or(if self.layout.segs.is_empty() { None } else { Some(0) })
+                .map(|i| self.sel_of(i));
         }
         if let (Some(Sel::Free { .. }), Some(i)) = (&self.sel, self.selected())
             && !self.layout.segs[i].is_free()
@@ -346,8 +356,18 @@ impl Tansu {
                     .iter()
                     .position(|s| free(&s) && holds(s))
                     // A partition back where it was (an undone deletion).
-                    .or_else(|| self.layout.segs.iter().position(|s| holds(s) && s.kind() != crate::layout::SegKind::Extended))
-                    .or_else(|| self.layout.segs.iter().enumerate().filter(|(_, s)| free(s)).min_by_key(|(_, s)| s.offset.abs_diff(*offset)).map(|(i, _)| i))
+                    .or_else(|| {
+                        self.layout.segs.iter().position(|s| holds(s) && s.kind() != crate::layout::SegKind::Extended)
+                    })
+                    .or_else(|| {
+                        self.layout
+                            .segs
+                            .iter()
+                            .enumerate()
+                            .filter(|(_, s)| free(s))
+                            .min_by_key(|(_, s)| s.offset.abs_diff(*offset))
+                            .map(|(i, _)| i)
+                    })
             }
         }
     }
@@ -403,7 +423,13 @@ impl Tansu {
                 if self.plan != before {
                     self.history.push(before);
                     let n = self.plan.len();
-                    self.say(format!("{n} pending operation{} — nothing changes until you apply.", if n == 1 { "" } else { "s" }), false);
+                    self.say(
+                        format!(
+                            "{n} pending operation{} — nothing changes until you apply.",
+                            if n == 1 { "" } else { "s" }
+                        ),
+                        false,
+                    );
                 }
                 self.relayout();
                 true
@@ -458,10 +484,15 @@ impl Tansu {
             let b = self.busy.remove(i);
             let result: Result<String, String> = match b.task {
                 BusyTask::Unit(t) => t.take().unwrap_or(Ok(())).map(|()| b.done.clone()).map_err(|e| e.to_string()),
-                BusyTask::Text(t) => t.take().unwrap_or(Ok(String::new())).map(|s| b.done.replace("{}", &s)).map_err(|e| e.to_string()),
+                BusyTask::Text(t) => {
+                    t.take().unwrap_or(Ok(String::new())).map(|s| b.done.replace("{}", &s)).map_err(|e| e.to_string())
+                }
                 BusyTask::Check(t) => match t.take().unwrap_or(Ok(true)) {
                     Ok(true) => Ok(b.done.clone()),
-                    Ok(false) => Err(format!("{} has errors: repair it (Partition ▸ Repair…).", b.done.split(' ').next().unwrap_or("It"))),
+                    Ok(false) => Err(format!(
+                        "{} has errors: repair it (Partition ▸ Repair…).",
+                        b.done.split(' ').next().unwrap_or("It")
+                    )),
                     Err(e) => Err(e.to_string()),
                 },
             };
@@ -470,7 +501,10 @@ impl Tansu {
                 Err(e) => {
                     self.say(format!("{} failed: {e}", b.what.trim_end_matches('…')), true);
                     if let Some(cx) = cx.as_deref_mut() {
-                        cx.alert(self.window, Alert::new(format!("{} failed", b.what.trim_end_matches('…')), e).cancel_button("OK"));
+                        cx.alert(
+                            self.window,
+                            Alert::new(format!("{} failed", b.what.trim_end_matches('…')), e).cancel_button("OK"),
+                        );
                     }
                 }
             }
@@ -520,12 +554,20 @@ impl Tansu {
         match action {
             Action::Mount => {
                 if let Some(target) = self.mount_target(i) {
-                    self.start(format!("Mounting {name}…"), format!("{name} is mounted at {{}}."), BusyTask::Text(b.mount(&target)));
+                    self.start(
+                        format!("Mounting {name}…"),
+                        format!("{name} is mounted at {{}}."),
+                        BusyTask::Text(b.mount(&target)),
+                    );
                 }
             }
             Action::Unmount => {
                 if let Some(target) = self.mount_target(i) {
-                    self.start(format!("Unmounting {name}…"), format!("{name} is unmounted."), BusyTask::Unit(b.unmount(&target)));
+                    self.start(
+                        format!("Unmounting {name}…"),
+                        format!("{name} is unmounted."),
+                        BusyTask::Unit(b.unmount(&target)),
+                    );
                 }
             }
             Action::Lock => {
@@ -536,16 +578,30 @@ impl Tansu {
             Action::SwapOn | Action::SwapOff => {
                 if let Some(p) = block {
                     let on = action == Action::SwapOn;
-                    let done = if on { format!("{name} is in use as swap.") } else { format!("{name} is no longer used as swap.") };
-                    self.start(format!("{} {name}…", if on { "Turning on swap on" } else { "Turning off swap on" }), done, BusyTask::Unit(b.set_swap(&p, on)));
+                    let done = if on {
+                        format!("{name} is in use as swap.")
+                    } else {
+                        format!("{name} is no longer used as swap.")
+                    };
+                    self.start(
+                        format!("{} {name}…", if on { "Turning on swap on" } else { "Turning off swap on" }),
+                        done,
+                        BusyTask::Unit(b.set_swap(&p, on)),
+                    );
                 }
             }
             Action::Check => {
                 if let Some(p) = block {
-                    self.start(format!("Checking {name}…"), format!("{name} is consistent."), BusyTask::Check(b.check(&p)));
+                    self.start(
+                        format!("Checking {name}…"),
+                        format!("{name} is consistent."),
+                        BusyTask::Check(b.check(&p)),
+                    );
                 }
             }
-            Action::Unlock => self.open_sheet(SheetKind::Unlock { seg: i, pass: String::new() }, cx, Some("unlock-pass")),
+            Action::Unlock => {
+                self.open_sheet(SheetKind::Unlock { seg: i, pass: String::new() }, cx, Some("unlock-pass"))
+            }
             Action::New => {
                 let size = seg.size;
                 let text = size_text(size, 1);
@@ -585,10 +641,21 @@ impl Tansu {
                 let last = self.last_used(&seg);
                 let (min, max) = self.plan.resize_range_knowing(&self.layout, i, last);
                 let unit = if seg.size >= 10_000_000_000 { 1 } else { 0 };
-                let form = ResizeForm { seg: i, from: seg.size, min, max, size: seg.size, size_text: size_text(seg.size, unit), unit, last_used: last };
+                let form = ResizeForm {
+                    seg: i,
+                    from: seg.size,
+                    min,
+                    max,
+                    size: seg.size,
+                    size_text: size_text(seg.size, unit),
+                    unit,
+                    last_used: last,
+                };
                 self.open_sheet(SheetKind::Resize(form), cx, Some("resize-size"));
             }
-            Action::Label => self.open_sheet(SheetKind::Label { seg: i, label: seg.label.clone() }, cx, Some("label-field")),
+            Action::Label => {
+                self.open_sheet(SheetKind::Label { seg: i, label: seg.label.clone() }, cx, Some("label-field"))
+            }
             Action::Flags => {
                 let flags = Flags::of(&self.layout.table, &seg.type_id, seg.flag_bits);
                 self.open_sheet(SheetKind::Flags { seg: i, flags }, cx, None);
@@ -759,7 +826,9 @@ impl Tansu {
             (SheetKind::Attach { path, .. }, SheetMsg::Path(p)) => *path = p,
             (SheetKind::Attach { read_only, .. }, SheetMsg::ReadOnly(on)) => *read_only = on,
             (SheetKind::Attach { .. }, SheetMsg::Choose) => {
-                let dialog = FileDialog::new().title("Attach a Disk Image").filter("Disk images", &["iso", "img", "raw", "qcow2"]);
+                let dialog = FileDialog::new()
+                    .title("Attach a Disk Image")
+                    .filter("Disk images", &["iso", "img", "raw", "qcow2"]);
                 cx.open_panel(self.window, dialog, |paths| Msg::Sheet(SheetMsg::Chosen(paths)));
             }
             (SheetKind::Attach { path, .. }, SheetMsg::Chosen(Some(paths))) => {
@@ -774,7 +843,9 @@ impl Tansu {
                     return;
                 }
                 if file.extension().is_some_and(|e| e.eq_ignore_ascii_case("qcow2")) {
-                    sheet.error = Some("QEMU's qcow2 images aren't raw disks: convert one with `qemu-img convert -O raw`.".into());
+                    sheet.error = Some(
+                        "QEMU's qcow2 images aren't raw disks: convert one with `qemu-img convert -O raw`.".into(),
+                    );
                     return;
                 }
                 let ro = *read_only;
@@ -815,7 +886,11 @@ impl Tansu {
                 let drive = drive.clone();
                 let task = self.backend.smart_selftest(&drive, test);
                 let what = if test == SelfTest::Short { "short" } else { "extended" };
-                self.start(format!("Starting the {what} self-test…"), format!("The {what} self-test is running."), BusyTask::Unit(task));
+                self.start(
+                    format!("Starting the {what} self-test…"),
+                    format!("The {what} self-test is running."),
+                    BusyTask::Unit(task),
+                );
             }
             (SheetKind::Smart { .. }, SheetMsg::Submit) => self.close_sheet(cx),
             _ => {}
@@ -872,7 +947,9 @@ impl Tansu {
     /// The context menu of segment `i`.
     pub fn context_menu_at(&self, i: Option<usize>) -> Menu<Msg> {
         let mut m = Menu::new("").items(self.action_items_at(i));
-        m = m.separator().item(MenuItem::new("New Partition Table…", Msg::NewTable).enabled(self.can_new_table().is_ok()));
+        m = m
+            .separator()
+            .item(MenuItem::new("New Partition Table…", Msg::NewTable).enabled(self.can_new_table().is_ok()));
         m
     }
 
@@ -997,19 +1074,29 @@ impl Program for Tansu {
             Msg::Do(a) => self.act(a, cx),
             Msg::NewTable => match self.can_new_table() {
                 Ok(()) => {
-                    let kind = if self.layout.table == "dos" && self.layout.size < (2u64 << 40) { TableKind::Dos } else { TableKind::Gpt };
+                    let kind = if self.layout.table == "dos" && self.layout.size < (2u64 << 40) {
+                        TableKind::Dos
+                    } else {
+                        TableKind::Gpt
+                    };
                     self.open_sheet(SheetKind::Table { kind }, cx, None);
                 }
                 Err(e) => self.say(e, true),
             },
-            Msg::AttachImage => self.open_sheet(SheetKind::Attach { path: String::new(), read_only: true }, cx, Some("attach-path")),
+            Msg::AttachImage => {
+                self.open_sheet(SheetKind::Attach { path: String::new(), read_only: true }, cx, Some("attach-path"))
+            }
             Msg::DetachImage => {
                 if let Some(e) = self.entry().filter(|e| e.is_image()).cloned() {
                     if self.state.in_use(&e.key) {
                         self.say(format!("{} is mounted: unmount it first.", e.name), true);
                     } else {
                         let task = self.backend.loop_delete(&e.key);
-                        self.start(format!("Detaching {}…", e.name), format!("{} is detached.", e.name), BusyTask::Unit(task));
+                        self.start(
+                            format!("Detaching {}…", e.name),
+                            format!("{} is detached.", e.name),
+                            BusyTask::Unit(task),
+                        );
                     }
                 }
             }
@@ -1019,7 +1106,11 @@ impl Program for Tansu {
                         self.say("Apply or clear the pending operations on it first.", true);
                     } else {
                         let task = self.backend.power_off(&e.key);
-                        self.start(format!("Powering off {}…", e.name), format!("{} can be unplugged.", e.name), BusyTask::Unit(task));
+                        self.start(
+                            format!("Powering off {}…", e.name),
+                            format!("{} can be unplugged.", e.name),
+                            BusyTask::Unit(task),
+                        );
                     }
                 }
             }
@@ -1027,14 +1118,18 @@ impl Program for Tansu {
                 if let Some(e) = self.entry().filter(|e| !e.is_image()).cloned() {
                     let has = self.state.drive(&e.key).and_then(|d| d.smart.as_ref()).is_some_and(|s| s.supported);
                     let task = has.then(|| self.backend.smart_attributes(&e.key));
-                    let attrs = (!has).then(|| Err("This drive doesn't report SMART data (USB sticks and card readers seldom do).".to_owned()));
+                    let attrs = (!has).then(|| {
+                        Err("This drive doesn't report SMART data (USB sticks and card readers seldom do).".to_owned())
+                    });
                     self.open_sheet(SheetKind::Smart { drive: e.key, attrs, task }, cx, None);
                     self.poll_smart();
                 }
             }
             Msg::Sheet(m) => self.sheet_msg(m, cx),
             Msg::CloseSheet => {
-                if !matches!(self.sheet.as_ref().map(|s| &s.kind), Some(SheetKind::Running)) || self.run.as_ref().is_none_or(|r| !r.is_running()) {
+                if !matches!(self.sheet.as_ref().map(|s| &s.kind), Some(SheetKind::Running))
+                    || self.run.as_ref().is_none_or(|r| !r.is_running())
+                {
                     if matches!(self.sheet.as_ref().map(|s| &s.kind), Some(SheetKind::Running)) {
                         self.run = None;
                     }
@@ -1115,12 +1210,20 @@ impl Program for Tansu {
             .item(MenuItem::role_item("Paste", MenuRole::Paste).shortcut(Shortcut::cmd('V')))
             .item(MenuItem::role_item("Select All", MenuRole::SelectAll).shortcut(Shortcut::cmd('A')))
             .separator()
-            .item(MenuItem::new("Apply Pending Operations…", Msg::Apply).shortcut(Shortcut::cmd_key(ShortcutKey::Enter)).enabled(idle && !self.plan.is_empty()))
+            .item(
+                MenuItem::new("Apply Pending Operations…", Msg::Apply)
+                    .shortcut(Shortcut::cmd_key(ShortcutKey::Enter))
+                    .enabled(idle && !self.plan.is_empty()),
+            )
             .item(MenuItem::new("Clear Pending Operations", Msg::ClearPlan).enabled(idle && !self.plan.is_empty()));
         let partition = Menu::new("Partition").items(self.action_items());
         let drive = Menu::new("Drive")
             .item(MenuItem::new("New Partition Table…", Msg::NewTable).enabled(self.can_new_table().is_ok()))
-            .item(MenuItem::new("SMART Data and Self-Tests…", Msg::ShowSmart).shortcut(Shortcut::cmd('I')).enabled(entry.is_some_and(|e| !e.is_image())))
+            .item(
+                MenuItem::new("SMART Data and Self-Tests…", Msg::ShowSmart)
+                    .shortcut(Shortcut::cmd('I'))
+                    .enabled(entry.is_some_and(|e| !e.is_image())),
+            )
             .separator()
             .item(MenuItem::new("Power Off", Msg::PowerOff).enabled(entry.is_some_and(|e| e.can_power_off) && idle));
         MenuBar::standard(&self.info()).replace("Edit", edit).with_file_menu(file).with_menu(partition).with_menu(drive)
@@ -1130,7 +1233,11 @@ impl Program for Tansu {
         if window == self.window && self.run.as_ref().is_some_and(|r| r.is_running()) {
             cx.alert(
                 self.window,
-                Alert::new("Operations are running", "Closing Tansu now wouldn't stop them, but you'd lose sight of them. Wait for them to finish.").cancel_button("OK"),
+                Alert::new(
+                    "Operations are running",
+                    "Closing Tansu now wouldn't stop them, but you'd lose sight of them. Wait for them to finish.",
+                )
+                .cancel_button("OK"),
             );
             return false;
         }
@@ -1167,7 +1274,10 @@ impl Tansu {
     /// Why this system can't make `fs`, if it can't.
     pub fn cannot_make(&self, fs: &str) -> Option<String> {
         if let Some(program) = self.missing.get(fs) {
-            return Some(format!("This system can't make {} filesystems: {program} is missing (add its package to the system).", crate::fs::name(fs)));
+            return Some(format!(
+                "This system can't make {} filesystems: {program} is missing (add its package to the system).",
+                crate::fs::name(fs)
+            ));
         }
         (!fs.is_empty() && !self.state.supported_filesystems.iter().any(|s| s == fs))
             .then(|| format!("This system can't make {} filesystems.", crate::fs::name(fs)))

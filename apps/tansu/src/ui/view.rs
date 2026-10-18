@@ -133,17 +133,39 @@ fn toolbar(t: &Tansu) -> Element<Msg> {
                 Ok(()) => "New partition table…".to_owned(),
                 Err(e) => format!("New partition table — {e}"),
             };
-            icon_button(Icon::Table2).toolbar().on_press_maybe(can.is_ok().then_some(Msg::NewTable)).tooltip(tip).label("New partition table").into()
+            icon_button(Icon::Table2)
+                .toolbar()
+                .on_press_maybe(can.is_ok().then_some(Msg::NewTable))
+                .tooltip(tip)
+                .label("New partition table")
+                .into()
         },
         spacer().into(),
-        button("Attach Image").icon(Icon::Disc3).toolbar().on_press(Msg::AttachImage).tooltip("Attach a disk image (.iso, .img) as a drive…").into(),
+        button("Attach Image")
+            .icon(Icon::Disc3)
+            .toolbar()
+            .on_press(Msg::AttachImage)
+            .tooltip("Attach a disk image (.iso, .img) as a drive…")
+            .into(),
     ];
     if entry.is_some_and(|e| e.is_image()) {
         items.push(
-            button("Detach").icon(Icon::X).toolbar().on_press_maybe(idle.then_some(Msg::DetachImage)).tooltip("Detach the image").into(),
+            button("Detach")
+                .icon(Icon::X)
+                .toolbar()
+                .on_press_maybe(idle.then_some(Msg::DetachImage))
+                .tooltip("Detach the image")
+                .into(),
         );
     } else {
-        items.push(button("SMART").icon(Icon::Activity).toolbar().on_press_maybe(entry.map(|_| Msg::ShowSmart)).tooltip("SMART data and self-tests").into());
+        items.push(
+            button("SMART")
+                .icon(Icon::Activity)
+                .toolbar()
+                .on_press_maybe(entry.map(|_| Msg::ShowSmart))
+                .tooltip("SMART data and self-tests")
+                .into(),
+        );
     }
     items.push(
         button("Power Off")
@@ -169,12 +191,20 @@ fn sidebar(t: &Tansu) -> Element<Msg> {
             items.push(glyphs::drive_row(e, Some(e.key.as_str()) == selected, Msg::SelectDrive(e.key.clone())));
         }
     }
-    scroll(aizome_kit::widgets::layout::column(items).width(Length::Fill)).width(Length::Fill).height(Length::Fill).into()
+    scroll(aizome_kit::widgets::layout::column(items).width(Length::Fill))
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .into()
 }
 
 fn content(t: &Tansu) -> Element<Msg> {
     let Some(e) = t.entry() else {
-        return container(text("No drives.").role(Role::Text3)).center().fill(Tone::Surface).width(Length::Fill).height(Length::Fill).into();
+        return container(text("No drives.").role(Role::Text3))
+            .center()
+            .fill(Tone::Surface)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .into();
     };
     let l = &t.layout;
     let table_words = match l.table.as_str() {
@@ -183,7 +213,8 @@ fn content(t: &Tansu) -> Element<Msg> {
         _ if l.segs.iter().any(|s| s.kind() == SegKind::Whole) => "No partition table",
         _ => "Empty",
     };
-    let mut facts = vec![format_size(e.size), e.kind.words().to_owned(), table_words.to_owned(), format!("/dev/{}", e.device)];
+    let mut facts =
+        vec![format_size(e.size), e.kind.words().to_owned(), table_words.to_owned(), format!("/dev/{}", e.device)];
     if l.new_table {
         facts[2] = format!("{table_words} (pending)");
     }
@@ -209,12 +240,9 @@ fn content(t: &Tansu) -> Element<Msg> {
     }
     let header = row![
         glyphs::glyph(e.kind, 34.0),
-        column![
-            text(e.name.clone()).size(17.0).weight(650.0),
-            text(facts.join(" · ")).role(Role::Text3).tabular(),
-        ]
-        .spacing(3.0)
-        .width(Length::Fill),
+        column![text(e.name.clone()).size(17.0).weight(650.0), text(facts.join(" · ")).role(Role::Text3).tabular(),]
+            .spacing(3.0)
+            .width(Length::Fill),
         row![glyphs::dot(e.health)].extend(health).spacing(2.0),
     ]
     .spacing(12.0)
@@ -222,7 +250,9 @@ fn content(t: &Tansu) -> Element<Msg> {
     let selected = t.selected();
     let map = partition_map(t.layout.clone(), selected, Msg::SelectSeg, |(i, at)| Msg::Context(i, at));
     column![
-        container(column![header, map, legend(l)].spacing(12.0).width(Length::Fill)).padding([16.0, 16.0, 12.0, 16.0]).width(Length::Fill),
+        container(column![header, map, legend(l)].spacing(12.0).width(Length::Fill))
+            .padding([16.0, 16.0, 12.0, 16.0])
+            .width(Length::Fill),
         table_view(t),
         details(t),
     ]
@@ -255,8 +285,8 @@ impl Widget for Swatch {
         let b = cx.bounds();
         if self.hatched {
             cx.canvas.fill_rect(b, t.sunk());
-            use aizome_kit::sidestep_ui::kurbo::Line;
             use aizome_kit::sidestep_ui::StrokeStyle;
+            use aizome_kit::sidestep_ui::kurbo::Line;
             cx.canvas.save();
             cx.canvas.clip_rect(b);
             for k in 0..4 {
@@ -290,9 +320,12 @@ fn legend(l: &Layout) -> Element<Msg> {
     }
     if l.segs.iter().any(|s| s.is_free() || s.kind() == SegKind::Blank) {
         items.push(
-            row![Element::new(Swatch { fs: String::new(), hatched: true }, Vec::new()), text("Unallocated").size(11.5).role(Role::Text2)]
-                .spacing(5.0)
-                .into(),
+            row![
+                Element::new(Swatch { fs: String::new(), hatched: true }, Vec::new()),
+                text("Unallocated").size(11.5).role(Role::Text2)
+            ]
+            .spacing(5.0)
+            .into(),
         );
     }
     if l.segs.iter().any(|s| s.shown_used().is_some()) {
@@ -325,7 +358,8 @@ fn table_view(t: &Tansu) -> Element<Msg> {
     let layout = t.layout.clone();
     let rows = t.rows.clone();
     let count = rows.len();
-    let selected: Vec<usize> = t.selected().map(|s| rows.iter().position(|r| r.seg == s && !r.inner)).into_iter().flatten().collect();
+    let selected: Vec<usize> =
+        t.selected().map(|s| rows.iter().position(|r| r.seg == s && !r.inner)).into_iter().flatten().collect();
     // Menus for each row, as they'd be if it were selected.
     let menus: Rc<Vec<Menu<Msg>>> = Rc::new(rows.iter().map(|r| t.context_menu_at(Some(r.seg))).collect());
     let names = {
@@ -419,7 +453,11 @@ fn cell(l: &Layout, r: Row, c: usize) -> Element<Msg> {
         },
         4 => {
             let t = text(format_size(s.size)).tabular();
-            if pending(Mark::Resize) { t.role(Role::Warning).into() } else { t.role(if s.is_free() { Role::Text3 } else { Role::Text }).into() }
+            if pending(Mark::Resize) {
+                t.role(Role::Warning).into()
+            } else {
+                t.role(if s.is_free() { Role::Text3 } else { Role::Text }).into()
+            }
         }
         5 => s.used.map_or_else(dash, |u| text(used_words(u, s.size)).tabular().into()),
         _ => {
@@ -454,15 +492,29 @@ fn pending_strip(t: &Tansu) -> Element<Msg> {
         .width(Length::Fill)
         .into()
     } else {
-        text("No pending operations: changes wait here until you apply them.").size(12.0).role(Role::Text3).width(Length::Fill).into()
+        text("No pending operations: changes wait here until you apply them.")
+            .size(12.0)
+            .role(Role::Text3)
+            .width(Length::Fill)
+            .into()
     };
     container(
         row![
             summary,
-            button(if t.show_pending { "Hide List" } else { "Show List" }).compact().on_press_maybe(some.then_some(Msg::TogglePending)),
-            button("Undo").compact().icon(Icon::Undo2).on_press_maybe((idle && some).then_some(Msg::Undo)).tooltip("Undo the last change to the plan (❖Z)"),
+            button(if t.show_pending { "Hide List" } else { "Show List" })
+                .compact()
+                .on_press_maybe(some.then_some(Msg::TogglePending)),
+            button("Undo")
+                .compact()
+                .icon(Icon::Undo2)
+                .on_press_maybe((idle && some).then_some(Msg::Undo))
+                .tooltip("Undo the last change to the plan (❖Z)"),
             button("Clear").compact().on_press_maybe((idle && some).then_some(Msg::ClearPlan)),
-            button("Apply…").compact().primary().on_press_maybe((idle && some).then_some(Msg::Apply)).tooltip("Review and run the operations (❖↩)"),
+            button("Apply…")
+                .compact()
+                .primary()
+                .on_press_maybe((idle && some).then_some(Msg::Apply))
+                .tooltip("Review and run the operations (❖↩)"),
         ]
         .spacing(8.0)
         .width(Length::Fill),
@@ -509,7 +561,11 @@ fn status(t: &Tansu) -> Element<Msg> {
     };
     let right = if t.state.available {
         let jobs = t.state.jobs.len();
-        if jobs > 0 { format!("{jobs} job{} running · UDisks {}", if jobs == 1 { "" } else { "s" }, t.state.version) } else { format!("UDisks {}", t.state.version) }
+        if jobs > 0 {
+            format!("{jobs} job{} running · UDisks {}", if jobs == 1 { "" } else { "s" }, t.state.version)
+        } else {
+            format!("UDisks {}", t.state.version)
+        }
     } else {
         String::new()
     };
@@ -524,7 +580,9 @@ fn selection_words(t: &Tansu) -> String {
         return "Select a drive, then a partition.".into();
     };
     match s.kind() {
-        SegKind::Free => format!("{} unallocated at {}: make a partition here with New.", format_size(s.size), format_size(s.offset)),
+        SegKind::Free => {
+            format!("{} unallocated at {}: make a partition here with New.", format_size(s.size), format_size(s.offset))
+        }
         SegKind::Blank => "No partition table: create one (Drive ▸ New Partition Table…).".into(),
         SegKind::Extended => format!("{}: an extended partition holding logical ones.", s.short_name()),
         _ => {
@@ -532,7 +590,9 @@ fn selection_words(t: &Tansu) -> String {
             if let Some(m) = s.shown_mount() {
                 words.push_str(&format!(" · mounted at {m}"));
             }
-            if let Some(tid) = (!s.type_id.is_empty()).then(|| aizome_sys::disks::types::partition_type_name(&s.type_id)).flatten() {
+            if let Some(tid) =
+                (!s.type_id.is_empty()).then(|| aizome_sys::disks::types::partition_type_name(&s.type_id)).flatten()
+            {
                 words.push_str(&format!(" · {tid}"));
             }
             words
@@ -549,10 +609,13 @@ fn details(t: &Tansu) -> Element<Msg> {
     let s = &t.layout.segs[i];
     let block = s.block().and_then(|p| t.state.block(p));
     let pair = |k: &str, v: String| -> Element<Msg> {
-        row![text(k.to_owned()).size(11.5).role(Role::Text3).width(96.0), text(v).size(12.0).role(Role::Text2).selectable().width(Length::Fill)]
-            .spacing(8.0)
-            .width(Length::Fill)
-            .into()
+        row![
+            text(k.to_owned()).size(11.5).role(Role::Text3).width(96.0),
+            text(v).size(12.0).role(Role::Text2).selectable().width(Length::Fill)
+        ]
+        .spacing(8.0)
+        .width(Length::Fill)
+        .into()
     };
     let exact = |b: u64| {
         let digits = b.to_string();
@@ -587,7 +650,10 @@ fn details(t: &Tansu) -> Element<Msg> {
             right.push(pair("Partition UUID", p.uuid.clone()));
         }
         if let Some(e) = &b.encrypted {
-            right.push(pair("Encryption", if e.hint_type.is_empty() { "LUKS".into() } else { e.hint_type.to_uppercase() }));
+            right.push(pair(
+                "Encryption",
+                if e.hint_type.is_empty() { "LUKS".into() } else { e.hint_type.to_uppercase() },
+            ));
         }
         if let Some(l) = &b.loop_device {
             right.push(pair("Image file", l.backing_file.clone()));
@@ -620,14 +686,21 @@ fn details(t: &Tansu) -> Element<Msg> {
                 row![
                     text("In use").size(11.5).role(Role::Text3).width(96.0),
                     progress(if total == 0 { 0.0 } else { used as f64 / total as f64 }).width(140.0),
-                    text(format!("{} of {} · at {m}", format_size(used), format_size(total))).size(12.0).role(Role::Text2).width(Length::Fill),
+                    text(format!("{} of {} · at {m}", format_size(used), format_size(total)))
+                        .size(12.0)
+                        .role(Role::Text2)
+                        .width(Length::Fill),
                 ]
                 .spacing(8.0)
                 .width(Length::Fill)
                 .into(),
             );
         }
-        None if matches!(s.kind(), SegKind::Partition | SegKind::Whole) && !s.shown_fs().is_empty() && s.shown_fs() != "swap" && !s.is_locked() => {
+        None if matches!(s.kind(), SegKind::Partition | SegKind::Whole)
+            && !s.shown_fs().is_empty()
+            && s.shown_fs() != "swap"
+            && !s.is_locked() =>
+        {
             right.push(pair("In use", "Mount it to see how full it is.".into()));
         }
         _ => {}

@@ -77,7 +77,10 @@ impl Op {
     /// Whether it needs a confirmation token ([`aizome_sys::disks::Confirm`])
     /// to run: whether it can lose data.
     pub fn is_destructive(&self) -> bool {
-        matches!(self.kind, OpKind::NewTable { .. } | OpKind::Delete | OpKind::Format(_) | OpKind::Resize { .. } | OpKind::Repair)
+        matches!(
+            self.kind,
+            OpKind::NewTable { .. } | OpKind::Delete | OpKind::Format(_) | OpKind::Resize { .. } | OpKind::Repair
+        )
     }
 
     fn rewrites(&self) -> bool {
@@ -213,7 +216,11 @@ impl Plan {
         };
         let rewrite_pending = |marks: &[Mark]| -> Check {
             match seg.pending.iter().find(|m| marks.contains(m)) {
-                Some(m) => Err(format!("{} already has a pending {}: apply or undo it first.", seg.short_name(), mark_word(*m))),
+                Some(m) => Err(format!(
+                    "{} already has a pending {}: apply or undo it first.",
+                    seg.short_name(),
+                    mark_word(*m)
+                )),
                 None => Ok(()),
             }
         };
@@ -227,7 +234,11 @@ impl Plan {
                     return Err("It's mounted already.".into());
                 }
                 let fs = seg.shown_fs();
-                if fs.is_empty() || fs == "swap" || fs == "crypto_LUKS" || !matches!(kind, SegKind::Partition | SegKind::Whole) {
+                if fs.is_empty()
+                    || fs == "swap"
+                    || fs == "crypto_LUKS"
+                    || !matches!(kind, SegKind::Partition | SegKind::Whole)
+                {
                     return Err("There's no filesystem to mount.".into());
                 }
                 Ok(())
@@ -293,7 +304,9 @@ impl Plan {
             Action::Format => {
                 match kind {
                     SegKind::Free => return Err("Make a partition here first.".into()),
-                    SegKind::Extended => return Err("An extended partition holds others; it can't hold a filesystem.".into()),
+                    SegKind::Extended => {
+                        return Err("An extended partition holds others; it can't hold a filesystem.".into());
+                    }
                     _ => {}
                 }
                 if is_new {
@@ -330,7 +343,10 @@ impl Plan {
                     return Err("There's no filesystem to label.".into());
                 }
                 if seg.is_unlocked() || seg.is_locked() {
-                    return Err("An encrypted volume's label is its filesystem's: unlock it and label that, or format it.".into());
+                    return Err(
+                        "An encrypted volume's label is its filesystem's: unlock it and label that, or format it."
+                            .into(),
+                    );
                 }
                 if is_new || seg.pending.contains(&Mark::Format) {
                     return Ok(());
@@ -381,7 +397,11 @@ impl Plan {
         if state.in_use(&layout.disk) {
             return Err("Something on this disk is mounted or in use: unmount it first.".into());
         }
-        if state.dependents(&layout.disk).iter().any(|b| b.encrypted.as_ref().is_some_and(|e| e.cleartext_device.is_some())) {
+        if state
+            .dependents(&layout.disk)
+            .iter()
+            .any(|b| b.encrypted.as_ref().is_some_and(|e| e.cleartext_device.is_some()))
+        {
             return Err("Something on this disk is unlocked: lock it first.".into());
         }
         Ok(())
@@ -545,8 +565,11 @@ impl Plan {
                 Ok(())
             }
             Some(Target::Block(path)) => {
-                if let Some(OpKind::Format(f)) =
-                    self.ops.iter_mut().find(|o| o.target == path && matches!(o.kind, OpKind::Format(_))).map(|o| &mut o.kind)
+                if let Some(OpKind::Format(f)) = self
+                    .ops
+                    .iter_mut()
+                    .find(|o| o.target == path && matches!(o.kind, OpKind::Format(_)))
+                    .map(|o| &mut o.kind)
                 {
                     f.label = label.to_owned();
                     return Ok(());
@@ -668,12 +691,22 @@ impl Plan {
                     .as_ref()
                     .map(|l| l.partitions().map(|s| format!("{} ({})", s.short_name(), what_is_on(s))).collect())
                     .unwrap_or_default();
-                let loss = match (parts.is_empty(), now.as_ref().map(|l| l.segs.iter().any(|s| s.kind() == SegKind::Whole))) {
-                    (false, _) => Loss::Destroys(format!("Every partition on {disk} will be lost: {}.", parts.join(", "))),
-                    (true, Some(true)) => Loss::Destroys(format!("The filesystem on {disk} ({}) will be lost.", seg_on_whole(now.as_ref()))),
-                    _ => Loss::Destroys(format!("Anything on {disk} will be lost.")),
-                };
-                Words { title: format!("Create a new {name} partition table on {disk}"), detail: format!("{name}: {why}."), loss }
+                let loss =
+                    match (parts.is_empty(), now.as_ref().map(|l| l.segs.iter().any(|s| s.kind() == SegKind::Whole))) {
+                        (false, _) => {
+                            Loss::Destroys(format!("Every partition on {disk} will be lost: {}.", parts.join(", ")))
+                        }
+                        (true, Some(true)) => Loss::Destroys(format!(
+                            "The filesystem on {disk} ({}) will be lost.",
+                            seg_on_whole(now.as_ref())
+                        )),
+                        _ => Loss::Destroys(format!("Anything on {disk} will be lost.")),
+                    };
+                Words {
+                    title: format!("Create a new {name} partition table on {disk}"),
+                    detail: format!("{name}: {why}."),
+                    loss,
+                }
             }
             OpKind::Create(p) => {
                 let what = if p.fs.is_empty() { "unformatted".to_owned() } else { fs::name(&p.fs) };
@@ -697,7 +730,10 @@ impl Plan {
             }
             OpKind::Delete => Words {
                 title: format!("Delete partition {dev}"),
-                detail: format!("{} on {disk}; its space becomes unallocated.", seg.map_or(String::new(), |s| format_size(s.size))),
+                detail: format!(
+                    "{} on {disk}; its space becomes unallocated.",
+                    seg.map_or(String::new(), |s| format_size(s.size))
+                ),
                 loss: Loss::Destroys(format!("Everything on {dev} ({on}) will be lost.")),
             },
             OpKind::Format(f) => {
@@ -711,7 +747,9 @@ impl Plan {
                 }
                 match f.erase {
                     Erase::Quick => {}
-                    Erase::Zeros => detail.push("Every byte is overwritten with zeros first, which takes a while.".to_owned()),
+                    Erase::Zeros => {
+                        detail.push("Every byte is overwritten with zeros first, which takes a while.".to_owned())
+                    }
                     Erase::AtaSecureErase | Erase::AtaSecureEraseEnhanced => {
                         detail.push("The drive erases itself first (ATA Secure Erase).".to_owned())
                     }
@@ -719,18 +757,29 @@ impl Plan {
                 if detail.is_empty() {
                     detail.push(format!("{} on {disk}.", seg.map_or(String::new(), |s| format_size(s.size))));
                 }
-                Words { title, detail: detail.join(" "), loss: Loss::Destroys(format!("Everything on {dev} ({on}) will be erased.")) }
+                Words {
+                    title,
+                    detail: detail.join(" "),
+                    loss: Loss::Destroys(format!("Everything on {dev} ({on}) will be erased.")),
+                }
             }
             OpKind::Resize { from, to } => {
                 let grow = to > from;
                 let fs_now = seg.map(|s| s.fs.clone()).unwrap_or_default();
-                let title =
-                    format!("{} {dev} from {} to {}", if grow { "Grow" } else { "Shrink" }, format_size(*from), format_size(*to));
+                let title = format!(
+                    "{} {dev} from {} to {}",
+                    if grow { "Grow" } else { "Shrink" },
+                    format_size(*from),
+                    format_size(*to)
+                );
                 let how = match (grow, fs_now.is_empty()) {
                     (_, true) => "Its end moves; its start stays where it is.".to_owned(),
-                    (true, false) => "Its end moves into the free space after it, then the filesystem grows to fill it.".to_owned(),
+                    (true, false) => {
+                        "Its end moves into the free space after it, then the filesystem grows to fill it.".to_owned()
+                    }
                     (false, false) if fs::check_before_shrink(&fs_now) => {
-                        "The filesystem is checked and repaired, shrunk, and then the partition's end moves in.".to_owned()
+                        "The filesystem is checked and repaired, shrunk, and then the partition's end moves in."
+                            .to_owned()
                     }
                     (false, false) => "The filesystem shrinks, then the partition's end moves in.".to_owned(),
                 };
@@ -744,7 +793,11 @@ impl Plan {
                 }
             }
             OpKind::Label { label } => Words {
-                title: if label.is_empty() { format!("Remove {dev}'s label") } else { format!("Label {dev} {}", quote(label)) },
+                title: if label.is_empty() {
+                    format!("Remove {dev}'s label")
+                } else {
+                    format!("Label {dev} {}", quote(label))
+                },
                 detail: seg.map_or(String::new(), |s| format!("Now {}.", what_is_on(s))),
                 loss: Loss::None,
             },
@@ -813,7 +866,9 @@ fn check_label(fs: &str, label: &str) -> Check {
     }
     match fs::label_limit(fs) {
         Some(limit) if label.len() > limit => Err(format!("A {} label has at most {limit} bytes.", fs::name(fs))),
-        _ if label.contains('\0') || label.contains('/') && fs == "vfat" => Err("That label has a character FAT doesn't take.".into()),
+        _ if label.contains('\0') || label.contains('/') && fs == "vfat" => {
+            Err("That label has a character FAT doesn't take.".into())
+        }
         _ => Ok(()),
     }
 }
@@ -933,7 +988,10 @@ mod tests {
     }
 
     fn at(l: &Layout, short: &str) -> usize {
-        l.segs.iter().position(|s| s.short_name() == short).unwrap_or_else(|| panic!("{short} in {:?}", l.segs.iter().map(|s| s.short_name()).collect::<Vec<_>>()))
+        l.segs
+            .iter()
+            .position(|s| s.short_name() == short)
+            .unwrap_or_else(|| panic!("{short} in {:?}", l.segs.iter().map(|s| s.short_name()).collect::<Vec<_>>()))
     }
 
     /// The largest stretch of free space.
@@ -957,7 +1015,10 @@ mod tests {
         assert!(p.can(&l, share, Action::Unmount).is_ok());
         let nvme = p.preview(&s, &disk("nvme0n1")).unwrap();
         let root = at(&nvme, "nvme0n1p2");
-        assert!(p.can(&nvme, root, Action::Format).unwrap_err().contains("mounted at /"), "the unlocked root shows its mount");
+        assert!(
+            p.can(&nvme, root, Action::Format).unwrap_err().contains("mounted at /"),
+            "the unlocked root shows its mount"
+        );
         assert!(p.can(&nvme, at(&nvme, "nvme0n1p3"), Action::Delete).unwrap_err().contains("swap"));
         assert!(p.can_new_table(&s, &nvme).is_err(), "the system disk is in use");
         assert!(p.can(&nvme, root, Action::Lock).is_ok());
@@ -971,7 +1032,20 @@ mod tests {
         let f = free(&l);
         let room = l.segs[f].clone();
         let id = p
-            .create(&l, f, NewPartition { offset: room.offset, size: 10 * GIB, fs: "ext4".into(), label: "data".into(), name: String::new(), encrypt: None, flags: Flags::default(), logical: false })
+            .create(
+                &l,
+                f,
+                NewPartition {
+                    offset: room.offset,
+                    size: 10 * GIB,
+                    fs: "ext4".into(),
+                    label: "data".into(),
+                    name: String::new(),
+                    encrypt: None,
+                    flags: Flags::default(),
+                    logical: false,
+                },
+            )
             .unwrap();
         let l = p.preview(&s, &disk("sda")).unwrap();
         let new = l.find(&Target::New(id)).unwrap();
@@ -984,7 +1058,10 @@ mod tests {
         p.flags(&l, new, Flags { hidden: true, ..Flags::default() }).unwrap();
         assert_eq!(p.len(), 1);
         let OpKind::Create(made) = &p.ops[0].kind else { panic!() };
-        assert_eq!((made.fs.as_str(), made.label.as_str(), made.size, made.flags.hidden), ("xfs", "media", 12 * GIB, true));
+        assert_eq!(
+            (made.fs.as_str(), made.label.as_str(), made.size, made.flags.hidden),
+            ("xfs", "media", 12 * GIB, true)
+        );
         // Deleting it undoes it.
         let l = p.preview(&s, &disk("sda")).unwrap();
         p.delete(&l, l.find(&Target::New(id)).unwrap()).unwrap();
@@ -1080,7 +1157,12 @@ mod tests {
         let s = sample();
         let mut p = Plan::default();
         let l = p.preview(&s, &disk("sda")).unwrap();
-        p.format(&l, at(&l, "sda2"), NewFs { encrypt: Some(Encryption { passphrase: "x".into(), luks1: false }), ..ext4("vault") }).unwrap();
+        p.format(
+            &l,
+            at(&l, "sda2"),
+            NewFs { encrypt: Some(Encryption { passphrase: "x".into(), luks1: false }), ..ext4("vault") },
+        )
+        .unwrap();
         let w = p.words(&p.ops[0], &s);
         assert_eq!(w.title, "Format /dev/sda2 as Ext4 labelled “vault”");
         assert!(w.detail.contains("LUKS"));
@@ -1097,12 +1179,42 @@ mod tests {
         for _ in 0..2 {
             let f = free(&l);
             let room = l.segs[f].clone();
-            p.create(&l, f, NewPartition { offset: room.offset, size: GIB, fs: String::new(), label: String::new(), name: String::new(), encrypt: None, flags: Flags::default(), logical: false }).unwrap();
+            p.create(
+                &l,
+                f,
+                NewPartition {
+                    offset: room.offset,
+                    size: GIB,
+                    fs: String::new(),
+                    label: String::new(),
+                    name: String::new(),
+                    encrypt: None,
+                    flags: Flags::default(),
+                    logical: false,
+                },
+            )
+            .unwrap();
             l = p.preview(&s, &disk("mmcblk0")).unwrap();
         }
         assert_eq!(l.primaries(), 4);
         assert!(p.can(&l, free(&l), Action::New).unwrap_err().contains("four primary"));
-        assert!(p.create(&l, free(&l), NewPartition { offset: l.segs[free(&l)].offset, size: GIB, fs: String::new(), label: String::new(), name: "x".into(), encrypt: None, flags: Flags::default(), logical: false }).is_err());
+        assert!(
+            p.create(
+                &l,
+                free(&l),
+                NewPartition {
+                    offset: l.segs[free(&l)].offset,
+                    size: GIB,
+                    fs: String::new(),
+                    label: String::new(),
+                    name: "x".into(),
+                    encrypt: None,
+                    flags: Flags::default(),
+                    logical: false
+                }
+            )
+            .is_err()
+        );
     }
 
     #[test]
