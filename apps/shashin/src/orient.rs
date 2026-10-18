@@ -9,7 +9,9 @@ use image::metadata::Orientation;
 pub fn compose(from: u8, turns: u8) -> u8 {
     // Found by doing it to a small picture whose every pixel differs: the
     // eight orientations are the eight ways to lay a rectangle down.
-    let probe = image::DynamicImage::ImageRgba8(image::RgbaImage::from_fn(3, 2, |x, y| image::Rgba([x as u8, y as u8, 0, 255])));
+    let probe = image::DynamicImage::ImageRgba8(image::RgbaImage::from_fn(3, 2, |x, y| {
+        image::Rgba([x as u8, y as u8, 0, 255])
+    }));
     let shown = |o: u8| {
         let mut p = probe.clone();
         p.apply_orientation(Orientation::from_exif(o).unwrap_or(Orientation::NoTransforms));
@@ -188,7 +190,11 @@ fn set_tiff_orientation(tiff: &[u8], value: u8) -> Result<Vec<u8>, Refusal> {
 
 /// A JPEG's EXIF orientation (1 if it says none).
 pub fn jpeg_orientation(jpeg: &[u8]) -> u8 {
-    let mut decoder = match image::ImageReader::new(std::io::Cursor::new(jpeg)).with_guessed_format().ok().and_then(|r| r.into_decoder().ok()) {
+    let mut decoder = match image::ImageReader::new(std::io::Cursor::new(jpeg))
+        .with_guessed_format()
+        .ok()
+        .and_then(|r| r.into_decoder().ok())
+    {
         Some(d) => d,
         None => return 1,
     };

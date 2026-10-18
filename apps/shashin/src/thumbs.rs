@@ -48,7 +48,9 @@ fn mtime(path: &Path) -> Option<u64> {
 pub fn cached(dir: &Path, path: &Path) -> Option<RgbaImage> {
     let file = std::fs::File::open(thumb_path(dir, path)).ok()?;
     let mut decoder = png::Decoder::new(std::io::BufReader::new(file));
-    decoder.set_transformations(png::Transformations::EXPAND | png::Transformations::STRIP_16 | png::Transformations::ALPHA);
+    decoder.set_transformations(
+        png::Transformations::EXPAND | png::Transformations::STRIP_16 | png::Transformations::ALPHA,
+    );
     let mut reader = decoder.read_info().ok()?;
     let stamp = reader
         .info()

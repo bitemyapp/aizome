@@ -7,11 +7,11 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::time::SystemTime;
 
+use aizome_kit::MsgSender;
 use aizome_kit::column;
 use aizome_kit::prelude::*;
 use aizome_kit::sidestep_ui::{BlendMode, Canvas, ImageOptions, Key, NamedKey, PointerButton};
 use aizome_kit::widget::Event;
-use aizome_kit::MsgSender;
 
 use crate::app::{Body, Msg, Seen, Shashin, Thumb, Tile, Wallpaper, same_zoom};
 use crate::folder;
@@ -43,7 +43,8 @@ fn top_bar(app: &Shashin) -> Element<Msg> {
     let z = app.z();
     // The zoom pop-up: Fit, the fixed zooms, and the zoom now if it's
     // none of them.
-    let mut labels: Vec<String> = ZOOM_CHOICES.iter().map(|c| c.map_or("Fit".to_owned(), |z| format!("{:.0}%", z * 100.0))).collect();
+    let mut labels: Vec<String> =
+        ZOOM_CHOICES.iter().map(|c| c.map_or("Fit".to_owned(), |z| format!("{:.0}%", z * 100.0))).collect();
     let selected = match app.zoom {
         Zoom::Fit => Some(0),
         Zoom::Fixed(f) => ZOOM_CHOICES.iter().position(|c| c.is_some_and(|c| same_zoom(c, f))),
@@ -75,7 +76,12 @@ fn top_bar(app: &Shashin) -> Element<Msg> {
         tool(Icon::RotateCcw, "Rotate Left  ❖L", Msg::Rotate(-1), have),
         tool(Icon::RotateCw, "Rotate Right  ❖R", Msg::Rotate(1), have),
         toolbar_separator(),
-        icon_button(Icon::Film).toolbar().selected(app.filmstrip).on_press(Msg::Filmstrip).tooltip("Filmstrip  F").into(),
+        icon_button(Icon::Film)
+            .toolbar()
+            .selected(app.filmstrip)
+            .on_press(Msg::Filmstrip)
+            .tooltip("Filmstrip  F")
+            .into(),
         tool(Icon::Play, "Slideshow  ⇧❖F", Msg::Slideshow, have),
         tool(Icon::Info, "Get Info  ❖I", Msg::Info, have),
         spacer().into(),
@@ -201,7 +207,10 @@ fn stage_area(app: &Shashin) -> Element<Msg> {
             container(
                 column![
                     icon(Icon::CircleAlert).size(40.0).role(Role::Faint),
-                    text(format!("Shashin can't open “{}”", folder::display_name(&p.info.path))).size(15.0).semibold().role(Role::Text2),
+                    text(format!("Shashin can't open “{}”", folder::display_name(&p.info.path)))
+                        .size(15.0)
+                        .semibold()
+                        .role(Role::Text2),
                     text(p.info.error.clone().unwrap_or_default()).role(Role::Text3),
                 ]
                 .spacing(8.0)
@@ -245,9 +254,11 @@ pub fn file_path(url: &str) -> Option<PathBuf> {
 
 fn stage_event(ev: &Event, size: Size, st: &Stage) -> Option<Msg> {
     match ev {
-        Event::PointerDown { pos, button: PointerButton::Left, clicks, .. } => {
-            Some(if *clicks >= 2 { Msg::DoubleClick { at: *pos, view: size } } else { Msg::PanStart { at: *pos, view: size } })
-        }
+        Event::PointerDown { pos, button: PointerButton::Left, clicks, .. } => Some(if *clicks >= 2 {
+            Msg::DoubleClick { at: *pos, view: size }
+        } else {
+            Msg::PanStart { at: *pos, view: size }
+        }),
         Event::PointerMove { pos, .. } if st.panning => Some(Msg::PanTo(*pos)),
         Event::PointerUp { button: PointerButton::Left, .. } if st.panning => Some(Msg::PanEnd),
         Event::Scroll { pos, delta, mods, .. } => {
@@ -316,7 +327,9 @@ pub fn paint_stage(c: &mut Canvas, bounds: Rect, st: &Stage, theme: &Theme) {
         let (w, h) = (st.dims.0 * z, st.dims.1 * z);
         let (x0, y0) = (o.0.max(0.0), o.1.max(0.0));
         let (x1, y1) = ((o.0 + w).min(view.0), (o.1 + h).min(view.1));
-        for (a, b, cc, d) in [(0.0, 0.0, view.0, y0), (0.0, y1, view.0, view.1), (0.0, y0, x0, y1), (x1, y0, view.0, y1)] {
+        for (a, b, cc, d) in
+            [(0.0, 0.0, view.0, y0), (0.0, y1, view.0, view.1), (0.0, y0, x0, y1), (x1, y0, view.0, y1)]
+        {
             if cc > a && d > b {
                 c.fill_rect(Rect::from_points(to_pt(a, b), to_pt(cc, d)), theme.sunk());
             }
@@ -326,7 +339,10 @@ pub fn paint_stage(c: &mut Canvas, bounds: Rect, st: &Stage, theme: &Theme) {
     }
     if let Some((frame, _)) = &st.frame {
         // Animations are small: drawn as they are, turned by the canvas.
-        let (fw, fh) = { let (w, h) = frame.pixel_size(); (f64::from(w), f64::from(h)) };
+        let (fw, fh) = {
+            let (w, h) = frame.pixel_size();
+            (f64::from(w), f64::from(h))
+        };
         draw_turned(c, frame, (fw, fh), st.turns, to_pt(o.0, o.1), z / s, st.dims, z <= 2.0);
     } else if let Some(t) = plan {
         draw_tile(c, t, z, o, s, bounds, false);
@@ -340,10 +356,20 @@ pub fn paint_stage(c: &mut Canvas, bounds: Rect, st: &Stage, theme: &Theme) {
     if let Some(r) = &st.report {
         let changed_view = (bounds.size(), s) != st.assumed;
         if !exact || changed_view {
-            let seen = Seen { serial: st.serial, turns: st.turns, view: bounds.size(), scale: s, z, visible: vis, exact };
+            let seen =
+                Seen { serial: st.serial, turns: st.turns, view: bounds.size(), scale: s, z, visible: vis, exact };
             let key = {
                 let mut h = std::collections::hash_map::DefaultHasher::new();
-                (seen.serial, seen.turns, z.to_bits(), seen.view.width.to_bits(), seen.view.height.to_bits(), s.to_bits(), exact).hash(&mut h);
+                (
+                    seen.serial,
+                    seen.turns,
+                    z.to_bits(),
+                    seen.view.width.to_bits(),
+                    seen.view.height.to_bits(),
+                    s.to_bits(),
+                    exact,
+                )
+                    .hash(&mut h);
                 for v in [vis.0, vis.1, vis.2, vis.3] {
                     v.round().to_bits().hash(&mut h);
                 }
@@ -361,7 +387,11 @@ pub fn paint_stage(c: &mut Canvas, bounds: Rect, st: &Stage, theme: &Theme) {
 /// (drawn smaller it loses least), else the largest.
 fn best(st: &Stage, z: f64) -> Option<&Tile> {
     let mine: Vec<&Tile> = st.tiles.iter().filter(|t| t.turns == st.turns && t.whole(st.dims)).collect();
-    mine.iter().filter(|t| t.z >= z).min_by(|a, b| a.z.total_cmp(&b.z)).or_else(|| mine.iter().max_by(|a, b| a.z.total_cmp(&b.z))).copied()
+    mine.iter()
+        .filter(|t| t.z >= z)
+        .min_by(|a, b| a.z.total_cmp(&b.z))
+        .or_else(|| mine.iter().max_by(|a, b| a.z.total_cmp(&b.z)))
+        .copied()
         .or_else(|| st.tiles.iter().rev().find(|t| t.turns == st.turns))
 }
 
@@ -372,7 +402,12 @@ fn draw_tile(c: &mut Canvas, t: &Tile, z: f64, o: (f64, f64), s: f64, bounds: Re
     let (w, h) = t.size();
     let x = o.0 + (t.at.0 * k).round();
     let y = o.1 + (t.at.1 * k).round();
-    let dst = Rect::new(bounds.x0 + x / s, bounds.y0 + y / s, bounds.x0 + (x + (w * k).round()) / s, bounds.y0 + (y + (h * k).round()) / s);
+    let dst = Rect::new(
+        bounds.x0 + x / s,
+        bounds.y0 + y / s,
+        bounds.x0 + (x + (w * k).round()) / s,
+        bounds.y0 + (y + (h * k).round()) / s,
+    );
     if t.opaque {
         // In place of what's there: no blending, a quarter less work.
         c.save();
@@ -388,7 +423,16 @@ fn draw_tile(c: &mut Canvas, t: &Tile, z: f64, o: (f64, f64), s: f64, bounds: Re
 /// `scale` points a pixel, filling the picture's place: its corner at
 /// `at`, `dims` (device pixels at zoom 1) its size turned.
 #[allow(clippy::too_many_arguments)]
-fn draw_turned(c: &mut Canvas, image: &Image, size: (f64, f64), turns: u8, at: Point, scale: f64, dims: (f64, f64), smooth: bool) {
+fn draw_turned(
+    c: &mut Canvas,
+    image: &Image,
+    size: (f64, f64),
+    turns: u8,
+    at: Point,
+    scale: f64,
+    dims: (f64, f64),
+    smooth: bool,
+) {
     let (w, h) = (size.0 * scale, size.1 * scale);
     let shown = if turns % 2 == 1 { (h, w) } else { (w, h) };
     let _ = dims;
@@ -396,7 +440,12 @@ fn draw_turned(c: &mut Canvas, image: &Image, size: (f64, f64), turns: u8, at: P
     c.save();
     c.translate(center.to_vec2());
     c.rotate(f64::from(turns % 4) * std::f64::consts::FRAC_PI_2);
-    c.draw_image_with(image, None, Rect::new(-w / 2.0, -h / 2.0, w / 2.0, h / 2.0), ImageOptions { smooth, ..ImageOptions::default() });
+    c.draw_image_with(
+        image,
+        None,
+        Rect::new(-w / 2.0, -h / 2.0, w / 2.0, h / 2.0),
+        ImageOptions { smooth, ..ImageOptions::default() },
+    );
     c.restore();
 }
 
@@ -533,9 +582,12 @@ pub fn info(app: &Shashin) -> Element<Msg> {
     }
     rows.push(form_row("Where", value(abbreviate(i.path.parent().unwrap_or(Path::new("/"))))).into());
     let mut parts: Vec<Element<Msg>> = vec![
-        aizome_kit::row![icon(Icon::FileImage).size(32.0).role(Role::Accent), text(folder::display_name(&i.path)).size(15.0).semibold().max_lines(2).wrap()]
-            .spacing(12.0)
-            .into(),
+        aizome_kit::row![
+            icon(Icon::FileImage).size(32.0).role(Role::Accent),
+            text(folder::display_name(&i.path)).size(15.0).semibold().max_lines(2).wrap()
+        ]
+        .spacing(12.0)
+        .into(),
         form_section("", rows),
     ];
     if !i.exif.is_empty() {
@@ -592,8 +644,20 @@ pub fn when(t: SystemTime) -> String {
     let local = secs + crate::trash::local_offset(secs);
     let (y, m, d) = crate::trash::civil(local.div_euclid(86_400));
     let rem = local.rem_euclid(86_400);
-    const MONTHS: [&str; 12] =
-        ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+    const MONTHS: [&str; 12] = [
+        "January",
+        "February",
+        "March",
+        "April",
+        "May",
+        "June",
+        "July",
+        "August",
+        "September",
+        "October",
+        "November",
+        "December",
+    ];
     format!("{d} {} {y}, {:02}:{:02}", MONTHS[(m as usize).clamp(1, 12) - 1], rem / 3600, rem % 3600 / 60)
 }
 
@@ -613,7 +677,9 @@ pub fn menus(app: &Shashin) -> MenuBar<Msg> {
         .item(MenuItem::new("Show in Hako", Msg::ShowInHako).shortcut(Shortcut::cmd('R').alt()).enabled(any))
         .item(MenuItem::new("Get Info", Msg::Info).shortcut(Shortcut::cmd('I')).enabled(any))
         .separator()
-        .item(MenuItem::new("Move to Trash", Msg::Trash).shortcut(Shortcut::cmd_key(ShortcutKey::Backspace)).enabled(any))
+        .item(
+            MenuItem::new("Move to Trash", Msg::Trash).shortcut(Shortcut::cmd_key(ShortcutKey::Backspace)).enabled(any),
+        )
         .separator()
         .item(MenuItem::role_item("Close Window", MenuRole::CloseWindow).shortcut(Shortcut::cmd('W')));
     let undo_label = if app.undo.is_empty() { "Undo".to_owned() } else { "Undo Move to Trash".to_owned() };
@@ -633,13 +699,34 @@ pub fn menus(app: &Shashin) -> MenuBar<Msg> {
     let view = Menu::new("View")
         .item(MenuItem::new("Zoom In", Msg::ZoomIn).shortcut(Shortcut::cmd('+')).enabled(have))
         .item(MenuItem::new("Zoom Out", Msg::ZoomOut).shortcut(Shortcut::cmd('-')).enabled(have))
-        .item(MenuItem::new("Actual Size", Msg::ActualSize).shortcut(Shortcut::cmd('0')).enabled(have).checked(app.zoom == Zoom::Fixed(1.0)))
-        .item(MenuItem::new("Zoom to Fit", Msg::Fit).shortcut(Shortcut::cmd('9')).enabled(have).checked(app.zoom == Zoom::Fit))
+        .item(
+            MenuItem::new("Actual Size", Msg::ActualSize)
+                .shortcut(Shortcut::cmd('0'))
+                .enabled(have)
+                .checked(app.zoom == Zoom::Fixed(1.0)),
+        )
+        .item(
+            MenuItem::new("Zoom to Fit", Msg::Fit)
+                .shortcut(Shortcut::cmd('9'))
+                .enabled(have)
+                .checked(app.zoom == Zoom::Fit),
+        )
         .separator()
-        .item(MenuItem::new("Show Filmstrip", Msg::Filmstrip).shortcut(Shortcut::key(ShortcutKey::Char('f'))).checked(app.filmstrip))
+        .item(
+            MenuItem::new("Show Filmstrip", Msg::Filmstrip)
+                .shortcut(Shortcut::key(ShortcutKey::Char('f')))
+                .checked(app.filmstrip),
+        )
         .separator()
-        .item(MenuItem::new(if app.slideshow.is_some() { "Stop Slideshow" } else { "Slideshow" }, Msg::Slideshow).shortcut(Shortcut::cmd('F').shift()).enabled(have))
-        .item(MenuItem::new(if app.fullscreen { "Exit Full Screen" } else { "Enter Full Screen" }, Msg::FullScreen).shortcut(Shortcut::cmd('F').ctrl()));
+        .item(
+            MenuItem::new(if app.slideshow.is_some() { "Stop Slideshow" } else { "Slideshow" }, Msg::Slideshow)
+                .shortcut(Shortcut::cmd('F').shift())
+                .enabled(have),
+        )
+        .item(
+            MenuItem::new(if app.fullscreen { "Exit Full Screen" } else { "Enter Full Screen" }, Msg::FullScreen)
+                .shortcut(Shortcut::cmd('F').ctrl()),
+        );
     let image = Menu::new("Image")
         .item(MenuItem::new("Rotate Left", Msg::Rotate(-1)).shortcut(Shortcut::cmd('L')).enabled(have))
         .item(MenuItem::new("Rotate Right", Msg::Rotate(1)).shortcut(Shortcut::cmd('R')).enabled(have));

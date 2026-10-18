@@ -113,7 +113,14 @@ pub fn clamp_center(image: (f64, f64), view: (f64, f64), z: f64, center: (f64, f
 
 /// The centre after zooming from `z` to `to` about `at` (a point of the
 /// view): the picture's point under it stays under it.
-pub fn zoom_about(image: (f64, f64), view: (f64, f64), z: f64, center: (f64, f64), to: f64, at: (f64, f64)) -> (f64, f64) {
+pub fn zoom_about(
+    image: (f64, f64),
+    view: (f64, f64),
+    z: f64,
+    center: (f64, f64),
+    to: f64,
+    at: (f64, f64),
+) -> (f64, f64) {
     let o = origin(image, view, z, center);
     let p = ((at.0 - o.0) / z, (at.1 - o.1) / z);
     let o2 = (at.0 - p.0 * to, at.1 - p.1 * to);

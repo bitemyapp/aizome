@@ -98,7 +98,8 @@ mod tests {
 
     #[test]
     fn sorts_as_hako_does() {
-        let mut v: Vec<PathBuf> = ["IMG_10.jpg", "img_2.png", "IMG_1.JPG", "b.gif", "A.webp"].iter().map(PathBuf::from).collect();
+        let mut v: Vec<PathBuf> =
+            ["IMG_10.jpg", "img_2.png", "IMG_1.JPG", "b.gif", "A.webp"].iter().map(PathBuf::from).collect();
         sort(&mut v);
         let names: Vec<String> = v.iter().map(|p| display_name(p)).collect();
         assert_eq!(names, ["A.webp", "b.gif", "IMG_1.JPG", "img_2.png", "IMG_10.jpg"]);

@@ -115,7 +115,9 @@ pub fn camera_exif(thumbnail: Option<&[u8]>) -> Vec<u8> {
             0,
         )
     };
-    let ifd0 = |exif_at: u32, next: u32| ifd(8, &[(0x010f, V::Ascii("Fujifilm")), (0x0110, V::Ascii("X100V")), (0x8769, V::Long(exif_at))], next);
+    let ifd0 = |exif_at: u32, next: u32| {
+        ifd(8, &[(0x010f, V::Ascii("Fujifilm")), (0x0110, V::Ascii("X100V")), (0x8769, V::Long(exif_at))], next)
+    };
     // Sizes first (they don't depend on the offsets), then the real thing.
     let exif_at = 8 + ifd0(0, 0).len();
     let ifd1_at = exif_at + exif_entries(exif_at).len();
@@ -189,7 +191,11 @@ pub fn gif(frames: usize) -> Vec<u8> {
         enc.set_repeat(image::codecs::gif::Repeat::Infinite).unwrap();
         let frames = (0..frames).map(|i| {
             let img = image::RgbaImage::from_fn(48, 32, |x, _| {
-                if (x as usize / 8) % frames == i { image::Rgba([122, 162, 247, 255]) } else { image::Rgba([36, 40, 59, 255]) }
+                if (x as usize / 8) % frames == i {
+                    image::Rgba([122, 162, 247, 255])
+                } else {
+                    image::Rgba([36, 40, 59, 255])
+                }
             });
             image::Frame::from_parts(img, 0, 0, image::Delay::from_numer_denom_ms(200, 1))
         });

@@ -32,7 +32,8 @@ pub struct Trash {
 
 impl Trash {
     pub fn from_env() -> Trash {
-        let home_dir = std::env::var_os("HOME").filter(|h| !h.is_empty()).map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/"));
+        let home_dir =
+            std::env::var_os("HOME").filter(|h| !h.is_empty()).map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/"));
         let data = match std::env::var_os("XDG_DATA_HOME").map(PathBuf::from) {
             Some(p) if p.is_absolute() => p,
             _ => home_dir.join(".local/share"),
@@ -175,7 +176,8 @@ fn encode(path: &Path) -> String {
 
 /// The local time as the spec writes it: `2026-10-17T21:42:05`.
 fn timestamp() -> String {
-    let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0);
+    let secs =
+        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0);
     let offset = local_offset(secs);
     let t = secs + offset;
     let (days, rem) = (t.div_euclid(86_400), t.rem_euclid(86_400));

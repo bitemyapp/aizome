@@ -41,7 +41,9 @@ pub fn save_turned(path: &Path, turns: u8) -> Result<Saved, String> {
         }
         Kind::Svg => Err("Shashin can't save a turned SVG yet.".into()),
         Kind::Gif if load::frames(&src).is_some() => rewrite_gif(&src, turns),
-        Kind::WebP | Kind::Png if load::frames(&src).is_some() => Err("Shashin can't write animated WebP or PNG pictures.".into()),
+        Kind::WebP | Kind::Png if load::frames(&src).is_some() => {
+            Err("Shashin can't write animated WebP or PNG pictures.".into())
+        }
         _ => rewrite(&src, turns),
     }
 }
@@ -57,7 +59,9 @@ fn rewrite(src: &load::Source, turns: u8) -> Result<Saved, String> {
             let enc = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, 92);
             rgb.write_with_encoder(enc).map_err(|e| e.to_string())?;
         }
-        Kind::Ico if img.width() > 256 || img.height() > 256 => return Err("An icon can't be larger than 256 pixels.".into()),
+        Kind::Ico if img.width() > 256 || img.height() > 256 => {
+            return Err("An icon can't be larger than 256 pixels.".into());
+        }
         Kind::Bmp | Kind::Gif => {
             // Neither keeps an alpha channel's shades: write what shows.
             image::DynamicImage::ImageRgba8(img).write_to(&mut out, format).map_err(|e| e.to_string())?;
@@ -116,7 +120,11 @@ mod tests {
     #[test]
     fn jpegs_turn_by_their_tag_and_pngs_by_their_pixels() {
         let d = dir("turn");
-        let img = image::RgbImage::from_fn(6, 4, |x, _| if x < 3 { image::Rgb([250, 0, 0]) } else { image::Rgb([0, 0, 250]) });
+        let img = image::RgbImage::from_fn(
+            6,
+            4,
+            |x, _| if x < 3 { image::Rgb([250, 0, 0]) } else { image::Rgb([0, 0, 250]) },
+        );
         let jpeg = d.join("a.jpg");
         img.save(&jpeg).unwrap();
         let scan = std::fs::read(&jpeg).unwrap();

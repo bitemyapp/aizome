@@ -9,8 +9,8 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
-use aizome_kit::prelude::*;
 use aizome_kit::MsgSender;
+use aizome_kit::prelude::*;
 use image::RgbaImage;
 use resvg::usvg;
 
@@ -137,7 +137,10 @@ impl Prepared {
     fn bytes(&self) -> u64 {
         let body = match &self.body {
             Some(Body::Raster(b, _)) => b.as_raw().len() as u64,
-            Some(Body::Frames(f, b)) => f.iter().map(|(i, _)| u64::from(i.pixel_size().0) * u64::from(i.pixel_size().1) * 4).sum::<u64>() + b.as_raw().len() as u64,
+            Some(Body::Frames(f, b)) => {
+                f.iter().map(|(i, _)| u64::from(i.pixel_size().0) * u64::from(i.pixel_size().1) * 4).sum::<u64>()
+                    + b.as_raw().len() as u64
+            }
             _ => 0,
         };
         body + self.fit.as_ref().map_or(0, Tile::bytes)
@@ -204,13 +207,30 @@ pub enum Msg {
     Opened(Option<Vec<PathBuf>>),
     Raise(Vec<PathBuf>),
     /// A folder's pictures, read.
-    Listed { dir: PathBuf, files: Vec<PathBuf> },
+    Listed {
+        dir: PathBuf,
+        files: Vec<PathBuf>,
+    },
     /// What the current picture's file says, before it decodes.
-    Header { serial: u64, kind: Kind, dims: (u32, u32), size: u64 },
-    Preview { serial: u64, tile: Tile },
-    Decoded { serial: u64, prepared: Box<Prepared> },
+    Header {
+        serial: u64,
+        kind: Kind,
+        dims: (u32, u32),
+        size: u64,
+    },
+    Preview {
+        serial: u64,
+        tile: Tile,
+    },
+    Decoded {
+        serial: u64,
+        prepared: Box<Prepared>,
+    },
     Prefetched(Box<Prepared>),
-    TileMade { serial: u64, tile: Option<Tile> },
+    TileMade {
+        serial: u64,
+        tile: Option<Tile>,
+    },
     Seen(Seen),
     // Moving about.
     Step(i32),
@@ -223,16 +243,32 @@ pub enum Msg {
     ActualSize,
     Fit,
     ZoomPick(usize),
-    ZoomBy { factor: f64, at: Point, view: Size },
-    PanStart { at: Point, view: Size },
+    ZoomBy {
+        factor: f64,
+        at: Point,
+        view: Size,
+    },
+    PanStart {
+        at: Point,
+        view: Size,
+    },
     PanTo(Point),
     PanEnd,
-    Scroll { by: Vec2, view: Size },
-    DoubleClick { at: Point, view: Size },
+    Scroll {
+        by: Vec2,
+        view: Size,
+    },
+    DoubleClick {
+        at: Point,
+        view: Size,
+    },
     // Turning.
     Rotate(i8),
     Save,
-    Saved { path: PathBuf, result: Result<crate::save::Saved, String> },
+    Saved {
+        path: PathBuf,
+        result: Result<crate::save::Saved, String>,
+    },
     Revert,
     // Elsewhere.
     Copy,
@@ -246,7 +282,10 @@ pub enum Msg {
     Info,
     CloseInfo,
     Filmstrip,
-    Thumb { path: PathBuf, image: Option<Image> },
+    Thumb {
+        path: PathBuf,
+        image: Option<Image>,
+    },
     FullScreen,
     Slideshow,
     Slide,
@@ -427,7 +466,13 @@ impl Shashin {
 
     /// Whether nothing is being read or drawn in the background.
     pub fn idle(&self) -> bool {
-        !self.loading() && !self.busy && self.errands == 0 && self.want.is_none() && !self.reading_ahead && self.thumbs_running == 0 && self.thumb_queue.is_empty()
+        !self.loading()
+            && !self.busy
+            && self.errands == 0
+            && self.want.is_none()
+            && !self.reading_ahead
+            && self.thumbs_running == 0
+            && self.thumb_queue.is_empty()
     }
 
     pub fn loading(&self) -> bool {
@@ -517,7 +562,13 @@ impl Shashin {
             self.install(serial, prepared, cx);
             return;
         }
-        self.pic = Some(Picture { serial, info: Prepared::failed(&path, String::new()), tiles: Vec::new(), frame: 0, decoded: false });
+        self.pic = Some(Picture {
+            serial,
+            info: Prepared::failed(&path, String::new()),
+            tiles: Vec::new(),
+            frame: 0,
+            decoded: false,
+        });
         if let Some(p) = &mut self.pic {
             p.info.error = None;
         }
@@ -570,7 +621,15 @@ impl Shashin {
         let view = self.view_px();
         let z = self.z();
         let c = view::clamp_center(dims, view, z, self.center);
-        let seen = Seen { serial: p.serial, turns: self.current_turns(), view: self.view, scale: self.scale, z, visible: view::visible(dims, view, z, c), exact: false };
+        let seen = Seen {
+            serial: p.serial,
+            turns: self.current_turns(),
+            view: self.view,
+            scale: self.scale,
+            z,
+            visible: view::visible(dims, view, z, c),
+            exact: false,
+        };
         self.want = Some(seen);
         self.run_jobs(cx);
     }
@@ -668,16 +727,31 @@ impl Shashin {
                     })
                 } else {
                     let r = region();
-                    Box::new(move || tile(z, turns, (f64::from(r.0), f64::from(r.1)), &load::region(&base, turns, z, r), opaque))
+                    Box::new(move || {
+                        tile(z, turns, (f64::from(r.0), f64::from(r.1)), &load::region(&base, turns, z, r), opaque)
+                    })
                 }
             }
             Some(Body::Svg(tree)) => {
-                let r = if sw * sh <= 16e6 { (0, 0, sw.round().max(1.0) as u32, sh.round().max(1.0) as u32) } else { region() };
+                let r = if sw * sh <= 16e6 {
+                    (0, 0, sw.round().max(1.0) as u32, sh.round().max(1.0) as u32)
+                } else {
+                    region()
+                };
                 Box::new(move || {
                     // Drawn unturned, then turned.
                     let (bw, bh) = (f64::from(load::svg_size(&tree).0) * z, f64::from(load::svg_size(&tree).1) * z);
-                    let u = view::unturn_rect((f64::from(r.0), f64::from(r.1), f64::from(r.2), f64::from(r.3)), (bw, bh), turns);
-                    let region = (u.0.round().max(0.0) as u32, u.1.round().max(0.0) as u32, u.2.round().max(1.0) as u32, u.3.round().max(1.0) as u32);
+                    let u = view::unturn_rect(
+                        (f64::from(r.0), f64::from(r.1), f64::from(r.2), f64::from(r.3)),
+                        (bw, bh),
+                        turns,
+                    );
+                    let region = (
+                        u.0.round().max(0.0) as u32,
+                        u.1.round().max(0.0) as u32,
+                        u.2.round().max(1.0) as u32,
+                        u.3.round().max(1.0) as u32,
+                    );
                     let img = load::render_svg(&tree, z, region)?;
                     tile(z, turns, (f64::from(r.0), f64::from(r.1)), &load::turn(img, turns), false)
                 })
@@ -834,7 +908,8 @@ impl Shashin {
                 s.save_to(&settings).map_err(|e| e.to_string())?;
                 // The compositor applies it; the shell follows.
                 if tell && aizome_ipc::socket_path().is_some() {
-                    let r = aizome_ipc::Client::connect().and_then(|mut c| c.request(&aizome_ipc::Request::ReloadConfig));
+                    let r =
+                        aizome_ipc::Client::connect().and_then(|mut c| c.request(&aizome_ipc::Request::ReloadConfig));
                     if let Err(e) = r {
                         log::info!("reload-config: {e}");
                     }
@@ -980,7 +1055,8 @@ pub fn prepare(path: &Path, view: (f64, f64), early: impl Fn(Early)) -> Prepared
     }
     if let Some(frames) = load::frames(&src) {
         let first = Arc::new(frames[0].0.clone());
-        let images: Vec<(Image, Duration)> = frames.iter().filter_map(|(f, d)| Some((load::to_image(f)?, *d))).collect();
+        let images: Vec<(Image, Duration)> =
+            frames.iter().filter_map(|(f, d)| Some((load::to_image(f)?, *d))).collect();
         if images.len() == frames.len() {
             out.body = Some(Body::Frames(Arc::new(images), first));
             return out;
@@ -1238,24 +1314,24 @@ impl Program for Shashin {
             Msg::Saved { path, result } => {
                 self.errands = self.errands.saturating_sub(1);
                 match result {
-                Ok(how) => {
-                    self.turns.remove(&path);
-                    self.thumbs.remove(&path);
-                    self.ahead.retain(|a| a.path != path);
-                    if self.current_path() == Some(&path) {
-                        self.show(cx);
+                    Ok(how) => {
+                        self.turns.remove(&path);
+                        self.thumbs.remove(&path);
+                        self.ahead.retain(|a| a.path != path);
+                        if self.current_path() == Some(&path) {
+                            self.show(cx);
+                        }
+                        let name = folder::display_name(&path);
+                        let said = match how {
+                            crate::save::Saved::Lossless => format!("Saved “{name}”, turned without re-encoding"),
+                            crate::save::Saved::Rewritten => format!("Saved “{name}”"),
+                        };
+                        self.say(said, false, cx);
+                        self.queue_thumbs(cx);
                     }
-                    let name = folder::display_name(&path);
-                    let said = match how {
-                        crate::save::Saved::Lossless => format!("Saved “{name}”, turned without re-encoding"),
-                        crate::save::Saved::Rewritten => format!("Saved “{name}”"),
-                    };
-                    self.say(said, false, cx);
-                    self.queue_thumbs(cx);
+                    Err(e) => self.say(format!("Couldn't save: {e}"), true, cx),
                 }
-                Err(e) => self.say(format!("Couldn't save: {e}"), true, cx),
             }
-            },
             Msg::Revert => {
                 if let Some(path) = self.current_path().cloned() {
                     self.turns.remove(&path);
@@ -1269,28 +1345,28 @@ impl Program for Shashin {
             Msg::Copied(r) => {
                 self.errands = self.errands.saturating_sub(1);
                 match r {
-                Ok(n) => {
-                    self.copied = Some(n);
-                    self.say("Copied the picture", false, cx);
+                    Ok(n) => {
+                        self.copied = Some(n);
+                        self.say("Copied the picture", false, cx);
+                    }
+                    Err(e) => self.say(format!("Couldn't copy: {e}"), true, cx),
                 }
-                Err(e) => self.say(format!("Couldn't copy: {e}"), true, cx),
             }
-            },
             Msg::SetWallpaper(which) => self.set_wallpaper(which, cx),
             Msg::WallpaperSet(r) => {
                 self.errands = self.errands.saturating_sub(1);
                 match r {
-                Ok(w) => {
-                    let which = match w {
-                        Wallpaper::Night => "Night's",
-                        Wallpaper::Day => "Day's",
-                        Wallpaper::Both => "the",
-                    };
-                    self.say(format!("Set as {which} wallpaper"), false, cx);
+                    Ok(w) => {
+                        let which = match w {
+                            Wallpaper::Night => "Night's",
+                            Wallpaper::Day => "Day's",
+                            Wallpaper::Both => "the",
+                        };
+                        self.say(format!("Set as {which} wallpaper"), false, cx);
+                    }
+                    Err(e) => self.say(format!("Couldn't set the wallpaper: {e}"), true, cx),
                 }
-                Err(e) => self.say(format!("Couldn't set the wallpaper: {e}"), true, cx),
             }
-            },
             Msg::ShowInHako => {
                 if let Some(p) = self.current_path().cloned() {
                     self.run(vec!["aizome-hako".into(), "--select".into(), p.to_string_lossy().into_owned()]);
@@ -1379,14 +1455,23 @@ impl Program for Shashin {
             Msg::SaveAllAndQuit => {
                 let all: Vec<(PathBuf, u8)> = self.turns.iter().map(|(p, t)| (p.clone(), *t)).collect();
                 self.errands += 1;
-                cx.spawn(move || Msg::SavedAll(all.into_iter().map(|(p, t)| {
-                    let r = crate::save::save_turned(&p, t);
-                    (p, r)
-                }).collect()));
+                cx.spawn(move || {
+                    Msg::SavedAll(
+                        all.into_iter()
+                            .map(|(p, t)| {
+                                let r = crate::save::save_turned(&p, t);
+                                (p, r)
+                            })
+                            .collect(),
+                    )
+                });
             }
             Msg::SavedAll(results) => {
                 self.errands = self.errands.saturating_sub(1);
-                let failed: Vec<String> = results.iter().filter_map(|(p, r)| r.as_ref().err().map(|e| format!("{}: {e}", folder::display_name(p)))).collect();
+                let failed: Vec<String> = results
+                    .iter()
+                    .filter_map(|(p, r)| r.as_ref().err().map(|e| format!("{}: {e}", folder::display_name(p))))
+                    .collect();
                 for (p, r) in &results {
                     if r.is_ok() {
                         self.turns.remove(p);
@@ -1395,7 +1480,10 @@ impl Program for Shashin {
                 if failed.is_empty() {
                     cx.quit();
                 } else {
-                    cx.alert(self.window, Alert::new("Some pictures weren't saved", failed.join("\n")).default_button("OK", Msg::Nothing));
+                    cx.alert(
+                        self.window,
+                        Alert::new("Some pictures weren't saved", failed.join("\n")).default_button("OK", Msg::Nothing),
+                    );
                 }
             }
             Msg::DiscardAndQuit => {

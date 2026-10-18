@@ -89,37 +89,57 @@ fn typical_interactions() {
     settle(&mut r, 2.0);
 
     // Fitted, at rest: the drawing made for the fit, one to one.
-    let mut t = measure(&mut r, 30, |r, _| r.h.send(Msg::Fit), |r| {
-        r.h.send(Msg::ActualSize);
-        settle(r, 2.0);
-    });
+    let mut t = measure(
+        &mut r,
+        30,
+        |r, _| r.h.send(Msg::Fit),
+        |r| {
+            r.h.send(Msg::ActualSize);
+            settle(r, 2.0);
+        },
+    );
     report("showing a fitted photo (its drawing made, then drawn)", &mut t);
 
     // Panning at 100% by dragging: each step a full redraw of the view.
     r.h.send(Msg::ActualSize);
     settle(&mut r, 2.0);
     r.h.press(w, Point::new(700.0, 450.0), PointerButton::Left, 1);
-    let mut t = measure(&mut r, 60, |r, i| {
-        let x = 700.0 - (i as f64 * 7.0) % 300.0;
-        r.h.move_to(w, Point::new(x, 450.0 - (i % 40) as f64 * 3.0));
-    }, |_| {});
+    let mut t = measure(
+        &mut r,
+        60,
+        |r, i| {
+            let x = 700.0 - (i as f64 * 7.0) % 300.0;
+            r.h.move_to(w, Point::new(x, 450.0 - (i % 40) as f64 * 3.0));
+        },
+        |_| {},
+    );
     r.h.release(w, Point::new(400.0, 450.0), PointerButton::Left);
     report("panning a photo at 100%", &mut t);
 
     // Pinching: drawn from what's there (nearest pixel) while the drawing
     // for the new zoom is made.
     settle(&mut r, 2.0);
-    let mut t = measure(&mut r, 40, |r, i| r.h.pinch(w, Point::new(720.0, 450.0), if i < 20 { 1.03 } else { 1.0 / 1.03 }), |_| {});
+    let mut t = measure(
+        &mut r,
+        40,
+        |r, i| r.h.pinch(w, Point::new(720.0, 450.0), if i < 20 { 1.03 } else { 1.0 / 1.03 }),
+        |_| {},
+    );
     report("pinching", &mut t);
 
     // ❖+ and ❖−, each settling before the next.
-    let mut t = measure(&mut r, 20, |r, i| {
-        if i % 2 == 0 {
-            r.h.send(Msg::ZoomIn);
-        } else {
-            r.h.send(Msg::ZoomOut);
-        }
-    }, |r| settle(r, 2.0));
+    let mut t = measure(
+        &mut r,
+        20,
+        |r, i| {
+            if i % 2 == 0 {
+                r.h.send(Msg::ZoomIn);
+            } else {
+                r.h.send(Msg::ZoomOut);
+            }
+        },
+        |r| settle(r, 2.0),
+    );
     report("a zoom step", &mut t);
 
     // → through the folder, the next picture read ahead.

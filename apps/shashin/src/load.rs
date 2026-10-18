@@ -78,13 +78,20 @@ pub struct Source {
 
 impl std::fmt::Debug for Source {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Source").field("path", &self.path).field("kind", &self.kind).field("bytes", &self.bytes.len()).finish()
+        f.debug_struct("Source")
+            .field("path", &self.path)
+            .field("kind", &self.kind)
+            .field("bytes", &self.bytes.len())
+            .finish()
     }
 }
 
 /// Whether `bytes` look like an SVG (or `path` is named as one).
 fn is_svg(bytes: &[u8], path: &Path) -> bool {
-    let named = path.extension().and_then(|e| e.to_str()).is_some_and(|e| e.eq_ignore_ascii_case("svg") || e.eq_ignore_ascii_case("svgz"));
+    let named = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| e.eq_ignore_ascii_case("svg") || e.eq_ignore_ascii_case("svgz"));
     if named && bytes.starts_with(&[0x1f, 0x8b]) {
         return true;
     }
@@ -169,7 +176,8 @@ pub fn exif_thumbnail(exif: &exif::Exif, orientation: u8) -> Option<RgbaImage> {
 pub fn exif_details(exif: &exif::Exif) -> Vec<(String, String)> {
     use exif::{In, Tag};
     let get = |t| exif.get_field(t, In::PRIMARY);
-    let text = |t| get(t).map(|f| f.display_value().to_string().trim_matches('"').trim().to_owned()).filter(|s| !s.is_empty());
+    let text =
+        |t| get(t).map(|f| f.display_value().to_string().trim_matches('"').trim().to_owned()).filter(|s| !s.is_empty());
     let mut out = Vec::new();
     let camera = match (text(Tag::Make), text(Tag::Model)) {
         (Some(make), Some(model)) if model.to_lowercase().starts_with(&make.to_lowercase()) => Some(model),
@@ -355,7 +363,12 @@ mod tests {
     #[test]
     fn regions_come_from_the_right_place() {
         // Left half red, right half blue, 4 × 2.
-        let base = RgbaImage::from_fn(4, 2, |x, _| if x < 2 { image::Rgba([255, 0, 0, 255]) } else { image::Rgba([0, 0, 255, 255]) });
+        let base =
+            RgbaImage::from_fn(
+                4,
+                2,
+                |x, _| if x < 2 { image::Rgba([255, 0, 0, 255]) } else { image::Rgba([0, 0, 255, 255]) },
+            );
         // Unturned at 2×: the region at x 0..4 is red.
         let r = region(&base, 0, 2.0, (0, 0, 4, 4));
         assert_eq!(r.get_pixel(1, 1).0, [255, 0, 0, 255]);

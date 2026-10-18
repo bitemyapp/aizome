@@ -38,7 +38,17 @@ fn opens_a_picture_among_its_folder_in_hakos_order() {
     let mut r = rig("order", ThemeChoice::Night, "IMG_2.jpg");
     assert_eq!(
         names(&r),
-        ["app.ico", "beach.png", "dance.gif", "IMG_2.jpg", "IMG_10.jpg", "logo.svg", "old.bmp", "scan.tiff", "sticker.webp"]
+        [
+            "app.ico",
+            "beach.png",
+            "dance.gif",
+            "IMG_2.jpg",
+            "IMG_10.jpg",
+            "logo.svg",
+            "old.bmp",
+            "scan.tiff",
+            "sticker.webp"
+        ]
     );
     assert_eq!(current(&r), "IMG_2.jpg");
     let w = r.h.window();
@@ -67,7 +77,8 @@ fn opens_a_picture_among_its_folder_in_hakos_order() {
 fn the_neighbours_are_read_ahead() {
     let mut r = rig("ahead", ThemeChoice::Night, "IMG_2.jpg");
     settle(&mut r, 1.0);
-    let ahead: Vec<String> = r.h.program().ahead.iter().map(|p| p.path.file_name().unwrap().to_string_lossy().into_owned()).collect();
+    let ahead: Vec<String> =
+        r.h.program().ahead.iter().map(|p| p.path.file_name().unwrap().to_string_lossy().into_owned()).collect();
     assert!(ahead.contains(&"IMG_10.jpg".to_owned()) && ahead.contains(&"dance.gif".to_owned()), "{ahead:?}");
     key(&mut r, NamedKey::ArrowRight);
     // Shown at once, from what was read ahead.
@@ -204,7 +215,10 @@ fn sets_the_wallpaper_shows_in_hako_and_copies() {
     assert_eq!(s.appearance.wallpaper_night.as_deref(), Some(r.dir.join("IMG_10.jpg").to_str().unwrap()));
     assert_eq!(s.appearance.wallpaper_day, None);
     r.h.send(Msg::ShowInHako);
-    assert_eq!(r.h.program().commands, [vec!["aizome-hako".to_owned(), "--select".into(), r.dir.join("IMG_10.jpg").to_string_lossy().into_owned()]]);
+    assert_eq!(
+        r.h.program().commands,
+        [vec!["aizome-hako".to_owned(), "--select".into(), r.dir.join("IMG_10.jpg").to_string_lossy().into_owned()]]
+    );
     r.h.command(w, 'c');
     settle(&mut r, 1.0);
     assert!(r.h.program().copied.is_some_and(|n| n > 1000));
@@ -262,7 +276,13 @@ fn get_info_tells_the_camera() {
         assert!(texts.iter().any(|t| t.to_lowercase().contains(&want.to_lowercase())), "{want} not in {texts:?}");
     }
     let settings = texts.iter().find(|t| t.contains("ISO")).expect("settings");
-    assert!(settings.contains("23 mm") && settings.contains("ƒ/2") && settings.contains("1/250 s") && settings.contains("ISO 200"), "{settings}");
+    assert!(
+        settings.contains("23 mm")
+            && settings.contains("ƒ/2")
+            && settings.contains("1/250 s")
+            && settings.contains("ISO 200"),
+        "{settings}"
+    );
     assert!(texts.iter().any(|t| t.contains("2026-10-17 06:12:00") || t.contains("2026:10:17")), "{texts:?}");
     r.h.named(w, NamedKey::Enter, Modifiers::NONE);
     assert!(r.h.program().info_sheet.is_none());
@@ -314,14 +334,19 @@ fn a_second_launch_hands_its_files_over() {
     sprite().save(&path).unwrap();
     // A socket of our own, not the session's.
     let name = format!("shashin-test-{}", std::process::id());
-    let aizome_shashin::instance::Claim::First(listener) = aizome_shashin::instance::claim(&name, &[]) else { panic!("first") };
+    let aizome_shashin::instance::Claim::First(listener) = aizome_shashin::instance::claim(&name, &[]) else {
+        panic!("first")
+    };
     let mut app = Shashin::new();
     app.instance = Some(listener);
     app.dry_run = true;
     app.thumb_dir = dir.join(".thumbnails");
     let h = Harness::with(app, Appearance::default(), false);
     let mut r = Rig { h, dir: dir.clone() };
-    assert!(matches!(aizome_shashin::instance::claim(&name, std::slice::from_ref(&path)), aizome_shashin::instance::Claim::Handed));
+    assert!(matches!(
+        aizome_shashin::instance::claim(&name, std::slice::from_ref(&path)),
+        aizome_shashin::instance::Claim::Handed
+    ));
     for _ in 0..200 {
         r.h.send(Msg::Nothing);
         if r.h.program().current_path() == Some(&path) {
