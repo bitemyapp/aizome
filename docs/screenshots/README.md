@@ -21,9 +21,17 @@ recompressed losslessly (oxipng, pixel-identical).
 | `10-tokei-tenki.png` | Tokei's world clocks beside Tenki (forecast from Open-Meteo) |
 | `11-marking-menu.png` | Right press and pause on Sumi's tab: the marking menu |
 | `12-lock.png` | `aizomectl lock`, a password typed (outside the VM the PAM service `aizome` doesn't exist, so it stays locked) |
+| `13-full-effects.png` | The Full effects tier in Night: the Toolchest torn off over the city's lights, Sumi's menu at the pointer with File open over the bridge, the Deskbar with a text clipping dragged from Sumi onto the Shelf; the frosted faces let the wallpaper tint through, with a fine grain and no blur. The system's disk (`nvme0`) is on the desktop |
 
 The `compositor-*.png` pictures are older ones from the compositor's own
 tests.
+
+`13-full-effects.png` was taken on 18 October 2026 after the follow-up
+fixes: Aizome at `d488677`, the Sidestep fork at `992e3dc` (see-through
+windows get buffers with alpha, so the frost shows through on screen at
+all). It ran without the machine's system bus (`DBUS_SYSTEM_BUS_ADDRESS`
+pointed at nothing), so the systray has no network or battery and the
+desktop's disk came from the mounts and sysfs rather than UDisks.
 
 ## How they were made
 

@@ -119,7 +119,7 @@ tests, which were run after each fix.
 | Notifications under their app: count in red, newest in a card, × dismisses | done | live (`notify-send` on the private bus), `01` | Clicking for the default action not tried |
 | Notification line in the bar | done | live | |
 | Fold to "N apps ⌄" and back | done | live | |
-| Shelf: drag to park, "Drop to park" | done | live (Hako's files, a desktop icon) | Dragging *text* from Sumi's selection didn't start a drag (it re-selected); dragging out from the Shelf is covered by `deskbar` tests, not tried live |
+| Shelf: drag to park, "Drop to park" | done | live (Hako's files, a desktop icon, Sumi's selected text, `13`) | **Added** (`67a0431`): a press on the selection in any text editor or field that moves 4pt drags the text out (to copy); a press that doesn't move places the caret; passwords never drag. Dragging out from the Shelf is covered by `deskbar` tests, not tried live |
 | App glyphs | done | live | **Fixed** (`588b55b`): Shashin and Annai had category fallbacks |
 
 ## The desktop
@@ -128,7 +128,7 @@ tests, which were run after each fix.
 |---|---|---|---|
 | Wallpaper per theme | done | live, `01`, `07` | |
 | Icons: home, Trash, `~/Desktop` items, labels on chips | done | live | |
-| Disk and image icons | partial | live | The internal disk is a system volume and isn't shown (the board shows `nvme0` and an `.iso`); attaching images wasn't tried (no loop devices outside the VM) |
+| Disk and image icons | done | live (this laptop's disk read from UDisks, read only, and from the mounts without it), `13`; `desktop`, `aizome-sys` and Tansu tests | **Added** (`bdf8ed1`, `10cf897`, `f0e3712`): the system's disk as `nvme0` (its drive's short name), opened in Hako at `/`; its menu offers Open, Show in Disks (Tansu on that drive) and Disk Usage (Kura), never Unmount or Eject, which the shell refuses for it anyway. Images show the disc and their file's name (covered by tests; attaching one wasn't tried, no loop devices outside the VM). `[desktop] show_disks` hides both |
 | Double-click opens; drag moves (remembered) | done | live (opened a folder in Hako) | |
 | Right-click: the menu at the pointer | done | live | |
 
@@ -140,7 +140,7 @@ tests, which were run after each fix.
 | Lock screen: wallpaper under a scrim, time, date, initial, name, password field, mark | done | live, `12` | PAM's `aizome` service doesn't exist outside the VM, so a password is refused ("That password didn't work") as expected; the shake wasn't looked at |
 | ❖⇧3, ❖⇧4 screenshots | done | live (files in `~/Pictures/Screenshots`, a notification) | |
 | Night, Day, High Contrast live | done | live, `07`; foot follows (SIGUSR1/2) | **Fixed** (`5ea3273`): the theme signal went to every foot of the user's, including the live desktop's |
-| Effects tiers Full, Lean, Austere | partial | live: switched in Settings, shadows go in Austere | Full's frost not examined closely |
+| Effects tiers Full, Lean, Austere | done | live: switched in Settings, shadows go in Austere; Full examined over the busiest parts of both wallpapers (menus, a systray panel, the palette, the Deskbar, the Toolchest), `13` | **Fixed** (`992e3dc` in the Sidestep fork): see-through windows had buffers without alpha, so Full's frost was opaque on screen (only the test composites showed it) and menus' shadow corners were black. **Tuned** (`d488677`): faces 90% opaque in Night, 94% in Day, the grain at device pixels; text stays legible over the city lights (primary text 5:1 or better over a white light, `text3` 3:1). There's no blur, so text under a frosted face shows as a faint ghost |
 | Shell restart keeps apps working | done | live (killed the shell) | **Fixed** (`4b8f943`): apps lost their keyboard focus when the shell came back |
 
 ## Settings (Shitsurae)
@@ -177,9 +177,9 @@ All fourteen opened from the session and were looked at:
 | Item | Status | Notes |
 |---|---|---|
 | Haiku tabs and tab groups | done | above |
-| Deskbar with app → windows, notifications and Shelf | done | text drag-out from Sumi missing (above) |
+| Deskbar with app → windows, notifications and Shelf | done | |
 | Global menu bar, NeXT menu at the pointer, tear-offs | done | |
-| Toolchest, Desks, desktop icons | done | disk icons partial |
+| Toolchest, Desks, desktop icons | done | |
 | Frames, type, themes (Night/Day) | done | High Contrast too |
 | Strip's palette: scopes, shortcut coach, Toolchest typing, ❖Space, Services | done | |
 | Two-tier switcher, Desks overview, marking menu | done | |
@@ -222,12 +222,19 @@ final screenshot run (GLES, 2880 × 1800 @ 2):
 test that fails without the fix; the glyph, pin and highlight ones were
 checked by eye.
 
+Then three partials, finished: the system's disk on the desktop
+(`bdf8ed1`, `10cf897`, `f0e3712`), dragging selected text out of the
+kit's editor and fields (`67a0431`), and Full's frost (`992e3dc` in the
+Sidestep fork, with its compositor test `a5e8ce4`, then `d488677`).
+
 ## Still to do
 
-- Dragging selected text out of Sumi (the kit's editor) to the Shelf or
-  another app: the press on a selection re-selects instead of dragging.
-- Desktop icons for the internal disk (shown on the board) and attached
-  images.
+- Frost without blur: under a frosted face, text shows as a faint ghost.
+  Real frosted glass needs the compositor to blur what's behind the
+  shell's surfaces (GLES only; pixman would keep today's tint).
+- The Nix package pins the Sidestep fork by revision: `flake.lock` needs
+  `992e3dc` (pushed to GitHub) for the installed session to get
+  see-through windows.
 - The systray panels' device lists, media controls and Night Light were
   not exercised for want of devices in this session; check them on the
   laptop.
