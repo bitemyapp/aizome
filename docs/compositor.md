@@ -205,6 +205,10 @@ nix develop --command cargo test -p aizome-comp
   and schedule, the renderer setting.
 - `tests/protocols.rs`: wl_shm formats, shm buffers released after upload
   (GLES) or kept (pixman), drag and drop with an icon and actions.
+- `tests/chromium.rs`: a window opened the way Chromium and Electron
+  open theirs (an xdg-toplevel-icon set and destroyed before its buffer,
+  either decoration mode, activation with their own token), and the icon
+  protocol's errors.
 - `tests/focus.rs`: a shell-like wayland-client (layer surfaces and their
   popups): exclusive and on-demand keyboard interactivity, grabbing menus
   getting the keys and giving them back, menus closing for an exclusive
