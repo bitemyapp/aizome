@@ -114,7 +114,8 @@ impl DeskbarModel {
             if !a.folded {
                 h += a.windows.len() as f64 * WINDOW_ROW;
             }
-            h += a.cards.iter().map(|c| CARD + CARD_GAP + if c.buttons.is_empty() { 0.0 } else { BUTTONS }).sum::<f64>();
+            h +=
+                a.cards.iter().map(|c| CARD + CARD_GAP + if c.buttons.is_empty() { 0.0 } else { BUTTONS }).sum::<f64>();
         }
         if self.hide_shelf {
             return (h + 4.0).ceil() + SHADOW;
@@ -145,25 +146,30 @@ fn app_row(a: &AppRow) -> Element<DeskbarMsg> {
         String::new()
     };
     let label = name.clone();
-    drawn(WIDTH, APP_ROW, (name.clone(), glyph, hue, right.clone(), unread > 0, image.as_ref().map(|i| i.0.pixel_size())), move |cx| {
-        let t = cx.theme();
-        let b = cx.bounds();
-        if cx.is_hovered() {
-            cx.canvas.fill_rect(b, t.hover(t.chrome()));
-        }
-        match &image {
-            Some(img) => cx.canvas.draw_image(&img.0, Rect::new(8.0, 5.0, 24.0, 21.0)),
-            None => glyph.draw(cx.canvas, Point::new(8.0, ((APP_ROW - 16.0) / 2.0).round()), 16.0, hue.color(t)),
-        }
-        let s = ui(t, typeface::BODY, typeface::WEIGHT_TAB, t.text());
-        cx.draw_text_in(&name, &s, Rect::new(32.0, 0.0, b.x1 - 48.0, APP_ROW), Align::Start);
-        let (spec, x1) = if unread > 0 {
-            (look::digits(11.0 * t.metrics.factor, typeface::WEIGHT_SEMIBOLD, Hue::Red.color(t)), b.x1 - 10.0)
-        } else {
-            (look::digits(11.0 * t.metrics.factor, typeface::WEIGHT_REGULAR, t.text3()), b.x1 - 10.0)
-        };
-        cx.draw_text_in(&right, &spec, Rect::new(b.x1 - 60.0, 0.0, x1, APP_ROW), Align::End);
-    })
+    drawn(
+        WIDTH,
+        APP_ROW,
+        (name.clone(), glyph, hue, right.clone(), unread > 0, image.as_ref().map(|i| i.0.pixel_size())),
+        move |cx| {
+            let t = cx.theme();
+            let b = cx.bounds();
+            if cx.is_hovered() {
+                cx.canvas.fill_rect(b, t.hover(t.chrome()));
+            }
+            match &image {
+                Some(img) => cx.canvas.draw_image(&img.0, Rect::new(8.0, 5.0, 24.0, 21.0)),
+                None => glyph.draw(cx.canvas, Point::new(8.0, ((APP_ROW - 16.0) / 2.0).round()), 16.0, hue.color(t)),
+            }
+            let s = ui(t, typeface::BODY, typeface::WEIGHT_TAB, t.text());
+            cx.draw_text_in(&name, &s, Rect::new(32.0, 0.0, b.x1 - 48.0, APP_ROW), Align::Start);
+            let (spec, x1) = if unread > 0 {
+                (look::digits(11.0 * t.metrics.factor, typeface::WEIGHT_SEMIBOLD, Hue::Red.color(t)), b.x1 - 10.0)
+            } else {
+                (look::digits(11.0 * t.metrics.factor, typeface::WEIGHT_REGULAR, t.text3()), b.x1 - 10.0)
+            };
+            cx.draw_text_in(&right, &spec, Rect::new(b.x1 - 60.0, 0.0, x1, APP_ROW), Align::End);
+        },
+    )
     .on_click(DeskbarMsg::FocusApp(id))
     .on_right_click(move |p: Press| DeskbarMsg::AppMenu(id2.clone(), p.at))
     .on_middle_click(DeskbarMsg::Fold(id3))
@@ -249,7 +255,8 @@ fn card(c: &NoteCard) -> Element<DeskbarMsg> {
     })
     .on_click(DeskbarMsg::OpenNote(c.id))
     .text(label, SemanticRole::Group);
-    let close = drawn(18.0, 18.0, "x", |_| {}).on_click(DeskbarMsg::DismissNote(c.id)).text("Dismiss", SemanticRole::Button);
+    let close =
+        drawn(18.0, 18.0, "x", |_| {}).on_click(DeskbarMsg::DismissNote(c.id)).text("Dismiss", SemanticRole::Button);
     let stacked: Element<DeskbarMsg> = aizome_kit::stack(vec![
         card.into(),
         aizome_kit::container(close).padding([2.0, 2.0, 0.0, WIDTH - 42.0 - 20.0]).into(),
@@ -260,14 +267,13 @@ fn card(c: &NoteCard) -> Element<DeskbarMsg> {
         // The notification's actions, as buttons under it.
         let mut row: Vec<Element<DeskbarMsg>> = Vec::new();
         for (key, label) in c.buttons.iter().take(2) {
-            row.push(aizome_kit::button(label.clone()).compact().on_press(DeskbarMsg::NoteAction(c.id, key.clone())).into());
+            row.push(
+                aizome_kit::button(label.clone()).compact().on_press(DeskbarMsg::NoteAction(c.id, key.clone())).into(),
+            );
         }
         parts.push(aizome_kit::row(row).spacing(6.0).height(BUTTONS).align(Align::Center).into());
     }
-    aizome_kit::container(column(parts))
-    .padding([0.0, 10.0, CARD_GAP, 32.0])
-    .key(("note", c.id))
-    .into()
+    aizome_kit::container(column(parts)).padding([0.0, 10.0, CARD_GAP, 32.0]).key(("note", c.id)).into()
 }
 
 fn caption() -> Element<DeskbarMsg> {
@@ -325,7 +331,13 @@ fn drop_row() -> Element<DeskbarMsg> {
 pub fn view(m: &DeskbarModel) -> Element<DeskbarMsg> {
     let mut rows: Vec<Element<DeskbarMsg>> = vec![aizome_kit::space(4.0)];
     for a in &m.apps {
-        rows.push(aizome_kit::stack(vec![app_row(a), aizome_kit::container(count_hit(a)).padding([0.0, 0.0, 0.0, WIDTH - 56.0]).into()]).into());
+        rows.push(
+            aizome_kit::stack(vec![
+                app_row(a),
+                aizome_kit::container(count_hit(a)).padding([0.0, 0.0, 0.0, WIDTH - 56.0]).into(),
+            ])
+            .into(),
+        );
         if !a.folded {
             for w in &a.windows {
                 rows.push(window_row(w));
@@ -389,7 +401,13 @@ mod tests {
                 glyph: Icon::Folder,
                 hue: Hue::Blue,
                 image: None,
-                windows: vec![WindowRow { id: 1, title: "x".into(), focused: false, note: WindowNote::None, urgent: false }],
+                windows: vec![WindowRow {
+                    id: 1,
+                    title: "x".into(),
+                    focused: false,
+                    note: WindowNote::None,
+                    urgent: false,
+                }],
                 folded: false,
                 focused: false,
                 unread: 0,

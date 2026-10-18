@@ -77,7 +77,9 @@ pub enum PaletteEvent {
 /// The system actions the palette offers.
 pub fn actions(day: bool, dnd: bool) -> Vec<Item> {
     let a = |t: &str, g: Icon, action: Action, kw: &[&str]| {
-        Item::new(Scope::Action, t, g, action).keywords(kw.iter().map(|s| s.to_string()).collect()).key(format!("act:{t}"))
+        Item::new(Scope::Action, t, g, action)
+            .keywords(kw.iter().map(|s| s.to_string()).collect())
+            .key(format!("act:{t}"))
     };
     vec![
         a("Lock", Icon::Lock, Action::Session(SessionVerb::Lock), &["screen", "away"]),
@@ -90,7 +92,12 @@ pub fn actions(day: bool, dnd: bool) -> Vec<Item> {
         } else {
             a("Switch to Day", Icon::Sun, Action::SetTheme { day: true }, &["light", "theme"])
         },
-        a(if dnd { "Turn Off Do Not Disturb" } else { "Do Not Disturb" }, Icon::BellOff, Action::ToggleDoNotDisturb, &["notifications", "quiet", "focus"]),
+        a(
+            if dnd { "Turn Off Do Not Disturb" } else { "Do Not Disturb" },
+            Icon::BellOff,
+            Action::ToggleDoNotDisturb,
+            &["notifications", "quiet", "focus"],
+        ),
         a("Screenshot", Icon::Camera, Action::Screenshot, &["capture", "screen"]),
         a("New Desk", Icon::Grid2x2, Action::NewDesk, &["workspace"]),
         a("Empty Trash", Icon::Trash, Action::EmptyTrash, &["delete"]),
@@ -165,7 +172,9 @@ impl Shell {
             return;
         }
         let Some(output) = self.focused_screen().map(|s| s.output.id) else { return };
-        let opts = LayerOptions::new(Layer::Overlay, "aizome-palette").keyboard(KeyboardInteractivity::Exclusive).output(output);
+        let opts = LayerOptions::new(Layer::Overlay, "aizome-palette")
+            .keyboard(KeyboardInteractivity::Exclusive)
+            .output(output);
         let size = view::size();
         let window = cx.open_window(layer(opts, size.width, size.height, "Palette"));
         self.surfaces.insert(window, Surface::Palette);
@@ -276,10 +285,11 @@ impl Shell {
                 let mut kw: Vec<String> = a.keywords.clone();
                 kw.extend(a.generic_name.clone());
                 let key = format!("app:{}", a.app_id());
-                let mut item = Item::new(Scope::App, a.name.clone(), glyph, Action::Launch { app_id: a.app_id().to_owned() })
-                    .trail(a.generic_name.clone().unwrap_or_default())
-                    .keywords(kw)
-                    .key(key.clone());
+                let mut item =
+                    Item::new(Scope::App, a.name.clone(), glyph, Action::Launch { app_id: a.app_id().to_owned() })
+                        .trail(a.generic_name.clone().unwrap_or_default())
+                        .keywords(kw)
+                        .key(key.clone());
                 item.boost = self.frecency.boost(&key);
                 out.push(item);
             }
@@ -337,7 +347,8 @@ impl Shell {
                 let seq = p.search;
                 let query = q.clone();
                 cx.spawn(move || {
-                    let boost = |path: &std::path::Path| boosts.get(&format!("file:{}", path.display())).copied().unwrap_or(0);
+                    let boost =
+                        |path: &std::path::Path| boosts.get(&format!("file:{}", path.display())).copied().unwrap_or(0);
                     let hits = index.search(&query, 40, &boost);
                     let items = hits.iter().map(|h| Item::file(&h.path, h.folder, &home)).collect();
                     Msg::Palette(PaletteEvent::Files(seq, items))
@@ -394,7 +405,8 @@ impl Shell {
             Scope::Action => "ACTION",
             Scope::Answer => "ANSWER",
         };
-        let mut d = Detail { caption: caption.into(), title: i.title.clone(), path: i.trail.clone(), ..Detail::default() };
+        let mut d =
+            Detail { caption: caption.into(), title: i.title.clone(), path: i.trail.clone(), ..Detail::default() };
         match i.scope {
             Scope::Command => {
                 d.path = format!("{} › {}", p.app_name.clone().unwrap_or_else(|| "Aizome".into()), i.trail);
@@ -403,11 +415,17 @@ impl Shell {
                     let count = i
                         .key
                         .as_deref()
-                        .map(|k| model::coach_count(self.frecency.score(&format!("menu:{}", k.trim_start_matches("cmd:")))))
+                        .map(|k| {
+                            model::coach_count(self.frecency.score(&format!("menu:{}", k.trim_start_matches("cmd:"))))
+                        })
                         .unwrap_or(0);
                     d.coach = model::coach(count, true);
                 }
-                d.actions = vec![("Run".into(), "↩".into()), ("Run, keep palette open".into(), "❖↩".into()), ("More actions".into(), "❖K".into())];
+                d.actions = vec![
+                    ("Run".into(), "↩".into()),
+                    ("Run, keep palette open".into(), "❖↩".into()),
+                    ("More actions".into(), "❖K".into()),
+                ];
             }
             Scope::Answer => d.actions = vec![("Copy the result".into(), "↩".into())],
             Scope::Window => d.actions = vec![("Focus".into(), "↩".into()), ("More actions".into(), "❖K".into())],
@@ -496,7 +514,8 @@ impl Shell {
             return;
         }
         let at = p.selected as isize + by;
-        p.selected = if by.abs() > 1 { at.clamp(0, n as isize - 1) as usize } else { at.rem_euclid(n as isize) as usize };
+        p.selected =
+            if by.abs() > 1 { at.clamp(0, n as isize - 1) as usize } else { at.rem_euclid(n as isize) as usize };
         p.scroll = view::scroll_for(&p.sections, p.selected, p.scroll);
     }
 
@@ -550,7 +569,9 @@ impl Shell {
                             .exec
                             .as_deref()
                             .and_then(|e| aizome_sys::apps::Exec::parse(e).ok())
-                            .map(|e| e.expand(&[p.to_string_lossy().into_owned()], &aizome_sys::apps::ExecContext::default()))
+                            .map(|e| {
+                                e.expand(&[p.to_string_lossy().into_owned()], &aizome_sys::apps::ExecContext::default())
+                            })
                             .unwrap_or_default();
                         if !argv.is_empty() {
                             open_with.push(Entry::action(a.name.clone(), Action::Spawn { argv }));
@@ -569,7 +590,10 @@ impl Shell {
             (Scope::Window, Action::Wm(Request::Focus { id })) => vec![
                 Entry::action("Focus", crate::actions::wm::focus(*id)),
                 Entry::action("Close", crate::actions::wm::close(Some(*id))),
-                Entry::submenu("Move to Desk", crate::menus::build::desk_items(&self.wm.desks, |d| crate::actions::wm::move_to_desk(Some(*id), d))),
+                Entry::submenu(
+                    "Move to Desk",
+                    crate::menus::build::desk_items(&self.wm.desks, |d| crate::actions::wm::move_to_desk(Some(*id), d)),
+                ),
             ],
             (Scope::App, Action::Launch { app_id }) => {
                 let running = self.wm.is_running(app_id);

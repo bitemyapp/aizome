@@ -224,7 +224,12 @@ impl Wm {
                         urgent: w.urgent,
                     })
                     .collect();
-                DeskbarApp { pinned: pinned.contains(&app_id), focused: windows.iter().any(|w| w.focused), app_id, windows }
+                DeskbarApp {
+                    pinned: pinned.contains(&app_id),
+                    focused: windows.iter().any(|w| w.focused),
+                    app_id,
+                    windows,
+                }
             })
             .collect()
     }

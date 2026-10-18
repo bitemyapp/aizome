@@ -98,33 +98,72 @@ pub fn editor_menus() -> Vec<proto::Menu> {
     let cmd = |key: &str| Some(proto::Shortcut { key: key.into(), command: true, ..Default::default() });
     let menu = |id: u32, title: &str, items: Vec<proto::Item>| proto::Menu { id, title: title.into(), items };
     vec![
-        menu(1, "Editor", vec![
-            item(10, "About Editor"),
-            proto::Item { kind: proto::ItemKind::Separator, ..Default::default() },
-            proto::Item { shortcut: cmd("H"), role: Some("hide".into()), ..item(11, "Hide Editor") },
-            proto::Item { shortcut: cmd("Q"), role: Some("quit".into()), ..item(12, "Quit Editor") },
-        ]),
-        menu(2, "File", vec![proto::Item { shortcut: cmd("N"), ..item(20, "New") }, proto::Item { shortcut: cmd("O"), ..item(21, "Open…") }]),
-        menu(3, "Edit", vec![
-            proto::Item { shortcut: cmd("Z"), ..item(30, "Undo Bold") },
-            proto::Item { shortcut: Some(proto::Shortcut { key: "Z".into(), command: true, shift: true, ..Default::default() }), enabled: false, ..item(31, "Redo") },
-            proto::Item { shortcut: cmd("X"), ..item(32, "Cut") },
-            proto::Item { shortcut: cmd("C"), ..item(33, "Copy") },
-            proto::Item { shortcut: cmd("V"), ..item(34, "Paste") },
-        ]),
+        menu(
+            1,
+            "Editor",
+            vec![
+                item(10, "About Editor"),
+                proto::Item { kind: proto::ItemKind::Separator, ..Default::default() },
+                proto::Item { shortcut: cmd("H"), role: Some("hide".into()), ..item(11, "Hide Editor") },
+                proto::Item { shortcut: cmd("Q"), role: Some("quit".into()), ..item(12, "Quit Editor") },
+            ],
+        ),
+        menu(
+            2,
+            "File",
+            vec![
+                proto::Item { shortcut: cmd("N"), ..item(20, "New") },
+                proto::Item { shortcut: cmd("O"), ..item(21, "Open…") },
+            ],
+        ),
+        menu(
+            3,
+            "Edit",
+            vec![
+                proto::Item { shortcut: cmd("Z"), ..item(30, "Undo Bold") },
+                proto::Item {
+                    shortcut: Some(proto::Shortcut {
+                        key: "Z".into(),
+                        command: true,
+                        shift: true,
+                        ..Default::default()
+                    }),
+                    enabled: false,
+                    ..item(31, "Redo")
+                },
+                proto::Item { shortcut: cmd("X"), ..item(32, "Cut") },
+                proto::Item { shortcut: cmd("C"), ..item(33, "Copy") },
+                proto::Item { shortcut: cmd("V"), ..item(34, "Paste") },
+            ],
+        ),
         menu(4, "Search", vec![item(40, "Find…")]),
-        menu(5, "Format", vec![
-            proto::Item { shortcut: cmd("B"), ..item(50, "Bold") },
-            proto::Item { shortcut: cmd("I"), ..item(51, "Italic") },
-            proto::Item { shortcut: cmd("E"), ..item(52, "Code") },
-        ]),
-        menu(6, "Window", vec![proto::Item { shortcut: cmd("M"), role: Some("minimise".into()), ..item(60, "Minimise") }]),
+        menu(
+            5,
+            "Format",
+            vec![
+                proto::Item { shortcut: cmd("B"), ..item(50, "Bold") },
+                proto::Item { shortcut: cmd("I"), ..item(51, "Italic") },
+                proto::Item { shortcut: cmd("E"), ..item(52, "Code") },
+            ],
+        ),
+        menu(
+            6,
+            "Window",
+            vec![proto::Item { shortcut: cmd("M"), role: Some("minimise".into()), ..item(60, "Minimise") }],
+        ),
         menu(7, "Help", vec![item(70, "Editor Help")]),
     ]
 }
 
 pub fn tray() -> Tray {
-    Tray { network: Some(NetGlyph::Wifi(4)), sound: Some((0.6, false)), battery: Some((84.0, false)), cpu: true, memory: true, ..Tray::default() }
+    Tray {
+        network: Some(NetGlyph::Wifi(4)),
+        sound: Some((0.6, false)),
+        battery: Some((84.0, false)),
+        cpu: true,
+        memory: true,
+        ..Tray::default()
+    }
 }
 
 pub fn meters() -> Reading {
@@ -140,7 +179,10 @@ pub fn scene(day: bool) -> Harness<Shell> {
     let mut h = Harness::with(Shell::new(Options::default()), appearance(day), false);
     h.set_outputs(vec![output()]);
     h.send(Msg::Ipc(IpcEvent::Connected(Box::new(SnapshotBox(snapshot())))));
-    h.send(Msg::Server(ServerEvent::Message(1, proto::AppMessage::Hello { app_id: "org.aizome.Sumi".into(), pid: 100, name: "Editor".into() })));
+    h.send(Msg::Server(ServerEvent::Message(
+        1,
+        proto::AppMessage::Hello { app_id: "org.aizome.Sumi".into(), pid: 100, name: "Editor".into() },
+    )));
     h.send(Msg::Server(ServerEvent::Message(1, proto::AppMessage::Menus { menus: editor_menus() })));
     {
         let s = h.program_mut();

@@ -47,7 +47,11 @@ impl Shell {
         let path = self.wall_paths[self.theme_day as usize].clone()?;
         let o = &screen.output;
         let scale = o.scale.max(0.25);
-        Some(WallKey { path, width: (o.frame.width() * scale).round() as u32, height: (o.frame.height() * scale).round() as u32 })
+        Some(WallKey {
+            path,
+            width: (o.frame.width() * scale).round() as u32,
+            height: (o.frame.height() * scale).round() as u32,
+        })
     }
 
     /// Output `output`'s wallpaper, if it's ready (until it is, the desktop
@@ -66,16 +70,23 @@ impl Shell {
 
     /// Whether every output's wallpaper is ready.
     pub fn wallpapers_ready(&self) -> bool {
-        self.screens.iter().filter_map(|s| self.wall_key(s)).all(|k| self.wallpapers.contains_key(&k) || self.wall_failed.contains(&k.path))
+        self.screens
+            .iter()
+            .filter_map(|s| self.wall_key(s))
+            .all(|k| self.wallpapers.contains_key(&k) || self.wall_failed.contains(&k.path))
     }
 
     /// Scale the wallpapers the outputs want, on threads, and let go of
     /// the ones nothing wants.
     pub fn prepare_wallpapers(&mut self, cx: &mut Cx<Msg>) {
-        let wanted: Vec<(WallKey, f64)> = self.screens.iter().filter_map(|s| Some((self.wall_key(s)?, s.output.scale))).collect();
+        let wanted: Vec<(WallKey, f64)> =
+            self.screens.iter().filter_map(|s| Some((self.wall_key(s)?, s.output.scale))).collect();
         self.wallpapers.retain(|k, _| wanted.iter().any(|(w, _)| w == k));
         for (key, scale) in wanted {
-            if self.wallpapers.contains_key(&key) || self.wall_pending.contains(&key) || self.wall_failed.contains(&key.path) {
+            if self.wallpapers.contains_key(&key)
+                || self.wall_pending.contains(&key)
+                || self.wall_failed.contains(&key.path)
+            {
                 continue;
             }
             self.wall_pending.insert(key.clone());
@@ -104,10 +115,12 @@ impl Shell {
     /// Scale the outputs' wallpapers now, on this thread (tests).
     pub fn load_wallpapers(&mut self) {
         self.refresh_wall_paths();
-        let wanted: Vec<(WallKey, f64)> = self.screens.iter().filter_map(|s| Some((self.wall_key(s)?, s.output.scale))).collect();
+        let wanted: Vec<(WallKey, f64)> =
+            self.screens.iter().filter_map(|s| Some((self.wall_key(s)?, s.output.scale))).collect();
         for (key, scale) in wanted {
             if !self.wallpapers.contains_key(&key) {
-                let image = crate::wallpaper::prepare(&key.path, key.width, key.height).and_then(|rgba| crate::wallpaper::image(&rgba, key.width, key.height, scale));
+                let image = crate::wallpaper::prepare(&key.path, key.width, key.height)
+                    .and_then(|rgba| crate::wallpaper::image(&rgba, key.width, key.height, scale));
                 self.wallpaper_ready(key, image);
             }
         }
@@ -151,13 +164,17 @@ impl Shell {
                         let mut v = vec![
                             Entry::action("Open", Action::Disk { device: block.clone(), verb: DiskVerb::Mount }),
                             Entry::separator(),
-                            Entry::action("Unmount", Action::Disk { device: block.clone(), verb: DiskVerb::Unmount }).enabled(mount.is_some()),
+                            Entry::action("Unmount", Action::Disk { device: block.clone(), verb: DiskVerb::Unmount })
+                                .enabled(mount.is_some()),
                         ];
                         if *ejectable && let Some(d) = drive {
                             v.push(Entry::action("Eject", Action::Disk { device: d.clone(), verb: DiskVerb::Eject }));
                         }
                         v.push(Entry::separator());
-                        v.push(Entry::action("Open in Tansu", Action::Disk { device: block.clone(), verb: DiskVerb::OpenInTansu }));
+                        v.push(Entry::action(
+                            "Open in Tansu",
+                            Action::Disk { device: block.clone(), verb: DiskVerb::OpenInTansu },
+                        ));
                         v
                     }
                     IconKind::Trash { full } => vec![
@@ -191,7 +208,9 @@ impl Shell {
                         let target = desktop::icon_at(&icons, &self.desktop.positions, height, p).filter(|t| *t != key);
                         let dragged = icons.iter().find(|i| i.key == key).cloned();
                         match (target.and_then(|t| icons.iter().find(|i| i.key == t).cloned()), dragged) {
-                            (Some(t), Some(DeskIcon { kind: IconKind::Item { path, .. }, .. })) if matches!(t.kind, IconKind::Trash { .. }) => {
+                            (Some(t), Some(DeskIcon { kind: IconKind::Item { path, .. }, .. }))
+                                if matches!(t.kind, IconKind::Trash { .. }) =>
+                            {
                                 self.run(Action::MoveToTrash { path }, cx);
                                 self.refresh_desktop_items(cx);
                             }
@@ -219,7 +238,12 @@ impl Shell {
                 DragPhase::End(_) => self.desktop.band = None,
             },
             DesktopMsg::Menu(at) => {
-                let origin = self.screens.iter().find(|s| s.output.id == output).map(|s| s.output.frame.origin()).unwrap_or_default();
+                let origin = self
+                    .screens
+                    .iter()
+                    .find(|s| s.output.id == output)
+                    .map(|s| s.output.frame.origin())
+                    .unwrap_or_default();
                 self.pointer_menu_soon(origin.x + at.x, origin.y + at.y, cx);
             }
             DesktopMsg::DropOn(key, urls) => {
@@ -248,7 +272,9 @@ impl Shell {
                 let _ = block;
                 self.run(Action::Open { path: PathBuf::from(m) }, cx);
             }
-            IconKind::Volume { block, mount: None, .. } => self.run(Action::Disk { device: block, verb: DiskVerb::Mount }, cx),
+            IconKind::Volume { block, mount: None, .. } => {
+                self.run(Action::Disk { device: block, verb: DiskVerb::Mount }, cx)
+            }
         }
     }
 

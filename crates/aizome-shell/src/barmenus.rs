@@ -24,7 +24,13 @@ pub struct BarMenu {
 impl Shell {
     /// `style` as a bar menu's: it says when it closes, and ← and → go to
     /// the titles beside it; from the keyboard, its first row is lit.
-    pub(crate) fn as_bar_menu(&mut self, style: MenuStyle<Msg>, bar: WindowKey, slot: Slot, keyboard: bool) -> MenuStyle<Msg> {
+    pub(crate) fn as_bar_menu(
+        &mut self,
+        style: MenuStyle<Msg>,
+        bar: WindowKey,
+        slot: Slot,
+        keyboard: bool,
+    ) -> MenuStyle<Msg> {
         self.menu_gen += 1;
         self.bar_menu = Some(BarMenu { bar, slot, showing: self.menu_gen });
         let style = style.on_closed(Msg::MenuClosed(self.menu_gen)).on_side(Msg::BarSide);
@@ -79,7 +85,9 @@ impl Shell {
             self.banner_done(id, cx);
         }
         let titles = self.titles(bar, cx);
-        let Some(&(slot, rect)) = titles.iter().find(|(s, _)| *s == Slot::Menu(0)).or(titles.first()) else { return false };
+        let Some(&(slot, rect)) = titles.iter().find(|(s, _)| *s == Slot::Menu(0)).or(titles.first()) else {
+            return false;
+        };
         self.open_slot(bar, slot, rect, true, cx);
         true
     }

@@ -22,7 +22,8 @@ fn players(conn: &Connection) -> Vec<String> {
 }
 
 fn get(conn: &Connection, name: &str, prop: &str) -> Option<OwnedValue> {
-    let p = zbus::blocking::fdo::PropertiesProxy::builder(conn).destination(name).ok()?.path(PATH).ok()?.build().ok()?;
+    let p =
+        zbus::blocking::fdo::PropertiesProxy::builder(conn).destination(name).ok()?.path(PATH).ok()?.build().ok()?;
     p.get(zbus::names::InterfaceName::try_from(PLAYER).ok()?, prop).ok()
 }
 
@@ -38,7 +39,8 @@ pub fn fetch() -> Option<Media> {
         if let Some(m) = meta
             && let Ok(dict) = std::collections::HashMap::<String, OwnedValue>::try_from(m)
         {
-            title = dict.get("xesam:title").and_then(|v| String::try_from(v.try_clone().ok()?).ok()).unwrap_or_default();
+            title =
+                dict.get("xesam:title").and_then(|v| String::try_from(v.try_clone().ok()?).ok()).unwrap_or_default();
             artist = dict
                 .get("xesam:artist")
                 .and_then(|v| Vec::<String>::try_from(v.try_clone().ok()?).ok())
@@ -61,7 +63,9 @@ pub fn control(verb: MediaVerb) {
         let names = players(&conn);
         let target = names
             .iter()
-            .find(|n| get(&conn, n, "PlaybackStatus").and_then(|v| String::try_from(v).ok()).as_deref() == Some("Playing"))
+            .find(|n| {
+                get(&conn, n, "PlaybackStatus").and_then(|v| String::try_from(v).ok()).as_deref() == Some("Playing")
+            })
             .or(names.first())
             .cloned();
         let Some(name) = target else { return };

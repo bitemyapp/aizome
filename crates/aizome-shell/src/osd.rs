@@ -75,7 +75,12 @@ pub fn view(o: &Osd) -> Element<Msg> {
         let t = cx.theme();
         let r = Rect::new(0.0, 0.0, SIDE, SIDE);
         crate::look::panel(cx.canvas, t, r);
-        o.glyph().draw(cx.canvas, Point::new((SIDE - 32.0) / 2.0, 36.0), 32.0, if o.muted { t.text3() } else { t.text() });
+        o.glyph().draw(
+            cx.canvas,
+            Point::new((SIDE - 32.0) / 2.0, 36.0),
+            32.0,
+            if o.muted { t.text3() } else { t.text() },
+        );
         let (seg, gap) = (6.0, 1.0);
         let total = SEGMENTS as f64 * seg + (SEGMENTS - 1) as f64 * gap;
         let x0 = ((SIDE - total) / 2.0).round();
@@ -131,7 +136,12 @@ impl Shell {
         const STEP: f32 = 1.0 / SEGMENTS as f32;
         let osd = match action {
             "volume-up" | "volume-down" | "mute" => {
-                let (mut v, mut m) = self.sys.audio.as_ref().and_then(|a| a.snapshot().default_output().map(|d| (d.volume, d.muted))).unwrap_or((0.5, false));
+                let (mut v, mut m) = self
+                    .sys
+                    .audio
+                    .as_ref()
+                    .and_then(|a| a.snapshot().default_output().map(|d| (d.volume, d.muted)))
+                    .unwrap_or((0.5, false));
                 if let Some(a) = &self.sys.audio {
                     match action {
                         "volume-up" => {
@@ -152,7 +162,12 @@ impl Shell {
                 Osd { kind: OsdKind::Volume, value: v, muted: m }
             }
             "mic-mute" => {
-                let m = self.sys.audio.as_ref().and_then(|a| a.snapshot().default_input().map(|d| d.muted)).unwrap_or(false);
+                let m = self
+                    .sys
+                    .audio
+                    .as_ref()
+                    .and_then(|a| a.snapshot().default_input().map(|d| d.muted))
+                    .unwrap_or(false);
                 if let Some(a) = &self.sys.audio {
                     let _ = a.toggle_microphone_mute();
                 }
@@ -160,7 +175,12 @@ impl Shell {
             }
             "brightness-up" | "brightness-down" => {
                 let up = action == "brightness-up";
-                let mut v = self.sys.backlight.as_ref().and_then(|b| b.snapshot().primary().map(|d| d.fraction())).unwrap_or(0.5);
+                let mut v = self
+                    .sys
+                    .backlight
+                    .as_ref()
+                    .and_then(|b| b.snapshot().primary().map(|d| d.fraction()))
+                    .unwrap_or(0.5);
                 if let Some(b) = &self.sys.backlight {
                     let _ = b.step(if up { 0.05 } else { -0.05 });
                     v = (v + if up { 0.05 } else { -0.05 }).clamp(0.0, 1.0);
@@ -175,7 +195,11 @@ impl Shell {
                     .sys
                     .upower
                     .as_ref()
-                    .and_then(|u| u.snapshot().keyboard_backlights.first().map(|k| if k.max_brightness > 0 { k.brightness as f32 / k.max_brightness as f32 } else { 0.0 }))
+                    .and_then(|u| {
+                        u.snapshot().keyboard_backlights.first().map(|k| {
+                            if k.max_brightness > 0 { k.brightness as f32 / k.max_brightness as f32 } else { 0.0 }
+                        })
+                    })
                     .unwrap_or(0.5);
                 Osd { kind: OsdKind::Keyboard, value: level, muted: false }
             }

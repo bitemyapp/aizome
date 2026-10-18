@@ -92,7 +92,11 @@ pub fn tokei_state() -> PathBuf {
 
 /// Tokei's world clocks (none if it has never saved any).
 pub fn places(path: &Path) -> Vec<Place> {
-    std::fs::read(path).ok().and_then(|b| serde_json::from_slice::<TokeiState>(&b).ok()).map(|s| s.places).unwrap_or_default()
+    std::fs::read(path)
+        .ok()
+        .and_then(|b| serde_json::from_slice::<TokeiState>(&b).ok())
+        .map(|s| s.places)
+        .unwrap_or_default()
 }
 
 /// An event's row in the panel.
@@ -122,7 +126,9 @@ fn hm(h: i8, m: i8, format: ClockFormat) -> String {
     let (h, m) = (h as u32, m as u32);
     match format {
         ClockFormat::H24 => format!("{h:02}:{m:02}"),
-        ClockFormat::H12 => format!("{}:{m:02} {}", if h % 12 == 0 { 12 } else { h % 12 }, if h < 12 { "AM" } else { "PM" }),
+        ClockFormat::H12 => {
+            format!("{}:{m:02} {}", if h % 12 == 0 { 12 } else { h % 12 }, if h < 12 { "AM" } else { "PM" })
+        }
     }
 }
 
@@ -138,7 +144,11 @@ pub fn event_rows(events: &[Event], today: &str, format: ClockFormat, limit: usi
             } else {
                 e.date.parse::<jiff::civil::Date>().map(|d| format!("{} ", d.strftime("%a"))).unwrap_or_default()
             };
-            let time = e.start.get(11..16).and_then(|t| t.parse::<jiff::civil::Time>().ok()).map(|t| hm(t.hour(), t.minute(), format));
+            let time = e
+                .start
+                .get(11..16)
+                .and_then(|t| t.parse::<jiff::civil::Time>().ok())
+                .map(|t| hm(t.hour(), t.minute(), format));
             let when = if e.in_progress {
                 "Now".to_owned()
             } else if e.all_day {
@@ -170,7 +180,11 @@ pub fn zone_rows(places: &[Place], now: Timestamp, here: &TimeZone, format: Cloc
                 "same time".to_owned()
             } else {
                 let (sign, a) = if diff < 0 { ('−', -diff) } else { ('+', diff) };
-                if a % 3600 == 0 { format!("{sign}{}h", a / 3600) } else { format!("{sign}{}:{:02}", a / 3600, a % 3600 / 60) }
+                if a % 3600 == 0 {
+                    format!("{sign}{}h", a / 3600)
+                } else {
+                    format!("{sign}{}:{:02}", a / 3600, a % 3600 / 60)
+                }
             };
             match there.date().cmp(&local.date()) {
                 std::cmp::Ordering::Greater => note.push_str(", tomorrow"),
@@ -235,7 +249,11 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("aizome-agenda-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("state.json");
-        std::fs::write(&path, r#"{"page":"world","places":[{"name":"London","zone":"Europe/London"}],"timer_secs":300}"#).unwrap();
+        std::fs::write(
+            &path,
+            r#"{"page":"world","places":[{"name":"London","zone":"Europe/London"}],"timer_secs":300}"#,
+        )
+        .unwrap();
         assert_eq!(places(&path), [Place { name: "London".into(), zone: "Europe/London".into() }]);
         assert!(places(&dir.join("missing.json")).is_empty());
         let _ = std::fs::remove_dir_all(&dir);

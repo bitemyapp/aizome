@@ -29,7 +29,11 @@ impl Urgency {
 pub enum NoteImage {
     File(PathBuf),
     /// Straight RGBA pixels (from `image-data`).
-    Pixels { width: u32, height: u32, rgba: Vec<u8> },
+    Pixels {
+        width: u32,
+        height: u32,
+        rgba: Vec<u8>,
+    },
 }
 
 /// A sound a notification asks for.
@@ -137,7 +141,11 @@ impl Store {
     /// `quiet` is Do Not Disturb (or the app is muted): filed without the
     /// bar's line. Critical ones show anyway.
     pub fn post(&mut self, n: Incoming, filed_under: String, quiet: bool, now: u64) -> Posted {
-        let id = if n.replaces_id != 0 && self.list.iter().any(|x| x.id == n.replaces_id) { n.replaces_id } else { self.fresh_id() };
+        let id = if n.replaces_id != 0 && self.list.iter().any(|x| x.id == n.replaces_id) {
+            n.replaces_id
+        } else {
+            self.fresh_id()
+        };
         self.post_as(id, n, filed_under, quiet, now)
     }
 
@@ -272,7 +280,12 @@ pub fn strip_markup(body: &str) -> String {
         }
     }
     out.push_str(rest);
-    out.replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", "\"").replace("&apos;", "'").replace("&#39;", "'").replace("&amp;", "&")
+    out.replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&apos;", "'")
+        .replace("&#39;", "'")
+        .replace("&amp;", "&")
 }
 
 #[cfg(test)]
@@ -280,7 +293,12 @@ mod tests {
     use super::*;
 
     fn note(app: &str, summary: &str) -> Incoming {
-        Incoming { app_name: app.into(), summary: summary.into(), body: "line one\nline two".into(), ..Default::default() }
+        Incoming {
+            app_name: app.into(),
+            summary: summary.into(),
+            body: "line one\nline two".into(),
+            ..Default::default()
+        }
     }
 
     #[test]
@@ -316,7 +334,8 @@ mod tests {
     #[test]
     fn critical_ones_stay_as_cards_even_in_dnd() {
         let mut s = Store::default();
-        let p = s.post(Incoming { urgency: Urgency::Critical, ..note("Power", "Battery low") }, "power".into(), true, 0);
+        let p =
+            s.post(Incoming { urgency: Urgency::Critical, ..note("Power", "Battery low") }, "power".into(), true, 0);
         assert!(p.banner && p.card);
         assert_eq!(s.cards().len(), 1);
         assert!(!s.banner_done(p.id));
@@ -341,7 +360,10 @@ mod tests {
     fn actions_split_default_from_buttons() {
         let mut s = Store::default();
         let p = s.post(
-            Incoming { actions: vec![("default".into(), "Open".into()), ("reply".into(), "Reply".into())], ..note("Mail", "x") },
+            Incoming {
+                actions: vec![("default".into(), "Open".into()), ("reply".into(), "Reply".into())],
+                ..note("Mail", "x")
+            },
             "m".into(),
             false,
             0,

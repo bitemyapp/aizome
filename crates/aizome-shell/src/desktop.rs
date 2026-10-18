@@ -120,19 +120,53 @@ pub fn layout(icons: &[DeskIcon], positions: &HashMap<String, Point>, height: f6
 
 /// The icons: Home, the volumes, the Trash, then the desktop folder's
 /// items.
-pub fn icons(user: &str, volumes: &[aizome_sys::disks::Volume], trash_full: bool, items: &[(PathBuf, bool)]) -> Vec<DeskIcon> {
-    let mut v = vec![DeskIcon { key: "home".into(), label: user.into(), glyph: Icon::House, hue: Hue::Blue, kind: IconKind::Home(aizome_config::home_dir()) }];
+pub fn icons(
+    user: &str,
+    volumes: &[aizome_sys::disks::Volume],
+    trash_full: bool,
+    items: &[(PathBuf, bool)],
+) -> Vec<DeskIcon> {
+    let mut v = vec![DeskIcon {
+        key: "home".into(),
+        label: user.into(),
+        glyph: Icon::House,
+        hue: Hue::Blue,
+        kind: IconKind::Home(aizome_config::home_dir()),
+    }];
     for vol in volumes {
         let image = vol.image_file.is_some();
         v.push(DeskIcon {
             key: format!("vol:{}", vol.block),
-            label: vol.image_file.as_deref().and_then(|f| Path::new(f).file_name()).map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| vol.name.clone()),
-            glyph: if image { Icon::Disc } else if vol.ejectable { Icon::Usb } else { Icon::HardDrive },
+            label: vol
+                .image_file
+                .as_deref()
+                .and_then(|f| Path::new(f).file_name())
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_else(|| vol.name.clone()),
+            glyph: if image {
+                Icon::Disc
+            } else if vol.ejectable {
+                Icon::Usb
+            } else {
+                Icon::HardDrive
+            },
             hue: if image { Hue::Violet } else { Hue::Text2 },
-            kind: IconKind::Volume { block: vol.block.clone(), mount: vol.mount_point.clone(), ejectable: vol.ejectable, drive: vol.drive.clone(), image },
+            kind: IconKind::Volume {
+                block: vol.block.clone(),
+                mount: vol.mount_point.clone(),
+                ejectable: vol.ejectable,
+                drive: vol.drive.clone(),
+                image,
+            },
         });
     }
-    v.push(DeskIcon { key: "trash".into(), label: "Trash".into(), glyph: Icon::Trash, hue: Hue::Text2, kind: IconKind::Trash { full: trash_full } });
+    v.push(DeskIcon {
+        key: "trash".into(),
+        label: "Trash".into(),
+        glyph: Icon::Trash,
+        hue: Hue::Text2,
+        kind: IconKind::Trash { full: trash_full },
+    });
     for (path, dir) in items {
         let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
         v.push(DeskIcon {
@@ -149,8 +183,11 @@ pub fn icons(user: &str, volumes: &[aizome_sys::disks::Volume], trash_full: bool
 /// What's in a folder (not hidden files), folders first, by name.
 pub fn read_items(dir: &Path) -> Vec<(PathBuf, bool)> {
     let Ok(rd) = std::fs::read_dir(dir) else { return Vec::new() };
-    let mut v: Vec<(PathBuf, bool)> =
-        rd.flatten().filter(|e| !e.file_name().to_string_lossy().starts_with('.')).map(|e| (e.path(), e.path().is_dir())).collect();
+    let mut v: Vec<(PathBuf, bool)> = rd
+        .flatten()
+        .filter(|e| !e.file_name().to_string_lossy().starts_with('.'))
+        .map(|e| (e.path(), e.path().is_dir()))
+        .collect();
     v.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.file_name().cmp(&b.0.file_name())));
     v
 }
@@ -173,9 +210,18 @@ fn icon_el(icon: &DeskIcon, selected: bool) -> Element<DesktopMsg> {
         if full {
             cx.canvas.fill_rect(Rect::new(g.x1 - 10.0, g.y0 + 4.0, g.x1 - 4.0, g.y0 + 10.0), Hue::Amber.color(t));
         }
-        let s = look::ui(12.0 * t.metrics.factor, typeface::WEIGHT_SEMIBOLD, if selected { t.on_selection() } else { t.text() });
+        let s = look::ui(
+            12.0 * t.metrics.factor,
+            typeface::WEIGHT_SEMIBOLD,
+            if selected { t.on_selection() } else { t.text() },
+        );
         let w = cx.layout_text(&label, &s, None).size().width.min(b.width() + 2.0 * 40.0 - 12.0).ceil();
-        let chip = Rect::new(((b.width() - w) / 2.0 - 6.0).floor(), GLYPH + 5.0, ((b.width() + w) / 2.0 + 6.0).ceil(), GLYPH + 5.0 + 18.0);
+        let chip = Rect::new(
+            ((b.width() - w) / 2.0 - 6.0).floor(),
+            GLYPH + 5.0,
+            ((b.width() + w) / 2.0 + 6.0).ceil(),
+            GLYPH + 5.0 + 18.0,
+        );
         let fill = if selected { t.selection() } else { aizome_kit::theme::color(t.palette.desktop_label) };
         cx.canvas.fill_rect(chip, fill);
         cx.draw_text_in(&label, &s, Rect::new(chip.x0 + 6.0, chip.y0, chip.x1 - 6.0, chip.y1), Align::Center);
@@ -205,7 +251,8 @@ fn ground(image: Option<(Image, u64)>, size: Size) -> Element<DesktopMsg> {
                 let s = Size::new(img.pixel_size().0 as f64, img.pixel_size().1 as f64);
                 let k = (b.width() / s.width).max(b.height() / s.height);
                 let (cw, ch) = (b.width() / k, b.height() / k);
-                let src = Rect::new((s.width - cw) / 2.0, (s.height - ch) / 2.0, (s.width + cw) / 2.0, (s.height + ch) / 2.0);
+                let src =
+                    Rect::new((s.width - cw) / 2.0, (s.height - ch) / 2.0, (s.width + cw) / 2.0, (s.height + ch) / 2.0);
                 cx.canvas.draw_image_with(img, Some(src), b, crate::wallpaper::options(img, b, cx.canvas.scale()));
             }
             _ => cx.canvas.fill_rect(b, aizome_kit::theme::color(t.palette.desktop)),
@@ -220,7 +267,12 @@ fn ground(image: Option<(Image, u64)>, size: Size) -> Element<DesktopMsg> {
 }
 
 /// One output's desktop.
-pub fn view(icons: &[DeskIcon], state: &DesktopState, wallpaper: Option<(Image, u64)>, size: Size) -> Element<DesktopMsg> {
+pub fn view(
+    icons: &[DeskIcon],
+    state: &DesktopState,
+    wallpaper: Option<(Image, u64)>,
+    size: Size,
+) -> Element<DesktopMsg> {
     let points = layout(icons, &state.positions, size.height);
     let mut placed: Vec<(Point, Element<DesktopMsg>)> = icons
         .iter()
@@ -262,16 +314,23 @@ pub fn in_band(icons: &[DeskIcon], positions: &HashMap<String, Point>, height: f
 
 /// The icon under a point.
 pub fn icon_at(icons: &[DeskIcon], positions: &HashMap<String, Point>, height: f64, at: Point) -> Option<String> {
-    icons.iter().zip(layout(icons, positions, height)).find(|(_, p)| Rect::from_origin_size(*p, (ICON_W, ICON_H)).contains(at)).map(|(i, _)| i.key.clone())
+    icons
+        .iter()
+        .zip(layout(icons, positions, height))
+        .find(|(_, p)| Rect::from_origin_size(*p, (ICON_W, ICON_H)).contains(at))
+        .map(|(i, _)| i.key.clone())
 }
 
 /// The wallpaper for a theme: the settings', else `AIZOME_WALLPAPER_NIGHT`
 /// or `_DAY`.
 pub fn wallpaper_path(settings: &aizome_config::Settings, day: bool) -> Option<PathBuf> {
-    let configured = if day { settings.appearance.wallpaper_day.clone() } else { settings.appearance.wallpaper_night.clone() };
+    let configured =
+        if day { settings.appearance.wallpaper_day.clone() } else { settings.appearance.wallpaper_night.clone() };
     configured
         .map(|p| aizome_config::expand_home(&p))
-        .or_else(|| std::env::var_os(if day { "AIZOME_WALLPAPER_DAY" } else { "AIZOME_WALLPAPER_NIGHT" }).map(PathBuf::from))
+        .or_else(|| {
+            std::env::var_os(if day { "AIZOME_WALLPAPER_DAY" } else { "AIZOME_WALLPAPER_NIGHT" }).map(PathBuf::from)
+        })
         .filter(|p| p.is_file())
 }
 
@@ -280,7 +339,13 @@ mod tests {
     use super::*;
 
     fn icon(key: &str) -> DeskIcon {
-        DeskIcon { key: key.into(), label: key.into(), glyph: Icon::File, hue: Hue::Text, kind: IconKind::Trash { full: false } }
+        DeskIcon {
+            key: key.into(),
+            label: key.into(),
+            glyph: Icon::File,
+            hue: Hue::Text,
+            kind: IconKind::Trash { full: false },
+        }
     }
 
     #[test]
@@ -302,7 +367,12 @@ mod tests {
     #[test]
     fn the_board_icons() {
         let v = aizome_sys::disks::Volume { block: "/b/nvme0".into(), name: "nvme0".into(), ..Default::default() };
-        let img = aizome_sys::disks::Volume { block: "/b/loop0".into(), name: "x".into(), image_file: Some("/home/u/sekka-nightly.iso".into()), ..Default::default() };
+        let img = aizome_sys::disks::Volume {
+            block: "/b/loop0".into(),
+            name: "x".into(),
+            image_file: Some("/home/u/sekka-nightly.iso".into()),
+            ..Default::default()
+        };
         let icons = icons("callen", &[v, img], false, &[]);
         let labels: Vec<&str> = icons.iter().map(|i| i.label.as_str()).collect();
         assert_eq!(labels, ["callen", "nvme0", "sekka-nightly.iso", "Trash"]);

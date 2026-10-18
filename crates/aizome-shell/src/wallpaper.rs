@@ -52,7 +52,8 @@ fn taps(out: u32, from: f64, len: f64, size: u32) -> Vec<Taps> {
             if step >= 1.0 {
                 let first = a.floor().max(0.0) as usize;
                 let end = (b.ceil() as usize).min(size as usize);
-                let mut weights: Vec<f32> = (first..end).map(|p| ((b.min(p as f64 + 1.0) - a.max(p as f64)).max(0.0)) as f32).collect();
+                let mut weights: Vec<f32> =
+                    (first..end).map(|p| ((b.min(p as f64 + 1.0) - a.max(p as f64)).max(0.0)) as f32).collect();
                 let sum: f32 = weights.iter().sum();
                 if sum > 0.0 {
                     weights.iter_mut().for_each(|w| *w /= sum);
@@ -64,7 +65,11 @@ fn taps(out: u32, from: f64, len: f64, size: u32) -> Vec<Taps> {
                 let t = (c - i0) as f32;
                 let i0 = (i0 as isize).clamp(0, last);
                 let i1 = (i0 + 1).min(last);
-                if i1 == i0 { Taps { first: i0 as usize, weights: vec![1.0] } } else { Taps { first: i0 as usize, weights: vec![1.0 - t, t] } }
+                if i1 == i0 {
+                    Taps { first: i0 as usize, weights: vec![1.0] }
+                } else {
+                    Taps { first: i0 as usize, weights: vec![1.0 - t, t] }
+                }
             }
         })
         .collect()

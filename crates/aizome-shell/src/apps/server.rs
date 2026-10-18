@@ -36,7 +36,10 @@ impl Server {
         if path.exists() {
             // A live shell answers; a dead one's socket is only a file.
             if UnixStream::connect(path).is_ok() {
-                return Err(std::io::Error::new(std::io::ErrorKind::AddrInUse, format!("a shell already listens at {}", path.display())));
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::AddrInUse,
+                    format!("a shell already listens at {}", path.display()),
+                ));
             }
             let _ = std::fs::remove_file(path);
         }

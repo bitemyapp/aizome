@@ -65,7 +65,11 @@ fn a_wrong_password_says_so_and_the_right_one_unlocks() {
 fn notifications_dont_show_while_locked() {
     let (mut h, _lock) = locked(false);
     use aizome_shell::notifications::server::NoteEvent;
-    let n = aizome_shell::notifications::store::Incoming { app_name: "Mail".into(), summary: "Secret".into(), ..Default::default() };
+    let n = aizome_shell::notifications::store::Incoming {
+        app_name: "Mail".into(),
+        summary: "Secret".into(),
+        ..Default::default()
+    };
     h.send(Msg::Note(NoteEvent::Notify(99, Box::new(n))));
     assert!(h.program().banner.is_none());
     assert_eq!(h.program().notes.unread_count(), 1, "filed for later");

@@ -17,7 +17,11 @@ fn board_desktop(day: bool) -> aizome_kit::testing::Harness<aizome_shell::shell:
         let s = h.program_mut();
         s.user = ("callen".into(), "Chris Allen".into());
         s.volumes_fixture = vec![
-            aizome_sys::disks::Volume { block: "/org/freedesktop/UDisks2/block_devices/nvme0n1p3".into(), name: "nvme0".into(), ..Default::default() },
+            aizome_sys::disks::Volume {
+                block: "/org/freedesktop/UDisks2/block_devices/nvme0n1p3".into(),
+                name: "nvme0".into(),
+                ..Default::default()
+            },
             aizome_sys::disks::Volume {
                 block: "/org/freedesktop/UDisks2/block_devices/loop0".into(),
                 name: "loop0".into(),
@@ -124,8 +128,12 @@ fn full_effects_frost_what_floats_over_the_wallpaper() {
         let pal = window_titled(&h, "Palette");
         let ps = h.size(pal);
         let pal_at = Point::new(((W - ps.width) / 2.0).round(), 160.0);
-        let (w, hh, mut px) =
-            compose(&mut h, &[(desk, Point::ZERO), (bar, Point::ZERO), (db, Point::new(W - size.width, 24.0)), (pal, pal_at)], Size::new(W, H), 2.0);
+        let (w, hh, mut px) = compose(
+            &mut h,
+            &[(desk, Point::ZERO), (bar, Point::ZERO), (db, Point::new(W - size.width, 24.0)), (pal, pal_at)],
+            Size::new(W, H),
+            2.0,
+        );
         // The Toolchest, open over the desktop's left.
         h.send(Msg::Palette(aizome_shell::palette::PaletteEvent::Ui(aizome_shell::palette::view::PaletteMsg::Close)));
         h.send(Msg::Bar(bar, BarMsg::Press(Slot::Toolchest, Rect::new(0.0, 0.0, 92.0, 24.0))));

@@ -76,7 +76,9 @@ fn critical_notifications_stay_as_cards() {
 #[test]
 fn screenshots_say_where_they_went() {
     let mut h = scene(false);
-    h.send(Msg::Ipc(aizome_shell::ipc::IpcEvent::Event(aizome_ipc::Event::ScreenshotTaken { path: "/home/u/Pictures/Screenshots/a.png".into() })));
+    h.send(Msg::Ipc(aizome_shell::ipc::IpcEvent::Event(aizome_ipc::Event::ScreenshotTaken {
+        path: "/home/u/Pictures/Screenshots/a.png".into(),
+    })));
     let id = h.program().banner.expect("shown in the bar");
     let n = h.program().notes.get(id).unwrap().clone();
     assert_eq!(n.summary, "Screenshot saved");

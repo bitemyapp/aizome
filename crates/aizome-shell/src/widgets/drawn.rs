@@ -41,7 +41,12 @@ pub struct Drawn<Msg> {
     _m: std::marker::PhantomData<fn() -> Msg>,
 }
 
-pub fn drawn<Msg>(width: f64, height: f64, hash: impl std::hash::Hash, paint: impl Fn(&mut PaintCx) + 'static) -> Drawn<Msg> {
+pub fn drawn<Msg>(
+    width: f64,
+    height: f64,
+    hash: impl std::hash::Hash,
+    paint: impl Fn(&mut PaintCx) + 'static,
+) -> Drawn<Msg> {
     let mut h = std::collections::hash_map::DefaultHasher::new();
     hash.hash(&mut h);
     Drawn {
@@ -234,7 +239,10 @@ impl Widget for DrawnWidget {
         if cx.child_count() > 0 {
             // Around a child: its size and the padding, or the width given.
             let p = self.pad;
-            let mut inner = Constraints::loose(Size::new((bc.max.width - p.horizontal()).max(0.0), (bc.max.height - p.vertical()).max(0.0)));
+            let mut inner = Constraints::loose(Size::new(
+                (bc.max.width - p.horizontal()).max(0.0),
+                (bc.max.height - p.vertical()).max(0.0),
+            ));
             if self.size.width > 0.0 {
                 inner = inner.with_width((self.size.width - p.horizontal()).max(0.0));
             }
@@ -374,7 +382,13 @@ impl Widget for DrawnWidget {
                 }
                 None => Status::Ignored,
             },
-            Event::DragOver { .. } => if self.drop.is_some() { Status::Handled } else { Status::Ignored },
+            Event::DragOver { .. } => {
+                if self.drop.is_some() {
+                    Status::Handled
+                } else {
+                    Status::Ignored
+                }
+            }
             Event::Drop { urls, text, .. } => match &self.drop {
                 Some(m) => {
                     cx.emit_map(m, (urls.clone(), text.clone()));

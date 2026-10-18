@@ -58,7 +58,8 @@ fn card(c: &CardView) -> Element<CardMsg> {
         buttons.push(button(label.clone()).compact().on_press(CardMsg::Action(c.id, key.clone())).into());
     }
     buttons.push(button("Dismiss").compact().on_press(CardMsg::Dismiss(c.id)).into());
-    let body = aizome_kit::column(vec![text.into(), aizome_kit::row(buttons).spacing(6.0).into()]).padding([10.0, 12.0, 8.0, 12.0]);
+    let body = aizome_kit::column(vec![text.into(), aizome_kit::row(buttons).spacing(6.0).into()])
+        .padding([10.0, 12.0, 8.0, 12.0]);
     around(body, 0.0, Size::new(WIDTH, CARD), ("card", c.id), |cx| {
         let t = cx.theme();
         let b = cx.bounds();
@@ -112,7 +113,8 @@ impl Shell {
             (0, None) => {}
             (n, None) => {
                 let Some(output) = self.primary().map(|s| s.output.id) else { return };
-                let right = if self.deskbar.is_some() { crate::deskbar::WIDTH + crate::deskbar::SHADOW + 12.0 } else { 12.0 };
+                let right =
+                    if self.deskbar.is_some() { crate::deskbar::WIDTH + crate::deskbar::SHADOW + 12.0 } else { 12.0 };
                 let opts = LayerOptions::new(Layer::Top, "aizome-notifications")
                     .anchors(Anchors::TOP | Anchors::RIGHT)
                     .exclusive_zone(-1)

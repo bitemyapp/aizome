@@ -6,7 +6,9 @@ use std::collections::HashMap;
 use aizome_kit::prelude::*;
 use aizome_kit::{MenuPlacement, WindowKind};
 
-use super::panels::{self, BatteryPanel, BtDevice, BtPanel, ClockPanel, DisplayPanel, NetPanel, NetRow, Panel, PanelMsg, SoundPanel};
+use super::panels::{
+    self, BatteryPanel, BtDevice, BtPanel, ClockPanel, DisplayPanel, NetPanel, NetRow, Panel, PanelMsg, SoundPanel,
+};
 use crate::menubar::TrayWidget;
 use crate::shell::{Msg, Shell, Surface};
 
@@ -40,7 +42,11 @@ impl Shell {
         }
         match w {
             TrayWidget::Network => {
-                let mut p = NetPanel { asking: self.panel_ui.asking.clone(), error: self.panel_ui.error.clone(), ..NetPanel::default() };
+                let mut p = NetPanel {
+                    asking: self.panel_ui.asking.clone(),
+                    error: self.panel_ui.error.clone(),
+                    ..NetPanel::default()
+                };
                 if let Some(n) = &self.sys.network {
                     let s = n.snapshot();
                     if s.wifi_device().is_some() {
@@ -75,7 +81,11 @@ impl Shell {
                     let s = a.snapshot();
                     p.output = s.default_output().map(|d| (d.volume, d.muted));
                     p.input = s.default_input().map(|d| (d.volume, d.muted));
-                    p.outputs = s.sinks.iter().map(|d| (d.name.clone(), d.description.clone(), Some(&d.name) == s.default_sink.as_ref())).collect();
+                    p.outputs = s
+                        .sinks
+                        .iter()
+                        .map(|d| (d.name.clone(), d.description.clone(), Some(&d.name) == s.default_sink.as_ref()))
+                        .collect();
                 }
                 p.media = self.media.clone();
                 Panel::Sound(p)
@@ -87,7 +97,12 @@ impl Shell {
                     p.powered = s.powered();
                     p.devices = s
                         .paired()
-                        .map(|d| BtDevice { path: d.path.clone(), name: d.name.clone(), connected: d.connected, battery: d.battery })
+                        .map(|d| BtDevice {
+                            path: d.path.clone(),
+                            name: d.name.clone(),
+                            connected: d.connected,
+                            battery: d.battery,
+                        })
                         .collect();
                 }
                 Panel::Bluetooth(p)
@@ -151,8 +166,14 @@ impl Shell {
             TrayWidget::Clock => {
                 let format = self.bar_cfg.clock;
                 let today = format!("{:04}-{:02}-{:02}", self.now.year, self.now.month, self.now.day);
-                let events = self.agenda.events.as_ref().map(|e| crate::agenda::event_rows(e, &today, format, panels::EVENTS));
-                let zones = crate::agenda::zone_rows(&self.agenda.places, jiff::Timestamp::now(), &jiff::tz::TimeZone::system(), format);
+                let events =
+                    self.agenda.events.as_ref().map(|e| crate::agenda::event_rows(e, &today, format, panels::EVENTS));
+                let zones = crate::agenda::zone_rows(
+                    &self.agenda.places,
+                    jiff::Timestamp::now(),
+                    &jiff::tz::TimeZone::system(),
+                    format,
+                );
                 Panel::Clock(ClockPanel { now: self.now, dnd: self.notes_cfg.do_not_disturb, events, zones })
             }
         }
@@ -220,7 +241,10 @@ impl Shell {
             }
             PanelMsg::OpenDay(date) => {
                 self.close_panel(cx);
-                self.run(crate::actions::Action::Spawn { argv: vec!["aizome-koyomi".into(), "--show".into(), date] }, cx);
+                self.run(
+                    crate::actions::Action::Spawn { argv: vec!["aizome-koyomi".into(), "--show".into(), date] },
+                    cx,
+                );
             }
             PanelMsg::OpenClocks => {
                 self.close_panel(cx);
@@ -324,12 +348,18 @@ impl Shell {
                 }
             }
             PanelMsg::Theme(i) => {
-                let choice = [aizome_config::ThemeChoice::Night, aizome_config::ThemeChoice::Day, aizome_config::ThemeChoice::Auto][i.min(2)];
+                let choice = [
+                    aizome_config::ThemeChoice::Night,
+                    aizome_config::ThemeChoice::Day,
+                    aizome_config::ThemeChoice::Auto,
+                ][i.min(2)];
                 self.settings.appearance.theme = choice;
                 self.save_appearance();
             }
             PanelMsg::Size(i) => {
-                self.settings.appearance.size = [aizome_config::UiSize::Small, aizome_config::UiSize::Medium, aizome_config::UiSize::Large][i.min(2)];
+                self.settings.appearance.size =
+                    [aizome_config::UiSize::Small, aizome_config::UiSize::Medium, aizome_config::UiSize::Large]
+                        [i.min(2)];
                 self.save_appearance();
             }
             PanelMsg::DoNotDisturb(on) => {
@@ -366,7 +396,8 @@ impl Shell {
             }
             self.ipc.send(aizome_ipc::Request::ReloadConfig);
         }
-        let day = self.settings.appearance.theme.resolve(aizome_kit::theme::local_hour()) == aizome_theme::ThemeName::Day;
+        let day =
+            self.settings.appearance.theme.resolve(aizome_kit::theme::local_hour()) == aizome_theme::ThemeName::Day;
         self.theme_changed(day);
     }
 }

@@ -6,19 +6,25 @@ use std::rc::Rc;
 
 use aizome_kit::element::{AnyMsg, Element, MsgFn};
 use aizome_kit::sidestep_ui::KeyEvent;
-use aizome_kit::widget::{Event, EventCx, Focusable, FocusRing, Status, Widget};
+use aizome_kit::widget::{Event, EventCx, FocusRing, Focusable, Status, Widget};
 
 type KeyMap = Rc<dyn Fn(&KeyEvent) -> Option<AnyMsg>>;
 
 /// `child`, with keys it leaves turned into messages by `f`.
-pub fn keys<Msg: Send + 'static>(child: impl Into<Element<Msg>>, f: impl Fn(&KeyEvent) -> Option<Msg> + 'static) -> Element<Msg> {
+pub fn keys<Msg: Send + 'static>(
+    child: impl Into<Element<Msg>>,
+    f: impl Fn(&KeyEvent) -> Option<Msg> + 'static,
+) -> Element<Msg> {
     let map: KeyMap = Rc::new(move |k| f(k).map(|m| Box::new(m) as AnyMsg));
     Element::new(Keys { map, focusable: false }, vec![child.into()])
 }
 
 /// The same, and it takes the focus itself (a panel with nothing to type
 /// in, so Escape still reaches it).
-pub fn focus_keys<Msg: Send + 'static>(child: impl Into<Element<Msg>>, f: impl Fn(&KeyEvent) -> Option<Msg> + 'static) -> Element<Msg> {
+pub fn focus_keys<Msg: Send + 'static>(
+    child: impl Into<Element<Msg>>,
+    f: impl Fn(&KeyEvent) -> Option<Msg> + 'static,
+) -> Element<Msg> {
     let map: KeyMap = Rc::new(move |k| f(k).map(|m| Box::new(m) as AnyMsg));
     Element::new(Keys { map, focusable: true }, vec![child.into()])
 }

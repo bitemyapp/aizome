@@ -14,61 +14,106 @@ pub enum Action {
     #[default]
     None,
     /// Ask the app with `pid` to carry out its menu item `id`.
-    AppItem { pid: u32, id: u32 },
+    AppItem {
+        pid: u32,
+        id: u32,
+    },
     /// Ask the compositor.
     Wm(Request),
     /// Close every window of an app (Quit for apps without menus).
-    QuitApp { app_id: String },
+    QuitApp {
+        app_id: String,
+    },
     /// Focus an app's last window, showing it if hidden (or launch it).
-    FocusApp { app_id: String },
+    FocusApp {
+        app_id: String,
+    },
     /// Launch an app by its desktop entry's id (`org.aizome.Hako`), or its
     /// app id.
-    Launch { app_id: String },
+    Launch {
+        app_id: String,
+    },
     /// Ask a running app for a new window (launch it again).
-    NewWindow { app_id: String },
+    NewWindow {
+        app_id: String,
+    },
     /// Run a command line (foot, a helper).
-    Spawn { argv: Vec<String> },
+    Spawn {
+        argv: Vec<String>,
+    },
     /// Open a file or folder: folders in Hako, files with their default app.
-    Open { path: PathBuf },
+    Open {
+        path: PathBuf,
+    },
     /// Show a file in Hako.
-    Reveal { path: PathBuf },
+    Reveal {
+        path: PathBuf,
+    },
     /// Open a link.
-    OpenUrl { url: String },
+    OpenUrl {
+        url: String,
+    },
     /// Open Shitsurae at a pane (and a place in it).
-    Settings { pane: String, anchor: Option<String> },
+    Settings {
+        pane: String,
+        anchor: Option<String>,
+    },
     /// The palette, in a scope (or All), with text typed.
-    Palette { scope: Option<Scope>, query: String },
+    Palette {
+        scope: Option<Scope>,
+        query: String,
+    },
     /// The Toolchest at the Toolchest button.
     Toolchest,
     /// Copy text to the clipboard.
-    Copy { text: String },
+    Copy {
+        text: String,
+    },
     Session(SessionVerb),
     /// Night and Day.
-    SetTheme { day: bool },
+    SetTheme {
+        day: bool,
+    },
     ToggleDoNotDisturb,
     Screenshot,
     NewDesk,
     /// Ask for a new Desk name in place (double-click in the strip).
-    RenameDesk { index: u32 },
+    RenameDesk {
+        index: u32,
+    },
     EmptyTrash,
-    MoveToTrash { path: PathBuf },
+    MoveToTrash {
+        path: PathBuf,
+    },
     ShowDesktop,
     /// About an app (or Aizome when `None`).
-    About { app_id: Option<String> },
+    About {
+        app_id: Option<String>,
+    },
     /// Keep an app in the Deskbar, or stop.
-    Pin { app_id: String, on: bool },
+    Pin {
+        app_id: String,
+        on: bool,
+    },
     /// Run a service over the selected text.
     Service(ServiceVerb),
     /// The Deskbar shows, or folds into the bar.
     SetDeskbarCollapsed(bool),
     /// Mount, unmount or eject a disk by its device path.
-    Disk { device: String, verb: DiskVerb },
+    Disk {
+        device: String,
+        verb: DiskVerb,
+    },
     /// Take a parked Shelf item away.
-    ShelfRemove { index: usize },
+    ShelfRemove {
+        index: usize,
+    },
     /// Make a folder on the desktop.
     NewFolderOnDesktop,
     /// Open the focused app's menu holding a command (its trail).
-    ShowInMenu { trail: String },
+    ShowInMenu {
+        trail: String,
+    },
 }
 
 /// Leaving or pausing the session.
@@ -158,7 +203,8 @@ pub fn looks_like_url(s: &str) -> bool {
         return false;
     }
     if let Some((scheme, rest)) = s.split_once("://") {
-        return !rest.is_empty() && scheme.chars().all(|c| c.is_ascii_alphanumeric() || c == '+' || c == '-' || c == '.');
+        return !rest.is_empty()
+            && scheme.chars().all(|c| c.is_ascii_alphanumeric() || c == '+' || c == '-' || c == '.');
     }
     if s.starts_with("mailto:") {
         return true;

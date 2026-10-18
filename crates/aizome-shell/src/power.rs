@@ -44,7 +44,8 @@ impl Shell {
             return;
         }
         if let Some(l) = &self.sys.logind {
-            self.power_inhibit = Some(l.inhibit("handle-power-key", "Aizome's settings say what the power key does", "block"));
+            self.power_inhibit =
+                Some(l.inhibit("handle-power-key", "Aizome's settings say what the power key does", "block"));
         }
     }
 
@@ -58,6 +59,12 @@ impl Shell {
 /// system bus.
 pub fn logind_handle_power_key() -> Option<String> {
     let conn = zbus::blocking::Connection::system().ok()?;
-    let proxy = zbus::blocking::Proxy::new(&conn, "org.freedesktop.login1", "/org/freedesktop/login1", "org.freedesktop.login1.Manager").ok()?;
+    let proxy = zbus::blocking::Proxy::new(
+        &conn,
+        "org.freedesktop.login1",
+        "/org/freedesktop/login1",
+        "org.freedesktop.login1.Manager",
+    )
+    .ok()?;
     proxy.get_property::<String>("HandlePowerKey").ok()
 }

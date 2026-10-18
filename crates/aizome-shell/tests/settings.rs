@@ -28,7 +28,13 @@ fn settings(h: &mut H, f: impl FnOnce(&mut aizome_config::Settings)) {
 }
 
 fn note(h: &mut H, id: u32, app: &str, summary: &str, sound: Option<NoteSound>) {
-    let n = Incoming { app_name: app.into(), summary: summary.into(), body: "Half past twelve".into(), sound, ..Default::default() };
+    let n = Incoming {
+        app_name: app.into(),
+        summary: summary.into(),
+        body: "Half past twelve".into(),
+        sound,
+        ..Default::default()
+    };
     h.send(Msg::Note(NoteEvent::Notify(id, Box::new(n))));
 }
 
@@ -39,7 +45,8 @@ fn binding(h: &mut H, action: &str) {
 #[test]
 fn the_desktop_shows_the_icons_it_is_told_to() {
     let mut h = scene(false);
-    h.program_mut().volumes_fixture = vec![aizome_sys::disks::Volume { block: "/b/nvme0n1p3".into(), name: "nvme0".into(), ..Default::default() }];
+    h.program_mut().volumes_fixture =
+        vec![aizome_sys::disks::Volume { block: "/b/nvme0n1p3".into(), name: "nvme0".into(), ..Default::default() }];
     h.program_mut().user = ("callen".into(), "Chris Allen".into());
     let keys = |h: &H| h.program().desktop_icons().into_iter().map(|i| i.key).collect::<Vec<_>>();
     assert_eq!(keys(&h), ["home", "vol:/b/nvme0n1p3", "trash"]);
@@ -145,7 +152,9 @@ fn the_monitors_going_off_locks_unless_told_not_to() {
 
 #[test]
 fn the_power_key_does_what_it_is_told() {
-    let set = |h: &mut H, k: Option<PowerKey>| settings(h, |s| s.set_shell_section("power", &aizome_config::PowerSettings { power_key: k }));
+    let set = |h: &mut H, k: Option<PowerKey>| {
+        settings(h, |s| s.set_shell_section("power", &aizome_config::PowerSettings { power_key: k }))
+    };
     // Unset, with logind handling the key: the shell leaves it alone.
     let mut h = scene(false);
     h.program_mut().logind_power_key = Some("poweroff".into());
@@ -198,7 +207,9 @@ fn the_palette_finds_only_its_scopes() {
 fn the_bell_flashes_the_edge_or_sounds() {
     let mut h = scene(false);
     h.send(Msg::Run(Action::None));
-    let bell = |h: &mut H| h.send(Msg::Ipc(IpcEvent::Event(Event::Binding { action: "bell".into(), pointer: None, output: None })));
+    let bell = |h: &mut H| {
+        h.send(Msg::Ipc(IpcEvent::Event(Event::Binding { action: "bell".into(), pointer: None, output: None })))
+    };
     bell(&mut h);
     assert_eq!(h.program().last_sound.as_deref(), Some("bell"));
     assert!(h.program().flash.is_none());

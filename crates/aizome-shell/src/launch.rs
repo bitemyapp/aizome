@@ -176,7 +176,8 @@ pub fn move_to_trash(path: &Path) -> std::io::Result<PathBuf> {
         };
     }
     let now = crate::clock::Local::now();
-    let stamp = format!("{:04}-{:02}-{:02}T{:02}:{:02}:{:02}", now.year, now.month, now.day, now.hour, now.minute, now.second);
+    let stamp =
+        format!("{:04}-{:02}-{:02}T{:02}:{:02}:{:02}", now.year, now.month, now.day, now.hour, now.minute, now.second);
     let abs = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_owned());
     std::fs::write(
         info.join(format!("{target}.trashinfo")),
@@ -200,7 +201,11 @@ pub fn empty_trash() {
             if let Ok(rd) = std::fs::read_dir(&dir) {
                 for e in rd.flatten() {
                     let p = e.path();
-                    let _ = if p.is_dir() && !p.is_symlink() { std::fs::remove_dir_all(&p) } else { std::fs::remove_file(&p) };
+                    let _ = if p.is_dir() && !p.is_symlink() {
+                        std::fs::remove_dir_all(&p)
+                    } else {
+                        std::fs::remove_file(&p)
+                    };
                 }
             }
         }
@@ -225,13 +230,16 @@ mod tests {
 
     #[test]
     fn settings_open_at_a_place() {
-        assert_eq!(settings("keyboard", Some("keyboard.caps")), Launch::Argv(vec![
-            "aizome-shitsurae".into(),
-            "--pane".into(),
-            "keyboard".into(),
-            "--option".into(),
-            "keyboard.caps".into()
-        ]));
+        assert_eq!(
+            settings("keyboard", Some("keyboard.caps")),
+            Launch::Argv(vec![
+                "aizome-shitsurae".into(),
+                "--pane".into(),
+                "keyboard".into(),
+                "--option".into(),
+                "keyboard.caps".into()
+            ])
+        );
     }
 
     #[test]

@@ -70,12 +70,18 @@ impl Item {
 
     /// A file or folder from the index.
     pub fn file(path: &Path, folder: bool, home: &Path) -> Item {
-        let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| path.display().to_string());
+        let name =
+            path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| path.display().to_string());
         let title = if folder { format!("{name}/") } else { name };
         let dir = path.parent().map(|p| shorten(p, home)).unwrap_or_default();
-        let mut i = Item::new(Scope::File, title, if folder { Icon::Folder } else { file_glyph(path) }, Action::Open { path: path.to_owned() })
-            .trail(dir)
-            .key(format!("file:{}", path.display()));
+        let mut i = Item::new(
+            Scope::File,
+            title,
+            if folder { Icon::Folder } else { file_glyph(path) },
+            Action::Open { path: path.to_owned() },
+        )
+        .trail(dir)
+        .key(format!("file:{}", path.display()));
         i.mono = true;
         i
     }
@@ -96,7 +102,9 @@ pub fn file_glyph(p: &Path) -> Icon {
     let ext = p.extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
     match ext.as_str() {
         "png" | "jpg" | "jpeg" | "gif" | "webp" | "svg" | "bmp" | "tiff" | "avif" => Icon::FileImage,
-        "rs" | "c" | "h" | "cpp" | "py" | "js" | "ts" | "go" | "nix" | "toml" | "json" | "sh" | "hs" | "zig" => Icon::FileCode,
+        "rs" | "c" | "h" | "cpp" | "py" | "js" | "ts" | "go" | "nix" | "toml" | "json" | "sh" | "hs" | "zig" => {
+            Icon::FileCode
+        }
         "md" | "txt" | "org" | "rst" | "pdf" | "doc" | "docx" | "odt" => Icon::FileText,
         "mp4" | "mkv" | "webm" | "mov" => Icon::Film,
         "mp3" | "flac" | "ogg" | "wav" | "opus" => Icon::EighthNotes,
@@ -124,7 +132,8 @@ pub struct Section {
 }
 
 /// The section heads, in their order when nothing's typed.
-pub const ORDER: [Scope; 7] = [Scope::Answer, Scope::Command, Scope::Window, Scope::File, Scope::App, Scope::Setting, Scope::Action];
+pub const ORDER: [Scope; 7] =
+    [Scope::Answer, Scope::Command, Scope::Window, Scope::File, Scope::App, Scope::Setting, Scope::Action];
 
 /// What ranks rows: the query, the scope (None: All), and how many rows a
 /// section shows under All.
@@ -147,9 +156,15 @@ pub fn sections(r: &Ranking, items: &[Item], files: &[Item]) -> Vec<Section> {
         && let Ok(v) = calc::eval(q)
     {
         let result = calc::format(v);
-        let item = Item::new(Scope::Answer, format!("= {result}"), Icon::Calculator, Action::Copy { text: result.clone() })
-            .trail("Copy the result");
-        out.push(Section { scope: Scope::Answer, head: "ANSWER".into(), sub: None, rows: vec![Row { item, ranges: vec![], score: i64::MAX }] });
+        let item =
+            Item::new(Scope::Answer, format!("= {result}"), Icon::Calculator, Action::Copy { text: result.clone() })
+                .trail("Copy the result");
+        out.push(Section {
+            scope: Scope::Answer,
+            head: "ANSWER".into(),
+            sub: None,
+            rows: vec![Row { item, ranges: vec![], score: i64::MAX }],
+        });
     }
     let limit = if r.scope.is_some() { 60 } else { r.per_section.max(1) };
     let mut query = Query::new(q);
@@ -162,12 +177,20 @@ pub fn sections(r: &Ranking, items: &[Item], files: &[Item]) -> Vec<Section> {
             continue;
         }
         let rows: Vec<Row> = if scope == Scope::File {
-            files.iter().take(limit).map(|i| Row { item: i.clone(), ranges: name_ranges(i, q), score: i.boost }).collect()
+            files
+                .iter()
+                .take(limit)
+                .map(|i| Row { item: i.clone(), ranges: name_ranges(i, q), score: i.boost })
+                .collect()
         } else {
             let pool: Vec<&Item> = items.iter().filter(|i| i.scope == scope).collect();
             let candidates: Vec<Candidate> = pool
                 .iter()
-                .map(|i| Candidate { title: i.title.clone(), keywords: keywords_of(i), boost: i.boost + exactness(&i.title, q) })
+                .map(|i| Candidate {
+                    title: i.title.clone(),
+                    keywords: keywords_of(i),
+                    boost: i.boost + exactness(&i.title, q),
+                })
                 .collect();
             rank(&mut query, &candidates, limit)
                 .into_iter()
@@ -178,7 +201,8 @@ pub fn sections(r: &Ranking, items: &[Item], files: &[Item]) -> Vec<Section> {
             continue;
         }
         let head = scope.label().to_uppercase();
-        let sub = (scope == Scope::Command).then(|| r.app_name.map(|a| format!("{} MENUS", a.to_uppercase()))).flatten();
+        let sub =
+            (scope == Scope::Command).then(|| r.app_name.map(|a| format!("{} MENUS", a.to_uppercase()))).flatten();
         out.push(Section { scope, head, sub, rows });
     }
     // With something typed, the section holding the best match leads.
@@ -308,7 +332,8 @@ pub fn parse_settings(json: &str) -> Option<Vec<SettingEntry>> {
 
 pub fn setting_item(s: &SettingEntry) -> Item {
     let pane = s.pane.clone().unwrap_or_else(|| s.id.split(['.', '/', ':']).next().unwrap_or(&s.id).to_owned());
-    let anchor = (s.pane.is_some() && s.id != pane || s.pane.is_none() && s.id.contains(['.', '/', ':'])).then(|| s.id.clone());
+    let anchor =
+        (s.pane.is_some() && s.id != pane || s.pane.is_none() && s.id.contains(['.', '/', ':'])).then(|| s.id.clone());
     let title = if s.path.is_empty() { s.title.clone() } else { s.path.clone() };
     Item::new(Scope::Setting, title, Icon::Settings, Action::Settings { pane, anchor })
         .trail("Settings")

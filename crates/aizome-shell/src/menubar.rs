@@ -12,8 +12,8 @@ use aizome_kit::widget::SemanticRole;
 use aizome_kit::{Layoutable, row, stack};
 use aizome_theme::typeface;
 
-use crate::look::{self, Hue};
 use crate::actions::Action;
+use crate::look::{self, Hue};
 use crate::systray::meters::{Reading, TRACK};
 use crate::widgets::drawn::{Press, around, drawn, split};
 
@@ -75,9 +75,16 @@ impl TrayWidget {
     }
 
     pub fn named(n: &str) -> Option<TrayWidget> {
-        [TrayWidget::Network, TrayWidget::Sound, TrayWidget::Bluetooth, TrayWidget::Display, TrayWidget::Battery, TrayWidget::Clock]
-            .into_iter()
-            .find(|w| w.name() == n)
+        [
+            TrayWidget::Network,
+            TrayWidget::Sound,
+            TrayWidget::Bluetooth,
+            TrayWidget::Display,
+            TrayWidget::Battery,
+            TrayWidget::Clock,
+        ]
+        .into_iter()
+        .find(|w| w.name() == n)
     }
 }
 
@@ -188,7 +195,15 @@ fn ui_spec(t: &aizome_kit::Theme, size: f64, weight: f32, c: aizome_kit::Color) 
 
 /// A title of the bar: text with padding, highlighted while its menu is
 /// open.
-fn title(label: String, weight: f32, pad_l: f64, pad_r: f64, open: bool, slot: Slot, menu_open: bool) -> Element<BarMsg> {
+fn title(
+    label: String,
+    weight: f32,
+    pad_l: f64,
+    pad_r: f64,
+    open: bool,
+    slot: Slot,
+    menu_open: bool,
+) -> Element<BarMsg> {
     let measure = label.clone();
     let paint_label = label.clone();
     drawn(0.0, HEIGHT, (&label, weight.to_bits(), open, pad_l.to_bits()), move |cx| {
@@ -259,7 +274,12 @@ fn banner(b: &Banner) -> Element<BarMsg> {
         let bounds = cx.bounds();
         b2.glyph.draw(cx.canvas, Point::new(12.0, 4.0), 16.0, b2.hue.color(t));
         let s = ui_spec(t, typeface::BODY, typeface::WEIGHT_SEMIBOLD, t.text());
-        let w = cx.draw_text_in(&b2.summary, &s, Rect::new(36.0, 0.0, (bounds.x1 * 0.6).max(120.0), HEIGHT - 1.0), Align::Start);
+        let w = cx.draw_text_in(
+            &b2.summary,
+            &s,
+            Rect::new(36.0, 0.0, (bounds.x1 * 0.6).max(120.0), HEIGHT - 1.0),
+            Align::Start,
+        );
         let body = ui_spec(t, typeface::BODY, typeface::WEIGHT_REGULAR, t.text2());
         cx.draw_text_in(&b2.body, &body, Rect::new(36.0 + w + 10.0, 0.0, bounds.x1 - 8.0, HEIGHT - 1.0), Align::Start);
     })
@@ -293,17 +313,24 @@ fn desks(model: &BarModel) -> Element<BarMsg> {
                 .on_change(BarMsg::RenameText)
                 .on_submit(BarMsg::RenameDone);
             let keyed = crate::widgets::keys::keys(Element::from(f).id("desk-rename"), |k| {
-                matches!(k.key, aizome_kit::sidestep_ui::Key::Named(aizome_kit::sidestep_ui::NamedKey::Escape)).then_some(BarMsg::RenameCancel)
+                matches!(k.key, aizome_kit::sidestep_ui::Key::Named(aizome_kit::sidestep_ui::NamedKey::Escape))
+                    .then_some(BarMsg::RenameCancel)
             });
             items.push(
-                around(keyed, [0.0, 9.0, 0.0, 9.0 + 7.5 * num.len() as f64 + 5.0], aizome_kit::Size::new(130.0, 18.0), num.clone(), move |cx| {
-                    let t = cx.theme();
-                    let b = cx.bounds();
-                    cx.canvas.fill_rect(b, t.selection());
-                    let ns = look::mono(12.0 * t.metrics.factor, typeface::WEIGHT_SEMIBOLD, t.on_selection());
-                    cx.draw_text_in(&num, &ns, Rect::new(9.0, 0.0, b.x1, b.y1), Align::Start);
-                    cx.canvas.fill_rect(Rect::new(b.x1 - 1.0, 0.0, b.x1, b.y1), t.line());
-                })
+                around(
+                    keyed,
+                    [0.0, 9.0, 0.0, 9.0 + 7.5 * num.len() as f64 + 5.0],
+                    aizome_kit::Size::new(130.0, 18.0),
+                    num.clone(),
+                    move |cx| {
+                        let t = cx.theme();
+                        let b = cx.bounds();
+                        cx.canvas.fill_rect(b, t.selection());
+                        let ns = look::mono(12.0 * t.metrics.factor, typeface::WEIGHT_SEMIBOLD, t.on_selection());
+                        cx.draw_text_in(&num, &ns, Rect::new(9.0, 0.0, b.x1, b.y1), Align::Start);
+                        cx.canvas.fill_rect(Rect::new(b.x1 - 1.0, 0.0, b.x1, b.y1), t.line());
+                    },
+                )
                 .key(("desk", d.id))
                 .into(),
             );
@@ -327,7 +354,11 @@ fn desks(model: &BarModel) -> Element<BarMsg> {
                     }
                     (t.text2(), t.text3())
                 };
-                let ns = look::mono(12.0 * t.metrics.factor, if current { typeface::WEIGHT_SEMIBOLD } else { typeface::WEIGHT_REGULAR }, numc);
+                let ns = look::mono(
+                    12.0 * t.metrics.factor,
+                    if current { typeface::WEIGHT_SEMIBOLD } else { typeface::WEIGHT_REGULAR },
+                    numc,
+                );
                 let w = cx.draw_text_in(&num, &ns, Rect::new(9.0, 0.0, b.x1, b.y1), Align::Start);
                 if show_name {
                     let weight = if current { typeface::WEIGHT_TAB } else { typeface::WEIGHT_REGULAR };
@@ -451,7 +482,9 @@ fn tray_icon(widget: TrayWidget, icon: Icon, text: Option<String>, open: bool, l
     .fit(move |cx| {
         let t = cx.theme();
         match &measure {
-            Some(s) => 19.0 + cx.measure(s, &look::digits(11.5 * t.metrics.factor, typeface::WEIGHT_REGULAR, t.text2())).width,
+            Some(s) => {
+                19.0 + cx.measure(s, &look::digits(11.5 * t.metrics.factor, typeface::WEIGHT_REGULAR, t.text2())).width
+            }
             None => 15.0,
         }
     })
@@ -537,7 +570,13 @@ fn header(model: &BarModel) -> Element<BarMsg> {
             items.push(tray_icon(TrayWidget::Network, g.icon(), None, open(TrayWidget::Network), "Network".into()));
         }
         if let Some((v, m)) = tray.sound {
-            items.push(tray_icon(TrayWidget::Sound, sound_icon(v, m), None, open(TrayWidget::Sound), format!("Volume {:.0}%", v * 100.0)));
+            items.push(tray_icon(
+                TrayWidget::Sound,
+                sound_icon(v, m),
+                None,
+                open(TrayWidget::Sound),
+                format!("Volume {:.0}%", v * 100.0),
+            ));
         }
         if let Some((on, conn)) = tray.bluetooth {
             let icon = if !on {
@@ -550,7 +589,13 @@ fn header(model: &BarModel) -> Element<BarMsg> {
             items.push(tray_icon(TrayWidget::Bluetooth, icon, None, open(TrayWidget::Bluetooth), "Bluetooth".into()));
         }
         if let Some(b) = tray.display {
-            items.push(tray_icon(TrayWidget::Display, Icon::SunDim, None, open(TrayWidget::Display), format!("Brightness {:.0}%", b * 100.0)));
+            items.push(tray_icon(
+                TrayWidget::Display,
+                Icon::SunDim,
+                None,
+                open(TrayWidget::Display),
+                format!("Brightness {:.0}%", b * 100.0),
+            ));
         }
         if let Some((p, c)) = tray.battery {
             items.push(tray_icon(
@@ -583,14 +628,30 @@ pub fn view(model: &BarModel) -> Element<BarMsg> {
         None => {
             if !model.app_name.is_empty() {
                 left.push(
-                    title(model.app_name.clone(), typeface::WEIGHT_BOLD, 12.0, 9.0, model.open == Some(Slot::Menu(0)), Slot::Menu(0), menu_open)
-                        .key("app-name"),
+                    title(
+                        model.app_name.clone(),
+                        typeface::WEIGHT_BOLD,
+                        12.0,
+                        9.0,
+                        model.open == Some(Slot::Menu(0)),
+                        Slot::Menu(0),
+                        menu_open,
+                    )
+                    .key("app-name"),
                 );
             }
             for (i, m) in model.menus.iter().enumerate().skip(1) {
                 left.push(
-                    title(m.clone(), typeface::WEIGHT_REGULAR, 9.0, 9.0, model.open == Some(Slot::Menu(i)), Slot::Menu(i), menu_open)
-                        .key(("menu", i, m.as_str())),
+                    title(
+                        m.clone(),
+                        typeface::WEIGHT_REGULAR,
+                        9.0,
+                        9.0,
+                        model.open == Some(Slot::Menu(i)),
+                        Slot::Menu(i),
+                        menu_open,
+                    )
+                    .key(("menu", i, m.as_str())),
                 );
             }
         }
@@ -632,7 +693,10 @@ pub fn header_width(t: &aizome_kit::Theme, m: &mut Measure, model: &BarModel) ->
         items.push(4.0);
     }
     if let Some(_n) = model.folded_apps {
-        let label = model.folded_apps.map(|n| if n == 1 { "1 app".to_owned() } else { format!("{n} apps") }).unwrap_or_default();
+        let label = model
+            .folded_apps
+            .map(|n| if n == 1 { "1 app".to_owned() } else { format!("{n} apps") })
+            .unwrap_or_default();
         let mut w = m(&label, &ui_spec(t, 12.0, typeface::WEIGHT_SEMIBOLD, t.text2())) + 21.0;
         if model.unread > 0 {
             w += 6.0 + 8.0 * model.unread.to_string().len() as f64;
@@ -645,7 +709,14 @@ pub fn header_width(t: &aizome_kit::Theme, m: &mut Measure, model: &BarModel) ->
             }
         }
         if let Some((p, _)) = tray.battery {
-            items.push((19.0 + m(&format!("{p:.0}%"), &look::digits(11.5 * t.metrics.factor, typeface::WEIGHT_REGULAR, t.text2()))).ceil());
+            items.push(
+                (19.0
+                    + m(
+                        &format!("{p:.0}%"),
+                        &look::digits(11.5 * t.metrics.factor, typeface::WEIGHT_REGULAR, t.text2()),
+                    ))
+                .ceil(),
+            );
         }
     }
     let row: f64 = items.iter().sum::<f64>() + 9.0 * (items.len().saturating_sub(1)) as f64;
@@ -659,12 +730,23 @@ pub fn desk_rects(t: &aizome_kit::Theme, m: &mut Measure, model: &BarModel, widt
     let header = if model.primary { header_width(t, m, model) } else { 0.0 };
     let mut widths: Vec<(u32, f64)> = Vec::new();
     for d in &model.desks {
-        let name = model.renaming.as_ref().filter(|(r, _)| *r == d.index).map(|(_, s)| s.clone()).unwrap_or_else(|| d.name.clone());
+        let name = model
+            .renaming
+            .as_ref()
+            .filter(|(r, _)| *r == d.index)
+            .map(|(_, s)| s.clone())
+            .unwrap_or_else(|| d.name.clone());
         let show_name = name != d.index.to_string() || model.renaming.as_ref().is_some_and(|(r, _)| *r == d.index);
         let ns = look::mono(12.0 * t.metrics.factor, typeface::WEIGHT_REGULAR, t.text3());
         let mut w = (9.0 + m(&d.index.to_string(), &ns) + 9.0 + 1.0).ceil();
         if show_name {
-            w = (9.0 + m(&d.index.to_string(), &ns) + 9.0 + 1.0 + 5.0 + m(&name, &ui_spec(t, 12.0, typeface::WEIGHT_TAB, t.text()))).ceil();
+            w = (9.0
+                + m(&d.index.to_string(), &ns)
+                + 9.0
+                + 1.0
+                + 5.0
+                + m(&name, &ui_spec(t, 12.0, typeface::WEIGHT_TAB, t.text())))
+            .ceil();
         }
         widths.push((d.index, w));
     }
@@ -685,13 +767,26 @@ pub fn desk_rects(t: &aizome_kit::Theme, m: &mut Measure, model: &BarModel, widt
 /// button, then (unless a notification has the line) the app's name and
 /// its menus.
 pub fn title_rects(t: &aizome_kit::Theme, m: &mut Measure, model: &BarModel) -> Vec<(Slot, Rect)> {
-    let mut widths = vec![(Slot::Toolchest, (32.0 + m("Toolchest", &look::condensed(12.0 * t.metrics.factor, typeface::WEIGHT_SEMIBOLD, t.text())) + 10.0 + 1.0).ceil())];
+    let mut widths = vec![(
+        Slot::Toolchest,
+        (32.0
+            + m("Toolchest", &look::condensed(12.0 * t.metrics.factor, typeface::WEIGHT_SEMIBOLD, t.text()))
+            + 10.0
+            + 1.0)
+            .ceil(),
+    )];
     if model.banner.is_none() {
         if !model.app_name.is_empty() {
-            widths.push((Slot::Menu(0), (12.0 + 9.0 + m(&model.app_name, &ui_spec(t, typeface::BODY, typeface::WEIGHT_BOLD, t.text()))).ceil()));
+            widths.push((
+                Slot::Menu(0),
+                (12.0 + 9.0 + m(&model.app_name, &ui_spec(t, typeface::BODY, typeface::WEIGHT_BOLD, t.text()))).ceil(),
+            ));
         }
         for (i, title) in model.menus.iter().enumerate().skip(1) {
-            widths.push((Slot::Menu(i), (9.0 + 9.0 + m(title, &ui_spec(t, typeface::BODY, typeface::WEIGHT_REGULAR, t.text()))).ceil()));
+            widths.push((
+                Slot::Menu(i),
+                (9.0 + 9.0 + m(title, &ui_spec(t, typeface::BODY, typeface::WEIGHT_REGULAR, t.text()))).ceil(),
+            ));
         }
     }
     let mut x = 0.0;

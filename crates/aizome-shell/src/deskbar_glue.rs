@@ -10,8 +10,8 @@ use crate::apps::catalog;
 use crate::deskbar::{AppRow, DeskbarModel, DeskbarMsg, NoteCard, ShelfRow, WindowRow};
 use crate::look::Hue;
 use crate::menus::model::{Entry, Menu as ShellMenu};
-use crate::shell::{Msg, Shell, Surface, at_point, layer};
 use crate::shelf::ShelfItem;
+use crate::shell::{Msg, Shell, Surface, at_point, layer};
 use crate::widgets::drawn::DragPhase;
 
 impl Shell {
@@ -20,7 +20,12 @@ impl Shell {
         let hello = self.registry.apps().find(|a| a.app_id == app_id).map(|a| a.name.clone());
         let name = catalog::display_name(self.apps.as_deref(), hello.as_deref(), app_id);
         let (glyph, hue) = catalog::glyph_for(app_id).unwrap_or_else(|| {
-            let cats = self.apps.as_deref().and_then(|i| i.match_window(app_id)).map(|a| a.categories.clone()).unwrap_or_default();
+            let cats = self
+                .apps
+                .as_deref()
+                .and_then(|i| i.match_window(app_id))
+                .map(|a| a.categories.clone())
+                .unwrap_or_default();
             (catalog::glyph_by_category(&cats), Hue::Text2)
         });
         (name, glyph, hue)
@@ -52,7 +57,13 @@ impl Shell {
                     windows: a
                         .windows
                         .into_iter()
-                        .map(|w| WindowRow { id: w.id, title: w.title, focused: w.focused, note: w.note, urgent: w.urgent })
+                        .map(|w| WindowRow {
+                            id: w.id,
+                            title: w.title,
+                            focused: w.focused,
+                            note: w.note,
+                            urgent: w.urgent,
+                        })
                         .collect(),
                     unread: 0,
                     cards: Vec::new(),
@@ -66,7 +77,18 @@ impl Shell {
             if !apps.iter().any(|a| a.app_id == app) {
                 let (name, glyph, hue) = self.app_look(&app);
                 let name = unread.first().map(|n| n.app_name.clone()).filter(|n| !n.is_empty()).unwrap_or(name);
-                apps.push(AppRow { app_id: app.clone(), name, glyph, hue, image: None, windows: vec![], folded: true, focused: false, unread: 0, cards: vec![] });
+                apps.push(AppRow {
+                    app_id: app.clone(),
+                    name,
+                    glyph,
+                    hue,
+                    image: None,
+                    windows: vec![],
+                    folded: true,
+                    focused: false,
+                    unread: 0,
+                    cards: vec![],
+                });
             }
             let row = apps.iter_mut().find(|a| a.app_id == app).expect("added");
             row.unread = unread.len();
@@ -74,7 +96,12 @@ impl Shell {
             row.cards = unread
                 .iter()
                 .take(if all { 8 } else { 1 })
-                .map(|n| NoteCard { id: n.id, summary: n.summary.clone(), body: n.body.clone(), buttons: n.buttons().cloned().collect() })
+                .map(|n| NoteCard {
+                    id: n.id,
+                    summary: n.summary.clone(),
+                    body: n.body.clone(),
+                    buttons: n.buttons().cloned().collect(),
+                })
                 .collect();
         }
         let shelf = self
@@ -160,16 +187,19 @@ impl Shell {
                     self.app_look(&app_id).0,
                     vec![
                         Entry::action("New Window", Action::NewWindow { app_id: app_id.clone() }),
-                        Entry::action("Hide", Action::Wm(Request::HideApp { app: crate::shell::app_sel(&app_id) })).enabled(running),
+                        Entry::action("Hide", Action::Wm(Request::HideApp { app: crate::shell::app_sel(&app_id) }))
+                            .enabled(running),
                         Entry::action("Quit", Action::QuitApp { app_id: app_id.clone() }).enabled(running),
                         Entry::separator(),
-                        Entry::action("Keep in Deskbar", Action::Pin { app_id: app_id.clone(), on: !pinned }).checked(pinned),
+                        Entry::action("Keep in Deskbar", Action::Pin { app_id: app_id.clone(), on: !pinned })
+                            .checked(pinned),
                     ],
                 );
                 self.show_menu(k, at_point(at), &menu, MenuStyle::at_point(), cx);
             }
             DeskbarMsg::Fold(app_id) => {
-                let model_folded = self.deskbar_model().apps.iter().find(|a| a.app_id == app_id).map(|a| a.folded).unwrap_or(false);
+                let model_folded =
+                    self.deskbar_model().apps.iter().find(|a| a.app_id == app_id).map(|a| a.folded).unwrap_or(false);
                 self.folded.insert(app_id, !model_folded);
             }
             DeskbarMsg::FocusWindow(id) => self.ipc.send(Request::Focus { id }),
@@ -178,7 +208,11 @@ impl Shell {
                 if let DragPhase::End(p) = phase
                     && let Some(desk) = self.desk_at_deskbar_point(p)
                 {
-                    self.ipc.send(Request::MoveToDesk { id: Some(id), desk: aizome_ipc::DeskSel::Index(desk), follow: false });
+                    self.ipc.send(Request::MoveToDesk {
+                        id: Some(id),
+                        desk: aizome_ipc::DeskSel::Index(desk),
+                        follow: false,
+                    });
                 }
             }
             DeskbarMsg::OpenNote(id) => self.open_note(id, cx),
@@ -282,7 +316,12 @@ impl Shell {
             .filter(|a| !self.icons.contains_key(a) && catalog::glyph_for(a).is_none())
             .collect();
         for app in wanted {
-            let name = self.apps.as_deref().and_then(|i| i.match_window(&app)).and_then(|e| e.icon.clone()).unwrap_or_else(|| app.clone());
+            let name = self
+                .apps
+                .as_deref()
+                .and_then(|i| i.match_window(&app))
+                .and_then(|e| e.icon.clone())
+                .unwrap_or_else(|| app.clone());
             let image = lookup
                 .lookup(&name, 16, 2)
                 .filter(|p| p.extension().is_some_and(|e| e.eq_ignore_ascii_case("png")))

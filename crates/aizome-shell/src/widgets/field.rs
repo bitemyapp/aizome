@@ -12,7 +12,9 @@ use aizome_kit::hash::PaintHasher;
 use aizome_kit::layout::{Constraints, Point, Rect, Size};
 use aizome_kit::sidestep_ui::{Ime, Key, NamedKey};
 use aizome_kit::text::TextSpec;
-use aizome_kit::widget::{EditCommand, Event, EventCx, Focusable, FocusRing, LayoutCx, PaintCx, SemanticRole, Semantics, Status, Widget};
+use aizome_kit::widget::{
+    EditCommand, Event, EventCx, FocusRing, Focusable, LayoutCx, PaintCx, SemanticRole, Semantics, Status, Widget,
+};
 
 type Spec = Rc<dyn Fn(&aizome_kit::Theme) -> TextSpec>;
 

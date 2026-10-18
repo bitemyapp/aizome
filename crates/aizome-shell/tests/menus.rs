@@ -14,7 +14,11 @@ use aizome_shell::tearoff::TearMsg;
 use common::*;
 
 fn pointer_menu(h: &mut aizome_kit::testing::Harness<aizome_shell::shell::Shell>, x: f64, y: f64) {
-    h.send(Msg::Ipc(IpcEvent::Event(Event::Binding { action: "app-menu".into(), pointer: Some((x, y)), output: Some("eDP-1".into()) })));
+    h.send(Msg::Ipc(IpcEvent::Event(Event::Binding {
+        action: "app-menu".into(),
+        pointer: Some((x, y)),
+        output: Some("eDP-1".into()),
+    })));
     // Services wait for the selected text, at most 150 ms.
     h.advance(Duration::from_millis(200));
 }
@@ -30,7 +34,13 @@ fn the_menu_at_the_pointer_gathers_the_apps_menus() {
     assert_eq!(at.origin(), Point::new(600.0, 300.0));
     // (The kit's menus draw their rows themselves: check what was shown.)
     let (name, menus) = h.program().focused_menus();
-    let p = aizome_shell::menus::build::pointer_menu(&name, &menus, vec![], aizome_shell::actions::Action::None, aizome_shell::actions::Action::None);
+    let p = aizome_shell::menus::build::pointer_menu(
+        &name,
+        &menus,
+        vec![],
+        aizome_shell::actions::Action::None,
+        aizome_shell::actions::Action::None,
+    );
     let labels: Vec<&str> = p.items.iter().map(|e| e.label.as_str()).collect();
     assert_eq!(labels, ["Info", "File", "Edit", "Search", "Format", "Window", "Help", "Services", "Hide", "Quit"]);
 }
@@ -47,7 +57,12 @@ fn the_toolchest_opens_under_its_button() {
 #[test]
 fn torn_off_menus_stay_with_their_app() {
     let mut h = scene(false);
-    h.send(Msg::TearOff { app: "org.aizome.Sumi".into(), path: vec!["Format".into()], output: "eDP-1".into(), at: Point::new(104.0, 412.0) });
+    h.send(Msg::TearOff {
+        app: "org.aizome.Sumi".into(),
+        path: vec!["Format".into()],
+        output: "eDP-1".into(),
+        at: Point::new(104.0, 412.0),
+    });
     let _p = window_titled(&h, "Palette (torn off)");
     let (title, menu) = h.program().tear_menu(&h.program().tearoffs[0]).expect("its menu");
     assert_eq!(title, "Format");
@@ -72,22 +87,45 @@ fn pictures_of_menus() {
         let (menu, _) = h.popups(bar)[0];
         let img = h.render_popup(menu, 2.0);
         let (w, hh) = img.pixel_size();
-        aizome_kit::testing::write_png(&shots().join(format!("menu-pointer-{suffix}.png")), w, hh, &img.to_rgba8().unwrap()).unwrap();
+        aizome_kit::testing::write_png(
+            &shots().join(format!("menu-pointer-{suffix}.png")),
+            w,
+            hh,
+            &img.to_rgba8().unwrap(),
+        )
+        .unwrap();
         h.send(Msg::Run(aizome_shell::actions::Action::None));
         // The Toolchest.
         h.send(Msg::Bar(bar, BarMsg::Press(Slot::Toolchest, Rect::new(0.0, 0.0, 92.0, 24.0))));
         let (menu, _) = *h.popups(bar).last().unwrap();
         let img = h.render_popup(menu, 2.0);
         let (w, hh) = img.pixel_size();
-        aizome_kit::testing::write_png(&shots().join(format!("menu-toolchest-{suffix}.png")), w, hh, &img.to_rgba8().unwrap()).unwrap();
+        aizome_kit::testing::write_png(
+            &shots().join(format!("menu-toolchest-{suffix}.png")),
+            w,
+            hh,
+            &img.to_rgba8().unwrap(),
+        )
+        .unwrap();
         // The bar's Edit menu.
         h.send(Msg::Bar(bar, BarMsg::Press(Slot::Menu(2), Rect::new(190.0, 0.0, 230.0, 24.0))));
         let (menu, _) = *h.popups(bar).last().unwrap();
         let img = h.render_popup(menu, 2.0);
         let (w, hh) = img.pixel_size();
-        aizome_kit::testing::write_png(&shots().join(format!("menu-edit-{suffix}.png")), w, hh, &img.to_rgba8().unwrap()).unwrap();
+        aizome_kit::testing::write_png(
+            &shots().join(format!("menu-edit-{suffix}.png")),
+            w,
+            hh,
+            &img.to_rgba8().unwrap(),
+        )
+        .unwrap();
         // A torn-off Format palette.
-        h.send(Msg::TearOff { app: "org.aizome.Sumi".into(), path: vec!["Format".into()], output: "eDP-1".into(), at: Point::new(104.0, 412.0) });
+        h.send(Msg::TearOff {
+            app: "org.aizome.Sumi".into(),
+            path: vec!["Format".into()],
+            output: "eDP-1".into(),
+            at: Point::new(104.0, 412.0),
+        });
         let p = window_titled(&h, "Palette (torn off)");
         let name = format!("palette-format-{suffix}.png");
         h.save_png(p, shots().join(&name), 2.0);
@@ -171,7 +209,11 @@ fn f10_gives_the_bar_the_keyboard_and_the_arrows_go_across_it() {
     // A notification's line gives way to the menus.
     h.send(Msg::Note(aizome_shell::notifications::server::NoteEvent::Notify(
         70,
-        Box::new(aizome_shell::notifications::store::Incoming { app_name: "Mail".into(), summary: "Lunch?".into(), ..Default::default() }),
+        Box::new(aizome_shell::notifications::store::Incoming {
+            app_name: "Mail".into(),
+            summary: "Lunch?".into(),
+            ..Default::default()
+        }),
     )));
     assert!(h.program().banner.is_some());
     h.send(binding("menu-bar"));

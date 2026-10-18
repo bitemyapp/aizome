@@ -70,7 +70,10 @@ impl Shell {
                 let silent = aizome_config::names_app(&cfg.silent_apps, &names);
                 let quiet = cfg.quiet_at(now.minutes()) || muted || self.locked();
                 let sound = n.sound.clone().filter(|_| !quiet && !silent);
-                let at = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+                let at = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_secs())
+                    .unwrap_or(0);
                 let posted = self.notes.post_as(id, *n, filed, quiet, at);
                 if posted.banner {
                     self.show_banner(id, cx);
@@ -99,7 +102,9 @@ impl Shell {
             NoteSound::Named(name) => crate::sound::theme_file(name),
         };
         self.last_sound = Some(format!("{s:?}"));
-        if self.opts.live && let Some(f) = file {
+        if self.opts.live
+            && let Some(f) = file
+        {
             crate::sound::play(f);
         }
     }
@@ -116,7 +121,12 @@ impl Shell {
         let running: Vec<String> = self.wm.deskbar(&self.deskbar_cfg.pinned).into_iter().map(|a| a.app_id).collect();
         if let Some(entry) = &n.desktop_entry {
             let entry = entry.trim_end_matches(".desktop");
-            if let Some(a) = running.iter().find(|a| a.eq_ignore_ascii_case(entry) || a.rsplit('.').next().is_some_and(|l| l.eq_ignore_ascii_case(entry.rsplit('.').next().unwrap_or(entry)))) {
+            if let Some(a) = running.iter().find(|a| {
+                a.eq_ignore_ascii_case(entry)
+                    || a.rsplit('.')
+                        .next()
+                        .is_some_and(|l| l.eq_ignore_ascii_case(entry.rsplit('.').next().unwrap_or(entry)))
+            }) {
                 return a.clone();
             }
             return entry.to_owned();
@@ -127,7 +137,8 @@ impl Shell {
             return w.app_id.clone();
         }
         let name = n.app_name.to_lowercase();
-        if let Some(a) = running.iter().find(|a| self.app_look(a).0.to_lowercase() == name || a.to_lowercase() == name) {
+        if let Some(a) = running.iter().find(|a| self.app_look(a).0.to_lowercase() == name || a.to_lowercase() == name)
+        {
             return a.clone();
         }
         if n.app_name.is_empty() { "notifications".into() } else { n.app_name.clone() }
@@ -164,14 +175,26 @@ impl Shell {
     pub fn banner_view(&self) -> Option<crate::menubar::Banner> {
         let n = self.notes.get(self.banner?)?;
         let (_, glyph, hue) = self.app_look(&n.filed_under);
-        let glyph = if crate::apps::catalog::glyph_for(&n.filed_under).is_some() { glyph } else { aizome_kit::Icon::Bell };
-        Some(crate::menubar::Banner { id: n.id, glyph, hue, summary: n.summary.clone(), body: n.first_line().to_owned() })
+        let glyph =
+            if crate::apps::catalog::glyph_for(&n.filed_under).is_some() { glyph } else { aizome_kit::Icon::Bell };
+        Some(crate::menubar::Banner {
+            id: n.id,
+            glyph,
+            hue,
+            summary: n.summary.clone(),
+            body: n.first_line().to_owned(),
+        })
     }
 }
 
 impl Shell {
     /// A notification of the shell's own, its actions the shell's.
-    pub fn shell_note(&mut self, n: crate::notifications::store::Incoming, actions: Vec<(String, String, crate::actions::Action)>, cx: &mut Cx<Msg>) -> u32 {
+    pub fn shell_note(
+        &mut self,
+        n: crate::notifications::store::Incoming,
+        actions: Vec<(String, String, crate::actions::Action)>,
+        cx: &mut Cx<Msg>,
+    ) -> u32 {
         let id = self.notes.fresh_id();
         let mut n = n;
         n.actions = actions.iter().map(|(k, l, _)| (k.clone(), l.clone())).collect();
@@ -195,6 +218,13 @@ impl Shell {
             ..Default::default()
         };
         let reveal = crate::actions::Action::Reveal { path: path.clone() };
-        self.shell_note(n, vec![("default".into(), "Show in Hako".into(), reveal.clone()), ("show".into(), "Show in Hako".into(), reveal)], cx);
+        self.shell_note(
+            n,
+            vec![
+                ("default".into(), "Show in Hako".into(), reveal.clone()),
+                ("show".into(), "Show in Hako".into(), reveal),
+            ],
+            cx,
+        );
     }
 }

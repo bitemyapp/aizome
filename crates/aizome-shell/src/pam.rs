@@ -68,7 +68,8 @@ const PAM_REFRESH_CRED: c_int = 0x0010;
 
 #[link(name = "pam")]
 unsafe extern "C" {
-    fn pam_start(service: *const c_char, user: *const c_char, conv: *const PamConv, pamh: *mut *mut PamHandle) -> c_int;
+    fn pam_start(service: *const c_char, user: *const c_char, conv: *const PamConv, pamh: *mut *mut PamHandle)
+    -> c_int;
     fn pam_authenticate(pamh: *mut PamHandle, flags: c_int) -> c_int;
     fn pam_acct_mgmt(pamh: *mut PamHandle, flags: c_int) -> c_int;
     fn pam_setcred(pamh: *mut PamHandle, flags: c_int) -> c_int;
@@ -83,7 +84,12 @@ struct Conversation {
     said: Vec<String>,
 }
 
-extern "C" fn converse(n: c_int, msgs: *mut *const PamMessage, resp: *mut *mut PamResponse, data: *mut c_void) -> c_int {
+extern "C" fn converse(
+    n: c_int,
+    msgs: *mut *const PamMessage,
+    resp: *mut *mut PamResponse,
+    data: *mut c_void,
+) -> c_int {
     if n <= 0 || msgs.is_null() || resp.is_null() || data.is_null() {
         return PAM_CONV_ERR;
     }
@@ -98,7 +104,11 @@ extern "C" fn converse(n: c_int, msgs: *mut *const PamMessage, resp: *mut *mut P
         // SAFETY: `msgs` has `n` entries (Linux-PAM's layout: an array of
         // pointers).
         let m = unsafe { &**msgs.add(i) };
-        let text = if m.msg.is_null() { String::new() } else { unsafe { CStr::from_ptr(m.msg) }.to_string_lossy().into_owned() };
+        let text = if m.msg.is_null() {
+            String::new()
+        } else {
+            unsafe { CStr::from_ptr(m.msg) }.to_string_lossy().into_owned()
+        };
         let reply: Option<&CStr> = match m.msg_style {
             PAM_PROMPT_ECHO_OFF => Some(&conv.password),
             PAM_PROMPT_ECHO_ON => Some(&conv.user),
@@ -162,7 +172,11 @@ impl Authenticator for Pam {
                 None
             } else {
                 let s = pam_strerror(handle, r);
-                Some(if s.is_null() { "Authentication failure".to_owned() } else { CStr::from_ptr(s).to_string_lossy().into_owned() })
+                Some(if s.is_null() {
+                    "Authentication failure".to_owned()
+                } else {
+                    CStr::from_ptr(s).to_string_lossy().into_owned()
+                })
             };
             pam_end(handle, r);
             // Wipe the password's bytes now PAM is done with them.
@@ -186,7 +200,11 @@ pub fn current_user() -> (String, String) {
         let mut out: *mut libc::passwd = ptr::null_mut();
         if libc::getpwuid_r(uid, &mut pw, buf.as_mut_ptr(), buf.len(), &mut out) == 0 && !out.is_null() {
             let name = CStr::from_ptr(pw.pw_name).to_string_lossy().into_owned();
-            let gecos = if pw.pw_gecos.is_null() { String::new() } else { CStr::from_ptr(pw.pw_gecos).to_string_lossy().into_owned() };
+            let gecos = if pw.pw_gecos.is_null() {
+                String::new()
+            } else {
+                CStr::from_ptr(pw.pw_gecos).to_string_lossy().into_owned()
+            };
             let full = gecos.split(',').next().unwrap_or("").trim().to_owned();
             return (name.clone(), if full.is_empty() { name } else { full });
         }

@@ -43,7 +43,13 @@ pub fn theme_file(name: &str) -> Option<PathBuf> {
 pub fn play(file: PathBuf) {
     let _ = std::thread::Builder::new().name("aizome-sound".into()).spawn(move || {
         for player in ["pw-play", "paplay", "aplay"] {
-            match Command::new(player).arg(&file).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).status() {
+            match Command::new(player)
+                .arg(&file)
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status()
+            {
                 Ok(_) => return,
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
                 Err(e) => {

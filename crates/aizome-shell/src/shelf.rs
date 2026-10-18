@@ -13,12 +13,23 @@ use crate::look::Hue;
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum ShelfItem {
-    File { path: PathBuf },
-    Folder { path: PathBuf },
-    Text { text: String },
-    Link { url: String },
+    File {
+        path: PathBuf,
+    },
+    Folder {
+        path: PathBuf,
+    },
+    Text {
+        text: String,
+    },
+    Link {
+        url: String,
+    },
     /// An image's bytes, kept as a file in the shelf's folder.
-    Image { file: String, name: String },
+    Image {
+        file: String,
+        name: String,
+    },
 }
 
 impl ShelfItem {
@@ -155,7 +166,9 @@ impl Shelf {
         if let Ok(rd) = std::fs::read_dir(&self.dir) {
             for e in rd.flatten() {
                 let name = e.file_name().to_string_lossy().into_owned();
-                if name.starts_with("image-") && !self.items.iter().any(|i| matches!(i, ShelfItem::Image { file, .. } if *file == name)) {
+                if name.starts_with("image-")
+                    && !self.items.iter().any(|i| matches!(i, ShelfItem::Image { file, .. } if *file == name))
+                {
                     let _ = std::fs::remove_file(e.path());
                 }
             }
@@ -172,7 +185,8 @@ impl Shelf {
     /// Park an image's bytes.
     pub fn park_image(&mut self, bytes: &[u8], name: &str, ext: &str) -> std::io::Result<()> {
         std::fs::create_dir_all(&self.dir)?;
-        let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0);
+        let stamp =
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0);
         let file = format!("image-{stamp}.{ext}");
         std::fs::write(self.dir.join(&file), bytes)?;
         self.park(ShelfItem::Image { file, name: name.to_owned() });
@@ -217,8 +231,14 @@ mod tests {
             ShelfItem::from_uri("file:///tmp/release%20notes.md"),
             Some(ShelfItem::File { path: "/tmp/release notes.md".into() })
         );
-        assert_eq!(ShelfItem::from_uri("https://aizome.dev"), Some(ShelfItem::Link { url: "https://aizome.dev".into() }));
-        assert_eq!(ShelfItem::from_text("https://example.org/x"), ShelfItem::Link { url: "https://example.org/x".into() });
+        assert_eq!(
+            ShelfItem::from_uri("https://aizome.dev"),
+            Some(ShelfItem::Link { url: "https://aizome.dev".into() })
+        );
+        assert_eq!(
+            ShelfItem::from_text("https://example.org/x"),
+            ShelfItem::Link { url: "https://example.org/x".into() }
+        );
         let t = ShelfItem::from_text("damage is per layer, not per window");
         assert_eq!(t.label(), "“damage is per layer, not…”");
         assert_eq!(ShelfItem::Folder { path: "/home/u/release-notes".into() }.label(), "release-notes/");
@@ -241,7 +261,9 @@ mod tests {
         let mut back = back;
         back.remove(0);
         back.save().unwrap();
-        assert!(!std::fs::read_dir(&dir).unwrap().flatten().any(|e| e.file_name().to_string_lossy().starts_with("image-")));
+        assert!(
+            !std::fs::read_dir(&dir).unwrap().flatten().any(|e| e.file_name().to_string_lossy().starts_with("image-"))
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -32,7 +32,9 @@ pub enum PaletteMsg {
     Scope(Option<Scope>),
     /// A row clicked: select it, and run it on a second click.
     Click(usize),
-    Run { keep_open: bool },
+    Run {
+        keep_open: bool,
+    },
     Close,
 }
 
@@ -88,7 +90,9 @@ pub fn scroll_for(sections: &[Section], selected: usize, current: f64) -> f64 {
     let Some(&top) = tops.get(selected) else { return 0.0 };
     let mut s = current;
     // Its section's head shows with the first row.
-    let want_top = if tops.first() == Some(&top) || tops.iter().position(|t| *t == top).is_some_and(|i| i > 0 && tops[i - 1] + ROW < top) {
+    let want_top = if tops.first() == Some(&top)
+        || tops.iter().position(|t| *t == top).is_some_and(|i| i > 0 && tops[i - 1] + ROW < top)
+    {
         top - HEAD
     } else {
         top
@@ -126,7 +130,9 @@ fn query_row(v: &PaletteView) -> Element<PaletteMsg> {
             cx.measure(&ctx, &look::mono(11.5, typeface::WEIGHT_REGULAR, t.text3())).width.min(260.0)
         }
     });
-    let r = row(vec![prompt.into(), Element::from(q).id("palette-query").width(aizome_kit::Length::Fill), context.into()]).spacing(12.0);
+    let r =
+        row(vec![prompt.into(), Element::from(q).id("palette-query").width(aizome_kit::Length::Fill), context.into()])
+            .spacing(12.0);
     around(r, [0.0, 20.0, 1.0, 20.0], aizome_kit::Size::new(WIDTH, QUERY), "query-row", |cx| {
         let t = cx.theme();
         let b = cx.bounds();
@@ -149,7 +155,11 @@ fn chip(label: &'static str, scope: Option<Scope>, on: bool) -> Element<PaletteM
             aizome_kit::draw::border(cx.canvas, b, t.line(), 1.0);
             t.text3()
         };
-        let s = look::ui(12.5 * t.metrics.factor, if on { typeface::WEIGHT_SEMIBOLD } else { typeface::WEIGHT_REGULAR }, fg);
+        let s = look::ui(
+            12.5 * t.metrics.factor,
+            if on { typeface::WEIGHT_SEMIBOLD } else { typeface::WEIGHT_REGULAR },
+            fg,
+        );
         cx.draw_text_in(label, &s, b, Align::Center);
     })
     .fit(move |cx| {
@@ -176,11 +186,17 @@ fn chips(v: &PaletteView) -> Element<PaletteMsg> {
         })
         .into(),
     );
-    around(row(items).spacing(6.0).align(Align::Center), [10.0, 16.0, 11.0, 16.0], aizome_kit::Size::new(WIDTH, CHIPS), "chips", |cx| {
-        let t = cx.theme();
-        let b = cx.bounds();
-        cx.canvas.fill_rect(Rect::new(0.0, b.y1 - 1.0, b.x1, b.y1), t.line());
-    })
+    around(
+        row(items).spacing(6.0).align(Align::Center),
+        [10.0, 16.0, 11.0, 16.0],
+        aizome_kit::Size::new(WIDTH, CHIPS),
+        "chips",
+        |cx| {
+            let t = cx.theme();
+            let b = cx.bounds();
+            cx.canvas.fill_rect(Rect::new(0.0, b.y1 - 1.0, b.x1, b.y1), t.line());
+        },
+    )
     .into()
 }
 
@@ -224,7 +240,11 @@ fn result(r: &Row, index: usize, on: bool) -> Element<PaletteMsg> {
         let glyph_c = if on { t.focus() } else { t.text3() };
         item.glyph.draw(cx.canvas, Point::new(16.0, ((ROW - 17.0) / 2.0).round()), 17.0, glyph_c);
         // The title with its matched characters in blue, underlined.
-        let mut base = if item.mono { look::mono(13.0, typeface::WEIGHT_REGULAR, fg) } else { look::ui(14.0 * t.metrics.factor, typeface::WEIGHT_REGULAR, fg) };
+        let mut base = if item.mono {
+            look::mono(13.0, typeface::WEIGHT_REGULAR, fg)
+        } else {
+            look::ui(14.0 * t.metrics.factor, typeface::WEIGHT_REGULAR, fg)
+        };
         base.wrap = aizome_kit::sidestep_ui::Wrap::None;
         let blue = if on { Hue::Focus.color(t) } else { Hue::Blue.color(t) };
         let mut spans = Vec::new();
@@ -233,7 +253,12 @@ fn result(r: &Row, index: usize, on: bool) -> Element<PaletteMsg> {
             if rg.start > at {
                 spans.push(aizome_kit::Span::new(&item.title[at..rg.start]));
             }
-            spans.push(aizome_kit::Span::new(&item.title[rg.start..rg.end]).color(blue).underline().weight(typeface::WEIGHT_BOLD));
+            spans.push(
+                aizome_kit::Span::new(&item.title[rg.start..rg.end])
+                    .color(blue)
+                    .underline()
+                    .weight(typeface::WEIGHT_BOLD),
+            );
             at = rg.end;
         }
         if at < item.title.len() {
@@ -258,7 +283,12 @@ fn result(r: &Row, index: usize, on: bool) -> Element<PaletteMsg> {
         }
         if let Some(s) = &item.shortcut {
             let ks = look::mono(12.0, typeface::WEIGHT_REGULAR, dim);
-            cx.draw_text_in(&shortcut_label(s), &ks, Rect::new(b.x1 - 16.0 - keys_w, 0.0, b.x1 - 16.0, ROW), Align::End);
+            cx.draw_text_in(
+                &shortcut_label(s),
+                &ks,
+                Rect::new(b.x1 - 16.0 - keys_w, 0.0, b.x1 - 16.0, ROW),
+                Align::End,
+            );
         }
     })
     .on_click(PaletteMsg::Click(index))
@@ -318,7 +348,12 @@ fn results(v: &PaletteView, scroll: f64) -> Element<PaletteMsg> {
         first_y - scroll
     };
     let list = column(items);
-    aizome_kit::container(list).padding([offset, 0.0, 0.0, 0.0]).clip().width(aizome_kit::Length::Fill).height(room).into()
+    aizome_kit::container(list)
+        .padding([offset, 0.0, 0.0, 0.0])
+        .clip()
+        .width(aizome_kit::Length::Fill)
+        .height(room)
+        .into()
 }
 
 fn detail(d: &Option<Detail>) -> Element<PaletteMsg> {
@@ -389,7 +424,8 @@ fn footer() -> Element<PaletteMsg> {
         let b = cx.bounds();
         cx.canvas.fill_rect(Rect::new(0.0, 0.0, b.x1, 1.0), t.line());
         let mut x = 18.0;
-        for (k, label) in [("↑↓", "move"), ("↩", "run"), ("⇥", "scope"), ("❖K", "actions"), ("esc", "close")] {
+        for (k, label) in [("↑↓", "move"), ("↩", "run"), ("⇥", "scope"), ("❖K", "actions"), ("esc", "close")]
+        {
             let ks = look::mono(12.0, typeface::WEIGHT_MEDIUM, t.text2());
             let ls = look::ui(12.0, typeface::WEIGHT_REGULAR, t.text3());
             let w = cx.draw_text_in(k, &ks, Rect::new(x, 1.0, b.x1, b.y1), Align::Start);
@@ -398,7 +434,12 @@ fn footer() -> Element<PaletteMsg> {
             x += w + 18.0;
         }
         let ls = look::ui(12.0, typeface::WEIGHT_REGULAR, t.text3());
-        cx.draw_text_in("Searches every menu of the focused app", &ls, Rect::new(x, 1.0, b.x1 - 18.0, b.y1), Align::End);
+        cx.draw_text_in(
+            "Searches every menu of the focused app",
+            &ls,
+            Rect::new(x, 1.0, b.x1 - 18.0, b.y1),
+            Align::End,
+        );
     })
     .into()
 }
@@ -465,7 +506,8 @@ pub fn warm_texts(t: &aizome_kit::Theme, titles: &[String]) -> Vec<(String, aizo
         look::mono(10.5, tf::WEIGHT_BOLD, fg),
         look::mono(10.5, tf::WEIGHT_MEDIUM, fg),
     ];
-    let mut out: Vec<(String, aizome_kit::text::TextSpec)> = specs.iter().map(|s| (sample.to_owned(), s.clone())).collect();
+    let mut out: Vec<(String, aizome_kit::text::TextSpec)> =
+        specs.iter().map(|s| (sample.to_owned(), s.clone())).collect();
     let row = look::ui(14.0 * f, tf::WEIGHT_REGULAR, fg);
     let trail = look::mono(12.0, tf::WEIGHT_REGULAR, fg);
     for title in titles {

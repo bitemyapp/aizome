@@ -46,8 +46,11 @@ pub fn by_category(apps: &[&App]) -> Vec<(&'static str, Vec<App>)> {
     CATEGORIES
         .iter()
         .map(|cat| {
-            let mut in_cat: Vec<App> = apps.iter().filter(|a| category(&a.categories) == *cat).map(|a| (*a).clone()).collect();
-            in_cat.sort_by(|a, b| is_aizome(b).cmp(&is_aizome(a)).then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase())));
+            let mut in_cat: Vec<App> =
+                apps.iter().filter(|a| category(&a.categories) == *cat).map(|a| (*a).clone()).collect();
+            in_cat.sort_by(|a, b| {
+                is_aizome(b).cmp(&is_aizome(a)).then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+            });
             (*cat, in_cat)
         })
         .filter(|(_, apps)| !apps.is_empty())

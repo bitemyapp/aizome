@@ -60,7 +60,14 @@ impl Entry {
 
     pub fn submenu(label: impl Into<String>, items: Vec<Entry>) -> Entry {
         let label = label.into();
-        Entry { id: hash_id(&("menu", &label)), kind: Kind::Submenu, enabled: !items.is_empty(), label, items, ..Entry::default() }
+        Entry {
+            id: hash_id(&("menu", &label)),
+            kind: Kind::Submenu,
+            enabled: !items.is_empty(),
+            label,
+            items,
+            ..Entry::default()
+        }
     }
 
     pub fn separator() -> Entry {
@@ -240,7 +247,13 @@ pub fn type_ahead(menu: &Menu, query: &str) -> Vec<(Flat, Vec<std::ops::Range<us
 
 /// An app's published menu as the shell's.
 pub fn from_proto(menu: &proto::Menu, pid: u32) -> Menu {
-    Menu { title: menu.title.clone(), items: entries(&menu.items, pid), pid: Some(pid), proto_id: Some(menu.id), mark: false }
+    Menu {
+        title: menu.title.clone(),
+        items: entries(&menu.items, pid),
+        pid: Some(pid),
+        proto_id: Some(menu.id),
+        mark: false,
+    }
 }
 
 fn entries(items: &[proto::Item], pid: u32) -> Vec<Entry> {
@@ -290,7 +303,11 @@ mod tests {
                     kind: proto::ItemKind::Submenu,
                     label: "Find".into(),
                     enabled: true,
-                    items: vec![item(21, "Find…"), item(22, "Find and Replace…"), proto::Item { enabled: false, ..item(23, "Find Next") }],
+                    items: vec![
+                        item(21, "Find…"),
+                        item(22, "Find and Replace…"),
+                        proto::Item { enabled: false, ..item(23, "Find Next") },
+                    ],
                     ..Default::default()
                 },
             ],

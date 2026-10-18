@@ -59,8 +59,13 @@ pub fn desk_items(desks: &[DeskInfo], go: impl Fn(u32) -> Action) -> Vec<Entry> 
     desks
         .iter()
         .map(|d| {
-            let label = if d.name == d.index.to_string() { format!("Desk {}", d.index) } else { format!("{}  {}", d.index, d.name) };
-            let mut e = Entry::action(label, go(d.index)).checked(d.current).with_id(super::model::hash_id(&("desk", d.id)));
+            let label = if d.name == d.index.to_string() {
+                format!("Desk {}", d.index)
+            } else {
+                format!("{}  {}", d.index, d.name)
+            };
+            let mut e =
+                Entry::action(label, go(d.index)).checked(d.current).with_id(super::model::hash_id(&("desk", d.id)));
             if d.index <= 9 {
                 e = e.shortcut(sc("⌃❖", &d.index.to_string()));
             }
@@ -79,7 +84,8 @@ pub fn fallback(name: &str, window: Option<&WindowInfo>, desks: &[DeskInfo]) -> 
         vec![
             Entry::action(format!("About {name}"), Action::About { app_id: Some(app_id.clone()) }),
             Entry::separator(),
-            Entry::action(format!("Hide {name}"), Action::Wm(Request::HideApp { app: AppSel { app_id: None, pid } })).cmd("H"),
+            Entry::action(format!("Hide {name}"), Action::Wm(Request::HideApp { app: AppSel { app_id: None, pid } }))
+                .cmd("H"),
             Entry::action("Hide Others", Action::Wm(Request::HideOthers)).shortcut(sc("⌥❖", "H")),
             Entry::separator(),
             Entry::action(format!("Quit {name}"), Action::QuitApp { app_id: app_id.clone() }).cmd("Q").role("quit"),
@@ -92,7 +98,8 @@ pub fn fallback(name: &str, window: Option<&WindowInfo>, desks: &[DeskInfo]) -> 
             Entry::action("Fill", Action::Wm(Request::Fill { id, state: None })).shortcut(sc("⌥❖", "↑")),
             Entry::action("Split Left", Action::Wm(Request::Split { id, side: Side::Left })).shortcut(sc("⌥❖", "←")),
             Entry::action("Split Right", Action::Wm(Request::Split { id, side: Side::Right })).shortcut(sc("⌥❖", "→")),
-            Entry::action("Stack with…", Action::Wm(Request::Action { action: "stack-with-behind".into() })).shortcut(sc("⌥❖", "S")),
+            Entry::action("Stack with…", Action::Wm(Request::Action { action: "stack-with-behind".into() }))
+                .shortcut(sc("⌥❖", "S")),
             Entry::submenu("Move to Desk", desk_items(desks, |i| crate::actions::wm::move_to_desk(id, i))),
             Entry::separator(),
             Entry::action("Full Screen", Action::Wm(Request::Fullscreen { id, state: None })).shortcut(sc("⌃❖", "F")),
@@ -134,7 +141,8 @@ pub fn desktop(desks: &[DeskInfo]) -> Vec<Menu> {
         Menu::new(
             "Help",
             vec![
-                Entry::action("Search", Action::Palette { scope: Some(Scope::Command), query: String::new() }).shortcut(sc("❖", "Space")),
+                Entry::action("Search", Action::Palette { scope: Some(Scope::Command), query: String::new() })
+                    .shortcut(sc("❖", "Space")),
                 Entry::action("Aizome Help", Action::OpenUrl { url: "https://github.com/bitemyapp/aizome".into() }),
                 Entry::separator(),
                 Entry::action("Aizome Tour", Action::Spawn { argv: vec!["aizome-annai".into()] }),
@@ -171,7 +179,9 @@ pub fn toolchest(input: &ToolchestInput) -> Menu {
             let rows = apps
                 .iter()
                 .map(|a| {
-                    let glyph = catalog::glyph_for(a.app_id()).map(|g| g.0).unwrap_or_else(|| catalog::glyph_by_category(&a.categories));
+                    let glyph = catalog::glyph_for(a.app_id())
+                        .map(|g| g.0)
+                        .unwrap_or_else(|| catalog::glyph_by_category(&a.categories));
                     let mut e = Entry::action(a.name.clone(), Action::Launch { app_id: a.app_id().to_owned() })
                         .glyph(glyph)
                         .with_id(super::model::hash_id(&("app", a.app_id())));
@@ -193,7 +203,9 @@ pub fn toolchest(input: &ToolchestInput) -> Menu {
         .collect();
     if let Some(f) = &input.desk_folder {
         let name = f.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| f.display().to_string());
-        places.push(Entry::action(format!("{name} (this Desk)"), Action::Open { path: f.clone() }).glyph(Icon::FolderOpen));
+        places.push(
+            Entry::action(format!("{name} (this Desk)"), Action::Open { path: f.clone() }).glyph(Icon::FolderOpen),
+        );
     }
     if !input.disks.is_empty() {
         places.push(Entry::separator());
@@ -202,7 +214,9 @@ pub fn toolchest(input: &ToolchestInput) -> Menu {
         }
     }
     places.push(Entry::separator());
-    places.push(Entry::action("Trash", Action::Open { path: crate::launch::trash_dir().join("files") }).glyph(Icon::Trash));
+    places.push(
+        Entry::action("Trash", Action::Open { path: crate::launch::trash_dir().join("files") }).glyph(Icon::Trash),
+    );
     let recent: Vec<Entry> = input
         .recent
         .iter()
@@ -233,7 +247,9 @@ pub fn toolchest(input: &ToolchestInput) -> Menu {
     .into_iter()
     .map(|(n, g, id, icon)| Entry::action(n, Action::Launch { app_id: id.into() }).glyph(icon).detail(g))
     .chain(std::iter::once(
-        Entry::action("Terminal", Action::Wm(Request::Action { action: "terminal".into() })).glyph(Icon::SquareTerminal).shortcut(sc("❖", "↩")),
+        Entry::action("Terminal", Action::Wm(Request::Action { action: "terminal".into() }))
+            .glyph(Icon::SquareTerminal)
+            .shortcut(sc("❖", "↩")),
     ))
     .collect();
     let session = vec![
@@ -272,7 +288,9 @@ pub fn pointer_menu(name: &str, menus: &[Menu], services: Vec<Entry>, hide: Acti
         let sub: Vec<Entry> = m
             .items
             .iter()
-            .filter(|e| !matches!(e.role.as_deref(), Some("hide" | "quit" | "services")) && !(i == 0 && e.label == "Services"))
+            .filter(|e| {
+                !matches!(e.role.as_deref(), Some("hide" | "quit" | "services")) && !(i == 0 && e.label == "Services")
+            })
             .cloned()
             .collect();
         let sub = trim_separators(sub);
@@ -316,12 +334,19 @@ pub fn services(text: Option<&str>) -> Vec<Entry> {
 /// Services submenu, or adding one before Hide).
 pub fn with_services(mut app_menu: Menu, text: Option<&str>) -> Menu {
     let entries = services(text);
-    if let Some(e) = app_menu.items.iter_mut().find(|e| e.kind == Kind::Submenu && (e.label == "Services" || e.items.iter().any(|i| i.role.as_deref() == Some("services")))) {
+    if let Some(e) = app_menu.items.iter_mut().find(|e| {
+        e.kind == Kind::Submenu
+            && (e.label == "Services" || e.items.iter().any(|i| i.role.as_deref() == Some("services")))
+    }) {
         e.items = entries;
         e.enabled = true;
         return app_menu;
     }
-    let at = app_menu.items.iter().position(|e| e.role.as_deref() == Some("hide") || e.label.starts_with("Hide")).unwrap_or(app_menu.items.len());
+    let at = app_menu
+        .items
+        .iter()
+        .position(|e| e.role.as_deref() == Some("hide") || e.label.starts_with("Hide"))
+        .unwrap_or(app_menu.items.len());
     app_menu.items.insert(at, Entry::separator());
     app_menu.items.insert(at, Entry::submenu("Services", entries));
     app_menu
@@ -333,9 +358,13 @@ pub fn desk_context(desk: &DeskInfo, can_remove: bool) -> Menu {
         desk.name.clone(),
         vec![
             Entry::action("Rename", Action::RenameDesk { index: desk.index }),
-            Entry::action("Set Folder…", Action::Settings { pane: "desktop".into(), anchor: Some(format!("desks.{}", desk.index)) }),
+            Entry::action(
+                "Set Folder…",
+                Action::Settings { pane: "desktop".into(), anchor: Some(format!("desks.{}", desk.index)) },
+            ),
             Entry::separator(),
-            Entry::action("Remove", Action::Wm(Request::RemoveDesk { desk: aizome_ipc::DeskSel::Index(desk.index) })).enabled(can_remove),
+            Entry::action("Remove", Action::Wm(Request::RemoveDesk { desk: aizome_ipc::DeskSel::Index(desk.index) }))
+                .enabled(can_remove),
         ],
     )
 }
@@ -373,7 +402,11 @@ pub fn to_kit<Msg: Clone + Send + 'static>(menu: &Menu, wrap: &impl Fn(Action) -
     m
 }
 
-fn push_items<Msg: Clone + Send + 'static>(m: &mut aizome_kit::Menu<Msg>, items: &[Entry], wrap: &impl Fn(Action) -> Msg) {
+fn push_items<Msg: Clone + Send + 'static>(
+    m: &mut aizome_kit::Menu<Msg>,
+    items: &[Entry],
+    wrap: &impl Fn(Action) -> Msg,
+) {
     for e in items {
         match e.kind {
             Kind::Separator => m.push(aizome_kit::MenuItem::separator()),
@@ -395,7 +428,8 @@ fn push_items<Msg: Clone + Send + 'static>(m: &mut aizome_kit::Menu<Msg>, items:
                     Some(d) => format!("{}  —  {d}", e.label),
                     None => e.label.clone(),
                 };
-                let mut item = aizome_kit::MenuItem::new(label, wrap(e.action.clone())).enabled(e.enabled).checked(e.checked);
+                let mut item =
+                    aizome_kit::MenuItem::new(label, wrap(e.action.clone())).enabled(e.enabled).checked(e.checked);
                 if let Some(s) = e.shortcut.as_ref().and_then(kit_shortcut) {
                     item = item.shortcut(s);
                 }
@@ -440,9 +474,21 @@ mod tests {
             id: 1,
             title: "Window".into(),
             items: vec![
-                proto::Item { id: 3, label: "Minimise".into(), role: Some("minimise".into()), enabled: true, ..Default::default() },
+                proto::Item {
+                    id: 3,
+                    label: "Minimise".into(),
+                    role: Some("minimise".into()),
+                    enabled: true,
+                    ..Default::default()
+                },
                 proto::Item { id: 4, label: "Zoom In".into(), enabled: true, ..Default::default() },
-                proto::Item { id: 5, label: "Search".into(), role: Some("help-search".into()), enabled: true, ..Default::default() },
+                proto::Item {
+                    id: 5,
+                    label: "Search".into(),
+                    role: Some("help-search".into()),
+                    enabled: true,
+                    ..Default::default()
+                },
             ],
         }];
         let m = app_menus(&published, 9);
@@ -467,11 +513,14 @@ mod tests {
 
     #[test]
     fn services_fill_the_app_menu() {
-        let app = Menu::new("Sumi", vec![
-            Entry::action("About Sumi", Action::None),
-            Entry::submenu("Services", vec![Entry::action("No Services Apply", Action::None).role("services")]),
-            Entry::action("Hide Sumi", Action::None).role("hide"),
-        ]);
+        let app = Menu::new(
+            "Sumi",
+            vec![
+                Entry::action("About Sumi", Action::None),
+                Entry::submenu("Services", vec![Entry::action("No Services Apply", Action::None).role("services")]),
+                Entry::action("Hide Sumi", Action::None).role("hide"),
+            ],
+        );
         let m = with_services(app, Some("https://example.org"));
         let s = m.items.iter().find(|e| e.label == "Services").unwrap();
         assert!(s.items.iter().any(|e| e.action == Action::Service(ServiceVerb::OpenUrl)));
@@ -482,7 +531,8 @@ mod tests {
 
     #[test]
     fn the_toolchest_has_its_six_submenus() {
-        let t = toolchest(&ToolchestInput { apps: &[], desks: &desks(), desk_folder: None, disks: vec![], recent: vec![] });
+        let t =
+            toolchest(&ToolchestInput { apps: &[], desks: &desks(), desk_folder: None, disks: vec![], recent: vec![] });
         let labels: Vec<&str> = t.items.iter().map(|e| e.label.as_str()).collect();
         assert_eq!(labels, ["Applications", "Places", "Desks", "Find", "System", "Session"]);
         assert!(t.mark);
@@ -497,12 +547,22 @@ mod tests {
         let s = kit_shortcut(&sc("⌥❖", "H")).unwrap();
         assert_eq!(s.label(), "⌥❖H");
         assert_eq!(kit_shortcut(&sc("⌃❖", "↑")).unwrap().key, aizome_kit::ShortcutKey::Up);
-        assert_eq!(kit_shortcut(&proto::Shortcut { key: "F10".into(), ..Default::default() }).unwrap().key, aizome_kit::ShortcutKey::F(10));
+        assert_eq!(
+            kit_shortcut(&proto::Shortcut { key: "F10".into(), ..Default::default() }).unwrap().key,
+            aizome_kit::ShortcutKey::F(10)
+        );
     }
 
     #[test]
     fn separators_trim() {
-        let items = vec![Entry::separator(), Entry::action("a", Action::None), Entry::separator(), Entry::separator(), Entry::action("b", Action::None), Entry::separator()];
+        let items = vec![
+            Entry::separator(),
+            Entry::action("a", Action::None),
+            Entry::separator(),
+            Entry::separator(),
+            Entry::action("b", Action::None),
+            Entry::separator(),
+        ];
         let t = trim_separators(items);
         assert_eq!(t.len(), 3);
     }

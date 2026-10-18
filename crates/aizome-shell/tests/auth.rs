@@ -36,7 +36,11 @@ impl Program for Preview {
 fn dialog(identities: usize) -> AuthView {
     AuthView {
         message: "Authentication is required to mount sekka-nightly.iso.".into(),
-        identities: ["Chris Allen (callen)", "Administrator (root)"].iter().take(identities).map(|s| s.to_string()).collect(),
+        identities: ["Chris Allen (callen)", "Administrator (root)"]
+            .iter()
+            .take(identities)
+            .map(|s| s.to_string())
+            .collect(),
         identity: 0,
         prompt: "Password:".into(),
         echo: false,

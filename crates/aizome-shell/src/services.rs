@@ -77,7 +77,9 @@ impl Shell {
                 let url = if t.contains("://") || t.starts_with("mailto:") { t } else { format!("https://{t}") };
                 self.run(Action::OpenUrl { url }, cx);
             }
-            ServiceVerb::SearchWeb => self.run(Action::OpenUrl { url: format!("https://duckduckgo.com/?q={}", url_encode(&t)) }, cx),
+            ServiceVerb::SearchWeb => {
+                self.run(Action::OpenUrl { url: format!("https://duckduckgo.com/?q={}", url_encode(&t)) }, cx)
+            }
             ServiceVerb::LookUpInFiles => self.open_palette(Some(aizome_search::Scope::File), t, cx),
             ServiceVerb::Calculate => {
                 if let Ok(v) = aizome_search::calc::eval(&t) {
@@ -102,7 +104,10 @@ impl Shell {
                 let file = dir.join(format!("selection-{}.txt", self.serial));
                 if std::fs::write(&file, &text).is_ok() {
                     let app = if verb == ServiceVerb::NewNote { "org.aizome.Fusen" } else { "org.aizome.Sumi" };
-                    self.launch(Launch::App { app_id: app.into(), targets: vec![file.to_string_lossy().into_owned()] }, cx);
+                    self.launch(
+                        Launch::App { app_id: app.into(), targets: vec![file.to_string_lossy().into_owned()] },
+                        cx,
+                    );
                 }
             }
         }

@@ -209,7 +209,15 @@ fn sep() -> Element<PanelMsg> {
 }
 
 /// A row to click: a glyph, a label, and a mark or text at the right.
-fn item_row(glyph: Option<(Icon, Hue)>, label: String, right: Option<String>, lock: bool, checked: bool, msg: Option<PanelMsg>, key: String) -> Element<PanelMsg> {
+fn item_row(
+    glyph: Option<(Icon, Hue)>,
+    label: String,
+    right: Option<String>,
+    lock: bool,
+    checked: bool,
+    msg: Option<PanelMsg>,
+    key: String,
+) -> Element<PanelMsg> {
     let (l, r) = (label.clone(), right.clone());
     let d = drawn(WIDTH, ROW, (l.clone(), r.clone(), lock, checked, glyph.map(|g| g.0)), move |cx| {
         let t = cx.theme();
@@ -222,20 +230,35 @@ fn item_row(glyph: Option<(Icon, Hue)>, label: String, right: Option<String>, lo
         };
         let mut x = PAD;
         if checked {
-            Icon::Check.draw(cx.canvas, Point::new(x, ((ROW - 14.0) / 2.0).round()), 14.0, if cx.is_hovered() { fg } else { t.focus() });
+            Icon::Check.draw(
+                cx.canvas,
+                Point::new(x, ((ROW - 14.0) / 2.0).round()),
+                14.0,
+                if cx.is_hovered() { fg } else { t.focus() },
+            );
         }
         if glyph.is_some() || checked {
             x += 20.0;
         }
         if let Some((g, hue)) = glyph {
-            g.draw(cx.canvas, Point::new(x, ((ROW - 16.0) / 2.0).round()), 16.0, if cx.is_hovered() { fg } else { hue.color(t) });
+            g.draw(
+                cx.canvas,
+                Point::new(x, ((ROW - 16.0) / 2.0).round()),
+                16.0,
+                if cx.is_hovered() { fg } else { hue.color(t) },
+            );
             x += 24.0;
         }
         let s = ui(t, typeface::BODY, typeface::WEIGHT_REGULAR, fg);
         cx.draw_text_in(&l, &s, Rect::new(x, 0.0, b.x1 - PAD - 60.0, ROW), Align::Start);
         let mut x1 = b.x1 - PAD;
         if lock {
-            Icon::Lock.draw(cx.canvas, Point::new(x1 - 13.0, ((ROW - 13.0) / 2.0).round()), 13.0, if cx.is_hovered() { fg } else { t.text3() });
+            Icon::Lock.draw(
+                cx.canvas,
+                Point::new(x1 - 13.0, ((ROW - 13.0) / 2.0).round()),
+                13.0,
+                if cx.is_hovered() { fg } else { t.text3() },
+            );
             x1 -= 20.0;
         }
         if let Some(r) = &r {
@@ -253,16 +276,31 @@ fn item_row(glyph: Option<(Icon, Hue)>, label: String, right: Option<String>, lo
 
 /// The last row: Shitsurae's pane.
 fn settings_row(label: &str, pane: &str) -> Element<PanelMsg> {
-    item_row(None, label.to_owned(), None, false, false, Some(PanelMsg::Settings(pane.to_owned())), format!("settings-{pane}"))
+    item_row(
+        None,
+        label.to_owned(),
+        None,
+        false,
+        false,
+        Some(PanelMsg::Settings(pane.to_owned())),
+        format!("settings-{pane}"),
+    )
 }
 
-fn slider_row(icon: Icon, value: f32, on_change: impl Fn(f64) -> PanelMsg + 'static, right: Option<Element<PanelMsg>>) -> Element<PanelMsg> {
+fn slider_row(
+    icon: Icon,
+    value: f32,
+    on_change: impl Fn(f64) -> PanelMsg + 'static,
+    right: Option<Element<PanelMsg>>,
+) -> Element<PanelMsg> {
     let glyph = drawn(20.0, ROW, icon, move |cx| {
         let t = cx.theme();
         icon.draw(cx.canvas, Point::new(0.0, ((ROW - 16.0) / 2.0).round()), 16.0, t.text2());
     });
-    let mut items: Vec<Element<PanelMsg>> =
-        vec![glyph.into(), Element::from(slider(value as f64, 0.0..=1.0).on_change(on_change)).width(aizome_kit::Length::Fill)];
+    let mut items: Vec<Element<PanelMsg>> = vec![
+        glyph.into(),
+        Element::from(slider(value as f64, 0.0..=1.0).on_change(on_change)).width(aizome_kit::Length::Fill),
+    ];
     if let Some(r) = right {
         items.push(r);
     }
@@ -295,7 +333,15 @@ fn network(p: &NetPanel) -> Vec<Element<PanelMsg>> {
                     _ => Icon::Wifi,
                 };
                 let right = n.connecting.then(|| "joining…".to_owned());
-                v.push(item_row(Some((glyph, Hue::Text2)), n.ssid.clone(), right, n.secure, n.connected, Some(PanelMsg::Network(n.ssid.clone())), format!("net-{}", n.ssid)));
+                v.push(item_row(
+                    Some((glyph, Hue::Text2)),
+                    n.ssid.clone(),
+                    right,
+                    n.secure,
+                    n.connected,
+                    Some(PanelMsg::Network(n.ssid.clone())),
+                    format!("net-{}", n.ssid),
+                ));
                 if let Some((ssid, pw)) = &p.asking
                     && *ssid == n.ssid
                 {
@@ -338,9 +384,19 @@ fn network(p: &NetPanel) -> Vec<Element<PanelMsg>> {
     }
     for (uuid, name, on) in &p.vpns {
         let id = uuid.clone();
-        v.push(labelled(name, typeface::WEIGHT_REGULAR, Some(toggle(*on).on_toggle(move |b| PanelMsg::Vpn(id.clone(), b)).into()), ROW));
+        v.push(labelled(
+            name,
+            typeface::WEIGHT_REGULAR,
+            Some(toggle(*on).on_toggle(move |b| PanelMsg::Vpn(id.clone(), b)).into()),
+            ROW,
+        ));
     }
-    v.push(labelled("Airplane Mode", typeface::WEIGHT_REGULAR, Some(toggle(p.airplane).on_toggle(PanelMsg::Airplane).into()), ROW));
+    v.push(labelled(
+        "Airplane Mode",
+        typeface::WEIGHT_REGULAR,
+        Some(toggle(p.airplane).on_toggle(PanelMsg::Airplane).into()),
+        ROW,
+    ));
     v.push(sep());
     v.push(settings_row("Network Settings…", "network"));
     v
@@ -350,16 +406,34 @@ fn sound(p: &SoundPanel) -> Vec<Element<PanelMsg>> {
     let mut v = vec![head("Sound", None)];
     if let Some((vol, muted)) = p.output {
         let icon = crate::menubar::sound_icon(vol, muted);
-        v.push(slider_row(icon, vol, |x| PanelMsg::Volume(x as f32), Some(icon_btn(if muted { Icon::VolumeX } else { Icon::Volume2 }, PanelMsg::Mute, "Mute"))));
+        v.push(slider_row(
+            icon,
+            vol,
+            |x| PanelMsg::Volume(x as f32),
+            Some(icon_btn(if muted { Icon::VolumeX } else { Icon::Volume2 }, PanelMsg::Mute, "Mute")),
+        ));
     }
     if p.outputs.len() > 1 {
         for (name, desc, on) in &p.outputs {
-            v.push(item_row(Some((Icon::Speaker, Hue::Text2)), desc.clone(), None, false, *on, Some(PanelMsg::Output(name.clone())), format!("out-{name}")));
+            v.push(item_row(
+                Some((Icon::Speaker, Hue::Text2)),
+                desc.clone(),
+                None,
+                false,
+                *on,
+                Some(PanelMsg::Output(name.clone())),
+                format!("out-{name}"),
+            ));
         }
     }
     if let Some((vol, muted)) = p.input {
         v.push(sep());
-        v.push(slider_row(if muted { Icon::MicOff } else { Icon::Mic }, vol, |x| PanelMsg::InputVolume(x as f32), Some(icon_btn(if muted { Icon::MicOff } else { Icon::Mic }, PanelMsg::InputMute, "Mute input"))));
+        v.push(slider_row(
+            if muted { Icon::MicOff } else { Icon::Mic },
+            vol,
+            |x| PanelMsg::InputVolume(x as f32),
+            Some(icon_btn(if muted { Icon::MicOff } else { Icon::Mic }, PanelMsg::InputMute, "Mute input")),
+        ));
     }
     if let Some(m) = &p.media {
         v.push(sep());
@@ -378,11 +452,20 @@ fn sound(p: &SoundPanel) -> Vec<Element<PanelMsg>> {
         });
         let controls = aizome_kit::row(vec![
             icon_btn(Icon::SkipBack, PanelMsg::Media(MediaVerb::Previous), "Previous"),
-            icon_btn(if playing { Icon::Pause } else { Icon::Play }, PanelMsg::Media(MediaVerb::PlayPause), "Play or pause"),
+            icon_btn(
+                if playing { Icon::Pause } else { Icon::Play },
+                PanelMsg::Media(MediaVerb::PlayPause),
+                "Play or pause",
+            ),
             icon_btn(Icon::SkipForward, PanelMsg::Media(MediaVerb::Next), "Next"),
         ])
         .spacing(2.0);
-        v.push(aizome_kit::row(vec![Element::from(info).width(aizome_kit::Length::Fill), controls.into()]).align(Align::Center).padding([0.0, PAD]).into());
+        v.push(
+            aizome_kit::row(vec![Element::from(info).width(aizome_kit::Length::Fill), controls.into()])
+                .align(Align::Center)
+                .padding([0.0, PAD])
+                .into(),
+        );
     }
     v.push(sep());
     v.push(settings_row("Sound Settings…", "sound"));
@@ -398,7 +481,15 @@ fn bluetooth(p: &BtPanel) -> Vec<Element<PanelMsg>> {
                 (true, None) => Some("connected".into()),
                 (false, _) => None,
             };
-            v.push(item_row(Some((Icon::Bluetooth, Hue::Blue)), d.name.clone(), right, false, d.connected, Some(PanelMsg::Device(d.path.clone(), !d.connected)), format!("bt-{}", d.path)));
+            v.push(item_row(
+                Some((Icon::Bluetooth, Hue::Blue)),
+                d.name.clone(),
+                right,
+                false,
+                d.connected,
+                Some(PanelMsg::Device(d.path.clone(), !d.connected)),
+                format!("bt-{}", d.path),
+            ));
         }
     }
     v.push(sep());
@@ -413,11 +504,24 @@ fn display(p: &DisplayPanel) -> Vec<Element<PanelMsg>> {
         v.push(slider_row(Icon::SunDim, *level, move |x| PanelMsg::Brightness(n.clone(), x as f32), None));
     }
     v.push(labelled("Appearance", typeface::WEIGHT_REGULAR, None, 24.0));
-    v.push(aizome_kit::container(segmented(["Night", "Day", "Auto"], p.theme).on_select(PanelMsg::Theme)).padding([0.0, PAD, 6.0, PAD]).into());
+    v.push(
+        aizome_kit::container(segmented(["Night", "Day", "Auto"], p.theme).on_select(PanelMsg::Theme))
+            .padding([0.0, PAD, 6.0, PAD])
+            .into(),
+    );
     v.push(labelled("Size", typeface::WEIGHT_REGULAR, None, 24.0));
-    v.push(aizome_kit::container(segmented(["Small", "Medium", "Large"], p.size).on_select(PanelMsg::Size)).padding([0.0, PAD, 6.0, PAD]).into());
+    v.push(
+        aizome_kit::container(segmented(["Small", "Medium", "Large"], p.size).on_select(PanelMsg::Size))
+            .padding([0.0, PAD, 6.0, PAD])
+            .into(),
+    );
     if let Some(on) = p.night_light {
-        v.push(labelled("Night Light", typeface::WEIGHT_REGULAR, Some(toggle(on).on_toggle(PanelMsg::NightLight).into()), ROW));
+        v.push(labelled(
+            "Night Light",
+            typeface::WEIGHT_REGULAR,
+            Some(toggle(on).on_toggle(PanelMsg::NightLight).into()),
+            ROW,
+        ));
     }
     v.push(sep());
     v.push(settings_row("Displays Settings…", "displays"));
@@ -437,7 +541,12 @@ fn battery(p: &BatteryPanel) -> Vec<Element<PanelMsg>> {
             let bar = Rect::new(PAD, 4.0, WIDTH - PAD, 12.0);
             cx.canvas.fill_rect(bar, t.sunk());
             aizome_kit::draw::border(cx.canvas, bar, t.line2(), 1.0);
-            let fill = Rect::new(bar.x0 + 1.0, bar.y0 + 1.0, bar.x0 + 1.0 + (bar.width() - 2.0) * (pct as f64 / 100.0).clamp(0.0, 1.0), bar.y1 - 1.0);
+            let fill = Rect::new(
+                bar.x0 + 1.0,
+                bar.y0 + 1.0,
+                bar.x0 + 1.0 + (bar.width() - 2.0) * (pct as f64 / 100.0).clamp(0.0, 1.0),
+                bar.y1 - 1.0,
+            );
             let c = if pct < 15.0 { Hue::Red.color(t) } else { Hue::Green.color(t) };
             cx.canvas.fill_rect(fill, c);
             let s = ui(t, typeface::SMALL, typeface::WEIGHT_REGULAR, t.text3());
@@ -459,9 +568,12 @@ fn battery(p: &BatteryPanel) -> Vec<Element<PanelMsg>> {
             .collect();
         let modes = p.modes.clone();
         v.push(
-            aizome_kit::container(segmented(labels, p.mode).on_select(move |i| PanelMsg::PowerMode(modes.get(i).cloned().unwrap_or_default())))
-                .padding([0.0, PAD, 6.0, PAD])
-                .into(),
+            aizome_kit::container(
+                segmented(labels, p.mode)
+                    .on_select(move |i| PanelMsg::PowerMode(modes.get(i).cloned().unwrap_or_default())),
+            )
+            .padding([0.0, PAD, 6.0, PAD])
+            .into(),
         );
     }
     v.push(sep());
@@ -490,7 +602,12 @@ fn clock(p: &ClockPanel) -> Vec<Element<PanelMsg>> {
             for (w, week) in grid.iter().enumerate() {
                 for (i, day) in week.iter().enumerate() {
                     let Some(day) = day else { continue };
-                    let r = Rect::new(PAD + i as f64 * cell, 40.0 + w as f64 * 26.0, PAD + (i + 1) as f64 * cell, 40.0 + (w + 1) as f64 * 26.0);
+                    let r = Rect::new(
+                        PAD + i as f64 * cell,
+                        40.0 + w as f64 * 26.0,
+                        PAD + (i + 1) as f64 * cell,
+                        40.0 + (w + 1) as f64 * 26.0,
+                    );
                     let today = *day == now.day;
                     let fg = if today {
                         let c = aizome_kit::draw::centered(r, 24.0, 22.0);
@@ -501,7 +618,11 @@ fn clock(p: &ClockPanel) -> Vec<Element<PanelMsg>> {
                     } else {
                         t.text()
                     };
-                    let s = look::digits(12.0, if today { typeface::WEIGHT_SEMIBOLD } else { typeface::WEIGHT_REGULAR }, fg);
+                    let s = look::digits(
+                        12.0,
+                        if today { typeface::WEIGHT_SEMIBOLD } else { typeface::WEIGHT_REGULAR },
+                        fg,
+                    );
                     cx.draw_text_in(&day.to_string(), &s, r, Align::Center);
                 }
             }
@@ -509,7 +630,12 @@ fn clock(p: &ClockPanel) -> Vec<Element<PanelMsg>> {
         .into(),
     );
     v.push(sep());
-    v.push(labelled("Do Not Disturb", typeface::WEIGHT_REGULAR, Some(toggle(p.dnd).on_toggle(PanelMsg::DoNotDisturb).into()), ROW));
+    v.push(labelled(
+        "Do Not Disturb",
+        typeface::WEIGHT_REGULAR,
+        Some(toggle(p.dnd).on_toggle(PanelMsg::DoNotDisturb).into()),
+        ROW,
+    ));
     if let Some(events) = &p.events {
         v.push(sep());
         if events.is_empty() {
@@ -557,7 +683,8 @@ fn event_row(e: &crate::agenda::EventRow) -> Element<PanelMsg> {
         let dye = e2.color.map_or(t.text3(), |c| aizome_kit::theme::color(aizome_theme::Rgba::hex(c)));
         cx.canvas.fill_rect(Rect::new(PAD, (ROW - 16.0) / 2.0, PAD + 3.0, (ROW + 16.0) / 2.0), dye);
         let when_color = if hot || e2.now { fg } else { t.text3() };
-        let ws = look::mono(11.5, if e2.now { typeface::WEIGHT_SEMIBOLD } else { typeface::WEIGHT_REGULAR }, when_color);
+        let ws =
+            look::mono(11.5, if e2.now { typeface::WEIGHT_SEMIBOLD } else { typeface::WEIGHT_REGULAR }, when_color);
         cx.draw_text_in(&e2.when, &ws, Rect::new(PAD + 10.0, 0.0, PAD + 84.0, ROW), Align::Start);
         let ts = ui(t, typeface::BODY, typeface::WEIGHT_REGULAR, fg);
         cx.draw_text_in(&e2.title, &ts, Rect::new(PAD + 88.0, 0.0, b.x1 - PAD, ROW), Align::Start);
@@ -580,7 +707,12 @@ fn zone_row(z: &crate::agenda::ZoneRow) -> Element<PanelMsg> {
             cx.canvas.fill_rect(b, t.selection());
         }
         let fg = if hot { t.on_selection() } else { t.text() };
-        Icon::Globe.draw(cx.canvas, Point::new(PAD, ((ROW - 16.0) / 2.0).round()), 16.0, if hot { fg } else { Hue::Cyan.color(t) });
+        Icon::Globe.draw(
+            cx.canvas,
+            Point::new(PAD, ((ROW - 16.0) / 2.0).round()),
+            16.0,
+            if hot { fg } else { Hue::Cyan.color(t) },
+        );
         let ns = ui(t, typeface::BODY, typeface::WEIGHT_REGULAR, fg);
         cx.draw_text_in(&z2.name, &ns, Rect::new(PAD + 24.0, 0.0, b.x1 - PAD - 150.0, ROW), Align::Start);
         let ds = look::digits(12.5, typeface::WEIGHT_SEMIBOLD, fg);
@@ -611,7 +743,8 @@ pub fn view(p: &Panel) -> Element<PanelMsg> {
         look::panel(cx.canvas, t, Rect::new(0.0, 0.0, b.x1, b.y1));
     });
     let keyed = crate::widgets::keys::focus_keys(body, |k| {
-        matches!(k.key, aizome_kit::sidestep_ui::Key::Named(aizome_kit::sidestep_ui::NamedKey::Escape)).then_some(PanelMsg::Close)
+        matches!(k.key, aizome_kit::sidestep_ui::Key::Named(aizome_kit::sidestep_ui::NamedKey::Escape))
+            .then_some(PanelMsg::Close)
     });
     // The keys widget itself takes the focus (and so Escape).
     aizome_kit::container(keyed.id("panel")).padding([0.0, SHADOW, SHADOW, 0.0]).into()
@@ -655,12 +788,26 @@ pub fn height(p: &Panel) -> f64 {
             h + sep + ROW
         }
         Panel::Bluetooth(b) => HEAD + if b.powered { b.devices.len() as f64 * ROW } else { 0.0 } + sep + ROW,
-        Panel::Display(d) => HEAD + d.backlights.len() as f64 * (ROW + 4.0) + 2.0 * (24.0 + 30.0) + if d.night_light.is_some() { ROW } else { 0.0 } + sep + ROW,
+        Panel::Display(d) => {
+            HEAD + d.backlights.len() as f64 * (ROW + 4.0)
+                + 2.0 * (24.0 + 30.0)
+                + if d.night_light.is_some() { ROW } else { 0.0 }
+                + sep
+                + ROW
+        }
         Panel::Battery(b) => HEAD + 34.0 + if b.modes.is_empty() { 0.0 } else { 24.0 + 30.0 } + sep + ROW,
         Panel::Clock(c) => {
             let weeks = crate::clock::month_grid(c.now.year, c.now.month).len();
             let events = c.events.as_ref().map_or(0.0, |e| sep + e.len().clamp(1, EVENTS) as f64 * ROW);
-            HEAD + 40.0 + weeks as f64 * 26.0 + 6.0 + sep + ROW + events + if c.zones.is_empty() { 0.0 } else { sep + c.zones.len() as f64 * ROW } + sep + ROW
+            HEAD + 40.0
+                + weeks as f64 * 26.0
+                + 6.0
+                + sep
+                + ROW
+                + events
+                + if c.zones.is_empty() { 0.0 } else { sep + c.zones.len() as f64 * ROW }
+                + sep
+                + ROW
         }
     };
     (rows + 10.0 + 2.0 + SHADOW).ceil()

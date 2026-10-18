@@ -13,12 +13,24 @@ use common::*;
 
 fn fixture() -> aizome_shell::systray::glue::Fixture {
     let mut f = aizome_shell::systray::glue::Fixture::new();
-    let net = |ssid: &str, bars: u8, secure: bool, connected: bool| NetRow { ssid: ssid.into(), bars, secure, connected, connecting: false, known: connected };
+    let net = |ssid: &str, bars: u8, secure: bool, connected: bool| NetRow {
+        ssid: ssid.into(),
+        bars,
+        secure,
+        connected,
+        connecting: false,
+        known: connected,
+    };
     f.insert(
         TrayWidget::Network,
         Panel::Network(NetPanel {
             wifi: Some(true),
-            networks: vec![net("kestrel", 4, true, true), net("Ramen Bar Guest", 3, false, false), net("NETGEAR-5G", 2, true, false), net("printer-setup", 1, true, false)],
+            networks: vec![
+                net("kestrel", 4, true, true),
+                net("Ramen Bar Guest", 3, false, false),
+                net("NETGEAR-5G", 2, true, false),
+                net("printer-setup", 1, true, false),
+            ],
             vpns: vec![("u1".into(), "Office WireGuard".into(), false)],
             airplane: false,
             asking: None,
@@ -44,7 +56,15 @@ fn fixture() -> aizome_shell::systray::glue::Fixture {
             ],
         }),
     );
-    f.insert(TrayWidget::Display, Panel::Display(DisplayPanel { backlights: vec![("intel_backlight".into(), 0.7)], theme: 0, size: 1, night_light: Some(false) }));
+    f.insert(
+        TrayWidget::Display,
+        Panel::Display(DisplayPanel {
+            backlights: vec![("intel_backlight".into(), 0.7)],
+            theme: 0,
+            size: 1,
+            night_light: Some(false),
+        }),
+    );
     f.insert(
         TrayWidget::Battery,
         Panel::Battery(BatteryPanel {
@@ -61,9 +81,27 @@ fn fixture() -> aizome_shell::systray::glue::Fixture {
             now: Local { year: 2026, month: 10, day: 17, hour: 21, minute: 42, second: 0, weekday: 6 },
             dnd: false,
             events: Some(vec![
-                EventRow { when: "Now".into(), title: "Release review".into(), color: Some(0x7aa2f7), now: true, date: "2026-10-17".into() },
-                EventRow { when: "Sun 09:30".into(), title: "Dentist".into(), color: Some(0xe0af68), now: false, date: "2026-10-18".into() },
-                EventRow { when: "Sun".into(), title: "Mum's birthday".into(), color: Some(0xe0af68), now: false, date: "2026-10-18".into() },
+                EventRow {
+                    when: "Now".into(),
+                    title: "Release review".into(),
+                    color: Some(0x7aa2f7),
+                    now: true,
+                    date: "2026-10-17".into(),
+                },
+                EventRow {
+                    when: "Sun 09:30".into(),
+                    title: "Dentist".into(),
+                    color: Some(0xe0af68),
+                    now: false,
+                    date: "2026-10-18".into(),
+                },
+                EventRow {
+                    when: "Sun".into(),
+                    title: "Mum's birthday".into(),
+                    color: Some(0xe0af68),
+                    now: false,
+                    date: "2026-10-18".into(),
+                },
             ]),
             zones: vec![
                 ZoneRow { name: "Tokyo".into(), time: "11:42".into(), note: "+14h, tomorrow".into() },
@@ -160,7 +198,14 @@ fn pictures_of_the_panels() {
     for day in [false, true] {
         let mut h = scene(day);
         h.program_mut().panels_fixture = Some(fixture());
-        for w in [TrayWidget::Network, TrayWidget::Sound, TrayWidget::Bluetooth, TrayWidget::Display, TrayWidget::Battery, TrayWidget::Clock] {
+        for w in [
+            TrayWidget::Network,
+            TrayWidget::Sound,
+            TrayWidget::Bluetooth,
+            TrayWidget::Display,
+            TrayWidget::Battery,
+            TrayWidget::Clock,
+        ] {
             let p = open(&mut h, w);
             let name = format!("panel-{}-{}.png", w.name(), if day { "day" } else { "night" });
             h.save_png(p, shots().join(&name), 2.0);

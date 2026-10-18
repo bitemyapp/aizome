@@ -114,11 +114,23 @@ pub fn lock_notes(notes: &[(String, Icon, String, String)], previews: bool) -> V
     let mut out: Vec<LockNote> = Vec::new();
     for (app, glyph, summary, body) in notes {
         if previews {
-            out.push(LockNote { app: app.clone(), glyph: *glyph, summary: summary.clone(), body: body.clone(), count: 1 });
+            out.push(LockNote {
+                app: app.clone(),
+                glyph: *glyph,
+                summary: summary.clone(),
+                body: body.clone(),
+                count: 1,
+            });
         } else if let Some(n) = out.iter_mut().find(|n| n.app == *app) {
             n.count += 1;
         } else {
-            out.push(LockNote { app: app.clone(), glyph: *glyph, summary: String::new(), body: String::new(), count: 1 });
+            out.push(LockNote {
+                app: app.clone(),
+                glyph: *glyph,
+                summary: String::new(),
+                body: String::new(),
+                count: 1,
+            });
         }
     }
     out.truncate(NOTES);
@@ -127,7 +139,11 @@ pub fn lock_notes(notes: &[(String, Icon, String, String)], previews: bool) -> V
 
 fn note_card(n: &LockNote) -> Element<LockMsg> {
     let n2 = n.clone();
-    let label = if n.summary.is_empty() { format!("{} {}", n.app, count_words(n.count)) } else { format!("{} {}", n.app, n.summary) };
+    let label = if n.summary.is_empty() {
+        format!("{} {}", n.app, count_words(n.count))
+    } else {
+        format!("{} {}", n.app, n.summary)
+    };
     drawn(NOTE_W, NOTE_H, (&n.app, &n.summary, &n.body, n.count), move |cx| {
         let c = aizome_kit::theme::color;
         let night = aizome_theme::NIGHT;
@@ -173,7 +189,8 @@ pub fn view(v: &LockView) -> Element<LockMsg> {
             if s.width > 0.0 && s.height > 0.0 {
                 let k = (b.width() / s.width).max(b.height() / s.height);
                 let (cw, ch) = (b.width() / k, b.height() / k);
-                let src = Rect::new((s.width - cw) / 2.0, (s.height - ch) / 2.0, (s.width + cw) / 2.0, (s.height + ch) / 2.0);
+                let src =
+                    Rect::new((s.width - cw) / 2.0, (s.height - ch) / 2.0, (s.width + cw) / 2.0, (s.height + ch) / 2.0);
                 cx.canvas.draw_image_with(img, Some(src), b, crate::wallpaper::options(img, b, cx.canvas.scale()));
             }
         }
@@ -206,7 +223,11 @@ pub fn view(v: &LockView) -> Element<LockMsg> {
                 Some(p) => cx.canvas.draw_image(p, tile),
                 None => {
                     cx.canvas.fill_rect(tile, aizome_kit::theme::color(aizome_theme::NIGHT.selection));
-                    let s = look::ui(34.0, typeface::WEIGHT_SEMIBOLD, aizome_kit::theme::color(aizome_theme::NIGHT.on_selection));
+                    let s = look::ui(
+                        34.0,
+                        typeface::WEIGHT_SEMIBOLD,
+                        aizome_kit::theme::color(aizome_theme::NIGHT.on_selection),
+                    );
                     cx.draw_text_in(&initial, &s, tile, Align::Center);
                 }
             }
@@ -216,22 +237,30 @@ pub fn view(v: &LockView) -> Element<LockMsg> {
         })
         .text(v.name.clone(), SemanticRole::Label);
         column.push(who.into());
-        let f = field(&v.password, |_| look::ui(15.0, typeface::WEIGHT_REGULAR, aizome_kit::theme::color(aizome_theme::NIGHT.text)))
-            .secure()
-            .placeholder(if v.busy { "Checking…" } else { "Password" })
-            .height(32.0)
-            .on_change(LockMsg::Password)
-            .on_submit(LockMsg::Submit)
-            .on_caps(LockMsg::Caps);
-        let boxed = around(Element::from(f).id("lock-password"), [0.0, 10.0, 0.0, 12.0], Size::new(FIELD_W, 34.0), ("lock-field", v.busy), |cx| {
-            let n = aizome_theme::NIGHT;
-            let b = cx.bounds();
-            let c = aizome_kit::theme::color;
-            cx.canvas.fill_rect(b, c(n.sunk));
-            aizome_kit::draw::border(cx.canvas, b, c(n.line2), 1.0);
-            // The focus rail while it has the keyboard.
-            cx.canvas.fill_rect(Rect::new(0.0, 0.0, 2.0, b.y1), c(n.focus));
-        });
+        let f = field(&v.password, |_| {
+            look::ui(15.0, typeface::WEIGHT_REGULAR, aizome_kit::theme::color(aizome_theme::NIGHT.text))
+        })
+        .secure()
+        .placeholder(if v.busy { "Checking…" } else { "Password" })
+        .height(32.0)
+        .on_change(LockMsg::Password)
+        .on_submit(LockMsg::Submit)
+        .on_caps(LockMsg::Caps);
+        let boxed = around(
+            Element::from(f).id("lock-password"),
+            [0.0, 10.0, 0.0, 12.0],
+            Size::new(FIELD_W, 34.0),
+            ("lock-field", v.busy),
+            |cx| {
+                let n = aizome_theme::NIGHT;
+                let b = cx.bounds();
+                let c = aizome_kit::theme::color;
+                cx.canvas.fill_rect(b, c(n.sunk));
+                aizome_kit::draw::border(cx.canvas, b, c(n.line2), 1.0);
+                // The focus rail while it has the keyboard.
+                cx.canvas.fill_rect(Rect::new(0.0, 0.0, 2.0, b.y1), c(n.focus));
+            },
+        );
         let off = v.shake;
         let row = aizome_kit::container(boxed).padding([0.0, 0.0, 0.0, ((size.width - FIELD_W) / 2.0 + off).max(0.0)]);
         column.push(row.into());
@@ -252,7 +281,11 @@ pub fn view(v: &LockView) -> Element<LockMsg> {
         column.push(line.into());
         // What came while locked, under the field.
         for n in &v.notes {
-            column.push(aizome_kit::container(note_card(n)).padding([0.0, 0.0, 0.0, ((size.width - NOTE_W) / 2.0).max(0.0)]).into());
+            column.push(
+                aizome_kit::container(note_card(n))
+                    .padding([0.0, 0.0, 0.0, ((size.width - NOTE_W) / 2.0).max(0.0)])
+                    .into(),
+            );
         }
     }
     let notes_h = if v.main { v.notes.len() as f64 * NOTE_H } else { 0.0 };
@@ -297,7 +330,8 @@ impl Shell {
         self.lock.password.clear();
         self.lock.error = None;
         self.lock.focused = self.focused_screen().map(|s| s.output.id);
-        self.lock.since = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+        self.lock.since =
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
         for s in self.screens.clone() {
             let k = cx.open_window(WindowSpec::lock(s.output.id));
             self.surfaces.insert(k, Surface::Lock { output: s.output.id });

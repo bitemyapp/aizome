@@ -85,12 +85,8 @@ pub fn mark(canvas: &mut Canvas, t: &Theme, at: Point, size: f64) {
     let brand = Brand::for_theme(t.palette.name);
     let m = size / 4.0;
     for ([x, y, w, h], c) in brand.mark_rects() {
-        let r = Rect::new(
-            at.x + x as f64 * m,
-            at.y + y as f64 * m,
-            at.x + (x + w) as f64 * m,
-            at.y + (y + h) as f64 * m,
-        );
+        let r =
+            Rect::new(at.x + x as f64 * m, at.y + y as f64 * m, at.x + (x + w) as f64 * m, at.y + (y + h) as f64 * m);
         canvas.fill_rect(r, color(c));
     }
 }

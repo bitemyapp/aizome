@@ -44,7 +44,14 @@ impl Registry {
             proto::AppMessage::Hello { app_id, pid, name } => {
                 self.conns.insert(
                     conn,
-                    AppConn { conn, app_id: app_id.clone(), pid: *pid, name: name.clone(), menus: Vec::new(), generation: 0 },
+                    AppConn {
+                        conn,
+                        app_id: app_id.clone(),
+                        pid: *pid,
+                        name: name.clone(),
+                        menus: Vec::new(),
+                        generation: 0,
+                    },
                 );
                 RegistryChange::App(*pid)
             }

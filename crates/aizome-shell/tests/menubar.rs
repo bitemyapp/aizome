@@ -11,7 +11,20 @@ fn the_bar_shows_the_focused_apps_menus_and_the_desks() {
     let h = scene(false);
     let bar = window_titled(&h, "Menu bar");
     let texts = h.texts(bar);
-    for want in ["Toolchest", "Editor", "File", "Edit", "Search", "Format", "Window", "Help", "1 Mail", "2 Build", "3 Write", "21:42"] {
+    for want in [
+        "Toolchest",
+        "Editor",
+        "File",
+        "Edit",
+        "Search",
+        "Format",
+        "Window",
+        "Help",
+        "1 Mail",
+        "2 Build",
+        "3 Write",
+        "21:42",
+    ] {
         assert!(texts.iter().any(|t| t == want), "{want} in {texts:?}");
     }
 }

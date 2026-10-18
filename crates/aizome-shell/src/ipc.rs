@@ -20,7 +20,10 @@ pub enum IpcEvent {
     /// The compositor went away (its events will come again when it's back).
     Disconnected,
     /// The answer to a request sent with a tag.
-    Reply { tag: u64, response: Response },
+    Reply {
+        tag: u64,
+        response: Response,
+    },
 }
 
 /// [`Snapshot`] in a box: it's large beside the other events.

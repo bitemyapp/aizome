@@ -77,7 +77,10 @@ pub fn view(verb: SessionVerb, left: u32, power: bool) -> Element<ConfirmMsg> {
     buttons.push(button("Cancel").cancel().on_press(ConfirmMsg::Cancel).into());
     buttons.push(button(act).default().on_press(ConfirmMsg::Now).into());
     let buttons = aizome_kit::row(buttons).spacing(8.0);
-    let content = aizome_kit::column(vec![text.into(), aizome_kit::spacer().into(), buttons.into()]).padding(24.0).width(width).height(HEIGHT);
+    let content = aizome_kit::column(vec![text.into(), aizome_kit::spacer().into(), buttons.into()])
+        .padding(24.0)
+        .width(width)
+        .height(HEIGHT);
     let framed = around(content, 0.0, Size::new(width, HEIGHT), "confirm", |cx| {
         let t = cx.theme();
         let b = cx.bounds();
@@ -114,7 +117,9 @@ impl Shell {
         self.close_confirm(cx);
         let Some(output) = self.focused_screen().map(|s| s.output.id) else { return };
         let width = if power { POWER_WIDTH } else { WIDTH };
-        let opts = LayerOptions::new(Layer::Overlay, "aizome-confirm").keyboard(KeyboardInteractivity::Exclusive).output(output);
+        let opts = LayerOptions::new(Layer::Overlay, "aizome-confirm")
+            .keyboard(KeyboardInteractivity::Exclusive)
+            .output(output);
         let window = cx.open_window(layer(opts, width + 3.0, HEIGHT + 3.0, "Confirm"));
         self.surfaces.insert(window, Surface::Confirm);
         self.serial += 1;

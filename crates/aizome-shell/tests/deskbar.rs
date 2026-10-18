@@ -14,7 +14,9 @@ fn apps_list_their_windows_with_notes() {
     with_mail_and_shelf(&mut h);
     let db = window_titled(&h, "Deskbar");
     let texts = h.texts(db);
-    for want in ["Editor", "architecture.md", "roadmap.md", "Foot", "cargo test", "Hako", "Downloads", "Firefox", "Thunderbird"] {
+    for want in
+        ["Editor", "architecture.md", "roadmap.md", "Foot", "cargo test", "Hako", "Downloads", "Firefox", "Thunderbird"]
+    {
         assert!(texts.iter().any(|t| t == want), "{want} in {texts:?}");
     }
     // Firefox's three windows fold; Mail's newest notification shows.
@@ -72,7 +74,8 @@ fn a_window_dragged_onto_a_desk_of_the_strip_finds_it() {
     // The Deskbar's left edge, in the output.
     let left = W - aizome_shell::deskbar::WIDTH - aizome_shell::deskbar::SHADOW;
     // Over the bar's strip (y above the Deskbar's top), along it.
-    let hits: Vec<Option<u32>> = (0..300).map(|x| s.desk_at_deskbar_point(Point::new(900.0 + x as f64 * 1.0 - left, -12.0))).collect();
+    let hits: Vec<Option<u32>> =
+        (0..300).map(|x| s.desk_at_deskbar_point(Point::new(900.0 + x as f64 * 1.0 - left, -12.0))).collect();
     assert!(hits.contains(&Some(1)) && hits.contains(&Some(2)) && hits.contains(&Some(3)), "{hits:?}");
     assert_eq!(s.desk_at_deskbar_point(Point::new(40.0, 40.0)), None, "inside the Deskbar");
 }
@@ -91,5 +94,8 @@ fn shelf_items_drag_out_to_other_programs() {
     let what = format!("{:?}", h.platform.drags[0].1);
     assert!(what.contains("text/uri-list") && what.contains("text/plain"), "{what}");
     assert_eq!(h.program().shelf.items.len(), 3, "a copy: it stays on the Shelf");
-    assert_eq!(aizome_shell::shelf::file_url(std::path::Path::new("/home/u/My Notes/ä.md")), "file:///home/u/My%20Notes/%C3%A4.md");
+    assert_eq!(
+        aizome_shell::shelf::file_url(std::path::Path::new("/home/u/My Notes/ä.md")),
+        "file:///home/u/My%20Notes/%C3%A4.md"
+    );
 }

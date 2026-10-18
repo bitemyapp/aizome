@@ -107,7 +107,14 @@ pub fn size(menu: &ShellMenu, measure: &mut dyn FnMut(&str, &TextSpec) -> f64, t
 }
 
 /// A palette: the kit's menu drawn in place, under a hold for its strip.
-pub fn view(index: usize, menu: aizome_kit::Menu<Msg>, title: &str, pinned: bool, size: Size, mark: bool) -> Element<Msg> {
+pub fn view(
+    index: usize,
+    menu: aizome_kit::Menu<Msg>,
+    title: &str,
+    pinned: bool,
+    size: Size,
+    mark: bool,
+) -> Element<Msg> {
     let mut menu = menu_view(menu);
     if mark {
         menu = menu.mark();
@@ -177,7 +184,14 @@ impl Shell {
     /// Tear a menu off into a palette at a point of an output.
     pub fn tear_off(&mut self, app: String, path: Vec<String>, output: String, at: Point, cx: &mut Cx<Msg>) {
         self.tearoffs.retain(|t| !(t.app == app && t.path == path));
-        self.tearoffs.push(TearOff { app, path, output, x: at.x.max(0.0), y: at.y.max(crate::menubar::HEIGHT), pinned: false });
+        self.tearoffs.push(TearOff {
+            app,
+            path,
+            output,
+            x: at.x.max(0.0),
+            y: at.y.max(crate::menubar::HEIGHT),
+            pinned: false,
+        });
         self.save_tearoffs();
         self.sync_tearoffs(cx);
     }
@@ -234,7 +248,9 @@ impl Shell {
     }
 
     pub fn tear_view(&self, i: usize) -> Element<Msg> {
-        let (Some(t), Some(shown)) = (self.tearoffs.get(i), self.tear_shown.get(&i)) else { return aizome_kit::space(0.0) };
+        let (Some(t), Some(shown)) = (self.tearoffs.get(i), self.tear_shown.get(&i)) else {
+            return aizome_kit::space(0.0);
+        };
         let Some((title, menu)) = self.tear_menu(t) else { return aizome_kit::space(0.0) };
         let kit = build::to_kit(&menu, &Msg::Run);
         view(i, kit, &title, t.pinned, shown.size, t.app == TOOLCHEST && t.path.is_empty())
@@ -319,10 +335,22 @@ pub fn titles_at(menu: &ShellMenu, path: &[usize], app_menu: Option<&str>) -> Op
 /// What tearing off a submenu of `root` sends: a palette of `app`'s,
 /// `prefix` the titles down to `root`, placed where the submenu was
 /// (`root`'s top left on `output` is `at`).
-pub fn tear_sub(app: String, root: ShellMenu, prefix: Vec<String>, app_menu: Option<String>, output: String, at: Point) -> impl Fn(Vec<usize>, aizome_kit::Vec2) -> Msg + 'static {
+pub fn tear_sub(
+    app: String,
+    root: ShellMenu,
+    prefix: Vec<String>,
+    app_menu: Option<String>,
+    output: String,
+    at: Point,
+) -> impl Fn(Vec<usize>, aizome_kit::Vec2) -> Msg + 'static {
     move |path, off| {
         let mut titles = prefix.clone();
         titles.extend(titles_at(&root, &path, app_menu.as_deref()).unwrap_or_default());
-        Msg::TearOff { app: app.clone(), path: titles, output: output.clone(), at: Point::new(at.x + off.x, at.y + off.y) }
+        Msg::TearOff {
+            app: app.clone(),
+            path: titles,
+            output: output.clone(),
+            at: Point::new(at.x + off.x, at.y + off.y),
+        }
     }
 }

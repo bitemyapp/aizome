@@ -96,20 +96,31 @@ pub fn view(v: &AuthView) -> Element<AuthMsg> {
     })
     .text(v.message.clone(), SemanticRole::Label);
     let who: Element<AuthMsg> = if v.identities.len() > 1 {
-        Element::from(dropdown(v.identities.clone(), v.identity).on_select(AuthMsg::Identity)).width(aizome_kit::Length::Fill)
+        Element::from(dropdown(v.identities.clone(), v.identity).on_select(AuthMsg::Identity))
+            .width(aizome_kit::Length::Fill)
     } else {
         let n = v.identities.first().cloned().unwrap_or_default();
         drawn(WIDTH - 48.0, 24.0, n.clone(), move |cx| {
             let t = cx.theme();
             look::ui(13.0, typeface::WEIGHT_SEMIBOLD, t.text());
-            cx.draw_text_in(&n, &look::ui(13.0 * t.metrics.factor, typeface::WEIGHT_SEMIBOLD, t.text()), cx.bounds(), Align::Start);
+            cx.draw_text_in(
+                &n,
+                &look::ui(13.0 * t.metrics.factor, typeface::WEIGHT_SEMIBOLD, t.text()),
+                cx.bounds(),
+                Align::Start,
+            );
         })
         .into()
     };
     let prompt = v.prompt.clone();
     let label = drawn(WIDTH - 48.0, 20.0, prompt.clone(), move |cx| {
         let t = cx.theme();
-        cx.draw_text_in(&prompt, &look::ui(12.0 * t.metrics.factor, typeface::WEIGHT_REGULAR, t.text3()), cx.bounds(), Align::Start);
+        cx.draw_text_in(
+            &prompt,
+            &look::ui(12.0 * t.metrics.factor, typeface::WEIGHT_REGULAR, t.text3()),
+            cx.bounds(),
+            Align::Start,
+        );
     });
     let mut f = field(&v.password, |t| look::ui(14.0 * t.metrics.factor, typeface::WEIGHT_REGULAR, t.text()))
         .placeholder(if v.busy { "Checking…" } else { "" })
@@ -119,18 +130,29 @@ pub fn view(v: &AuthView) -> Element<AuthMsg> {
     if !v.echo {
         f = f.secure();
     }
-    let boxed = around(Element::from(f).id("auth-password"), [0.0, 10.0, 0.0, 12.0], Size::new(WIDTH - 48.0, 30.0), "auth-field", |cx| {
-        let t = cx.theme();
-        let b = cx.bounds();
-        aizome_kit::draw::sunken(cx.canvas, t, b, t.surface(), t.line2());
-        cx.canvas.fill_rect(Rect::new(0.0, 0.0, 2.0, b.y1), t.focus());
-    });
+    let boxed = around(
+        Element::from(f).id("auth-password"),
+        [0.0, 10.0, 0.0, 12.0],
+        Size::new(WIDTH - 48.0, 30.0),
+        "auth-field",
+        |cx| {
+            let t = cx.theme();
+            let b = cx.bounds();
+            aizome_kit::draw::sunken(cx.canvas, t, b, t.surface(), t.line2());
+            cx.canvas.fill_rect(Rect::new(0.0, 0.0, 2.0, b.y1), t.focus());
+        },
+    );
     let note = v.note.clone();
     let note_el = drawn(WIDTH - 48.0, 22.0, note.clone(), move |cx| {
         let t = cx.theme();
         if let Some((n, err)) = &note {
             let c = if *err { Hue::Red.color(t) } else { t.text3() };
-            cx.draw_text_in(n, &look::ui(12.0 * t.metrics.factor, typeface::WEIGHT_REGULAR, c), cx.bounds(), Align::Start);
+            cx.draw_text_in(
+                n,
+                &look::ui(12.0 * t.metrics.factor, typeface::WEIGHT_REGULAR, c),
+                cx.bounds(),
+                Align::Start,
+            );
         }
     });
     let buttons = aizome_kit::row(vec![
@@ -139,11 +161,20 @@ pub fn view(v: &AuthView) -> Element<AuthMsg> {
         button("Authenticate").default().on_press_maybe((!v.busy).then_some(AuthMsg::Authenticate)).into(),
     ])
     .spacing(8.0);
-    let content = aizome_kit::column(vec![head.into(), who, aizome_kit::space(8.0), label.into(), boxed.into(), note_el.into(), aizome_kit::spacer().into(), buttons.into()])
-        .spacing(4.0)
-        .padding(24.0)
-        .width(WIDTH)
-        .height(HEIGHT);
+    let content = aizome_kit::column(vec![
+        head.into(),
+        who,
+        aizome_kit::space(8.0),
+        label.into(),
+        boxed.into(),
+        note_el.into(),
+        aizome_kit::spacer().into(),
+        buttons.into(),
+    ])
+    .spacing(4.0)
+    .padding(24.0)
+    .width(WIDTH)
+    .height(HEIGHT);
     let framed = around(content, 0.0, Size::new(WIDTH, HEIGHT), "auth-frame", |cx| {
         let t = cx.theme();
         let b = cx.bounds();
@@ -152,7 +183,8 @@ pub fn view(v: &AuthView) -> Element<AuthMsg> {
         cx.canvas.fill_rect(Rect::new(1.0, 1.0, b.x1 - 1.0, 3.0), t.focus());
     });
     let keyed = crate::widgets::keys::keys(framed, |k| {
-        matches!(k.key, aizome_kit::sidestep_ui::Key::Named(aizome_kit::sidestep_ui::NamedKey::Escape)).then_some(AuthMsg::Cancel)
+        matches!(k.key, aizome_kit::sidestep_ui::Key::Named(aizome_kit::sidestep_ui::NamedKey::Escape))
+            .then_some(AuthMsg::Cancel)
     });
     aizome_kit::container(keyed).padding([0.0, SHADOW, SHADOW, 0.0]).into()
 }
@@ -188,10 +220,20 @@ impl Shell {
 
     pub fn auth_view(&self) -> Option<AuthView> {
         let a = self.auth.as_ref()?;
-        let identities: Vec<String> = a.request.identities.iter().map(|i| format!("{} ({})", i.display_name(), i.name)).collect();
+        let identities: Vec<String> =
+            a.request.identities.iter().map(|i| format!("{} ({})", i.display_name(), i.name)).collect();
         let (prompt, echo) = a.prompt.clone().unwrap_or_else(|| ("Password:".into(), false));
         let note = a.error.clone().map(|e| (e, true)).or_else(|| a.info.clone().map(|i| (i, false)));
-        Some(AuthView { message: a.request.message.clone(), identities, identity: a.identity, prompt, echo, password: a.password.clone(), note, busy: a.busy })
+        Some(AuthView {
+            message: a.request.message.clone(),
+            identities,
+            identity: a.identity,
+            prompt,
+            echo,
+            password: a.password.clone(),
+            note,
+            busy: a.busy,
+        })
     }
 
     pub fn auth_in(&mut self, e: AuthIn, cx: &mut Cx<Msg>) {
@@ -207,15 +249,29 @@ impl Shell {
                     request.cancel();
                     return;
                 };
-                let opts = LayerOptions::new(Layer::Overlay, "aizome-auth").keyboard(KeyboardInteractivity::Exclusive).output(output);
+                let opts = LayerOptions::new(Layer::Overlay, "aizome-auth")
+                    .keyboard(KeyboardInteractivity::Exclusive)
+                    .output(output);
                 let s = size();
                 let window = cx.open_window(layer(opts, s.width, s.height, "Authenticate"));
                 self.surfaces.insert(window, Surface::Auth);
-                let identity = request.default_identity().and_then(|d| request.identities.iter().position(|i| i == d)).unwrap_or(0);
+                let identity = request
+                    .default_identity()
+                    .and_then(|d| request.identities.iter().position(|i| i == d))
+                    .unwrap_or(0);
                 if let Some(i) = request.identities.get(identity) {
                     request.authenticate(i);
                 }
-                self.auth = Some(AuthState { window, request, identity, prompt: None, password: String::new(), info: None, error: None, busy: false });
+                self.auth = Some(AuthState {
+                    window,
+                    request,
+                    identity,
+                    prompt: None,
+                    password: String::new(),
+                    info: None,
+                    error: None,
+                    busy: false,
+                });
                 cx.focus("auth-password");
             }
             AuthIn::Prompt { cookie, text, echo } if same(&self.auth, &cookie) => {

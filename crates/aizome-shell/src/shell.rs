@@ -13,7 +13,9 @@ use aizome_ipc::{AppSel, Event, OutputInfo, Request};
 use aizome_kit::element::Element;
 use aizome_kit::layout::{Point, Rect};
 use aizome_kit::prelude::*;
-use aizome_kit::{ActivationRequest, Anchors, KeyboardInteractivity, Layer, LayerOptions, MenuStyle, MsgSender, Output};
+use aizome_kit::{
+    ActivationRequest, Anchors, KeyboardInteractivity, Layer, LayerOptions, MenuStyle, MsgSender, Output,
+};
 use aizome_shell_proto as proto;
 use aizome_sys::apps::AppIndex;
 
@@ -64,7 +66,12 @@ pub enum Msg {
     Confirm(crate::confirm::ConfirmMsg),
     Card(crate::notifications::cards::CardMsg),
     /// A menu's strip was dragged: keep it as a palette.
-    TearOff { app: String, path: Vec<String>, output: String, at: Point },
+    TearOff {
+        app: String,
+        path: Vec<String>,
+        output: String,
+        at: Point,
+    },
     /// The selected text for Services came (from the app or the primary
     /// selection), for a menu waiting on it.
     Selection(u64, Option<String>),
@@ -104,13 +111,19 @@ impl std::fmt::Debug for AppsLoaded {
 /// What a window of the shell is.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Surface {
-    MenuBar { output: u32 },
-    Desktop { output: u32 },
+    MenuBar {
+        output: u32,
+    },
+    Desktop {
+        output: u32,
+    },
     Deskbar,
     Palette,
     Panel,
     Osd,
-    Lock { output: u32 },
+    Lock {
+        output: u32,
+    },
     Auth,
     TearOff(usize),
     Confirm,
@@ -347,7 +360,8 @@ impl Shell {
             _apps_watch: None,
         };
         s.read_settings();
-        s.theme_day = s.settings.appearance.theme.resolve(aizome_kit::theme::local_hour()) == aizome_theme::ThemeName::Day;
+        s.theme_day =
+            s.settings.appearance.theme.resolve(aizome_kit::theme::local_hour()) == aizome_theme::ThemeName::Day;
         s
     }
 
@@ -388,7 +402,9 @@ impl Shell {
     /// The screen a window of the shell is on.
     pub fn screen_of(&self, w: WindowKey) -> Option<&Screen> {
         match self.surfaces.get(&w)? {
-            Surface::MenuBar { output } | Surface::Desktop { output } => self.screens.iter().find(|s| s.output.id == *output),
+            Surface::MenuBar { output } | Surface::Desktop { output } => {
+                self.screens.iter().find(|s| s.output.id == *output)
+            }
             _ => self.primary(),
         }
     }
@@ -401,7 +417,8 @@ impl Shell {
     /// Open or close each output's bar and desktop to match the outputs.
     pub fn sync_screens(&mut self, outputs: Vec<Output>, cx: &mut Cx<Msg>) {
         // Outputs gone: their surfaces go.
-        let gone: Vec<Screen> = self.screens.iter().filter(|s| !outputs.iter().any(|o| o.id == s.output.id)).cloned().collect();
+        let gone: Vec<Screen> =
+            self.screens.iter().filter(|s| !outputs.iter().any(|o| o.id == s.output.id)).cloned().collect();
         for s in gone {
             for k in [s.bar, s.desktop].into_iter().flatten() {
                 cx.close_window(k);
@@ -462,7 +479,10 @@ impl Shell {
     pub fn bar_model(&self, screen: &Screen) -> BarModel {
         let (app_name, menus) = self.focused_menus();
         let primary = self.primary().is_some_and(|p| p.output.id == screen.output.id);
-        let folded = self.deskbar_cfg.collapsed.then(|| self.wm.deskbar(&self.deskbar_cfg.pinned).iter().filter(|a| !a.windows.is_empty()).count());
+        let folded = self
+            .deskbar_cfg
+            .collapsed
+            .then(|| self.wm.deskbar(&self.deskbar_cfg.pinned).iter().filter(|a| !a.windows.is_empty()).count());
         BarModel {
             app_name,
             menus: menus.iter().map(|m| m.title.clone()).collect(),
@@ -503,7 +523,10 @@ impl Shell {
                 if let Some((index, name)) = self.renaming.take()
                     && !name.trim().is_empty()
                 {
-                    self.ipc.send(Request::RenameDesk { desk: aizome_ipc::DeskSel::Index(index), name: name.trim().to_owned() });
+                    self.ipc.send(Request::RenameDesk {
+                        desk: aizome_ipc::DeskSel::Index(index),
+                        name: name.trim().to_owned(),
+                    });
                 }
             }
             BarMsg::RenameCancel => self.renaming = None,
@@ -525,13 +548,29 @@ impl Shell {
         match slot {
             Slot::Toolchest => {
                 if self.opts.live {
-                    self.recent = aizome_search::recent::load(aizome_search::recent::default_path()).into_iter().take(12).map(|r| r.path).collect();
+                    self.recent = aizome_search::recent::load(aizome_search::recent::default_path())
+                        .into_iter()
+                        .take(12)
+                        .map(|r| r.path)
+                        .collect();
                 }
                 let menu = self.toolchest_menu();
                 let anchor = Rect::new(rect.x0, rect.y0, rect.x1, crate::menubar::HEIGHT - 1.0);
                 let output = self.screen_of(win).map(|s| s.name()).unwrap_or_default();
-                let tear = Msg::TearOff { app: crate::tearoff::TOOLCHEST.into(), path: vec![], output: output.clone(), at: Point::new(rect.x0 + 12.0, crate::menubar::HEIGHT + 12.0) };
-                let subs = crate::tearoff::tear_sub(crate::tearoff::TOOLCHEST.into(), menu.clone(), vec![], None, output, Point::new(rect.x0, crate::menubar::HEIGHT));
+                let tear = Msg::TearOff {
+                    app: crate::tearoff::TOOLCHEST.into(),
+                    path: vec![],
+                    output: output.clone(),
+                    at: Point::new(rect.x0 + 12.0, crate::menubar::HEIGHT + 12.0),
+                };
+                let subs = crate::tearoff::tear_sub(
+                    crate::tearoff::TOOLCHEST.into(),
+                    menu.clone(),
+                    vec![],
+                    None,
+                    output,
+                    Point::new(rect.x0, crate::menubar::HEIGHT),
+                );
                 let style = MenuStyle::below()
                     .titled("Toolchest")
                     .mark()
@@ -550,9 +589,17 @@ impl Shell {
                 }
                 let anchor = Rect::new(rect.x0, rect.y0, rect.x1, crate::menubar::HEIGHT - 1.0);
                 // Its submenus tear off into the app's palettes.
-                let app = self.wm.focused_window().map_or_else(|| crate::tearoff::DESKTOP.to_owned(), |w| w.app_id.clone());
+                let app =
+                    self.wm.focused_window().map_or_else(|| crate::tearoff::DESKTOP.to_owned(), |w| w.app_id.clone());
                 let output = self.screen_of(win).map(|s| s.name()).unwrap_or_default();
-                let subs = crate::tearoff::tear_sub(app, menu.clone(), vec![menu.title.clone()], None, output, Point::new(rect.x0, crate::menubar::HEIGHT));
+                let subs = crate::tearoff::tear_sub(
+                    app,
+                    menu.clone(),
+                    vec![menu.title.clone()],
+                    None,
+                    output,
+                    Point::new(rect.x0, crate::menubar::HEIGHT),
+                );
                 let style = self.as_bar_menu(MenuStyle::below().on_tear_off_sub(subs), win, slot, keyboard);
                 self.show_menu(win, anchor, menu, style, cx);
             }
@@ -567,7 +614,14 @@ impl Shell {
     }
 
     /// Show one of the shell's menus over `win`.
-    pub fn show_menu(&mut self, win: WindowKey, anchor: Rect, menu: &ShellMenu, style: MenuStyle<Msg>, cx: &mut Cx<Msg>) {
+    pub fn show_menu(
+        &mut self,
+        win: WindowKey,
+        anchor: Rect,
+        menu: &ShellMenu,
+        style: MenuStyle<Msg>,
+        cx: &mut Cx<Msg>,
+    ) {
         let kit = build::to_kit(menu, &Msg::Run);
         cx.show_menu(win, anchor, kit, style);
     }
@@ -576,7 +630,15 @@ impl Shell {
         let apps: Vec<&aizome_sys::apps::App> = self.apps.as_deref().map(|i| i.apps()).unwrap_or_default();
         let desk_folder = self.wm.current_desk_info().and_then(|d| d.folder.as_deref()).map(aizome_config::expand_home);
         let recent = self.recent.clone();
-        let disks = self.sys.disks.as_ref().map(|d| d.snapshot().volumes()).unwrap_or_default().into_iter().filter_map(|v| Some((v.name, PathBuf::from(v.mount_point?)))).collect();
+        let disks = self
+            .sys
+            .disks
+            .as_ref()
+            .map(|d| d.snapshot().volumes())
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|v| Some((v.name, PathBuf::from(v.mount_point?))))
+            .collect();
         build::toolchest(&build::ToolchestInput { apps: &apps, desks: &self.wm.desks, desk_folder, disks, recent })
     }
 
@@ -611,7 +673,9 @@ impl Shell {
                 Some(w) => self.ipc.send(Request::Focus { id: w.id }),
                 None => self.launch(Launch::App { app_id, targets: vec![] }, cx),
             },
-            Action::Launch { app_id } | Action::NewWindow { app_id } => self.launch(Launch::App { app_id, targets: vec![] }, cx),
+            Action::Launch { app_id } | Action::NewWindow { app_id } => {
+                self.launch(Launch::App { app_id, targets: vec![] }, cx)
+            }
             Action::Spawn { argv } => self.launch(Launch::Argv(argv), cx),
             Action::Open { path } => {
                 let l = crate::launch::open_path(self.apps.as_deref(), &path);
@@ -634,7 +698,9 @@ impl Shell {
                 cx.focus("desk-rename");
             }
             Action::Session(SessionVerb::Sleep) => self.do_session(SessionVerb::Sleep),
-            Action::Session(v @ (SessionVerb::LogOut | SessionVerb::Restart | SessionVerb::ShutDown)) => self.confirm(v, cx),
+            Action::Session(v @ (SessionVerb::LogOut | SessionVerb::Restart | SessionVerb::ShutDown)) => {
+                self.confirm(v, cx)
+            }
             Action::Session(SessionVerb::Lock) => self.lock(cx),
             Action::Pin { app_id, on } => {
                 self.deskbar_cfg.pinned.retain(|a| *a != app_id);
@@ -658,7 +724,13 @@ impl Shell {
                     self.ipc.send(Request::Minimise { id: Some(w.id) });
                 }
             }
-            Action::Screenshot => self.ipc.send(Request::Screenshot { output: None, path: None, window: None, area: None, clipboard: false }),
+            Action::Screenshot => self.ipc.send(Request::Screenshot {
+                output: None,
+                path: None,
+                window: None,
+                area: None,
+                clipboard: false,
+            }),
             Action::About { app_id: None } => self.run(Action::Settings { pane: "about".into(), anchor: None }, cx),
             Action::About { app_id: Some(app_id) } => self.about_app(&app_id, cx),
             Action::Palette { scope, query } => self.open_palette(scope, query, cx),
@@ -725,7 +797,11 @@ impl Shell {
         self.shelf = crate::shelf::Shelf::load(&crate::shelf::Shelf::default_dir());
         self.desktop.load_positions(&crate::desktop::DesktopState::path());
         self.tearoffs = crate::tearoff::load(&crate::tearoff::store_path());
-        self.recent = aizome_search::recent::load(aizome_search::recent::default_path()).into_iter().take(12).map(|r| r.path).collect();
+        self.recent = aizome_search::recent::load(aizome_search::recent::default_path())
+            .into_iter()
+            .take(12)
+            .map(|r| r.path)
+            .collect();
         self.refresh_wall_paths();
         self.start_palette_threads(cx);
         {
@@ -828,7 +904,9 @@ impl Shell {
                 }
             }
             IpcEvent::Disconnected => self.wm.connected = false,
-            IpcEvent::Reply { tag: NIGHT_LIGHT_TAG, response: aizome_ipc::Response::NightLight { state } } => self.night = Some(state),
+            IpcEvent::Reply { tag: NIGHT_LIGHT_TAG, response: aizome_ipc::Response::NightLight { state } } => {
+                self.night = Some(state)
+            }
             IpcEvent::Reply { .. } => {}
         }
     }
@@ -873,7 +951,8 @@ impl Shell {
         self.sync_power_key();
         self.tray = self.sys.tray(&self.bar_cfg);
         self.refresh_wall_paths();
-        let day = self.settings.appearance.theme.resolve(aizome_kit::theme::local_hour()) == aizome_theme::ThemeName::Day;
+        let day =
+            self.settings.appearance.theme.resolve(aizome_kit::theme::local_hour()) == aizome_theme::ThemeName::Day;
         self.theme_changed(day);
     }
 
@@ -885,7 +964,9 @@ impl Shell {
                     s.send(conn, &proto::ShellMessage::Reply { ok, message });
                 }
             }
-            ServerEvent::Message(_, proto::AppMessage::ServicesText { serial, text }) => self.selection_came(serial, text, cx),
+            ServerEvent::Message(_, proto::AppMessage::ServicesText { serial, text }) => {
+                self.selection_came(serial, text, cx)
+            }
             ServerEvent::Message(conn, m) => {
                 if let RegistryChange::Menus(_) | RegistryChange::App(_) = self.registry.take(conn, &m) {}
             }
@@ -1029,7 +1110,8 @@ impl Program for Shell {
             Msg::Ipc(e) => self.take_ipc(e, cx),
             Msg::Server(e) => self.take_server(e, cx),
             Msg::Apps(AppsLoaded(index)) => {
-                if self.opts.live && self._apps_watch.is_none()
+                if self.opts.live
+                    && self._apps_watch.is_none()
                     && let Some(tx) = self.stream.clone()
                 {
                     self._apps_watch = Some(index.watch(aizome_sys::Wake::new(move || {
@@ -1099,14 +1181,17 @@ impl Program for Shell {
     fn view(&self, window: WindowKey) -> Element<Msg> {
         match self.surfaces.get(&window) {
             Some(Surface::MenuBar { output }) => {
-                let Some(screen) = self.screens.iter().find(|s| s.output.id == *output) else { return aizome_kit::space(0.0) };
+                let Some(screen) = self.screens.iter().find(|s| s.output.id == *output) else {
+                    return aizome_kit::space(0.0);
+                };
                 crate::menubar::view(&self.bar_model(screen)).map(move |m| Msg::Bar(window, m))
             }
             Some(Surface::Desktop { output }) => self.desktop_view(*output),
             Some(Surface::Deskbar) => crate::deskbar::view(&self.deskbar_model()).map(Msg::Deskbar),
             Some(Surface::Palette) => match (self.palette_view(), &self.palette) {
                 (Some(v), Some(p)) => {
-                    let inner = crate::palette::view::view(&v, p.scroll).map(|m| Msg::Palette(crate::palette::PaletteEvent::Ui(m)));
+                    let inner = crate::palette::view::view(&v, p.scroll)
+                        .map(|m| Msg::Palette(crate::palette::PaletteEvent::Ui(m)));
                     crate::widgets::keys::keys(inner, |k| crate::palette::key_event(k).map(Msg::Palette))
                 }
                 _ => aizome_kit::space(0.0),
@@ -1114,7 +1199,8 @@ impl Program for Shell {
             Some(Surface::Lock { output }) => {
                 let inner = self.lock_view(*output);
                 crate::widgets::keys::keys(inner, |k| {
-                    matches!(k.key, aizome_kit::sidestep_ui::Key::Named(aizome_kit::sidestep_ui::NamedKey::Escape)).then_some(Msg::Lock(crate::lock::LockMsg::Escape))
+                    matches!(k.key, aizome_kit::sidestep_ui::Key::Named(aizome_kit::sidestep_ui::NamedKey::Escape))
+                        .then_some(Msg::Lock(crate::lock::LockMsg::Escape))
                 })
             }
             Some(Surface::TearOff(i)) => self.tear_view(*i),
@@ -1243,7 +1329,8 @@ impl Shell {
             let model = self.bar_model(&screen);
             let theme = cx.theme().clone();
             let text = &mut self.text;
-            let mut measure = |s: &str, spec: &aizome_kit::text::TextSpec| text.layout(&theme, s, spec, None).size().width;
+            let mut measure =
+                |s: &str, spec: &aizome_kit::text::TextSpec| text.layout(&theme, s, spec, None).size().width;
             self.desk_strip = crate::menubar::desk_rects(&theme, &mut measure, &model, screen.output.frame.width());
         }
     }
@@ -1256,7 +1343,13 @@ impl Shell {
         let (name, _, _) = self.app_look(app_id);
         let entry = self.apps.as_deref().and_then(|i| i.match_window(app_id)).cloned();
         let body = entry
-            .map(|e| [e.generic_name.unwrap_or_default(), e.comment.unwrap_or_default()].into_iter().filter(|s| !s.is_empty()).collect::<Vec<_>>().join(" — "))
+            .map(|e| {
+                [e.generic_name.unwrap_or_default(), e.comment.unwrap_or_default()]
+                    .into_iter()
+                    .filter(|s| !s.is_empty())
+                    .collect::<Vec<_>>()
+                    .join(" — ")
+            })
             .unwrap_or_default();
         let n = crate::notifications::store::Incoming {
             app_name: name.clone(),
@@ -1284,7 +1377,8 @@ impl Shell {
     /// Night or Day: written to the settings, which the compositor and every
     /// app follow.
     pub fn set_theme(&mut self, day: bool) {
-        self.settings.appearance.theme = if day { aizome_config::ThemeChoice::Day } else { aizome_config::ThemeChoice::Night };
+        self.settings.appearance.theme =
+            if day { aizome_config::ThemeChoice::Day } else { aizome_config::ThemeChoice::Night };
         if self.opts.live {
             if let Err(e) = self.settings.save() {
                 log::warn!("saving the theme: {e}");
@@ -1344,12 +1438,8 @@ impl Shell {
     /// The focused app's whole menu at a point of the global layout (NeXT's
     /// menu at the pointer), as a popup of that output's bar.
     pub fn pointer_menu(&mut self, x: f64, y: f64, cx: &mut Cx<Msg>) {
-        let screen = self
-            .screens
-            .iter()
-            .find(|s| s.output.frame.contains(Point::new(x, y)))
-            .or(self.focused_screen())
-            .cloned();
+        let screen =
+            self.screens.iter().find(|s| s.output.frame.contains(Point::new(x, y))).or(self.focused_screen()).cloned();
         let Some(screen) = screen else { return };
         let Some(bar) = screen.bar else { return };
         let (name, menus) = self.focused_menus();
@@ -1358,7 +1448,9 @@ impl Shell {
         let quit = match window {
             Some(w) => {
                 let conn = self.registry.for_window(w.pid, &w.app_id);
-                let quit_item = menus.first().and_then(|m| m.flatten().into_iter().find(|f| f.entry.role.as_deref() == Some("quit")));
+                let quit_item = menus
+                    .first()
+                    .and_then(|m| m.flatten().into_iter().find(|f| f.entry.role.as_deref() == Some("quit")));
                 match (conn, quit_item) {
                     (Some(_), Some(f)) => f.entry.action,
                     _ => Action::QuitApp { app_id: w.app_id.clone() },
@@ -1428,7 +1520,8 @@ impl Shell {
         self.authenticator = Arc::new(crate::pam::Pam::new(self.lock_cfg.pam_service.clone()));
         if self.lock_cfg.show_picture {
             let home = aizome_config::home_dir();
-            let candidates = [home.join(".face"), PathBuf::from(format!("/var/lib/AccountsService/icons/{}", self.user.0))];
+            let candidates =
+                [home.join(".face"), PathBuf::from(format!("/var/lib/AccountsService/icons/{}", self.user.0))];
             self.user_picture = candidates.iter().find(|p| p.is_file()).and_then(|p| aizome_kit::Image::open(p).ok());
         }
         if real_session()

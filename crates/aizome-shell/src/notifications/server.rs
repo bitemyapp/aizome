@@ -32,7 +32,10 @@ struct Notifications {
 #[zbus::interface(name = "org.freedesktop.Notifications")]
 impl Notifications {
     fn get_capabilities(&self) -> Vec<String> {
-        ["actions", "body", "body-markup", "body-hyperlinks", "icon-static", "persistence", "sound"].iter().map(|s| s.to_string()).collect()
+        ["actions", "body", "body-markup", "body-hyperlinks", "icon-static", "persistence", "sound"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect()
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -87,7 +90,9 @@ pub fn incoming(
         .iter()
         .find_map(|k| hints.get(*k).and_then(image_data))
         .or_else(|| s("image-path").or_else(|| s("image_path")).map(|p| NoteImage::File(path_of(&p))))
-        .or_else(|| (app_icon.starts_with('/') || app_icon.starts_with("file://")).then(|| NoteImage::File(path_of(&app_icon))));
+        .or_else(|| {
+            (app_icon.starts_with('/') || app_icon.starts_with("file://")).then(|| NoteImage::File(path_of(&app_icon)))
+        });
     let pid = hints
         .get("sender-pid")
         .and_then(|v| u32::try_from(&**v).ok().or_else(|| i64::try_from(&**v).ok().map(|p| p as u32)));
@@ -174,7 +179,9 @@ impl NoteServer {
                     let r = zbus::block_on(async {
                         let emitter = SignalEmitter::new(&conn, PATH)?;
                         match s {
-                            Signal::Closed(id, reason) => Notifications::notification_closed(&emitter, id, reason).await,
+                            Signal::Closed(id, reason) => {
+                                Notifications::notification_closed(&emitter, id, reason).await
+                            }
                             Signal::Action(id, key) => Notifications::action_invoked(&emitter, id, &key).await,
                         }
                     });
@@ -206,7 +213,16 @@ mod tests {
         hints.insert("urgency".into(), OwnedValue::from(2u8));
         hints.insert("desktop-entry".into(), Value::from("thunderbird").try_into().unwrap());
         hints.insert("resident".into(), OwnedValue::from(true));
-        let n = incoming("Mail".into(), 0, "".into(), "Re: tiles".into(), "Half a pixel".into(), vec!["default".into(), "Open".into(), "reply".into()], &hints, -1);
+        let n = incoming(
+            "Mail".into(),
+            0,
+            "".into(),
+            "Re: tiles".into(),
+            "Half a pixel".into(),
+            vec!["default".into(), "Open".into(), "reply".into()],
+            &hints,
+            -1,
+        );
         assert_eq!(n.urgency, Urgency::Critical);
         assert_eq!(n.desktop_entry.as_deref(), Some("thunderbird"));
         assert!(n.resident && !n.transient);

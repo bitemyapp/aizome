@@ -87,7 +87,8 @@ impl Sys {
             let s = u.snapshot();
             if let Some(d) = s.display.as_ref().filter(|d| d.is_present) {
                 use aizome_sys::power::BatteryState;
-                let charging = matches!(d.state, BatteryState::Charging | BatteryState::FullyCharged) || (!s.on_battery && s.plugged_in());
+                let charging = matches!(d.state, BatteryState::Charging | BatteryState::FullyCharged)
+                    || (!s.on_battery && s.plugged_in());
                 t.battery = Some((d.percentage as f32, charging));
             }
         }
