@@ -383,3 +383,56 @@ fn goldens() {
         shot(&mut h, &format!("year-{t}"));
     }
 }
+
+#[test]
+fn the_all_day_strip_and_the_year_take_the_pointer() {
+    let mut h = harness("strip", ThemeChoice::Night);
+    let w = h.window();
+    h.send(Msg::GoTo(date(2026, 10, 21)));
+    h.send(Msg::SetView(View::Week));
+    let strip = h.find_id(w, "all-day").expect("the all-day strip");
+    let col = (strip.width() - 56.0) / 7.0;
+    // The offsite runs Wednesday to Friday; drag it a day on.
+    let wed = Point::new(strip.x0 + 56.0 + col * 2.5, strip.y0 + 12.0);
+    h.drag(w, wed, wed + Vec2::new(col, 0.0), 4);
+    let k = h.program();
+    let o = k.occ.iter().find(|o| k.store.calendars[o.cal].events[o.event].summary == "Team offsite, Lisbon").unwrap();
+    assert_eq!((o.first_day(), o.last_day()), (date(2026, 10, 22), date(2026, 10, 24)));
+    // A double-click on the strip's empty space makes an all-day event.
+    let mon = Point::new(strip.x0 + 56.0 + col * 0.5, strip.y0 + 12.0);
+    h.press(w, mon, PointerButton::Left, 2);
+    h.release(w, mon, PointerButton::Left);
+    assert!(h.program().editor.as_ref().is_some_and(|e| e.all_day));
+    h.named(w, NamedKey::Escape, Modifiers::NONE);
+    // The year: a day opens the day view, a month's name the month.
+    h.send(Msg::SetView(View::Year));
+    h.click_text(w, "Year");
+    let year = h.find_id(w, "year").unwrap();
+    let _ = year;
+    h.send(Msg::Grid(koyomi::ui::week::GridAction::ShowDay(date(2026, 3, 14))));
+    assert_eq!((h.program().view, h.program().anchor), (View::Day, date(2026, 3, 14)));
+    h.send(Msg::SetView(View::Year));
+    h.send(Msg::Grid(koyomi::ui::week::GridAction::ShowMonth(date(2026, 3, 1))));
+    assert_eq!(h.program().view, View::Month);
+}
+
+#[test]
+fn the_sheets_look_finished() {
+    for (theme, t) in [(ThemeChoice::Night, "night"), (ThemeChoice::Day, "day")] {
+        let mut h = harness(&format!("sheets-{t}"), theme);
+        let w = h.window();
+        h.send(Msg::ShowSettings);
+        h.save_png(w, PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join(format!("settings-{t}@2x.png")), 2.0);
+        h.send(Msg::SettingsDone);
+        let google = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/google.ics");
+        h.send(Msg::Instance(vec![google.to_string_lossy().into_owned()]));
+        h.save_png(w, PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join(format!("import-{t}@2x.png")), 2.0);
+        h.send(Msg::ImportCancel);
+        h.send(Msg::SetView(View::Week));
+        let review = h.find(w, "Design review: Koyomi").unwrap();
+        h.press(w, review.center(), PointerButton::Left, 2);
+        h.release(w, review.center(), PointerButton::Left);
+        h.save_png(w, PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join(format!("editor-{t}@2x.png")), 2.0);
+        assert!(h.program().editor.is_some());
+    }
+}
