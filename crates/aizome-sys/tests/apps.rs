@@ -52,7 +52,10 @@ fn dbus_activatable_apps_are_activated_over_the_bus() {
     let bus = bus.bus();
     let plain = LaunchOptions { activation_token: Some("tok-9".into()), ..LaunchOptions::default() };
     activate_dbus(&entry, &plain, &bus).unwrap();
-    let open = LaunchOptions { targets: vec!["/tmp/a b.png".into(), "https://example.org/".into()], ..LaunchOptions::default() };
+    let open = LaunchOptions {
+        targets: vec!["/tmp/a b.png".into(), "https://example.org/".into()],
+        ..LaunchOptions::default()
+    };
     activate_dbus(&entry, &open, &bus).unwrap();
     let action = LaunchOptions { action: Some("new-window".into()), ..LaunchOptions::default() };
     activate_dbus(&entry, &action, &bus).unwrap();

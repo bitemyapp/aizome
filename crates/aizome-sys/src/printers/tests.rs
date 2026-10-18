@@ -25,12 +25,7 @@ struct Case {
 }
 
 fn ok(args: &str, stdout: impl AsRef<[u8]>) -> Case {
-    Case {
-        args: args.to_owned(),
-        stdout: stdout.as_ref().to_vec(),
-        stderr: String::new(),
-        status: 0,
-    }
+    Case { args: args.to_owned(), stdout: stdout.as_ref().to_vec(), stderr: String::new(), status: 0 }
 }
 
 fn fails(args: &str, stderr: &str, status: i32) -> Case {
@@ -59,10 +54,7 @@ impl Fake {
     }
 
     fn tools(&self) -> Tools {
-        Tools {
-            user_lpoptions: Some(self.dir.join("home/.cups/lpoptions")),
-            ..Tools::in_dir(self.bin())
-        }
+        Tools { user_lpoptions: Some(self.dir.join("home/.cups/lpoptions")), ..Tools::in_dir(self.bin()) }
     }
 
     /// A script `name` that logs its call and answers `cases`.
@@ -94,9 +86,7 @@ impl Fake {
                 status = quote(&file(&format!("{index}.status"))),
             ));
         }
-        script.push_str(&format!(
-            "*) printf 'fake {name}: unexpected arguments: %s\\n' \"$*\" >&2; exit 99;;\nesac\n"
-        ));
+        script.push_str(&format!("*) printf 'fake {name}: unexpected arguments: %s\\n' \"$*\" >&2; exit 99;;\nesac\n"));
         self.script(name, &script);
     }
 
@@ -113,14 +103,12 @@ impl Fake {
         use std::os::unix::fs::PermissionsExt;
         let path = self.bin().join(name);
         std::fs::write(&path, body).expect("a script");
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755))
-            .expect("an executable");
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).expect("an executable");
     }
 
     /// Each call's arguments.
     fn calls(&self, name: &str) -> Vec<Vec<String>> {
-        let text =
-            std::fs::read_to_string(self.bin().join(format!("{name}.calls"))).unwrap_or_default();
+        let text = std::fs::read_to_string(self.bin().join(format!("{name}.calls"))).unwrap_or_default();
         text.lines()
             .map(|line| {
                 let mut args: Vec<String> = line.split('\x1f').map(str::to_owned).collect();
@@ -136,8 +124,7 @@ impl Fake {
 
     /// Each call's environment line.
     fn env(&self, name: &str) -> Vec<String> {
-        let text =
-            std::fs::read_to_string(self.bin().join(format!("{name}.env"))).unwrap_or_default();
+        let text = std::fs::read_to_string(self.bin().join(format!("{name}.env"))).unwrap_or_default();
         text.lines().map(str::to_owned).collect()
     }
 }
@@ -244,23 +231,15 @@ fn the_state_from_every_source() {
     assert!(state.loaded && state.available);
     assert_eq!(state.error, None);
     let names: Vec<&str> = state.printers.iter().map(|p| p.name.as_str()).collect();
-    assert_eq!(
-        names,
-        ["Brother_HL_L2390DW", "Office-Laser", "old_inkjet", "Stopped_one", "Front-Desk_2"]
-    );
+    assert_eq!(names, ["Brother_HL_L2390DW", "Office-Laser", "old_inkjet", "Stopped_one", "Front-Desk_2"]);
 
     let brother = state.printer("brother_hl_l2390dw").expect("found ignoring case");
     assert_eq!(brother.description, "Brother HL-L2390DW");
     assert_eq!(brother.location, "Study, 2nd floor");
-    assert_eq!(
-        brother.make_and_model.as_deref(),
-        Some("Brother HL-L2390DW series - IPP Everywhere")
-    );
+    assert_eq!(brother.make_and_model.as_deref(), Some("Brother HL-L2390DW series - IPP Everywhere"));
     assert_eq!(
         brother.device_uri.as_deref(),
-        Some(
-            "dnssd://Brother%20HL-L2390DW._ipp._tcp.local/?uuid=e3248000-80ce-11db-8000-c0b5d7e5cc7d"
-        ),
+        Some("dnssd://Brother%20HL-L2390DW._ipp._tcp.local/?uuid=e3248000-80ce-11db-8000-c0b5d7e5cc7d"),
         "lpstat -v wins over lpoptions"
     );
     assert_eq!(brother.state, PrinterState::Idle);
@@ -341,14 +320,8 @@ fn the_users_own_default() {
     let state = cli::query(&fake.tools(), None).expect("a state");
     assert_eq!(state.user_default.as_deref(), Some("Brother_HL_L2390DW"));
     assert_eq!(state.system_default.as_deref(), Some("Office-Laser"), "from printer-type");
-    assert!(
-        state
-            .printer("Brother_HL_L2390DW")
-            .is_some_and(|p| p.is_user_default && !p.is_system_default)
-    );
-    assert!(
-        state.printer("Office-Laser").is_some_and(|p| p.is_system_default && !p.is_user_default)
-    );
+    assert!(state.printer("Brother_HL_L2390DW").is_some_and(|p| p.is_user_default && !p.is_system_default));
+    assert!(state.printer("Office-Laser").is_some_and(|p| p.is_system_default && !p.is_user_default));
     assert_eq!(state.default_printer().map(|p| p.name.as_str()), Some("Brother_HL_L2390DW"));
 
     let tools = Tools { env_default: Some("Front-Desk_2".into()), ..fake.tools() };
@@ -356,8 +329,7 @@ fn the_users_own_default() {
     assert_eq!(state.user_default.as_deref(), Some("Front-Desk_2"), "LPDEST wins over the file");
 
     // A user default naming a printer that is gone falls back to the system's.
-    std::fs::write(fake.dir.join("home/.cups/lpoptions"), "Default Gone\n")
-        .expect("an lpoptions file");
+    std::fs::write(fake.dir.join("home/.cups/lpoptions"), "Default Gone\n").expect("an lpoptions file");
     let state = cli::query(&fake.tools(), None).expect("a state");
     assert_eq!(state.user_default.as_deref(), Some("Gone"));
     assert_eq!(state.default_printer().map(|p| p.name.as_str()), Some("Office-Laser"));
@@ -393,8 +365,7 @@ fn cups_not_there() {
     let missing = Fake::new();
     assert!(matches!(cli::query(&missing.tools(), None), Err(Error::Unavailable(_))));
 
-    let printers =
-        Printers::with_interval(missing.tools(), Wake::none(), Duration::from_secs(3600));
+    let printers = Printers::with_interval(missing.tools(), Wake::none(), Duration::from_secs(3600));
     wait_for(|| printers.snapshot().loaded);
     let state = printers.snapshot();
     assert!(!printers.available() && state.printers.is_empty());
@@ -480,12 +451,8 @@ fn adding_printers() {
 
     let ppd = fake.dir.join("my printer.ppd");
     std::fs::write(&ppd, "*PPD-Adobe: \"4.3\"\n").expect("a PPD");
-    let with_ppd = NewPrinter {
-        driver: DriverChoice::Ppd(ppd.clone()),
-        description: None,
-        location: None,
-        ..new.clone()
-    };
+    let with_ppd =
+        NewPrinter { driver: DriverChoice::Ppd(ppd.clone()), description: None, location: None, ..new.clone() };
     assert_eq!(printers.add_printer(with_ppd).wait(), Ok(()));
 
     let ppd = ppd.canonicalize().expect("the PPD").display().to_string();
@@ -578,10 +545,7 @@ fn printer_actions_run_the_right_commands() {
     assert_eq!(fake.calls("cupsenable"), [args(&["Office-Laser"])]);
     assert_eq!(fake.calls("cupsreject"), [args(&["Front-Desk_2"])]);
     assert_eq!(fake.calls("cupsaccept"), [args(&["Front-Desk_2"])]);
-    assert_eq!(
-        fake.calls("cancel"),
-        [args(&["Office-Laser-42"]), args(&["43"]), args(&["-a", "Office-Laser"])]
-    );
+    assert_eq!(fake.calls("cancel"), [args(&["Office-Laser-42"]), args(&["43"]), args(&["-a", "Office-Laser"])]);
     // One refresh at start and one after each action.
     assert_eq!(fake.count("lpstat", &["-r"]), 1 + results.len());
 
@@ -619,24 +583,15 @@ fn failures_say_what_went_wrong() {
         vec![fails("*", "cupsenable: Operation failed: The printer or class does not exist.\n", 1)],
     );
     fake.tool("cancel", vec![fails("*", "cancel: cancel-job failed: Job #9 does not exist.\n", 1)]);
-    fake.tool(
-        "lp",
-        vec![fails("*", "lp: Error - unable to access \"x\" - No such file or directory\n", 1)],
-    );
+    fake.tool("lp", vec![fails("*", "lp: Error - unable to access \"x\" - No such file or directory\n", 1)]);
     let printers = handle(&fake);
 
-    assert_eq!(
-        printers.remove_printer("Office-Laser").wait(),
-        Err(Error::NotAuthorized("Forbidden".into()))
-    );
+    assert_eq!(printers.remove_printer("Office-Laser").wait(), Err(Error::NotAuthorized("Forbidden".into())));
     assert!(matches!(printers.remove_printer("old_inkjet").wait(), Err(Error::Unavailable(_))));
     assert!(matches!(printers.set_system_default("Office-Laser").wait(), Err(Error::NotFound(_))));
     assert_eq!(
         printers.set_system_default("Stopped_one").wait(),
-        Err(Error::Command {
-            program: "lpadmin".into(),
-            message: "Bad device-uri scheme \"foo\".".into()
-        })
+        Err(Error::Command { program: "lpadmin".into(), message: "Bad device-uri scheme \"foo\".".into() })
     );
     assert_eq!(
         printers.set_system_default("Front-Desk_2").wait(),
@@ -646,15 +601,9 @@ fn failures_say_what_went_wrong() {
     assert!(matches!(printers.cancel_job("Office-Laser-9").wait(), Err(Error::NotFound(_))));
     let page = fake.dir.join("page.txt");
     std::fs::write(&page, "hello\n").expect("a file");
-    assert!(matches!(
-        printers.print_file("Office-Laser", &page, None).wait(),
-        Err(Error::NotFound(_))
-    ));
+    assert!(matches!(printers.print_file("Office-Laser", &page, None).wait(), Err(Error::NotFound(_))));
     // cupsreject isn't there at all.
-    assert!(matches!(
-        printers.set_accepting("Office-Laser", false).wait(),
-        Err(Error::Unavailable(_))
-    ));
+    assert!(matches!(printers.set_accepting("Office-Laser", false).wait(), Err(Error::Unavailable(_))));
 }
 
 #[test]
@@ -663,10 +612,7 @@ fn error_messages_are_sorted() {
     assert!(matches!(sorted("Forbidden"), Error::NotAuthorized(_)));
     assert!(matches!(sorted("client-error-not-authorized"), Error::NotAuthorized(_)));
     assert!(matches!(sorted("Unauthorized"), Error::NotAuthorized(_)));
-    assert!(matches!(
-        sorted("Unable to connect to server: No such file or directory"),
-        Error::Unavailable(_)
-    ));
+    assert!(matches!(sorted("Unable to connect to server: No such file or directory"), Error::Unavailable(_)));
     assert!(matches!(sorted("Scheduler is not running."), Error::Unavailable(_)));
     assert!(matches!(sorted("No such file or directory"), Error::Unavailable(_)));
     assert!(matches!(sorted("Unknown destination \"x\"."), Error::NotFound(_)));
@@ -700,10 +646,7 @@ fn printing_the_test_page_and_files() {
     fake.tool("cups-config", vec![ok("--datadir", format!("{}\n", data.display()))]);
     fake.tool(
         "lp",
-        vec![
-            ok("-d Office-Laser *", "request id is Office-Laser-46 (1 file(s))\n"),
-            ok("-d Brother_HL_L2390DW *", ""),
-        ],
+        vec![ok("-d Office-Laser *", "request id is Office-Laser-46 (1 file(s))\n"), ok("-d Brother_HL_L2390DW *", "")],
     );
     let printers = handle(&fake);
 
@@ -713,39 +656,19 @@ fn printing_the_test_page_and_files() {
 
     let file = fake.dir.join("Quarterly report.pdf");
     std::fs::write(&file, "%PDF-1.4\n").expect("a file");
-    assert_eq!(
-        printers.print_file("Office-Laser", &file, Some("Report")).wait(),
-        Ok("Office-Laser-46".to_owned())
-    );
-    assert_eq!(
-        printers.print_file("Office-Laser", &file, None).wait(),
-        Ok("Office-Laser-46".to_owned())
-    );
+    assert_eq!(printers.print_file("Office-Laser", &file, Some("Report")).wait(), Ok("Office-Laser-46".to_owned()));
+    assert_eq!(printers.print_file("Office-Laser", &file, None).wait(), Ok("Office-Laser-46".to_owned()));
     let file_arg = file.display().to_string();
     assert_eq!(
         fake.calls("lp").get(1..),
-        Some(
-            &[
-                args(&["-d", "Office-Laser", "-t", "Report", &file_arg]),
-                args(&["-d", "Office-Laser", &file_arg])
-            ][..]
-        )
+        Some(&[args(&["-d", "Office-Laser", "-t", "Report", &file_arg]), args(&["-d", "Office-Laser", &file_arg])][..])
     );
 
     // lp said nothing about the job.
-    assert!(matches!(
-        printers.print_file("Brother_HL_L2390DW", &file, None).wait(),
-        Err(Error::Failed(_))
-    ));
+    assert!(matches!(printers.print_file("Brother_HL_L2390DW", &file, None).wait(), Err(Error::Failed(_))));
     // Refused before lp runs.
-    assert!(matches!(
-        printers.print_file("Office-Laser", fake.dir.join("nope"), None).wait(),
-        Err(Error::NotFound(_))
-    ));
-    assert!(matches!(
-        printers.print_file("Office-Laser", &fake.dir, None).wait(),
-        Err(Error::InvalidArgument(_))
-    ));
+    assert!(matches!(printers.print_file("Office-Laser", fake.dir.join("nope"), None).wait(), Err(Error::NotFound(_))));
+    assert!(matches!(printers.print_file("Office-Laser", &fake.dir, None).wait(), Err(Error::InvalidArgument(_))));
     assert_eq!(fake.calls("lp").len(), 4);
 }
 
@@ -825,10 +748,7 @@ fn listing_drivers_and_finished_jobs() {
 Model:  name = everywhere\n        natural_language = en\n        make-and-model = IPP Everywhere\n        device-id = \n";
     fake.tool(
         "lpinfo",
-        vec![
-            ok("-l --make-and-model Zebra -m", models),
-            ok("-l --device-id MFG:Zebra;MDL:ZD420; -m", models),
-        ],
+        vec![ok("-l --make-and-model Zebra -m", models), ok("-l --device-id MFG:Zebra;MDL:ZD420; -m", models)],
     );
     let printers = handle(&fake);
 
@@ -837,8 +757,7 @@ Model:  name = everywhere\n        natural_language = en\n        make-and-model
     assert_eq!(drivers.len(), 2);
     assert_eq!(drivers[0].make_and_model, "Zebra ZPL Label Printer");
     assert!(drivers[1].is_everywhere());
-    let filter =
-        DriverFilter { device_id: Some("MFG:Zebra;MDL:ZD420;".into()), ..DriverFilter::default() };
+    let filter = DriverFilter { device_id: Some("MFG:Zebra;MDL:ZD420;".into()), ..DriverFilter::default() };
     assert_eq!(printers.drivers(filter).wait().map(|d| d.len()), Ok(2));
 
     let finished = printers.completed_jobs().wait().expect("jobs");
@@ -859,11 +778,8 @@ fn clearing_the_users_default() {
     let fake = Fake::new();
     cups(&fake);
     let file = fake.dir.join("home/.cups/lpoptions");
-    std::fs::write(
-        &file,
-        "Dest Office-Laser media=A4\nDefault Brother_HL_L2390DW sides=two-sided-long-edge\n",
-    )
-    .expect("an lpoptions file");
+    std::fs::write(&file, "Dest Office-Laser media=A4\nDefault Brother_HL_L2390DW sides=two-sided-long-edge\n")
+        .expect("an lpoptions file");
     let printers = handle(&fake);
     assert_eq!(printers.snapshot().user_default.as_deref(), Some("Brother_HL_L2390DW"));
 
@@ -886,10 +802,7 @@ fn commands_run_bounded_and_detached() {
     let pid_file = fake.dir.join("background.pid");
     fake.script(
         "slow",
-        &format!(
-            "#!/bin/sh\nsleep 30 &\necho $! > {}\nsleep 30\n",
-            quote(&pid_file.display().to_string())
-        ),
+        &format!("#!/bin/sh\nsleep 30 &\necho $! > {}\nsleep 30\n", quote(&pid_file.display().to_string())),
     );
     let started = Instant::now();
     let result = cli::run(&fake.bin().join("slow"), &["x"], Duration::from_millis(300), None);
@@ -916,13 +829,8 @@ fn commands_run_bounded_and_detached() {
         "chatty",
         "#!/bin/sh\nhead -c 1000000 /dev/zero | tr '\\0' x\nhead -c 200000 /dev/zero | tr '\\0' y >&2\nexit 4\n",
     );
-    let output =
-        cli::run(&fake.bin().join("chatty"), &[] as &[&str], Duration::from_secs(10), None)
-            .expect("output");
-    assert_eq!(
-        (output.stdout.len(), output.stderr.len(), output.status),
-        (1_000_000, 200_000, Some(4))
-    );
+    let output = cli::run(&fake.bin().join("chatty"), &[] as &[&str], Duration::from_secs(10), None).expect("output");
+    assert_eq!((output.stdout.len(), output.stderr.len(), output.status), (1_000_000, 200_000, Some(4)));
 
     // A program that isn't there.
     let missing = cli::run(&fake.bin().join("nothing"), &["x"], Duration::from_secs(1), None);
@@ -935,23 +843,15 @@ fn printer_names() {
     assert_eq!(validate_name("Office-Laser.2:a"), Ok(()));
     assert_eq!(validate_name("Bürodrucker_藍"), Ok(()));
     assert_eq!(validate_name(&"x".repeat(127)), Ok(()));
-    for bad in
-        ["", "a b", "a\tb", "a/b", "a\\b", "a#b", "a?b", "a'b", "a\"b", "a@b", "-p", "a\u{7f}"]
-    {
+    for bad in ["", "a b", "a\tb", "a/b", "a\\b", "a#b", "a?b", "a'b", "a\"b", "a@b", "-p", "a\u{7f}"] {
         assert!(matches!(validate_name(bad), Err(Error::InvalidArgument(_))), "{bad:?}");
     }
     assert!(validate_name(&"x".repeat(128)).is_err());
-    assert_eq!(
-        validate_name("a b"),
-        Err(Error::InvalidArgument("A printer name can't contain spaces".into()))
-    );
+    assert_eq!(validate_name("a b"), Err(Error::InvalidArgument("A printer name can't contain spaces".into())));
 
     assert_eq!(suggest_name("Brother HL-L2390DW series"), "Brother_HL_L2390DW");
     assert_eq!(suggest_name("Brother HL-L2390DW series - IPP Everywhere"), "Brother_HL_L2390DW");
-    assert_eq!(
-        suggest_name("HP LaserJet Pro M404-M405, driverless, cups-filters 2.0.1"),
-        "HP_LaserJet_Pro_M404_M405"
-    );
+    assert_eq!(suggest_name("HP LaserJet Pro M404-M405, driverless, cups-filters 2.0.1"), "HP_LaserJet_Pro_M404_M405");
     assert_eq!(suggest_name("  Canon iP4950 (USB) "), "Canon_iP4950_USB");
     assert_eq!(suggest_name("Bürodrucker 藍"), "B_rodrucker");
     assert_eq!(suggest_name("藍 – 藍"), "Printer");
@@ -972,8 +872,7 @@ fn printer_names() {
 }
 
 fn on_path(tool: &str) -> bool {
-    std::env::var_os("PATH")
-        .is_some_and(|path| std::env::split_paths(&path).any(|dir| dir.join(tool).is_file()))
+    std::env::var_os("PATH").is_some_and(|path| std::env::split_paths(&path).any(|dir| dir.join(tool).is_file()))
 }
 
 #[test]
@@ -1060,8 +959,7 @@ fn live_test_page() {
     eprintln!("test page: {page:?}");
     if let Some(page) = page {
         assert!(page.is_file());
-        let start =
-            std::fs::read(&page).map(|bytes| bytes.get(..12).map(<[u8]>::to_vec)).ok().flatten();
+        let start = std::fs::read(&page).map(|bytes| bytes.get(..12).map(<[u8]>::to_vec)).ok().flatten();
         eprintln!("starts with {:?}", start.map(|s| String::from_utf8_lossy(&s).into_owned()));
     } else {
         assert!(!on_path("lp"), "lp is installed but its test page wasn't found");

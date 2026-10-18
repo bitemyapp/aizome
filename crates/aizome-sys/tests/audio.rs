@@ -89,7 +89,9 @@ impl PrivatePipeWire {
                 .env_remove("PIPEWIRE_REMOTE")
                 .stdin(Stdio::null())
                 .stdout(Stdio::null())
-                .stderr(std::fs::File::create(dir.join(format!("{program}.log"))).map(Stdio::from).unwrap_or(Stdio::null()))
+                .stderr(
+                    std::fs::File::create(dir.join(format!("{program}.log"))).map(Stdio::from).unwrap_or(Stdio::null()),
+                )
                 .spawn()
         };
         let mut pw = PrivatePipeWire { children: Vec::new(), dir: dir.clone() };
@@ -117,7 +119,11 @@ impl PrivatePipeWire {
 
 impl Drop for PrivatePipeWire {
     fn drop(&mut self) {
-        if std::env::var_os("AIZOME_KEEP_PW").is_some() { for log in ["pipewire.log", "pipewire-pulse.log"] { eprintln!("--- {log}\n{}", std::fs::read_to_string(self.dir.join(log)).unwrap_or_default()); } }
+        if std::env::var_os("AIZOME_KEEP_PW").is_some() {
+            for log in ["pipewire.log", "pipewire-pulse.log"] {
+                eprintln!("--- {log}\n{}", std::fs::read_to_string(self.dir.join(log)).unwrap_or_default());
+            }
+        }
         for child in self.children.iter_mut().rev() {
             let _ = child.kill();
             let _ = child.wait();
@@ -219,7 +225,11 @@ fn balance_and_a_level_meter() {
     assert!(close(speakers.balance, 0.0), "{}", speakers.balance);
     audio.set_sink_volume(speakers.index, 0.8).wait().unwrap();
     audio.set_sink_balance(speakers.index, -0.5).wait().unwrap();
-    assert!(eventually(|| close(audio.snapshot().sink(speakers.index).unwrap().balance, -0.5)), "{:?}", audio.snapshot().sink(speakers.index));
+    assert!(
+        eventually(|| close(audio.snapshot().sink(speakers.index).unwrap().balance, -0.5)),
+        "{:?}",
+        audio.snapshot().sink(speakers.index)
+    );
     // The louder channel keeps the volume.
     assert!(close(audio.snapshot().sink(speakers.index).unwrap().volume, 0.8));
     // A mono input has no balance to set.

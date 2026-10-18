@@ -64,9 +64,8 @@ impl BacklightDevice {
 /// Read every backlight under `root`.
 pub(crate) fn read(root: &Path) -> Vec<BacklightDevice> {
     let Ok(entries) = std::fs::read_dir(root) else { return Vec::new() };
-    let number = |dir: &Path, name: &str| -> Option<u32> {
-        std::fs::read_to_string(dir.join(name)).ok()?.trim().parse().ok()
-    };
+    let number =
+        |dir: &Path, name: &str| -> Option<u32> { std::fs::read_to_string(dir.join(name)).ok()?.trim().parse().ok() };
     let mut devices: Vec<BacklightDevice> = entries
         .flatten()
         .filter_map(|entry| {
@@ -75,7 +74,9 @@ pub(crate) fn read(root: &Path) -> Vec<BacklightDevice> {
             let brightness = number(&dir, "actual_brightness").or_else(|| number(&dir, "brightness"))?;
             Some(BacklightDevice {
                 name: entry.file_name().to_string_lossy().into_owned(),
-                kind: std::fs::read_to_string(dir.join("type")).map(|t| t.trim().to_owned()).unwrap_or_else(|_| "raw".into()),
+                kind: std::fs::read_to_string(dir.join("type"))
+                    .map(|t| t.trim().to_owned())
+                    .unwrap_or_else(|_| "raw".into()),
                 brightness: brightness.min(max_brightness),
                 max_brightness,
             })

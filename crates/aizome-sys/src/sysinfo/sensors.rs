@@ -74,9 +74,8 @@ pub fn pick_cpu_temperature(sensors: &[Temperature]) -> Option<&Temperature> {
         move |t: &&Temperature| t.chip == chip && t.label.as_deref() == Some(label)
     };
     let chip = |chip: &'static str| move |t: &&Temperature| t.chip == chip;
-    let coretemp_package = |t: &&Temperature| {
-        t.chip == "coretemp" && t.label.as_deref().is_some_and(|l| l.starts_with("Package id"))
-    };
+    let coretemp_package =
+        |t: &&Temperature| t.chip == "coretemp" && t.label.as_deref().is_some_and(|l| l.starts_with("Package id"));
     sensors
         .iter()
         .find(labelled("coretemp", "Package id 0"))
@@ -115,8 +114,7 @@ pub(crate) fn temperatures_in(root: &Path) -> Vec<Temperature> {
 /// The temperature sensors of one hwmon directory.
 fn chip_temperatures(dir: &Path, hwmon: &str) -> Vec<Temperature> {
     // Old drivers kept the name on the device instead.
-    let Some(chip) = read_attr(dir.join("name")).or_else(|| read_attr(dir.join("device/name")))
-    else {
+    let Some(chip) = read_attr(dir.join("name")).or_else(|| read_attr(dir.join("device/name"))) else {
         return Vec::new();
     };
     let device = std::fs::read_link(dir.join("device"))
@@ -143,11 +141,8 @@ fn chip_temperatures(dir: &Path, hwmon: &str) -> Vec<Temperature> {
         if celsius == 0.0 || !(-60.0..=250.0).contains(&celsius) {
             continue;
         }
-        let limit = |what: &str| {
-            attribute(what)
-                .and_then(|value| millidegrees(&value))
-                .filter(|c| *c > 0.0 && *c <= 250.0)
-        };
+        let limit =
+            |what: &str| attribute(what).and_then(|value| millidegrees(&value)).filter(|c| *c > 0.0 && *c <= 250.0);
         sensors.push(Temperature {
             chip: chip.clone(),
             hwmon: hwmon.to_owned(),

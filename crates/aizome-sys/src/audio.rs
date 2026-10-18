@@ -478,7 +478,6 @@ pub(crate) fn scaled(volumes: &ChannelVolumes, fraction: f32) -> ChannelVolumes 
     volumes
 }
 
-
 /// The default output's volume after a volume key: a step up or down,
 /// landing on a multiple of the step (so 38% goes up to 45%, not 43%).
 pub(crate) fn stepped(current: f32, step: f32) -> f32 {
@@ -585,7 +584,12 @@ fn expect(expects: &mut Expects, key: (Kind, u32)) -> &mut Expect {
 }
 
 /// Set a level at once, remembering it until the server reports it.
-fn set_volume_in<T: Levels>(map: &mut Entries<T>, expects: &mut Expects, key: (Kind, u32), level: f32) -> Option<ChannelVolumes> {
+fn set_volume_in<T: Levels>(
+    map: &mut Entries<T>,
+    expects: &mut Expects,
+    key: (Kind, u32),
+    level: f32,
+) -> Option<ChannelVolumes> {
     let (item, volumes) = map.get_mut(&key.1)?;
     let new = scaled(volumes, level);
     *volumes = new;
@@ -594,7 +598,12 @@ fn set_volume_in<T: Levels>(map: &mut Entries<T>, expects: &mut Expects, key: (K
     Some(new)
 }
 
-fn set_mute_in<T: Levels>(map: &mut Entries<T>, expects: &mut Expects, key: (Kind, u32), muted: Option<bool>) -> Option<bool> {
+fn set_mute_in<T: Levels>(
+    map: &mut Entries<T>,
+    expects: &mut Expects,
+    key: (Kind, u32),
+    muted: Option<bool>,
+) -> Option<bool> {
     let (item, _) = map.get_mut(&key.1)?;
     let muted = muted.unwrap_or(!item.is_muted());
     item.set_muted(muted);
@@ -827,18 +836,12 @@ fn stream(
     corked: bool,
     volume_writable: bool,
 ) -> (AudioStream, ChannelVolumes) {
-    let application = Some(prop(proplist, "application.name"))
-        .filter(|n| !n.is_empty())
-        .unwrap_or_else(|| text(name));
-    let app_id = [
-        "pipewire.access.portal.app_id",
-        "application.id",
-        "application.process.binary",
-    ]
-    .iter()
-    .map(|key| prop(proplist, key))
-    .find(|v| !v.is_empty())
-    .unwrap_or_default();
+    let application = Some(prop(proplist, "application.name")).filter(|n| !n.is_empty()).unwrap_or_else(|| text(name));
+    let app_id = ["pipewire.access.portal.app_id", "application.id", "application.process.binary"]
+        .iter()
+        .map(|key| prop(proplist, key))
+        .find(|v| !v.is_empty())
+        .unwrap_or_default();
     let stream = AudioStream {
         index,
         application,
@@ -869,7 +872,9 @@ fn card(info: &CardInfo<'_>) -> Card {
     Card {
         index: info.index,
         name: text(&info.name),
-        description: Some(prop(&info.proplist, "device.description")).filter(|d| !d.is_empty()).unwrap_or_else(|| text(&info.name)),
+        description: Some(prop(&info.proplist, "device.description"))
+            .filter(|d| !d.is_empty())
+            .unwrap_or_else(|| text(&info.name)),
         icon_name: prop(&info.proplist, "device.icon_name"),
         bus: prop(&info.proplist, "device.bus"),
         active_profile: info.active_profile.as_ref().and_then(|p| p.name.as_deref().map(str::to_owned)),
@@ -878,7 +883,16 @@ fn card(info: &CardInfo<'_>) -> Card {
 }
 
 fn playback_stream(info: &SinkInputInfo<'_>) -> (AudioStream, ChannelVolumes) {
-    stream(info.index, &info.name, &info.proplist, &info.volume, info.mute, info.sink, info.corked, info.volume_writable)
+    stream(
+        info.index,
+        &info.name,
+        &info.proplist,
+        &info.volume,
+        info.mute,
+        info.sink,
+        info.corked,
+        info.volume_writable,
+    )
 }
 
 /// Recording streams that are only level meters (pavucontrol's, the
@@ -888,7 +902,16 @@ fn recording_stream(info: &SourceOutputInfo<'_>) -> Option<(AudioStream, Channel
         || info.resample_method.as_deref() == Some("peaks")
         || info.name.as_deref().is_some_and(|n| n.contains("Peak detect"));
     (!peak).then(|| {
-        stream(info.index, &info.name, &info.proplist, &info.volume, info.mute, info.source, info.corked, info.volume_writable)
+        stream(
+            info.index,
+            &info.name,
+            &info.proplist,
+            &info.volume,
+            info.mute,
+            info.source,
+            info.corked,
+            info.volume_writable,
+        )
     })
 }
 
@@ -1172,7 +1195,13 @@ fn failure(weak: &Weak<RefCell<Context>>) -> Error {
     }
 }
 
-fn send_volume(introspect: &mut pulse::context::introspect::Introspector, kind: Kind, index: u32, volumes: &ChannelVolumes, callback: Box<dyn FnMut(bool)>) {
+fn send_volume(
+    introspect: &mut pulse::context::introspect::Introspector,
+    kind: Kind,
+    index: u32,
+    volumes: &ChannelVolumes,
+    callback: Box<dyn FnMut(bool)>,
+) {
     let callback = Some(callback);
     match kind {
         Kind::Sink => drop(introspect.set_sink_volume_by_index(index, volumes, callback)),
@@ -1182,7 +1211,13 @@ fn send_volume(introspect: &mut pulse::context::introspect::Introspector, kind: 
     }
 }
 
-fn send_mute(introspect: &mut pulse::context::introspect::Introspector, kind: Kind, index: u32, muted: bool, callback: Option<Box<dyn FnMut(bool)>>) {
+fn send_mute(
+    introspect: &mut pulse::context::introspect::Introspector,
+    kind: Kind,
+    index: u32,
+    muted: bool,
+    callback: Option<Box<dyn FnMut(bool)>>,
+) {
     match kind {
         Kind::Sink => drop(introspect.set_sink_mute_by_index(index, muted, callback)),
         Kind::Source => drop(introspect.set_source_mute_by_index(index, muted, callback)),
@@ -1352,7 +1387,13 @@ mod tests {
         let mut live = Live::default();
         let device = |index, name: &str, monitor| {
             (
-                AudioDevice { index, name: name.into(), description: name.into(), is_monitor: monitor, ..Default::default() },
+                AudioDevice {
+                    index,
+                    name: name.into(),
+                    description: name.into(),
+                    is_monitor: monitor,
+                    ..Default::default()
+                },
                 ChannelVolumes::default(),
             )
         };

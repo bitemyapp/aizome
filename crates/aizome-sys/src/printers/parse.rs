@@ -261,8 +261,7 @@ pub(crate) fn jobs(text: &str) -> Vec<Job> {
                 job.status = (!value.is_empty()).then(|| value.to_owned());
             } else if let Some(value) = detail.strip_prefix("Alerts:") {
                 job.reasons = words(value);
-            } else if let Some(printer) = detail.strip_prefix("queued for ").and_then(printer_part)
-            {
+            } else if let Some(printer) = detail.strip_prefix("queued for ").and_then(printer_part) {
                 job.printer = printer;
             }
             continue;
@@ -361,8 +360,7 @@ pub(crate) fn lpq_titles(output: &[u8]) -> HashMap<u32, String> {
             continue;
         }
         let front = String::from_utf8_lossy(front);
-        let Some(number) = front.split_whitespace().last().and_then(|n| n.parse::<u32>().ok())
-        else {
+        let Some(number) = front.split_whitespace().last().and_then(|n| n.parse::<u32>().ok()) else {
             continue;
         };
         let title = String::from_utf8_lossy(title);
@@ -459,8 +457,7 @@ pub(crate) fn devices(text: &str) -> Vec<Device> {
     for line in text.lines() {
         if let Some(rest) = line.strip_prefix("Device:") {
             devices.extend(current.take());
-            let uri =
-                rest.trim().strip_prefix("uri").and_then(|r| r.trim_start().strip_prefix('='));
+            let uri = rest.trim().strip_prefix("uri").and_then(|r| r.trim_start().strip_prefix('='));
             current = uri
                 .map(str::trim)
                 .filter(|uri| !uri.is_empty())
@@ -484,11 +481,7 @@ pub(crate) fn devices(text: &str) -> Vec<Device> {
             if uri.is_empty() {
                 continue;
             }
-            devices.push(Device {
-                class: DeviceClass::from_lpinfo(class),
-                uri: uri.to_owned(),
-                ..Device::default()
-            });
+            devices.push(Device { class: DeviceClass::from_lpinfo(class), uri: uri.to_owned(), ..Device::default() });
         }
     }
     devices.extend(current);
@@ -521,8 +514,7 @@ impl Iterator for DriverLines<'_> {
     fn next(&mut self) -> Option<Driver> {
         for line in self.lines.by_ref() {
             let started = if let Some(rest) = line.strip_prefix("Model:") {
-                let name =
-                    rest.trim().strip_prefix("name").and_then(|r| r.trim_start().strip_prefix('='));
+                let name = rest.trim().strip_prefix("name").and_then(|r| r.trim_start().strip_prefix('='));
                 match name.map(str::trim).filter(|name| !name.is_empty()) {
                     Some(name) => Driver { name: name.to_owned(), ..Driver::default() },
                     None => match self.pending.take() {
@@ -544,11 +536,7 @@ impl Iterator for DriverLines<'_> {
                 let Some((name, model)) = line.trim().split_once(char::is_whitespace) else {
                     continue;
                 };
-                Driver {
-                    name: name.to_owned(),
-                    make_and_model: model.trim().to_owned(),
-                    ..Driver::default()
-                }
+                Driver { name: name.to_owned(), make_and_model: model.trim().to_owned(), ..Driver::default() }
             };
             if let Some(done) = self.pending.replace(started) {
                 return Some(done);
@@ -708,8 +696,7 @@ pub(crate) fn c_date(text: &str) -> Option<SystemTime> {
 }
 
 fn c_date_words(words: &[&str]) -> Option<SystemTime> {
-    const MONTHS: [&str; 12] =
-        ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const MONTHS: [&str; 12] = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
     const DAYS: [&str; 7] = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
     let [weekday, month, day, time, year] = words else { return None };
     if !DAYS.contains(weekday) {
@@ -854,8 +841,7 @@ not a job line
             ("2nd", "Ana María", 44, "", 0),
             ("3rd", "bob", 45, "untitled", 2048),
         ];
-        let mut text =
-            b"Rank    Owner   Job     File(s)                         Total Size\n".to_vec();
+        let mut text = b"Rank    Owner   Job     File(s)                         Total Size\n".to_vec();
         for (rank, owner, id, title, size) in jobs {
             // printf's "%-7s %-7.7s %-7d %-31.31s %.0f bytes", which counts
             // bytes.
@@ -893,10 +879,7 @@ not a job line
     fn printers_from_lpstat_lp() {
         let printers = printer_status(LPSTAT_LP);
         let names: Vec<&str> = printers.iter().map(|p| p.name.as_str()).collect();
-        assert_eq!(
-            names,
-            ["Brother_HL_L2390DW", "Office-Laser", "old_inkjet", "Stopped_one", "Front-Desk_2"]
-        );
+        assert_eq!(names, ["Brother_HL_L2390DW", "Office-Laser", "old_inkjet", "Stopped_one", "Front-Desk_2"]);
 
         let [brother, office, old, stopped, front] = printers.as_slice() else { panic!() };
         assert_eq!(brother.state, PrinterState::Idle);
@@ -955,37 +938,26 @@ not a job line
         assert_eq!(accepting.len(), 5);
 
         let devices = device_uris(LPSTAT_V);
-        assert_eq!(
-            devices.get("Office-Laser").map(String::as_str),
-            Some("ipp://10.0.0.5/ipp/print")
-        );
+        assert_eq!(devices.get("Office-Laser").map(String::as_str), Some("ipp://10.0.0.5/ipp/print"));
         assert_eq!(
             devices.get("Brother_HL_L2390DW").map(String::as_str),
-            Some(
-                "dnssd://Brother%20HL-L2390DW._ipp._tcp.local/?uuid=e3248000-80ce-11db-8000-c0b5d7e5cc7d"
-            )
+            Some("dnssd://Brother%20HL-L2390DW._ipp._tcp.local/?uuid=e3248000-80ce-11db-8000-c0b5d7e5cc7d")
         );
-        let odd =
-            device_uris("device for a:b: file:///dev/null\ndevice for broken\ndevice for x: \n");
+        let odd = device_uris("device for a:b: file:///dev/null\ndevice for broken\ndevice for x: \n");
         assert_eq!(odd.get("a:b").map(String::as_str), Some("file:///dev/null"));
         assert_eq!(odd.len(), 1);
     }
 
     #[test]
     fn default_destinations() {
-        assert_eq!(
-            default_destination("system default destination: Office-Laser\n").as_deref(),
-            Some("Office-Laser")
-        );
+        assert_eq!(default_destination("system default destination: Office-Laser\n").as_deref(), Some("Office-Laser"));
         assert_eq!(
             default_destination("system default destination: Office-Laser/duplex\n").as_deref(),
             Some("Office-Laser")
         );
         assert_eq!(default_destination("no system default destination\n"), None);
         assert_eq!(
-            default_destination(
-                "lpstat: error - LPDEST environment variable names non-existent destination \"x\".\n"
-            ),
+            default_destination("lpstat: error - LPDEST environment variable names non-existent destination \"x\".\n"),
             None
         );
     }
@@ -994,10 +966,7 @@ not a job line
     fn jobs_from_lpstat_lo() {
         let jobs = jobs(LPSTAT_LO);
         let ids: Vec<&str> = jobs.iter().map(|j| j.id.as_str()).collect();
-        assert_eq!(
-            ids,
-            ["Office-Laser-42", "Brother_HL_L2390DW-43", "Front-Desk_2-44", "Office-Laser-45"]
-        );
+        assert_eq!(ids, ["Office-Laser-42", "Brother_HL_L2390DW-43", "Front-Desk_2-44", "Office-Laser-45"]);
         let [printing, held, remote, undated] = jobs.as_slice() else { panic!() };
 
         assert_eq!(printing.number, 42);
@@ -1040,19 +1009,13 @@ not a job line
         let reasons = |r: &[&str]| r.iter().map(|s| s.to_string()).collect::<Vec<_>>();
         assert_eq!(job_state(&reasons(&["job-printing"]), false, false), JobState::Processing);
         assert_eq!(job_state(&[], true, false), JobState::Processing);
-        assert_eq!(
-            job_state(&reasons(&["job-hold-until-specified"]), false, false),
-            JobState::Held
-        );
+        assert_eq!(job_state(&reasons(&["job-hold-until-specified"]), false, false), JobState::Held);
         assert_eq!(job_state(&reasons(&["job-stopped"]), false, false), JobState::Stopped);
         assert_eq!(job_state(&reasons(&["printer-stopped"]), false, false), JobState::Pending);
         assert_eq!(job_state(&reasons(&["job-incoming"]), false, false), JobState::Pending);
         assert_eq!(job_state(&reasons(&["job-canceled-by-user"]), false, true), JobState::Canceled);
         assert_eq!(job_state(&reasons(&["aborted-by-system"]), false, true), JobState::Aborted);
-        assert_eq!(
-            job_state(&reasons(&["job-completed-successfully"]), false, true),
-            JobState::Completed
-        );
+        assert_eq!(job_state(&reasons(&["job-completed-successfully"]), false, true), JobState::Completed);
     }
 
     #[test]
@@ -1079,20 +1042,14 @@ not a job line
         let get = |key: &str| options.get(key).map(String::as_str);
         assert_eq!(get("printer-info"), Some("Bob's Büro printer"));
         assert_eq!(get("printer-location"), Some(""));
-        assert_eq!(
-            get("printer-make-and-model"),
-            Some("Brother HL-L2390DW series - IPP Everywhere")
-        );
+        assert_eq!(get("printer-make-and-model"), Some("Brother HL-L2390DW series - IPP Everywhere"));
         assert_eq!(get("printer-type"), Some("36908"));
         assert_eq!(get("device-uri"), Some("ipp://10.0.0.5/ipp/print"));
         assert_eq!(get("job-sheets"), Some("none,none"));
         assert_eq!(get("odd"), Some("a b"));
         assert_eq!(get("quoted"), Some("x y"));
         assert!(super::options("").is_empty());
-        assert_eq!(
-            super::options("unterminated='abc").get("unterminated").map(String::as_str),
-            Some("abc")
-        );
+        assert_eq!(super::options("unterminated='abc").get("unterminated").map(String::as_str), Some("abc"));
     }
 
     #[test]
@@ -1131,10 +1088,7 @@ Device: uri = \n        class = network\n";
         assert_eq!(devices[0].make_and_model, None);
         assert_eq!(devices[0].device_id, None);
         assert_eq!(devices[1].info, "Brother HL-L2390DW");
-        assert_eq!(
-            devices[1].device_id.as_deref(),
-            Some("MFG:Brother;MDL:HL-L2390DW;CMD:PJL,HBP,URF;")
-        );
+        assert_eq!(devices[1].device_id.as_deref(), Some("MFG:Brother;MDL:HL-L2390DW;CMD:PJL,HBP,URF;"));
         assert_eq!(devices[2].class, DeviceClass::Direct);
         assert_eq!(devices[2].location.as_deref(), Some("Kitchen = left"));
     }
@@ -1157,16 +1111,10 @@ Model:  name = everywhere\n        natural_language = en\n        make-and-model
         assert_eq!(list[0].make_and_model, "DYMO Label Printer");
         assert_eq!(list[0].language.as_deref(), Some("en"));
         assert_eq!(list[0].device_id, None);
-        assert_eq!(
-            list[1].device_id.as_deref(),
-            Some("MFG:Generic;MDL:IPP Everywhere Printer;CMD:PWGRaster;")
-        );
+        assert_eq!(list[1].device_id.as_deref(), Some("MFG:Generic;MDL:IPP Everywhere Printer;CMD:PWGRaster;"));
         assert!(list[2].is_everywhere());
         // Lazy: the first model comes before the rest is read.
-        assert_eq!(
-            drivers(long).next().map(|d| d.name),
-            Some("drv:///sample.drv/dymo.ppd".to_owned())
-        );
+        assert_eq!(drivers(long).next().map(|d| d.name), Some("drv:///sample.drv/dymo.ppd".to_owned()));
         assert_eq!(drivers("").count(), 0);
     }
 
@@ -1181,10 +1129,7 @@ DEBUG: ippfind (PID 581758) exited with no errors.\n";
         assert_eq!(devices.len(), 1);
         assert_eq!(devices[0].uri, "ipp://Brother%20HL-L2390DW._ipp._tcp.local/");
         assert_eq!(devices[0].info, "Brother HL-L2390DW");
-        assert_eq!(
-            devices[0].make_and_model.as_deref(),
-            Some("Brother HL-L2390DW, driverless, cups-filters 2.0.1")
-        );
+        assert_eq!(devices[0].make_and_model.as_deref(), Some("Brother HL-L2390DW, driverless, cups-filters 2.0.1"));
         assert!(devices[0].driverless);
 
         // Plain driverless: bare URIs.
@@ -1197,14 +1142,8 @@ DEBUG: ippfind (PID 581758) exited with no errors.\n";
 
     #[test]
     fn lp_request_ids() {
-        assert_eq!(
-            request_id("request id is Office-Laser-42 (1 file(s))\n").as_deref(),
-            Some("Office-Laser-42")
-        );
-        assert_eq!(
-            request_id("lp: warning\nrequest id is a-b-c-7 (0 file(s))\n").as_deref(),
-            Some("a-b-c-7")
-        );
+        assert_eq!(request_id("request id is Office-Laser-42 (1 file(s))\n").as_deref(), Some("Office-Laser-42"));
+        assert_eq!(request_id("lp: warning\nrequest id is a-b-c-7 (0 file(s))\n").as_deref(), Some("a-b-c-7"));
         assert_eq!(request_id("request id is nonsense\n"), None);
         assert_eq!(request_id(""), None);
     }
@@ -1225,10 +1164,7 @@ DEBUG: ippfind (PID 581758) exited with no errors.\n";
             service_name("dnssd://Brother%20HL-L2390DW._ipp._tcp.local/?uuid=e3").as_deref(),
             Some("Brother HL-L2390DW")
         );
-        assert_eq!(
-            service_name("ipps://My%2E._Printer._ipps._tcp.local/").as_deref(),
-            Some("My.._Printer")
-        );
+        assert_eq!(service_name("ipps://My%2E._Printer._ipps._tcp.local/").as_deref(), Some("My.._Printer"));
         assert_eq!(service_name("ipp://10.0.0.5/ipp/print"), None);
         assert_eq!(service_name("usb://HP"), None);
         assert_eq!(percent_decode("a%20b%zz%2"), "a b%zz%2");
@@ -1244,10 +1180,7 @@ DEBUG: ippfind (PID 581758) exited with no errors.\n";
     #[test]
     fn cups_files_conf() {
         let conf = "SystemGroup root wheel lpadmin\n\nServerBin /nix/store/x-cups-progs/lib/cups\nDataDir /nix/store/x-cups-progs/share/cups\n";
-        assert_eq!(
-            conf_path(conf, "DataDir"),
-            Some(PathBuf::from("/nix/store/x-cups-progs/share/cups"))
-        );
+        assert_eq!(conf_path(conf, "DataDir"), Some(PathBuf::from("/nix/store/x-cups-progs/share/cups")));
         assert_eq!(conf_path(conf, "TempDir"), None);
     }
 

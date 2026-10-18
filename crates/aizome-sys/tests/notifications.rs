@@ -3,12 +3,12 @@
 
 mod common;
 
+use aizome_sys::Error;
 use aizome_sys::notifications::server::{DEFAULT_CAPABILITIES, SPEC_VERSION};
 use aizome_sys::notifications::{
     self, BUS_NAME, ClientEvent, CloseReason, ImageData, Notification, NotificationClient, NotificationEvent,
     NotificationServer, ServerConfig, Timeout, Urgency,
 };
-use aizome_sys::Error;
 use common::{TestBus, eventually};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -106,7 +106,10 @@ fn answers_capabilities_and_server_information() {
     let (client, _, _) = client(&bus);
     assert_eq!(client.capabilities().unwrap(), DEFAULT_CAPABILITIES);
     let info = client.server_information().unwrap();
-    assert_eq!((info.name.as_str(), info.vendor.as_str(), info.spec_version.as_str()), ("Aizome", "Sekka", SPEC_VERSION));
+    assert_eq!(
+        (info.name.as_str(), info.vendor.as_str(), info.spec_version.as_str()),
+        ("Aizome", "Sekka", SPEC_VERSION)
+    );
     assert_eq!(info.spec_version, "1.2");
 
     // Four out arguments, not one structure; the signals are introspectable.
@@ -116,7 +119,13 @@ fn answers_capabilities_and_server_information() {
         .unwrap();
     assert_eq!(reply.body().signature().to_string_no_parens(), "ssss");
     let xml: String = raw
-        .call_method(Some(BUS_NAME), notifications::PATH, Some("org.freedesktop.DBus.Introspectable"), "Introspect", &())
+        .call_method(
+            Some(BUS_NAME),
+            notifications::PATH,
+            Some("org.freedesktop.DBus.Introspectable"),
+            "Introspect",
+            &(),
+        )
         .unwrap()
         .body()
         .deserialize()
@@ -214,7 +223,8 @@ fn odd_raw_notifications_are_read_leniently() {
     assert_eq!(without_data.image_to_show(), Some(notifications::Image::File("/tmp/old name.png".into())));
 
     // Wrong argument types are refused by the bus layer, not a panic.
-    let refused = raw.call_method(Some(BUS_NAME), notifications::PATH, Some(notifications::INTERFACE), "Notify", &("only", 1u8));
+    let refused =
+        raw.call_method(Some(BUS_NAME), notifications::PATH, Some(notifications::INTERFACE), "Notify", &("only", 1u8));
     assert!(refused.is_err());
     assert_eq!(server.snapshot().notifications.len(), 1);
 }
@@ -318,7 +328,9 @@ fn paused_timers_wait_for_the_pointer_to_leave() {
     std::thread::sleep(Duration::from_millis(500));
     assert!(server.get(id).is_some(), "paused");
     // Replaced while paused: still paused.
-    client.notify(&Notification::new("hover me more").replaces(id).timeout(Timeout::After(Duration::from_millis(200)))).unwrap();
+    client
+        .notify(&Notification::new("hover me more").replaces(id).timeout(Timeout::After(Duration::from_millis(200))))
+        .unwrap();
     std::thread::sleep(Duration::from_millis(300));
     assert_eq!(server.get(id).unwrap().summary, "hover me more");
     let resumed = Instant::now();
@@ -343,7 +355,8 @@ fn invoking_an_action_sends_the_token_then_the_action() {
     assert!(!server.invoke_action(id + 100, "reply", None), "no such notification");
     assert!(server.invoke_action(id, "reply", Some("xdg-token-1".into())));
 
-    let action = ClientEvent::ActionInvoked { id, action: "reply".into(), activation_token: Some("xdg-token-1".into()) };
+    let action =
+        ClientEvent::ActionInvoked { id, action: "reply".into(), activation_token: Some("xdg-token-1".into()) };
     let close = ClientEvent::Closed { id, reason: CloseReason::Dismissed };
     assert!(eventually(|| heard.lock().unwrap().len() == 2));
     assert_eq!(*heard.lock().unwrap(), [action, close], "the action, then the closing");
@@ -399,11 +412,17 @@ fn the_name_taken_by_another_server_is_an_error() {
 
 fn common_owner(bus: &TestBus) -> Option<String> {
     let conn = bus.builder().build().unwrap();
-    conn.call_method(Some("org.freedesktop.DBus"), "/org/freedesktop/DBus", Some("org.freedesktop.DBus"), "GetNameOwner", &(BUS_NAME,))
-        .ok()?
-        .body()
-        .deserialize()
-        .ok()
+    conn.call_method(
+        Some("org.freedesktop.DBus"),
+        "/org/freedesktop/DBus",
+        Some("org.freedesktop.DBus"),
+        "GetNameOwner",
+        &(BUS_NAME,),
+    )
+    .ok()?
+    .body()
+    .deserialize()
+    .ok()
 }
 
 #[test]

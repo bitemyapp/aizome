@@ -20,7 +20,6 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
 
-
 /// How many levels a second the server sends.
 pub const RATE: u32 = 25;
 
@@ -106,12 +105,8 @@ fn run(server: Option<&str>, device: &str, level: &Arc<AtomicU32>, wake: &Wake, 
             loop {
                 match s.peek() {
                     Ok(PeekResult::Data(data)) => {
-                        let peak = data
-                            .as_chunks::<4>()
-                            .0
-                            .iter()
-                            .map(|b| f32::from_ne_bytes(*b).abs())
-                            .fold(0.0f32, f32::max);
+                        let peak =
+                            data.as_chunks::<4>().0.iter().map(|b| f32::from_ne_bytes(*b).abs()).fold(0.0f32, f32::max);
                         level.store(peak.min(1.0).to_bits(), Ordering::Relaxed);
                         let _ = s.discard();
                         wake.wake();
@@ -134,7 +129,11 @@ fn run(server: Option<&str>, device: &str, level: &Arc<AtomicU32>, wake: &Wake, 
     };
     stream
         .borrow_mut()
-        .connect_record(Some(device), Some(&attr), StreamFlags::PEAK_DETECT | StreamFlags::ADJUST_LATENCY | StreamFlags::DONT_MOVE)
+        .connect_record(
+            Some(device),
+            Some(&attr),
+            StreamFlags::PEAK_DETECT | StreamFlags::ADJUST_LATENCY | StreamFlags::DONT_MOVE,
+        )
         .map_err(|e| format!("{e:?}"))?;
     // Iterate with a timeout of our own, so stopping is noticed.
     while !stop.stopped() {

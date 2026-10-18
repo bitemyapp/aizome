@@ -310,7 +310,9 @@ fn journal_stream(identifier: &str) -> Option<std::os::unix::net::UnixStream> {
 /// Where an app's output goes: the journal, else nowhere.
 fn output(identifier: &str) -> (Stdio, Stdio) {
     match journal_stream(identifier).and_then(|s| Some((s.try_clone().ok()?, s))) {
-        Some((out, err)) => (Stdio::from(std::os::fd::OwnedFd::from(out)), Stdio::from(std::os::fd::OwnedFd::from(err))),
+        Some((out, err)) => {
+            (Stdio::from(std::os::fd::OwnedFd::from(out)), Stdio::from(std::os::fd::OwnedFd::from(err)))
+        }
         None => (Stdio::null(), Stdio::null()),
     }
 }

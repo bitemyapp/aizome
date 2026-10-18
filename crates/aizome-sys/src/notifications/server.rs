@@ -177,7 +177,9 @@ impl Shared {
     fn lifetime(&self, notification: &Notification) -> Option<Duration> {
         let config = &self.config;
         let hints = &notification.hints;
-        if (hints.urgency == Urgency::Critical && !config.expire_critical) || (hints.resident && !config.expire_resident) {
+        if (hints.urgency == Urgency::Critical && !config.expire_critical)
+            || (hints.resident && !config.expire_resident)
+        {
             return None;
         }
         match notification.timeout {
@@ -215,7 +217,13 @@ impl Shared {
         let paused = state.entries.get(&id).is_some_and(|e| e.paused);
         state.entries.insert(
             id,
-            Entry { notification: notification.clone(), lifetime, since: Instant::now(), shown: Duration::ZERO, paused },
+            Entry {
+                notification: notification.clone(),
+                lifetime,
+                since: Instant::now(),
+                shown: Duration::ZERO,
+                paused,
+            },
         );
         self.publish(&state);
         self.queue(state, [Job::Notified(notification, replaced)]);
@@ -367,9 +375,7 @@ impl Interface {
             sender: header.sender().map(|s| s.to_string()),
             received: Some(SystemTime::now()),
         };
-        self.shared
-            .notify(notification)
-            .ok_or_else(|| fdo::Error::Failed("the notification server is stopping".into()))
+        self.shared.notify(notification).ok_or_else(|| fdo::Error::Failed("the notification server is stopping".into()))
     }
 
     fn close_notification(&self, id: u32) -> fdo::Result<()> {
@@ -544,7 +550,6 @@ impl Drop for NotificationServer {
         }
     }
 }
-
 
 /// Who owns the name: its unique name and, when the bus tells, the
 /// process's name.

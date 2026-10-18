@@ -3,7 +3,7 @@
 //! cached objects and connection settings into a [`NetworkState`], so it is
 //! tested with hand-made objects.
 
-use crate::bus::{Objects, Props, PropsExt, value_dict, value_dicts, value_bytes, value_str, value_u64};
+use crate::bus::{Objects, Props, PropsExt, value_bytes, value_dict, value_dicts, value_str, value_u64};
 use std::collections::HashMap;
 use std::net::{Ipv4Addr, Ipv6Addr};
 use zbus::zvariant::{OwnedValue, Value};
@@ -123,10 +123,7 @@ impl NetworkState {
     /// hardware address and speed.
     pub fn details(&self, device_path: &str) -> Option<Details> {
         let device = self.device(device_path)?;
-        let active = device
-            .active_connection
-            .as_deref()
-            .and_then(|path| self.active.iter().find(|a| a.path == path));
+        let active = device.active_connection.as_deref().and_then(|path| self.active.iter().find(|a| a.path == path));
         Some(Details {
             interface: device.interface.clone(),
             connection: active.map(|a| a.id.clone()),
@@ -144,10 +141,7 @@ impl NetworkState {
                 })
                 .flatten(),
             metered: device.metered,
-            proxy: active
-                .and_then(|a| self.connection(&a.uuid))
-                .map(|c| c.proxy.clone())
-                .unwrap_or_default(),
+            proxy: active.and_then(|a| self.connection(&a.uuid)).map(|c| c.proxy.clone()).unwrap_or_default(),
         })
     }
 
@@ -169,9 +163,7 @@ impl NetworkState {
 
     /// The hotspot this machine is running, if any.
     pub fn hotspot(&self) -> Option<&ActiveConnection> {
-        self.active.iter().find(|a| {
-            self.connection(&a.uuid).is_some_and(|c| c.wifi_mode.as_deref() == Some("ap"))
-        })
+        self.active.iter().find(|a| self.connection(&a.uuid).is_some_and(|c| c.wifi_mode.as_deref() == Some("ap")))
     }
 }
 
@@ -530,11 +522,7 @@ impl Security {
         if both & (Self::KEY_MGMT_802_1X | Self::KEY_MGMT_EAP_SUITE_B_192) != 0 {
             Security::Enterprise
         } else if rsn & Self::KEY_MGMT_SAE != 0 {
-            if both & Self::KEY_MGMT_PSK != 0 {
-                Security::Wpa2Wpa3Personal
-            } else {
-                Security::Wpa3Personal
-            }
+            if both & Self::KEY_MGMT_PSK != 0 { Security::Wpa2Wpa3Personal } else { Security::Wpa3Personal }
         } else if rsn & Self::KEY_MGMT_PSK != 0 {
             Security::Wpa2Personal
         } else if wpa & Self::KEY_MGMT_PSK != 0 {
@@ -576,9 +564,7 @@ impl Security {
             Security::Open => None,
             Security::EnhancedOpen => Some("owe"),
             Security::Wep => Some("none"),
-            Security::WpaPersonal | Security::Wpa2Personal | Security::Wpa2Wpa3Personal => {
-                Some("wpa-psk")
-            }
+            Security::WpaPersonal | Security::Wpa2Personal | Security::Wpa2Wpa3Personal => Some("wpa-psk"),
             Security::Wpa3Personal => Some("sae"),
             Security::Enterprise => Some("wpa-eap"),
         }
@@ -940,10 +926,7 @@ fn device(objects: &Objects, path: &str, props: &Props) -> Device {
         .or_else(|| wired.map(|w| w.str("HwAddress")))
         .or_else(|| wireless.map(|w| w.str("HwAddress")))
         .unwrap_or_default();
-    let perm_hw_address = wired
-        .or(wireless)
-        .map(|p| p.str("PermHwAddress"))
-        .unwrap_or_default();
+    let perm_hw_address = wired.or(wireless).map(|p| p.str("PermHwAddress")).unwrap_or_default();
     Device {
         path: path.to_owned(),
         interface: props.str("Interface"),
@@ -1036,9 +1019,8 @@ fn saved_connection(
     let security = setting(settings, "802-11-wireless-security");
     let proxy = setting(settings, "proxy");
     let uuid = connection.str("uuid");
-    let is_active = active.iter().any(|a| {
-        a.uuid == uuid && matches!(a.state, ActiveState::Activating | ActiveState::Activated)
-    });
+    let is_active =
+        active.iter().any(|a| a.uuid == uuid && matches!(a.state, ActiveState::Activating | ActiveState::Activated));
     SavedConnection {
         path: path.to_owned(),
         id: connection.str("id"),
@@ -1083,11 +1065,7 @@ fn access_points(objects: &Objects, devices: &[Device]) -> Vec<AccessPoint> {
                 frequency,
                 band: Band::from_mhz(frequency),
                 strength: u8::try_from(props.u64("Strength").min(100)).unwrap_or(0),
-                security: Security::from_flags(
-                    props.u32("Flags"),
-                    props.u32("WpaFlags"),
-                    props.u32("RsnFlags"),
-                ),
+                security: Security::from_flags(props.u32("Flags"), props.u32("WpaFlags"), props.u32("RsnFlags")),
                 max_bitrate_kbps: props.u32("MaxBitrate"),
                 infrastructure: props.u32("Mode") == 2,
                 device: device.path.clone(),
@@ -1104,13 +1082,7 @@ pub fn ssid_name(bytes: &[u8]) -> String {
         Ok(s) => s.trim_end_matches('\0').to_owned(),
         Err(_) => bytes
             .iter()
-            .map(|&b| {
-                if b.is_ascii_graphic() || b == b' ' {
-                    (b as char).to_string()
-                } else {
-                    format!("\\x{b:02x}")
-                }
-            })
+            .map(|&b| if b.is_ascii_graphic() || b == b' ' { (b as char).to_string() } else { format!("\\x{b:02x}") })
             .collect(),
     }
 }
@@ -1180,14 +1152,10 @@ fn networks(
             })
             .collect();
         network.connected = on_device || mine.iter().any(|a| a.state == ActiveState::Activated);
-        network.connecting =
-            !network.connected && mine.iter().any(|a| a.state == ActiveState::Activating);
+        network.connecting = !network.connected && mine.iter().any(|a| a.state == ActiveState::Activating);
     }
     networks.sort_by(|a, b| {
-        b.connected
-            .cmp(&a.connected)
-            .then(b.strength.cmp(&a.strength))
-            .then_with(|| a.ssid.cmp(&b.ssid))
+        b.connected.cmp(&a.connected).then(b.strength.cmp(&a.strength)).then_with(|| a.ssid.cmp(&b.ssid))
     });
     networks
 }
@@ -1224,15 +1192,8 @@ pub(crate) fn wifi_settings<'a>(
 ) -> NewSettings<'a> {
     let mut settings = NewSettings::new();
     let name = ssid_name(ssid);
-    settings.insert(
-        "connection",
-        HashMap::from([
-            ("id", Value::from(name)),
-            ("type", Value::from("802-11-wireless")),
-        ]),
-    );
-    let mut wireless =
-        HashMap::from([("ssid", Value::from(ssid.to_vec())), ("mode", Value::from("infrastructure"))]);
+    settings.insert("connection", HashMap::from([("id", Value::from(name)), ("type", Value::from("802-11-wireless"))]));
+    let mut wireless = HashMap::from([("ssid", Value::from(ssid.to_vec())), ("mode", Value::from("infrastructure"))]);
     if hidden {
         wireless.insert("hidden", Value::from(true));
     }
@@ -1283,10 +1244,7 @@ pub(crate) fn wifi_settings<'a>(
 /// Settings for a hotspot: an access point sharing this machine's
 /// connection, secured with WPA2.
 pub(crate) fn hotspot_settings<'a>(ssid: &str, password: &'a str, band: Option<Band>) -> NewSettings<'a> {
-    let mut wireless = HashMap::from([
-        ("ssid", Value::from(ssid.as_bytes().to_vec())),
-        ("mode", Value::from("ap")),
-    ]);
+    let mut wireless = HashMap::from([("ssid", Value::from(ssid.as_bytes().to_vec())), ("mode", Value::from("ap"))]);
     match band {
         Some(Band::TwoPointFourGhz) => {
             wireless.insert("band", Value::from("bg"));
@@ -1335,10 +1293,7 @@ pub(crate) fn with_setting(
         .map(|(group, props)| {
             (
                 group.clone(),
-                props
-                    .iter()
-                    .filter_map(|(k, v)| Some((k.clone(), v.try_clone().ok().map(Value::from)?)))
-                    .collect(),
+                props.iter().filter_map(|(k, v)| Some((k.clone(), v.try_clone().ok().map(Value::from)?))).collect(),
             )
         })
         .collect();
@@ -1355,7 +1310,10 @@ pub enum Ipv4Method {
     /// DHCP (NetworkManager's `auto`).
     Automatic,
     /// Fixed addresses (with prefix lengths) and a router.
-    Manual { addresses: Vec<(Ipv4Addr, u8)>, gateway: Option<Ipv4Addr> },
+    Manual {
+        addresses: Vec<(Ipv4Addr, u8)>,
+        gateway: Option<Ipv4Addr>,
+    },
     /// A 169.254.x.x address only.
     LinkLocal,
     /// Share this machine's connection with the network (a hotspot or a
@@ -1427,7 +1385,10 @@ pub(crate) fn editable(settings: &ConnectionSettings) -> EditableSettings {
     settings
         .iter()
         .map(|(group, props)| {
-            (group.clone(), props.iter().filter_map(|(k, v)| Some((k.clone(), v.try_clone().ok().map(Value::from)?))).collect())
+            (
+                group.clone(),
+                props.iter().filter_map(|(k, v)| Some((k.clone(), v.try_clone().ok().map(Value::from)?))).collect(),
+            )
         })
         .collect()
 }
@@ -1566,24 +1527,15 @@ mod tests {
             "/s/1".to_owned(),
             HashMap::from([
                 ("connection".to_owned(), connection("Home", "aaaa", "802-11-wireless", 50)),
-                (
-                    "802-11-wireless".to_owned(),
-                    props(vec![("ssid", owned(b"Home".to_vec()))]),
-                ),
-                (
-                    "802-11-wireless-security".to_owned(),
-                    props(vec![("key-mgmt", owned("sae"))]),
-                ),
+                ("802-11-wireless".to_owned(), props(vec![("ssid", owned(b"Home".to_vec()))])),
+                ("802-11-wireless-security".to_owned(), props(vec![("key-mgmt", owned("sae"))])),
             ]),
         );
         settings.insert(
             "/s/2".to_owned(),
             HashMap::from([
                 ("connection".to_owned(), connection("Work", "bbbb", "wireguard", 70)),
-                (
-                    "proxy".to_owned(),
-                    props(vec![("method", owned(1i32)), ("pac-url", owned("http://wpad/wpad.dat"))]),
-                ),
+                ("proxy".to_owned(), props(vec![("method", owned(1i32)), ("pac-url", owned("http://wpad/wpad.dat"))])),
             ]),
         );
         (o, settings)
@@ -1688,7 +1640,10 @@ mod tests {
         )]);
         apply_ipv4(
             &mut settings,
-            &Ipv4Method::Manual { addresses: vec![(Ipv4Addr::new(192, 168, 1, 20), 24)], gateway: Some(Ipv4Addr::new(192, 168, 1, 1)) },
+            &Ipv4Method::Manual {
+                addresses: vec![(Ipv4Addr::new(192, 168, 1, 20), 24)],
+                gateway: Some(Ipv4Addr::new(192, 168, 1, 1)),
+            },
         );
         let ipv4 = &settings["ipv4"];
         assert!(is_str(&ipv4["method"], "manual"));

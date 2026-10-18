@@ -111,8 +111,7 @@ impl Tools {
         let lpdest = std::env::var("LPDEST").ok();
         let printer = std::env::var("PRINTER").ok().filter(|p| p != "lp");
         tools.env_default = lpdest.or(printer).filter(|name| !name.is_empty());
-        tools.cups_datadir =
-            std::env::var_os("CUPS_DATADIR").filter(|dir| !dir.is_empty()).map(PathBuf::from);
+        tools.cups_datadir = std::env::var_os("CUPS_DATADIR").filter(|dir| !dir.is_empty()).map(PathBuf::from);
         tools
     }
 
@@ -275,13 +274,12 @@ pub(crate) fn run<A: AsRef<OsStr>>(
     for (is_stdout, pipe) in pipes {
         let Some(pipe) = pipe else { continue };
         let sender = sender.clone();
-        let spawned =
-            std::thread::Builder::new().name("aizome-sys printers pipe".into()).spawn(move || {
-                let mut buffer = Vec::new();
-                // A read error keeps what came before it.
-                let _ = pipe.take(MAX_OUTPUT).read_to_end(&mut buffer);
-                let _ = sender.send((is_stdout, buffer));
-            });
+        let spawned = std::thread::Builder::new().name("aizome-sys printers pipe".into()).spawn(move || {
+            let mut buffer = Vec::new();
+            // A read error keeps what came before it.
+            let _ = pipe.take(MAX_OUTPUT).read_to_end(&mut buffer);
+            let _ = sender.send((is_stdout, buffer));
+        });
         if let Err(error) = spawned {
             kill(&mut child);
             return Err(Error::Failed(format!("could not start a thread for {name}: {error}")));
@@ -361,9 +359,7 @@ fn spawn_error(name: &str, error: &std::io::Error) -> Error {
         std::io::ErrorKind::NotFound => {
             Error::Unavailable(format!("{name} is not installed (CUPS's command-line tools)"))
         }
-        std::io::ErrorKind::PermissionDenied => {
-            Error::Unavailable(format!("{name} can't be run: {error}"))
-        }
+        std::io::ErrorKind::PermissionDenied => Error::Unavailable(format!("{name} can't be run: {error}")),
         _ => Error::Io(format!("{name}: {error}")),
     }
 }
@@ -386,9 +382,7 @@ pub(crate) fn failure(program: &str, output: &Output) -> Error {
     let message = match said {
         Some(text) => text
             .lines()
-            .map(|line| {
-                line.trim().strip_prefix(program).and_then(|l| l.strip_prefix(':')).unwrap_or(line)
-            })
+            .map(|line| line.trim().strip_prefix(program).and_then(|l| l.strip_prefix(':')).unwrap_or(line))
             .map(str::trim)
             .filter(|line| !line.is_empty())
             .collect::<Vec<_>>()
@@ -443,9 +437,7 @@ fn lpstat(tools: &Tools, args: &[&str], stop: Option<&Stop>) -> Result<String> {
     let text = output.stdout_text();
     if output.success() {
         Ok(text)
-    } else if output.stderr.contains("No destinations added")
-        || text.contains("No destinations added")
-    {
+    } else if output.stderr.contains("No destinations added") || text.contains("No destinations added") {
         Ok(String::new())
     } else {
         Err(failure(&program_name(&tools.lpstat), &output))
@@ -495,8 +487,7 @@ pub(crate) fn query(tools: &Tools, stop: Option<&Stop>) -> Result<PrintersState>
     });
     // `lpstat -d` reports the user's own default when they have one; the
     // system's is then the queue CUPS marks as its default.
-    let system_default =
-        if user_default.is_none() { effective_default.or(server_default) } else { server_default };
+    let system_default = if user_default.is_none() { effective_default.or(server_default) } else { server_default };
     for printer in &mut printers {
         printer.is_system_default = same_name(system_default.as_deref(), &printer.name);
         printer.is_user_default = same_name(user_default.as_deref(), &printer.name);
@@ -519,15 +510,7 @@ pub(crate) fn query(tools: &Tools, stop: Option<&Stop>) -> Result<PrintersState>
         job.title = titles.get(&job.number).cloned();
     }
 
-    Ok(PrintersState {
-        loaded: true,
-        available: true,
-        printers,
-        jobs,
-        system_default,
-        user_default,
-        error: None,
-    })
+    Ok(PrintersState { loaded: true, available: true, printers, jobs, system_default, user_default, error: None })
 }
 
 /// CUPS names are compared without regard to case.
@@ -564,8 +547,7 @@ fn assemble(
     let has_bit = |bit: u32| printer_type.is_some_and(|t| t & bit != 0);
 
     let make_and_model = option("printer-make-and-model").map(str::to_owned);
-    let device_uri =
-        devices.get(&entry.name).cloned().or_else(|| option("device-uri").map(str::to_owned));
+    let device_uri = devices.get(&entry.name).cloned().or_else(|| option("device-uri").map(str::to_owned));
     let temporary = flag("printer-is-temporary").unwrap_or(false) || has_bit(ptype::DISCOVERED);
     let reasons = if entry.reasons.is_empty() {
         option("printer-state-reasons").map(parse::words).unwrap_or_default()
@@ -591,14 +573,9 @@ fn assemble(
         state_message: entry.message,
         state_reasons: reasons,
         current_job: entry.current_job,
-        accepting: accepting
-            .get(&entry.name)
-            .copied()
-            .or_else(|| flag("printer-is-accepting-jobs"))
-            .unwrap_or(true),
+        accepting: accepting.get(&entry.name).copied().or_else(|| flag("printer-is-accepting-jobs")).unwrap_or(true),
         enabled: entry.state != PrinterState::Stopped,
-        shared: flag("printer-is-shared")
-            .or_else(|| printer_type.map(|t| t & ptype::NOT_SHARED == 0)),
+        shared: flag("printer-is-shared").or_else(|| printer_type.map(|t| t & ptype::NOT_SHARED == 0)),
         is_class: has_bit(ptype::CLASS),
         remote: entry.remote || has_bit(ptype::REMOTE),
         temporary,
@@ -614,17 +591,11 @@ fn assemble(
 /// cups-filters' (`…, driverless, cups-filters 2.0`); cups-browsed's
 /// `implicitclass://` queues and CUPS's temporary queues are driverless
 /// too. `None` when nothing says either way.
-fn is_driverless(
-    make_and_model: Option<&str>,
-    device_uri: Option<&str>,
-    temporary: bool,
-) -> Option<bool> {
+fn is_driverless(make_and_model: Option<&str>, device_uri: Option<&str>, temporary: bool) -> Option<bool> {
     let model = make_and_model.map(str::to_lowercase);
     if temporary
         || device_uri.is_some_and(|uri| uri.starts_with("implicitclass:"))
-        || model
-            .as_deref()
-            .is_some_and(|m| m.contains("ipp everywhere") || m.contains("driverless"))
+        || model.as_deref().is_some_and(|m| m.contains("ipp everywhere") || m.contains("driverless"))
     {
         Some(true)
     } else if model.is_some() {
@@ -654,17 +625,10 @@ pub(crate) fn discover(tools: &Tools) -> Result<Vec<Device>> {
     let driverless = std::thread::Builder::new()
         .name("aizome-sys printers driverless".into())
         .spawn(move || checked(&driverless_tool, &["list"], DISCOVERY_TIMEOUT, None));
-    let lpinfo = checked(
-        &tools.lpinfo,
-        &["-l", "--timeout", BACKEND_TIMEOUT, "-v"],
-        DISCOVERY_TIMEOUT,
-        None,
-    )
-    .map(|output| parse::devices(&output.stdout_text()));
+    let lpinfo = checked(&tools.lpinfo, &["-l", "--timeout", BACKEND_TIMEOUT, "-v"], DISCOVERY_TIMEOUT, None)
+        .map(|output| parse::devices(&output.stdout_text()));
     let driverless = match driverless {
-        Ok(thread) => {
-            thread.join().unwrap_or_else(|_| Err(Error::Failed("driverless panicked".into())))
-        }
+        Ok(thread) => thread.join().unwrap_or_else(|_| Err(Error::Failed("driverless panicked".into()))),
         Err(error) => Err(Error::Failed(format!("could not start a thread: {error}"))),
     }
     .map(|output| parse::driverless(&output.stdout_text()));
@@ -686,8 +650,7 @@ pub(crate) fn discover(tools: &Tools) -> Result<Vec<Device>> {
 /// counts as driverless.
 pub(crate) fn merge_driverless(mut devices: Vec<Device>, found: Vec<Device>) -> Vec<Device> {
     for device in &mut devices {
-        let ipp = device.uri.starts_with("ipp")
-            || (device.uri.starts_with("dnssd://") && device.uri.contains("._ipp"));
+        let ipp = device.uri.starts_with("ipp") || (device.uri.starts_with("dnssd://") && device.uri.contains("._ipp"));
         if ipp && device.device_id.as_deref().is_some_and(parse::speaks_driverless) {
             device.driverless = true;
         }
@@ -698,8 +661,7 @@ pub(crate) fn merge_driverless(mut devices: Vec<Device>, found: Vec<Device>) -> 
         for device in &mut devices {
             let same = device.uri == extra.uri
                 || name.as_ref().is_some_and(|name| {
-                    parse::service_name(&device.uri)
-                        .is_some_and(|other| other.eq_ignore_ascii_case(name))
+                    parse::service_name(&device.uri).is_some_and(|other| other.eq_ignore_ascii_case(name))
                 });
             if same {
                 matched = true;
@@ -744,12 +706,7 @@ pub(crate) fn act(program: &Path, args: &[OsString], timeout: Duration) -> Resul
 
 /// Print `file` on `printer` with `lp`, titled `title`; the job id `lp`
 /// reports.
-pub(crate) fn print(
-    tools: &Tools,
-    printer: &str,
-    file: &Path,
-    title: Option<&str>,
-) -> Result<String> {
+pub(crate) fn print(tools: &Tools, printer: &str, file: &Path, title: Option<&str>) -> Result<String> {
     let mut args = vec![OsString::from("-d"), OsString::from(printer)];
     if let Some(title) = title {
         args.extend([OsString::from("-t"), OsString::from(title)]);
@@ -758,9 +715,7 @@ pub(crate) fn print(
     let output = checked(&tools.lp, &args, ACTION_TIMEOUT, None)?;
     parse::request_id(&output.stdout_text())
         .or_else(|| parse::request_id(&output.stderr))
-        .ok_or_else(|| {
-            Error::Failed(format!("lp printed no job id: {}", output.stdout_text().trim()))
-        })
+        .ok_or_else(|| Error::Failed(format!("lp printed no job id: {}", output.stdout_text().trim())))
 }
 
 /// Remove the default from the user's lpoptions file, keeping each

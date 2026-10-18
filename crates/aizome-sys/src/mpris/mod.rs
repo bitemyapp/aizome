@@ -179,10 +179,7 @@ impl Players {
         let mut players: Vec<Player> = self.map.iter().map(|(name, t)| t.snapshot(name)).collect();
         let active = player::choose_active(&players);
         players.sort_by(|a, b| {
-            a.identity
-                .to_lowercase()
-                .cmp(&b.identity.to_lowercase())
-                .then_with(|| a.bus_name.cmp(&b.bus_name))
+            a.identity.to_lowercase().cmp(&b.identity.to_lowercase()).then_with(|| a.bus_name.cmp(&b.bus_name))
         });
         MprisState { players, active }
     }
@@ -285,7 +282,9 @@ impl Mpris {
 
     /// Move forward (or back, when negative) by `offset_us` microseconds.
     pub fn seek(&self, player: &str, offset_us: i64) -> Task<()> {
-        self.player_task(player, move |bus, name| bus.call_with(ACTION, name, PATH, IFACE_PLAYER, "Seek", &(offset_us,)))
+        self.player_task(player, move |bus, name| {
+            bus.call_with(ACTION, name, PATH, IFACE_PLAYER, "Seek", &(offset_us,))
+        })
     }
 
     /// Go to `position` in the track `track_id` ([`Metadata::track_id`]);

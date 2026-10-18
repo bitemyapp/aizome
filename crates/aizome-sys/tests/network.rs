@@ -19,9 +19,7 @@ const DEVICE: &str = "/org/freedesktop/NetworkManager/Devices/1";
 fn clone_settings(settings: &Settings) -> Settings {
     settings
         .iter()
-        .map(|(group, props)| {
-            (group.clone(), props.iter().map(|(k, v)| (k.clone(), v.try_clone().unwrap())).collect())
-        })
+        .map(|(group, props)| (group.clone(), props.iter().map(|(k, v)| (k.clone(), v.try_clone().unwrap())).collect()))
         .collect()
 }
 
@@ -157,10 +155,7 @@ impl Manager {
             .insert("uuid".into(), OwnedValue::try_from(Value::from(uuid)).unwrap());
         let connection = format!("{NM_PATH}/Settings/{}", 100 + self.next);
         server
-            .at(
-                connection.as_str(),
-                Connection { log: self.log.clone(), settings: clone_settings(&settings) },
-            )
+            .at(connection.as_str(), Connection { log: self.log.clone(), settings: clone_settings(&settings) })
             .await?;
         let active = self.activate(server, &emitter, &connection, &settings).await?;
         Ok((path(&connection), active, HashMap::new()))
@@ -196,8 +191,7 @@ impl SettingsRoot {
         for n in [1, 101, 102, 103, 104, 105, 106] {
             let p = format!("{NM_PATH}/Settings/{n}");
             if let Ok(connection) = server.interface::<_, Connection>(p.as_str()).await
-                && setting_str(&connection.get().await.settings, "connection", "uuid").as_deref()
-                    == Some(uuid.as_str())
+                && setting_str(&connection.get().await.settings, "connection", "uuid").as_deref() == Some(uuid.as_str())
             {
                 return Ok(path(&p));
             }
@@ -293,7 +287,11 @@ struct Wireless {
 impl Wireless {
     #[zbus(property)]
     fn access_points(&self) -> Vec<OwnedObjectPath> {
-        vec![path("/org/freedesktop/NetworkManager/AccessPoint/1"), path("/org/freedesktop/NetworkManager/AccessPoint/2"), path("/org/freedesktop/NetworkManager/AccessPoint/3")]
+        vec![
+            path("/org/freedesktop/NetworkManager/AccessPoint/1"),
+            path("/org/freedesktop/NetworkManager/AccessPoint/2"),
+            path("/org/freedesktop/NetworkManager/AccessPoint/3"),
+        ]
     }
     fn request_scan(&self, _options: HashMap<String, OwnedValue>) {
         self.log.lock().unwrap().scans += 1;
@@ -403,10 +401,7 @@ fn serve(bus: &common::TestBus) -> (zbus::blocking::Connection, Arc<Mutex<Log>>)
         .unwrap()
         .serve_at("/org/freedesktop", zbus::fdo::ObjectManager)
         .unwrap()
-        .serve_at(
-            NM_PATH,
-            Manager { log: log.clone(), wireless_enabled: true, active: Vec::new(), next: 0 },
-        )
+        .serve_at(NM_PATH, Manager { log: log.clone(), wireless_enabled: true, active: Vec::new(), next: 0 })
         .unwrap()
         .serve_at(format!("{NM_PATH}/Settings"), SettingsRoot)
         .unwrap()
@@ -416,9 +411,15 @@ fn serve(bus: &common::TestBus) -> (zbus::blocking::Connection, Arc<Mutex<Log>>)
         .unwrap()
         .serve_at(DEVICE, Wireless { log: log.clone() })
         .unwrap()
-        .serve_at("/org/freedesktop/NetworkManager/AccessPoint/1", AccessPoint { ssid: "Home", rsn: 0x188, strength: 70 })
+        .serve_at(
+            "/org/freedesktop/NetworkManager/AccessPoint/1",
+            AccessPoint { ssid: "Home", rsn: 0x188, strength: 70 },
+        )
         .unwrap()
-        .serve_at("/org/freedesktop/NetworkManager/AccessPoint/2", AccessPoint { ssid: "Office", rsn: 0x188, strength: 60 })
+        .serve_at(
+            "/org/freedesktop/NetworkManager/AccessPoint/2",
+            AccessPoint { ssid: "Office", rsn: 0x188, strength: 60 },
+        )
         .unwrap()
         .serve_at("/org/freedesktop/NetworkManager/AccessPoint/3", AccessPoint { ssid: "Cafe", rsn: 0, strength: 90 })
         .unwrap()
@@ -579,9 +580,15 @@ fn addresses_and_dns_are_saved_on_the_profile() {
         // The password and the rest are kept.
         assert_eq!(setting_str(settings, "802-11-wireless-security", "psk").as_deref(), Some("right"));
     }
-    let manual = Ipv4Method::Manual { addresses: vec![(Ipv4Addr::new(10, 0, 0, 5), 24)], gateway: Some(Ipv4Addr::new(10, 0, 0, 1)) };
+    let manual = Ipv4Method::Manual {
+        addresses: vec![(Ipv4Addr::new(10, 0, 0, 5), 24)],
+        gateway: Some(Ipv4Addr::new(10, 0, 0, 1)),
+    };
     network.set_ipv4(&uuid, manual).wait().unwrap();
-    assert_eq!(setting_str(&log.lock().unwrap().updated.last().unwrap().0, "ipv4", "method").as_deref(), Some("manual"));
+    assert_eq!(
+        setting_str(&log.lock().unwrap().updated.last().unwrap().0, "ipv4", "method").as_deref(),
+        Some("manual")
+    );
     assert!(network.set_ipv4(&uuid, Ipv4Method::Manual { addresses: vec![], gateway: None }).wait().is_err());
 }
 

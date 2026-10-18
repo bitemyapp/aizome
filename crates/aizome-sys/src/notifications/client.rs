@@ -148,15 +148,9 @@ impl NotificationClient {
     /// A client on `bus`. Returns once it follows the server's signals.
     pub fn with_bus(bus: Bus, callback: impl FnMut(ClientEvent) + Send + 'static) -> NotificationClient {
         let (tx, rx) = mpsc::channel();
-        let dispatcher = Dispatcher {
-            sent: HashSet::new(),
-            tokens: HashMap::new(),
-            early: VecDeque::new(),
-            callback,
-        };
-        let spawned = std::thread::Builder::new()
-            .name("aizome-sys notification client".into())
-            .spawn(move || dispatcher.run(rx));
+        let dispatcher = Dispatcher { sent: HashSet::new(), tokens: HashMap::new(), early: VecDeque::new(), callback };
+        let spawned =
+            std::thread::Builder::new().name("aizome-sys notification client".into()).spawn(move || dispatcher.run(rx));
         if let Err(error) = spawned {
             log::warn!("aizome-sys: could not start a thread for notification events: {error}");
         }
@@ -166,23 +160,21 @@ impl NotificationClient {
         let mut ready_tx = Some(ready_tx);
         let signals = tx.clone();
         let rule = format!("type='signal',sender='{BUS_NAME}',interface='{INTERFACE}'");
-        bus::follow(bus.clone(), BUS_NAME, vec![rule], false, stop.clone(), move |_, event| {
-            match event {
-                Event::Signal(msg) => {
-                    if let Some(signal) = Signal::parse(&msg) {
-                        let _ = signals.send(Msg::Signal(signal));
-                    }
+        bus::follow(bus.clone(), BUS_NAME, vec![rule], false, stop.clone(), move |_, event| match event {
+            Event::Signal(msg) => {
+                if let Some(signal) = Signal::parse(&msg) {
+                    let _ = signals.send(Msg::Signal(signal));
                 }
-                Event::Vanished => {
-                    let _ = signals.send(Msg::ServerGone);
-                }
-                Event::Idle => {
-                    if let Some(ready) = ready_tx.take() {
-                        let _ = ready.send(());
-                    }
-                }
-                Event::Appeared => {}
             }
+            Event::Vanished => {
+                let _ = signals.send(Msg::ServerGone);
+            }
+            Event::Idle => {
+                if let Some(ready) = ready_tx.take() {
+                    let _ = ready.send(());
+                }
+            }
+            Event::Appeared => {}
         });
         // Subscribed before anything is sent, so no signal is missed.
         let _ = ready.recv_timeout(Duration::from_secs(5));

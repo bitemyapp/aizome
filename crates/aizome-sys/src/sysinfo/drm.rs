@@ -167,7 +167,8 @@ pub(crate) fn gpu_stats_at(device: &Path) -> GpuStats {
         vram_total: at("mem_info_vram_total"),
         ..Default::default()
     };
-    let hwmon: Option<PathBuf> = std::fs::read_dir(device.join("hwmon")).ok().and_then(|mut d| d.next()).and_then(|e| e.ok()).map(|e| e.path());
+    let hwmon: Option<PathBuf> =
+        std::fs::read_dir(device.join("hwmon")).ok().and_then(|mut d| d.next()).and_then(|e| e.ok()).map(|e| e.path());
     if let Some(h) = hwmon {
         let at = |name: &str| read_u64(h.join(name));
         s.power = at("power1_average").or_else(|| at("power1_input")).map(|uw| uw as f64 / 1e6);
@@ -208,10 +209,14 @@ mod tests {
         )
         .unwrap();
         assert_eq!((amd.id, amd.vram, amd.shared), (12, 1 << 20, 2 << 20));
-        let later = DrmClient { engines: vec![("gfx".into(), 1_500_000_000), ("dec".into(), 100_000_000)], ..amd.clone() };
+        let later =
+            DrmClient { engines: vec![("gfx".into(), 1_500_000_000), ("dec".into(), 100_000_000)], ..amd.clone() };
         let u = ClientUse::between(&amd, &later, 1.0);
         assert!((u.busy - 50.0).abs() < 0.01 && (u.video - 10.0).abs() < 0.01, "{u:?}");
-        let xe = parse_fdinfo("drm-client-id:\t3\ndrm-cycles-rcs:\t100\ndrm-total-cycles-rcs:\t1000\ndrm-total-vram0:\t4096 KiB\n").unwrap();
+        let xe = parse_fdinfo(
+            "drm-client-id:\t3\ndrm-cycles-rcs:\t100\ndrm-total-cycles-rcs:\t1000\ndrm-total-vram0:\t4096 KiB\n",
+        )
+        .unwrap();
         let xe2 = DrmClient { cycles: vec![("rcs".into(), 400, 2000)], ..xe.clone() };
         assert!((ClientUse::between(&xe, &xe2, 1.0).busy - 30.0).abs() < 0.01);
         assert_eq!(xe.vram, 4 << 20);

@@ -158,7 +158,10 @@ pub(crate) fn user(path: &str, p: &Props) -> User {
         automatic_login: p.bool("AutomaticLogin"),
         locked: p.bool("Locked"),
         password_mode: PasswordMode::from_i64(p.i64("PasswordMode")),
-        last_login: u64::try_from(p.i64("LoginTime")).ok().filter(|&t| t > 0).map(|t| UNIX_EPOCH + Duration::from_secs(t)),
+        last_login: u64::try_from(p.i64("LoginTime"))
+            .ok()
+            .filter(|&t| t > 0)
+            .map(|t| UNIX_EPOCH + Duration::from_secs(t)),
         login_count: p.u64("LoginFrequency"),
         system_account: p.bool("SystemAccount"),
         local_account: p.opt_bool("LocalAccount").unwrap_or(true),
@@ -380,7 +383,8 @@ impl Users {
         }
         let args = (name.to_owned(), real_name.to_owned(), account_type.as_i32());
         bus::spawn(&self.bus, "AccountsService", self.model.wake(), move |bus| {
-            let path: OwnedObjectPath = bus.call_with(Opts::ACTION, ACCOUNTS, ACCOUNTS_PATH, ACCOUNTS, "CreateUser", &args)?;
+            let path: OwnedObjectPath =
+                bus.call_with(Opts::ACTION, ACCOUNTS, ACCOUNTS_PATH, ACCOUNTS, "CreateUser", &args)?;
             Ok(path.to_string())
         })
     }

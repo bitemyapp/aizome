@@ -131,11 +131,7 @@ pub(crate) fn read_sysfs(root: &Path) -> Vec<Radio> {
 /// nothing) when the device can't be opened.
 pub(crate) fn watch(device: PathBuf, stop: Stop, changed: impl Fn(Vec<Radio>) + Send + 'static) -> bool {
     use std::os::unix::fs::OpenOptionsExt;
-    let Ok(mut file) = std::fs::OpenOptions::new()
-        .read(true)
-        .custom_flags(libc::O_NONBLOCK)
-        .open(&device)
-    else {
+    let Ok(mut file) = std::fs::OpenOptions::new().read(true).custom_flags(libc::O_NONBLOCK).open(&device) else {
         return false;
     };
     let spawned = std::thread::Builder::new().name("aizome-sys rfkill".into()).spawn(move || {

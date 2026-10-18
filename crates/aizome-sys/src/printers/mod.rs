@@ -259,10 +259,7 @@ pub enum JobState {
 impl JobState {
     /// Not finished: pending, held, processing or stopped.
     pub fn is_active(self) -> bool {
-        matches!(
-            self,
-            JobState::Pending | JobState::Held | JobState::Processing | JobState::Stopped
-        )
+        matches!(self, JobState::Pending | JobState::Held | JobState::Processing | JobState::Stopped)
     }
 }
 
@@ -415,18 +412,15 @@ pub fn validate_name(name: &str) -> Result<()> {
         return Err(Error::InvalidArgument("A printer needs a name".into()));
     }
     if name.len() > MAX_NAME {
-        return Err(Error::InvalidArgument(format!(
-            "A printer name can be at most {MAX_NAME} bytes long"
-        )));
+        return Err(Error::InvalidArgument(format!("A printer name can be at most {MAX_NAME} bytes long")));
     }
     if name.starts_with('-') {
         return Err(Error::InvalidArgument("A printer name can't start with “-”".into()));
     }
-    if let Some(c) = name.chars().find(|&c| {
-        c.is_whitespace()
-            || c.is_control()
-            || matches!(c, '/' | '\\' | '#' | '?' | '\'' | '"' | '@')
-    }) {
+    if let Some(c) = name
+        .chars()
+        .find(|&c| c.is_whitespace() || c.is_control() || matches!(c, '/' | '\\' | '#' | '?' | '\'' | '"' | '@'))
+    {
         let what = if c.is_whitespace() {
             "spaces".to_owned()
         } else if c.is_control() {
@@ -486,10 +480,7 @@ fn truncate(text: &mut String, bytes: usize) {
 /// A name of an existing printer, checked before it goes on a command
 /// line: CUPS made it, so only what would break the command is refused.
 fn check_target(name: &str) -> Result<()> {
-    if name.is_empty()
-        || name.starts_with('-')
-        || name.chars().any(|c| c.is_whitespace() || c.is_control())
-    {
+    if name.is_empty() || name.starts_with('-') || name.chars().any(|c| c.is_whitespace() || c.is_control()) {
         Err(Error::InvalidArgument(format!("“{name}” is not a printer name")))
     } else {
         Ok(())
@@ -521,10 +512,7 @@ fn check_text(what: &str, text: &str) -> Result<()> {
 fn add_args(printer: &NewPrinter) -> Result<Vec<OsString>> {
     validate_name(&printer.name)?;
     let uri = printer.device_uri.trim();
-    if uri.is_empty()
-        || uri.starts_with('-')
-        || uri.chars().any(|c| c.is_whitespace() || c.is_control())
-    {
+    if uri.is_empty() || uri.starts_with('-') || uri.chars().any(|c| c.is_whitespace() || c.is_control()) {
         return Err(Error::InvalidArgument(format!("“{uri}” is not a device URI")));
     }
     let mut args: Vec<OsString> =
@@ -543,10 +531,7 @@ fn add_args(printer: &NewPrinter) -> Result<Vec<OsString>> {
                 _ => Error::from(error),
             })?;
             if !path.is_file() {
-                return Err(Error::InvalidArgument(format!(
-                    "{} is not a PPD file",
-                    path.display()
-                )));
+                return Err(Error::InvalidArgument(format!("{} is not a PPD file", path.display())));
             }
             args.extend([OsString::from("-P"), path.into_os_string()]);
         }
@@ -609,26 +594,24 @@ impl Printers {
         let model = self.model.clone();
         let shared = self.shared.clone();
         let stop = self.stop.clone();
-        let spawned =
-            std::thread::Builder::new().name("aizome-sys printers".into()).spawn(move || {
-                while !stop.stopped() {
-                    let _ = refresh(&shared, &model, Some(&stop));
-                    let mut waited = Duration::ZERO;
-                    while waited < interval {
-                        if stop.stopped() {
-                            return;
-                        }
-                        let step = STOP_CHECK.min(interval.saturating_sub(waited));
-                        std::thread::sleep(step);
-                        waited += step;
+        let spawned = std::thread::Builder::new().name("aizome-sys printers".into()).spawn(move || {
+            while !stop.stopped() {
+                let _ = refresh(&shared, &model, Some(&stop));
+                let mut waited = Duration::ZERO;
+                while waited < interval {
+                    if stop.stopped() {
+                        return;
                     }
+                    let step = STOP_CHECK.min(interval.saturating_sub(waited));
+                    std::thread::sleep(step);
+                    waited += step;
                 }
-            });
+            }
+        });
         if let Err(error) = spawned {
             self.model.update(|state| {
                 state.loaded = true;
-                state.error =
-                    Some(Error::Failed(format!("could not start following CUPS: {error}")));
+                state.error = Some(Error::Failed(format!("could not start following CUPS: {error}")));
             });
         }
     }
@@ -653,11 +636,7 @@ impl Printers {
     }
 
     /// Run `work` with the tools on a thread, then refresh the snapshot.
-    fn act<T: Send + 'static>(
-        &self,
-        name: &str,
-        work: impl FnOnce(&Tools) -> Result<T> + Send + 'static,
-    ) -> Task<T> {
+    fn act<T: Send + 'static>(&self, name: &str, work: impl FnOnce(&Tools) -> Result<T> + Send + 'static) -> Task<T> {
         let shared = self.shared.clone();
         let model = self.model.clone();
         Task::spawn(name, &self.model.wake(), move || {
@@ -668,24 +647,12 @@ impl Printers {
     }
 
     /// Run a tool with `args` as an action.
-    fn command(
-        &self,
-        name: &str,
-        tool: fn(&Tools) -> &Path,
-        args: Vec<OsString>,
-        timeout: Duration,
-    ) -> Task<()> {
+    fn command(&self, name: &str, tool: fn(&Tools) -> &Path, args: Vec<OsString>, timeout: Duration) -> Task<()> {
         self.act(name, move |tools| cli::act(tool(tools), &args, timeout))
     }
 
     /// Run a tool on the printer `printer` (`TOOL [ARGS…] PRINTER`).
-    fn on_printer(
-        &self,
-        name: &str,
-        tool: fn(&Tools) -> &Path,
-        args: &[&str],
-        printer: &str,
-    ) -> Task<()> {
+    fn on_printer(&self, name: &str, tool: fn(&Tools) -> &Path, args: &[&str], printer: &str) -> Task<()> {
         if let Err(error) = check_target(printer) {
             return Task::ready(Err(error));
         }
@@ -705,18 +672,14 @@ impl Printers {
     /// The drivers CUPS has for `filter` (`lpinfo -m`).
     pub fn drivers(&self, filter: DriverFilter) -> Task<Vec<Driver>> {
         let shared = self.shared.clone();
-        Task::spawn("printers drivers", &self.model.wake(), move || {
-            cli::drivers(&shared.tools, &filter)
-        })
+        Task::spawn("printers drivers", &self.model.wake(), move || cli::drivers(&shared.tools, &filter))
     }
 
     /// Jobs CUPS still remembers that are done (printed, cancelled,
     /// aborted).
     pub fn completed_jobs(&self) -> Task<Vec<Job>> {
         let shared = self.shared.clone();
-        Task::spawn("printers completed jobs", &self.model.wake(), move || {
-            cli::completed_jobs(&shared.tools)
-        })
+        Task::spawn("printers completed jobs", &self.model.wake(), move || cli::completed_jobs(&shared.tools))
     }
 
     /// Add a printer, enabled and accepting jobs.
@@ -788,21 +751,15 @@ impl Printers {
         }
         let printer = printer.to_owned();
         self.act("printers test page", move |tools| {
-            let page = tools
-                .find_test_page()
-                .ok_or_else(|| Error::NotFound("CUPS's test page (data/testprint)".into()))?;
+            let page =
+                tools.find_test_page().ok_or_else(|| Error::NotFound("CUPS's test page (data/testprint)".into()))?;
             cli::print(tools, &printer, &page, Some("Test page"))
         })
     }
 
     /// Print `file` on `printer`, titled `title` (CUPS uses the file's
     /// name otherwise); the job's id.
-    pub fn print_file(
-        &self,
-        printer: &str,
-        file: impl AsRef<Path>,
-        title: Option<&str>,
-    ) -> Task<String> {
+    pub fn print_file(&self, printer: &str, file: impl AsRef<Path>, title: Option<&str>) -> Task<String> {
         if let Err(error) = check_target(printer) {
             return Task::ready(Err(error));
         }
@@ -813,18 +770,13 @@ impl Printers {
                 return Task::ready(Err(Error::NotFound(file.display().to_string())));
             }
             Ok(file) => {
-                return Task::ready(Err(Error::InvalidArgument(format!(
-                    "{} is not a file",
-                    file.display()
-                ))));
+                return Task::ready(Err(Error::InvalidArgument(format!("{} is not a file", file.display()))));
             }
             Err(error) => return Task::ready(Err(error.into())),
         };
         let printer = printer.to_owned();
         let title = title.map(str::to_owned);
-        self.act("printers print", move |tools| {
-            cli::print(tools, &printer, &file, title.as_deref())
-        })
+        self.act("printers print", move |tools| cli::print(tools, &printer, &file, title.as_deref()))
     }
 
     /// Cancel a job by its id (`Name-42`).
@@ -832,12 +784,7 @@ impl Printers {
         if let Err(error) = check_job(job) {
             return Task::ready(Err(error));
         }
-        self.command(
-            "printers cancel",
-            |t| &t.cancel,
-            vec![OsString::from(job)],
-            cli::ACTION_TIMEOUT,
-        )
+        self.command("printers cancel", |t| &t.cancel, vec![OsString::from(job)], cli::ACTION_TIMEOUT)
     }
 
     /// Cancel every job on `printer` (`cancel -a`).

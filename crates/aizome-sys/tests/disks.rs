@@ -79,9 +79,16 @@ impl Manager {
         let backing = std::fs::read_link(format!("/proc/self/fd/{}", fd.as_raw_fd())).unwrap_or_default();
         note(&self.log, format!("LoopSetup(read-only={:?})", option_bool(&options, "read-only")));
         let p = block_path("loop0");
-        server.at(p.as_str(), FakeBlock::new("/dev/loop0", 4 * MIB, None, "iso9660", "IMAGE", self.log.clone())).await?;
+        server
+            .at(p.as_str(), FakeBlock::new("/dev/loop0", 4 * MIB, None, "iso9660", "IMAGE", self.log.clone()))
+            .await?;
         server.at(p.as_str(), FakeFs::default_with(self.log.clone(), "IMAGE")).await?;
-        server.at(p.as_str(), FakeLoop { backing: bytes(&backing.to_string_lossy()), autoclear: false, log: self.log.clone() }).await?;
+        server
+            .at(
+                p.as_str(),
+                FakeLoop { backing: bytes(&backing.to_string_lossy()), autoclear: false, log: self.log.clone() },
+            )
+            .await?;
         Ok(path(&p))
     }
 }
@@ -307,7 +314,10 @@ impl FakeTable {
         let p = block_path("sdb2");
         server.at(p.as_str(), FakeBlock::new("/dev/sdb2", size, None, "", "", self.log.clone())).await?;
         server
-            .at(p.as_str(), FakePartition { number: 2, offset, size, table: path(&block_path("sdb")), log: self.log.clone() })
+            .at(
+                p.as_str(),
+                FakePartition { number: 2, offset, size, table: path(&block_path("sdb")), log: self.log.clone() },
+            )
             .await?;
         self.partitions.push(path(&p));
         self.partitions_changed(&emitter).await?;
@@ -380,7 +390,9 @@ impl FakeEncrypted {
         #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
     ) -> fdo::Result<OwnedObjectPath> {
         if passphrase != "secret" {
-            return Err(fdo::Error::Failed("Error unlocking: Failed to activate device: Operation not permitted".into()));
+            return Err(fdo::Error::Failed(
+                "Error unlocking: Failed to activate device: Operation not permitted".into(),
+            ));
         }
         let p = block_path("dm_2d0");
         let mut clear = FakeBlock::new("/dev/dm-0", GIB - 16 * MIB, None, "ext4", "VAULT", self.log.clone());
@@ -541,7 +553,11 @@ fn mounting_and_safe_removal() {
     let disks = start(&bus);
     let mounted = disks.mount(&block_path("sdb1")).wait().unwrap();
     assert_eq!(mounted, "/run/media/test/STICK");
-    assert!(eventually(|| disks.snapshot().volumes().iter().any(|v| v.mount_point.as_deref() == Some("/run/media/test/STICK"))));
+    assert!(eventually(|| disks
+        .snapshot()
+        .volumes()
+        .iter()
+        .any(|v| v.mount_point.as_deref() == Some("/run/media/test/STICK"))));
     // Unlock the LUKS partition and mount what is inside.
     assert!(disks.unlock(&block_path("sdb3"), "wrong").wait().is_err());
     let clear = disks.unlock(&block_path("sdb3"), "secret").wait().unwrap();
@@ -567,7 +583,10 @@ fn formatting_needs_a_fresh_confirmation_and_shows_progress() {
     // Mounted: refused before UDisks is asked.
     disks.mount(&stick.path).wait().unwrap();
     assert!(eventually(|| disks.snapshot().in_use(&stick.path)));
-    let refused = disks.format(Confirm::<Format>::new(&disks.snapshot().block(&stick.path).unwrap().clone()), FormatSpec::new("ext4", "DATA"));
+    let refused = disks.format(
+        Confirm::<Format>::new(&disks.snapshot().block(&stick.path).unwrap().clone()),
+        FormatSpec::new("ext4", "DATA"),
+    );
     assert!(matches!(refused.wait(), Err(Error::InvalidArgument(m)) if m.contains("in use")));
     disks.unmount(&stick.path, false).wait().unwrap();
     assert!(eventually(|| !disks.snapshot().in_use(&stick.path)));
@@ -590,7 +609,9 @@ fn formatting_needs_a_fresh_confirmation_and_shows_progress() {
 
     // The old confirmation was for the FAT filesystem that is gone.
     let stale = Confirm::<Format>::new(&stick);
-    assert!(matches!(disks.format(stale, FormatSpec::new("vfat", "X")).wait(), Err(Error::InvalidArgument(m)) if m.contains("changed")));
+    assert!(
+        matches!(disks.format(stale, FormatSpec::new("vfat", "X")).wait(), Err(Error::InvalidArgument(m)) if m.contains("changed"))
+    );
     // A filesystem this system can't make is refused.
     let now = disks.snapshot().block(&stick.path).unwrap().clone();
     assert!(disks.format(Confirm::<Format>::new(&now), FormatSpec::new("zfs", "")).wait().is_err());
@@ -609,7 +630,11 @@ fn partitions_are_made_in_free_space_and_deleted_on_confirmation() {
     assert!(disks.create_partition(&disk, MIB, GIB, None, "", None).wait().is_err());
     let made = disks.create_partition(&disk, 2 * GIB, GIB, None, "Data", None).wait().unwrap();
     assert_eq!(made, block_path("sdb2"));
-    assert!(calls(&log).contains(&format!("CreatePartition({}, {}, 0fc63daf-8483-4772-8e79-3d69d8477de4, Data)", 2 * GIB, GIB)));
+    assert!(calls(&log).contains(&format!(
+        "CreatePartition({}, {}, 0fc63daf-8483-4772-8e79-3d69d8477de4, Data)",
+        2 * GIB,
+        GIB
+    )));
     assert!(eventually(|| disks.snapshot().partitions(&disk).len() == 3));
     let new = disks.snapshot().block(&made).unwrap().clone();
     disks.delete_partition(Confirm::<DeletePartition>::new(&new)).wait().unwrap();

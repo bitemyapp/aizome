@@ -24,7 +24,10 @@ fn network_reads_networkmanager() {
         );
     }
     for connection in &state.connections {
-        println!("  saved {:?} {:?} active={} autoconnect={}", connection.id, connection.kind, connection.active, connection.autoconnect);
+        println!(
+            "  saved {:?} {:?} active={} autoconnect={}",
+            connection.id, connection.kind, connection.active, connection.autoconnect
+        );
     }
     if let Some(details) = state.primary_details() {
         println!("  primary: {details:?}");
@@ -43,7 +46,12 @@ fn bluetooth_reads_bluez() {
     for adapter in &state.adapters {
         println!(
             "adapter {} {} powered={} ({}) discoverable={} discovering={}",
-            adapter.path, adapter.alias, adapter.powered, adapter.power_state, adapter.discoverable, adapter.discovering
+            adapter.path,
+            adapter.alias,
+            adapter.powered,
+            adapter.power_state,
+            adapter.discoverable,
+            adapter.discovering
         );
     }
     for device in &state.devices {
@@ -65,20 +73,41 @@ fn audio_reads_the_sound_server() {
     for sink in &state.sinks {
         println!(
             "  output {} {:?} {:.0}% muted={} default={} icon={} ports={:?}",
-            sink.index, sink.description, sink.volume * 100.0, sink.muted, sink.is_default, sink.icon_name,
+            sink.index,
+            sink.description,
+            sink.volume * 100.0,
+            sink.muted,
+            sink.is_default,
+            sink.icon_name,
             sink.ports.iter().map(|p| (&p.name, p.available)).collect::<Vec<_>>()
         );
     }
     for source in &state.sources {
-        println!("  input {} {:?} {:.0}% muted={} default={}", source.index, source.description, source.volume * 100.0, source.muted, source.is_default);
+        println!(
+            "  input {} {:?} {:.0}% muted={} default={}",
+            source.index,
+            source.description,
+            source.volume * 100.0,
+            source.muted,
+            source.is_default
+        );
     }
     for stream in state.playback.iter().chain(&state.recording) {
-        println!("  stream {} {:?} ({}) {:.0}% on {}", stream.index, stream.application, stream.app_id, stream.volume * 100.0, stream.device);
+        println!(
+            "  stream {} {:?} ({}) {:.0}% on {}",
+            stream.index,
+            stream.application,
+            stream.app_id,
+            stream.volume * 100.0,
+            stream.device
+        );
     }
     for card in &state.cards {
         println!(
             "  card {} {:?} active {:?} profiles {:?}",
-            card.index, card.description, card.active_profile,
+            card.index,
+            card.description,
+            card.active_profile,
             card.profiles.iter().filter(|p| p.available).map(|p| &p.name).collect::<Vec<_>>()
         );
     }
@@ -99,8 +128,15 @@ fn power_reads_upower_profiles_logind_and_backlight() {
     for device in &state.devices {
         println!(
             "  {:?} {} {:.0}% {:?} rate={:.1}W health={:.0}% online={} empty={:?} full={:?}",
-            device.kind, device.native_path, device.percentage, device.state, device.energy_rate, device.capacity,
-            device.online, device.time_to_empty, device.time_to_full
+            device.kind,
+            device.native_path,
+            device.percentage,
+            device.state,
+            device.energy_rate,
+            device.capacity,
+            device.online,
+            device.time_to_empty,
+            device.time_to_full
         );
     }
     println!("  keyboard lights: {:?}", state.keyboard_backlights);
@@ -108,7 +144,12 @@ fn power_reads_upower_profiles_logind_and_backlight() {
     let profiles = PowerProfiles::new(Wake::none());
     if eventually(|| profiles.available()) {
         let p = profiles.snapshot();
-        println!("profile {} of {:?}, holds {:?}", p.active, p.profiles.iter().map(|p| &p.name).collect::<Vec<_>>(), p.holds);
+        println!(
+            "profile {} of {:?}, holds {:?}",
+            p.active,
+            p.profiles.iter().map(|p| &p.name).collect::<Vec<_>>(),
+            p.holds
+        );
         assert!(p.has(&p.active));
     }
 
@@ -117,15 +158,26 @@ fn power_reads_upower_profiles_logind_and_backlight() {
     let l = logind.snapshot();
     println!(
         "logind session {} ({}) active={} suspend={:?} hibernate={:?} power off={:?} lid={} idle={} delay={}",
-        l.session_id, l.session_path, l.session_active, l.can_suspend, l.can_hibernate, l.can_power_off, l.lid_closed,
-        l.idle_hint, l.delay_inhibited
+        l.session_id,
+        l.session_path,
+        l.session_active,
+        l.can_suspend,
+        l.can_hibernate,
+        l.can_power_off,
+        l.lid_closed,
+        l.idle_hint,
+        l.delay_inhibited
     );
     for inhibitor in logind.inhibitors().wait().unwrap() {
         println!("  inhibitor {} by {} ({}) {}", inhibitor.what, inhibitor.who, inhibitor.why, inhibitor.mode);
     }
 
     let backlight = Backlight::new(Wake::none());
-    println!("backlights {:?} primary {:?}", backlight.snapshot().devices, backlight.snapshot().primary().map(|d| d.fraction()));
+    println!(
+        "backlights {:?} primary {:?}",
+        backlight.snapshot().devices,
+        backlight.snapshot().primary().map(|d| d.fraction())
+    );
 }
 
 #[test]
@@ -181,7 +233,10 @@ fn disks_reads_udisks() {
     for drive in &state.drives {
         println!(
             "drive {} {} serial {} {:?} smart {:?}",
-            drive.display_name(), aizome_sys::disks::format_size(drive.size), drive.serial, drive.rotation,
+            drive.display_name(),
+            aizome_sys::disks::format_size(drive.size),
+            drive.serial,
+            drive.rotation,
             drive.smart.as_ref().map(|s| (s.health(), s.temperature_celsius, s.power_on_hours))
         );
         if let Some(disk) = state.drive_block(&drive.path) {
@@ -189,7 +244,12 @@ fn disks_reads_udisks() {
                 let p = part.partition.as_ref().unwrap();
                 println!(
                     "  {} #{} {:?} {:?} {} {} {:?}",
-                    part.device, p.number, p.type_name, p.flag_names, aizome_sys::disks::format_size(p.size), part.content(),
+                    part.device,
+                    p.number,
+                    p.type_name,
+                    p.flag_names,
+                    aizome_sys::disks::format_size(p.size),
+                    part.content(),
                     part.filesystem.as_ref().map(|f| (&f.mount_points, f.usage.map(|u| u.used_fraction())))
                 );
             }

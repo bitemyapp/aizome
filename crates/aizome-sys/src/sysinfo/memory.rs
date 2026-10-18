@@ -141,9 +141,7 @@ Hugepagesize:       2048 kB
 
     #[test]
     fn old_kernels_without_memavailable_are_estimated() {
-        let memory =
-            parse_meminfo("MemTotal: 1000 kB\nMemFree: 100 kB\nBuffers: 50 kB\nCached: 250 kB\n")
-                .unwrap();
+        let memory = parse_meminfo("MemTotal: 1000 kB\nMemFree: 100 kB\nBuffers: 50 kB\nCached: 250 kB\n").unwrap();
         assert_eq!(memory.available, 400 * 1024);
         assert_eq!(memory.used, 600 * 1024);
         assert_eq!(memory.swap_used_percent(), 0.0);

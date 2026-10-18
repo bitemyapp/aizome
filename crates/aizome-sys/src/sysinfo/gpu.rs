@@ -21,11 +21,8 @@ const DRM: &str = "/sys/class/drm";
 
 /// Where [`gpus`] looks for `pci.ids`, in order: the NixOS system profile,
 /// then the usual places of other distributions.
-pub const PCI_IDS_PATHS: &[&str] = &[
-    "/run/current-system/sw/share/hwdata/pci.ids",
-    "/usr/share/hwdata/pci.ids",
-    "/usr/share/misc/pci.ids",
-];
+pub const PCI_IDS_PATHS: &[&str] =
+    &["/run/current-system/sw/share/hwdata/pci.ids", "/usr/share/hwdata/pci.ids", "/usr/share/misc/pci.ids"];
 
 /// One graphics card.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -114,11 +111,8 @@ pub(crate) fn gpus_in(drm: &Path, pci_ids: Option<&str>) -> Vec<Gpu> {
 }
 
 fn read_gpu(card: &str, device: &Path, real: &Path, pci_ids: Option<&str>) -> Gpu {
-    let id = |what: &str| {
-        read_attr(device.join(what))
-            .and_then(|text| parse_hex(&text))
-            .and_then(|n| u16::try_from(n).ok())
-    };
+    let id =
+        |what: &str| read_attr(device.join(what)).and_then(|text| parse_hex(&text)).and_then(|n| u16::try_from(n).ok());
     let vendor_id = id("vendor");
     let device_id = id("device");
     let driver = std::fs::read_link(device.join("driver"))
@@ -128,13 +122,7 @@ fn read_gpu(card: &str, device: &Path, real: &Path, pci_ids: Option<&str>) -> Gp
         (Some(text), Some(vendor), Some(device)) => lookup_pci_ids(text, vendor, device),
         _ => (None, None),
     };
-    let name = gpu_name(
-        vendor_id,
-        device_id,
-        vendor_name.as_deref(),
-        device_name.as_deref(),
-        driver.as_deref(),
-    );
+    let name = gpu_name(vendor_id, device_id, vendor_name.as_deref(), device_name.as_deref(), driver.as_deref());
     let is_pci = vendor_id.is_some();
     Gpu {
         card: card.to_owned(),
@@ -146,9 +134,7 @@ fn read_gpu(card: &str, device: &Path, real: &Path, pci_ids: Option<&str>) -> Gp
         driver,
         vram: read_u64(device.join("mem_info_vram_total")).filter(|&v| v > 0),
         boot_vga: read_attr(device.join("boot_vga")).as_deref() == Some("1"),
-        bus_address: is_pci
-            .then(|| Some(real.file_name()?.to_string_lossy().into_owned()))
-            .flatten(),
+        bus_address: is_pci.then(|| Some(real.file_name()?.to_string_lossy().into_owned())).flatten(),
     }
 }
 
@@ -158,11 +144,7 @@ fn read_gpu(card: &str, device: &Path, real: &Path, pci_ids: Option<&str>) -> Gp
 /// The format: a vendor line is four hex digits, two spaces and the name;
 /// its devices follow on lines starting with one tab (two tabs are
 /// subsystems); `#` starts a comment.
-pub(crate) fn lookup_pci_ids(
-    text: &str,
-    vendor: u16,
-    device: u16,
-) -> (Option<String>, Option<String>) {
+pub(crate) fn lookup_pci_ids(text: &str, vendor: u16, device: u16) -> (Option<String>, Option<String>) {
     let vendor_hex = format!("{vendor:04x}");
     let device_hex = format!("{device:04x}");
     let mut vendor_name: Option<String> = None;
@@ -175,14 +157,10 @@ pub(crate) fn lookup_pci_ids(
                 // The next vendor (or the class list): no such device.
                 break;
             };
-            if let Some(name) =
-                entry.strip_prefix(device_hex.as_str()).and_then(|rest| rest.strip_prefix("  "))
-            {
+            if let Some(name) = entry.strip_prefix(device_hex.as_str()).and_then(|rest| rest.strip_prefix("  ")) {
                 return (vendor_name, Some(name.trim().to_owned()));
             }
-        } else if let Some(name) =
-            line.strip_prefix(vendor_hex.as_str()).and_then(|rest| rest.strip_prefix("  "))
-        {
+        } else if let Some(name) = line.strip_prefix(vendor_hex.as_str()).and_then(|rest| rest.strip_prefix("  ")) {
             vendor_name = Some(name.trim().to_owned());
         }
     }
@@ -214,18 +192,8 @@ fn known_vendor(vendor: u16) -> Option<&'static str> {
 fn tidy_vendor(name: &str) -> String {
     let name = name.split(" [").next().unwrap_or(name).trim();
     let mut name = name;
-    for suffix in [
-        " Co., Ltd.",
-        ", Inc.",
-        " Inc.",
-        " Inc",
-        " Corporation",
-        " Corp.",
-        " Ltd.",
-        " GmbH",
-        " Limited",
-        ",",
-    ] {
+    for suffix in [" Co., Ltd.", ", Inc.", " Inc.", " Inc", " Corporation", " Corp.", " Ltd.", " GmbH", " Limited", ","]
+    {
         name = name.strip_suffix(suffix).unwrap_or(name).trim_end();
     }
     name.to_owned()
@@ -258,11 +226,7 @@ fn gpu_name(
         {
             let codename = codename.trim();
             let marketing = with_vendor(marketing.trim());
-            return if codename.is_empty() {
-                marketing
-            } else {
-                format!("{marketing} ({codename})")
-            };
+            return if codename.is_empty() { marketing } else { format!("{marketing} ({codename})") };
         }
         return with_vendor(device);
     }
@@ -327,10 +291,7 @@ C 00  Unclassified device
             (Some("Advanced Micro Devices, Inc. [AMD/ATI]".into()), Some("Phoenix1".into()))
         );
         // A device of the next vendor isn't mistaken for one of this one.
-        assert_eq!(
-            lookup_pci_ids(PCI_IDS, 0x8086, 0x1001),
-            (Some("Intel Corporation".into()), None)
-        );
+        assert_eq!(lookup_pci_ids(PCI_IDS, 0x8086, 0x1001), (Some("Intel Corporation".into()), None));
         // Subsystem lines aren't devices.
         assert_eq!(lookup_pci_ids(PCI_IDS, 0x1002, 0x0e3a).1, None);
         assert_eq!(lookup_pci_ids(PCI_IDS, 0xabcd, 0x0001), (None, None));
@@ -351,18 +312,12 @@ C 00  Unclassified device
         assert_eq!(name(0x126f, 0x0712), "Silicon Motion SM712 LynxEM+");
         // Not in pci.ids, or no pci.ids at all.
         assert_eq!(name(0x8086, 0xa7a0), "Intel graphics (8086:a7a0)");
-        assert_eq!(
-            gpu_name(Some(0x8086), Some(0xa7a0), None, None, None),
-            "Intel graphics (8086:a7a0)"
-        );
+        assert_eq!(gpu_name(Some(0x8086), Some(0xa7a0), None, None, None), "Intel graphics (8086:a7a0)");
         assert_eq!(gpu_name(Some(0xabcd), Some(0x1), None, None, None), "Graphics (abcd:0001)");
         assert_eq!(gpu_name(None, None, None, None, Some("vc4")), "vc4 graphics");
         assert_eq!(gpu_name(None, None, None, None, None), "Graphics");
         assert_eq!(gpu_name(Some(1), Some(2), None, Some("Odd [unclosed"), None), "Odd [unclosed");
-        assert_eq!(
-            tidy_vendor("Beijing Wangxun Technology Co., Ltd."),
-            "Beijing Wangxun Technology"
-        );
+        assert_eq!(tidy_vendor("Beijing Wangxun Technology Co., Ltd."), "Beijing Wangxun Technology");
     }
 
     /// This machine's DRM tree, plus a discrete AMD card and an ARM board's

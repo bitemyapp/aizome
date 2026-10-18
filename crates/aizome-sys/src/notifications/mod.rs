@@ -482,7 +482,8 @@ mod tests {
 
     #[test]
     fn actions_come_in_pairs() {
-        let actions = Notification::parse_actions(["default", "Open", "reply", "Reply", "dangling"].map(String::from).to_vec());
+        let actions =
+            Notification::parse_actions(["default", "Open", "reply", "Reply", "dangling"].map(String::from).to_vec());
         assert_eq!(actions.len(), 2);
         assert_eq!(actions[1], Action { key: "reply".into(), label: "Reply".into() });
         let n = Notification::new("x").default_action("Open").action("reply", "Reply");

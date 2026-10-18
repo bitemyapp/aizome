@@ -431,7 +431,8 @@ impl Disks {
     /// Read a drive's SMART data again.
     pub fn smart_update(&self, drive: &str) -> Task<()> {
         let drive = drive.to_owned();
-        let nvme = self.snapshot().drive(&drive).and_then(|d| d.smart.as_ref()).is_some_and(|s| s.bad_sectors.is_none());
+        let nvme =
+            self.snapshot().drive(&drive).and_then(|d| d.smart.as_ref()).is_some_and(|s| s.bad_sectors.is_none());
         self.task(move |bus| {
             let iface = if nvme { IFACE_NVME } else { IFACE_ATA };
             bus.call_with(Opts::ACTION, UDISKS, &drive, iface, "SmartUpdate", &(empty(),))
@@ -442,7 +443,8 @@ impl Disks {
     /// health log. Reading them changes nothing on the drive.
     pub fn smart_attributes(&self, drive: &str) -> Task<Vec<SmartAttribute>> {
         let drive = drive.to_owned();
-        let nvme = self.snapshot().drive(&drive).and_then(|d| d.smart.as_ref()).is_some_and(|s| s.bad_sectors.is_none());
+        let nvme =
+            self.snapshot().drive(&drive).and_then(|d| d.smart.as_ref()).is_some_and(|s| s.bad_sectors.is_none());
         self.task(move |bus| {
             if nvme {
                 let log: HashMap<String, zbus::zvariant::OwnedValue> =
@@ -460,7 +462,8 @@ impl Disks {
     /// data.
     pub fn smart_selftest(&self, drive: &str, test: SelfTest) -> Task<()> {
         let drive = drive.to_owned();
-        let nvme = self.snapshot().drive(&drive).and_then(|d| d.smart.as_ref()).is_some_and(|s| s.bad_sectors.is_none());
+        let nvme =
+            self.snapshot().drive(&drive).and_then(|d| d.smart.as_ref()).is_some_and(|s| s.bad_sectors.is_none());
         self.task(move |bus| {
             let (iface, kind) = match (nvme, test) {
                 (true, SelfTest::Short) => (IFACE_NVME, "short"),
@@ -513,9 +516,9 @@ impl Disks {
         if !name.is_empty() && kind != "gpt" {
             return Task::ready(Err(Error::InvalidArgument("Only GPT partitions have names".into())));
         }
-        let type_id = type_id
-            .map(str::to_owned)
-            .unwrap_or_else(|| types::type_for_filesystem(&kind, format.as_ref().map_or("ext4", |f| f.fs_type.as_str())).to_owned());
+        let type_id = type_id.map(str::to_owned).unwrap_or_else(|| {
+            types::type_for_filesystem(&kind, format.as_ref().map_or("ext4", |f| f.fs_type.as_str())).to_owned()
+        });
         let table = table.to_owned();
         let name = name.to_owned();
         self.task(move |bus| {
@@ -558,7 +561,9 @@ impl Disks {
     /// Change a partition's flags (see [`types::flags`]).
     pub fn set_partition_flags(&self, block: &str, flags: u64) -> Task<()> {
         let block = block.to_owned();
-        self.task(move |bus| bus.call_with(Opts::ACTION, UDISKS, &block, IFACE_PARTITION, "SetFlags", &(flags, empty())))
+        self.task(move |bus| {
+            bus.call_with(Opts::ACTION, UDISKS, &block, IFACE_PARTITION, "SetFlags", &(flags, empty()))
+        })
     }
 
     // --- Destructive --------------------------------------------------------
@@ -624,7 +629,10 @@ impl Disks {
                 let room = state
                     .free_space(&partition.table)
                     .iter()
-                    .find(|f| f.offset >= partition.offset + partition.size && f.offset <= partition.offset + partition.size + (1 << 20))
+                    .find(|f| {
+                        f.offset >= partition.offset + partition.size
+                            && f.offset <= partition.offset + partition.size + (1 << 20)
+                    })
                     .map_or(0, |f| f.offset + f.size - (partition.offset + partition.size));
                 if size - partition.size > room {
                     return Err(Error::InvalidArgument("There isn't that much free space after the partition".into()));
@@ -701,7 +709,8 @@ fn loop_setup(bus: &Bus, file: &Path, read_only: bool) -> Result<String> {
     let mut options: HashMap<&str, Value> = HashMap::new();
     options.insert("read-only", Value::from(read_only));
     let fd = zbus::zvariant::Fd::from(handle.as_fd());
-    let device: OwnedObjectPath = bus.call_with(Opts::ACTION, UDISKS, MANAGER_PATH, IFACE_MANAGER, "LoopSetup", &(fd, options))?;
+    let device: OwnedObjectPath =
+        bus.call_with(Opts::ACTION, UDISKS, MANAGER_PATH, IFACE_MANAGER, "LoopSetup", &(fd, options))?;
     // Detach by itself once nothing uses it (after the image is unmounted).
     let _ = bus.call_with::<_, ()>(Opts::ACTION, UDISKS, device.as_str(), IFACE_LOOP, "SetAutoclear", &(true, empty()));
     Ok(device.to_string())

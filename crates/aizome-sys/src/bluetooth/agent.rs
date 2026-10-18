@@ -230,7 +230,9 @@ pub(crate) fn register(bus: &Bus, prompt: Prompt) -> Result<Registration> {
             Error::DBus { name, .. } if name == "org.bluez.Error.AlreadyExists" => Ok(()),
             _ => Err(error),
         })
-        .and_then(|()| bus.call::<_, ()>(BLUEZ, "/org/bluez", "org.bluez.AgentManager1", "RequestDefaultAgent", &(&path,)));
+        .and_then(|()| {
+            bus.call::<_, ()>(BLUEZ, "/org/bluez", "org.bluez.AgentManager1", "RequestDefaultAgent", &(&path,))
+        });
     if let Err(error) = registered {
         let _ = zbus::block_on(conn.object_server().remove::<Agent, _>(AGENT_PATH));
         return Err(error);
@@ -241,7 +243,8 @@ pub(crate) fn register(bus: &Bus, prompt: Prompt) -> Result<Registration> {
 impl Drop for Registration {
     fn drop(&mut self) {
         if let Ok(path) = ObjectPath::try_from(AGENT_PATH) {
-            let _ = self.bus.call::<_, ()>(BLUEZ, "/org/bluez", "org.bluez.AgentManager1", "UnregisterAgent", &(&path,));
+            let _ =
+                self.bus.call::<_, ()>(BLUEZ, "/org/bluez", "org.bluez.AgentManager1", "UnregisterAgent", &(&path,));
         }
         let conn = self.bus.connection().clone();
         let _ = zbus::block_on(async move { conn.object_server().remove::<Agent, _>(AGENT_PATH).await });

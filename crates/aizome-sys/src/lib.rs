@@ -61,13 +61,13 @@ pub mod meter;
 pub mod mpris;
 pub mod network;
 pub mod notifications;
+mod oneshot;
 pub mod polkit;
 pub mod power;
 pub mod printers;
+mod service;
 pub mod sysinfo;
 pub mod users;
-mod oneshot;
-mod service;
 
 pub use bus::Bus;
 pub use error::{Error, Result};

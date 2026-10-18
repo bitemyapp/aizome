@@ -186,7 +186,14 @@ mod tests {
         let names: Vec<&str> = a.iter().map(|a| a.name.as_str()).collect();
         assert_eq!(
             names,
-            ["Available spare", "Life used", "Data written", "Temperature sensor 1", "Temperature sensor 2", "Media and data integrity errors"]
+            [
+                "Available spare",
+                "Life used",
+                "Data written",
+                "Temperature sensor 1",
+                "Temperature sensor 2",
+                "Media and data integrity errors"
+            ]
         );
         assert_eq!(a[2].value, "4.5 TB");
         assert_eq!(a[3].value, "54 °C");

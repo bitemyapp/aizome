@@ -36,9 +36,9 @@ pub(crate) mod rfkill;
 pub use profile::{IPV6_METHODS, Profile, read_profile};
 
 pub use model::{
-    AccessPoint, ActiveConnection, ActiveState, Band, ConnectionKind, ConnectionSettings, Connectivity,
-    Details, Device, DeviceKind, DeviceState, Enterprise, IpConfig, Metered, NetworkState, NmState, Proxy,
-    Ipv4Method, Radio, RadioKind, SavedConnection, Security, WifiNetwork, bars, describe_reason, signal_icon, ssid_name,
+    AccessPoint, ActiveConnection, ActiveState, Band, ConnectionKind, ConnectionSettings, Connectivity, Details,
+    Device, DeviceKind, DeviceState, Enterprise, IpConfig, Ipv4Method, Metered, NetworkState, NmState, Proxy, Radio,
+    RadioKind, SavedConnection, Security, WifiNetwork, bars, describe_reason, signal_icon, ssid_name,
 };
 
 use crate::bus::{self, Bus, Event, Objects, Opts, signals_from};
@@ -111,8 +111,7 @@ impl Network {
                 *lock(&shared) = now.clone();
                 if model.get().available {
                     model.update(|state| {
-                        state.airplane_mode = now.iter().all(|r| r.soft_blocked || r.hard_blocked)
-                            && !now.is_empty();
+                        state.airplane_mode = now.iter().all(|r| r.soft_blocked || r.hard_blocked) && !now.is_empty();
                         state.radios = now;
                     });
                 }
@@ -218,9 +217,7 @@ impl Network {
             },
             None => {
                 if network.security.is_enterprise() {
-                    return Err(Error::InvalidArgument(
-                        "This network needs a username: use connect_enterprise".into(),
-                    ));
+                    return Err(Error::InvalidArgument("This network needs a username: use connect_enterprise".into()));
                 }
                 if network.security.needs_password() && password.as_deref().is_none_or(str::is_empty) {
                     return Err(Error::InvalidArgument("This network needs a password".into()));
@@ -239,8 +236,7 @@ impl Network {
             if let Some(saved) = &saved {
                 forget_paths(bus, std::slice::from_ref(&saved.path))?;
             }
-            let settings =
-                wifi_settings(&network.ssid_bytes, Security::Enterprise, None, Some(&credentials), false);
+            let settings = wifi_settings(&network.ssid_bytes, Security::Enterprise, None, Some(&credentials), false);
             add_and_wait(bus, settings, &network.device, &network.best_access_point)
         })
     }
@@ -313,12 +309,8 @@ impl Network {
 
     /// Delete every saved connection for a Wi-Fi network.
     pub fn forget_network(&self, ssid: &str) -> Task<()> {
-        let paths: Vec<String> = self
-            .snapshot()
-            .saved_wifi()
-            .filter(|c| c.ssid.as_deref() == Some(ssid))
-            .map(|c| c.path.clone())
-            .collect();
+        let paths: Vec<String> =
+            self.snapshot().saved_wifi().filter(|c| c.ssid.as_deref() == Some(ssid)).map(|c| c.path.clone()).collect();
         self.task(move |bus| forget_paths(bus, &paths))
     }
 
@@ -340,7 +332,9 @@ impl Network {
         if let Ipv4Method::Manual { addresses, .. } = &method
             && (addresses.is_empty() || addresses.iter().any(|(_, prefix)| !(1..=32).contains(prefix)))
         {
-            return Task::ready(Err(Error::InvalidArgument("Give at least one address with a prefix of 1 to 32".into())));
+            return Task::ready(Err(Error::InvalidArgument(
+                "Give at least one address with a prefix of 1 to 32".into(),
+            )));
         }
         let uuid = uuid.to_owned();
         self.task(move |bus| update_settings(bus, &uuid, |settings| apply_ipv4(settings, &method)))
@@ -369,11 +363,8 @@ impl Network {
     pub fn start_hotspot(&self, ssid: &str, password: &str, band: Option<Band>) -> Task<()> {
         let state = self.snapshot();
         let device = state.wifi_device().map(|d| d.path.clone());
-        let old: Vec<String> = state
-            .saved_wifi()
-            .filter(|c| c.wifi_mode.as_deref() == Some("ap"))
-            .map(|c| c.path.clone())
-            .collect();
+        let old: Vec<String> =
+            state.saved_wifi().filter(|c| c.wifi_mode.as_deref() == Some("ap")).map(|c| c.path.clone()).collect();
         let ssid = ssid.to_owned();
         let password = password.to_owned();
         self.task(move |bus| {
@@ -436,10 +427,8 @@ impl Follower {
                     Objects::default()
                 });
                 let paths: Vec<String> = self.objects.with(IFACE_CONNECTION).map(|(p, _)| p.to_owned()).collect();
-                self.settings = paths
-                    .into_iter()
-                    .filter_map(|path| Some((path.clone(), get_settings(bus, &path)?)))
-                    .collect();
+                self.settings =
+                    paths.into_iter().filter_map(|path| Some((path.clone(), get_settings(bus, &path)?))).collect();
                 self.dirty = true;
             }
             Event::Vanished => {
@@ -733,8 +722,7 @@ mod tests {
     #[test]
     fn nmcli_import_reports_the_uuid() {
         assert_eq!(
-            imported_uuid("Connection 'wg0' (2a5f0c4e-6c1e-4d3a-9d43-0c1f2b3a4d5e) successfully added.\n")
-                .as_deref(),
+            imported_uuid("Connection 'wg0' (2a5f0c4e-6c1e-4d3a-9d43-0c1f2b3a4d5e) successfully added.\n").as_deref(),
             Some("2a5f0c4e-6c1e-4d3a-9d43-0c1f2b3a4d5e")
         );
         assert_eq!(imported_uuid("Connection 'x (y)' added"), None);

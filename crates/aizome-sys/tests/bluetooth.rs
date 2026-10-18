@@ -68,7 +68,13 @@ impl Adapter {
     }
     #[zbus(property)]
     fn power_state(&self) -> String {
-        if self.powered { "on".into() } else if self.alias == "blocked" { "off-blocked".into() } else { "off".into() }
+        if self.powered {
+            "on".into()
+        } else if self.alias == "blocked" {
+            "off-blocked".into()
+        } else {
+            "off".into()
+        }
     }
     #[zbus(property)]
     fn alias(&self) -> String {
@@ -100,7 +106,11 @@ impl Adapter {
         Ok(())
     }
 
-    async fn remove_device(&self, device: OwnedObjectPath, #[zbus(object_server)] server: &ObjectServer) -> fdo::Result<()> {
+    async fn remove_device(
+        &self,
+        device: OwnedObjectPath,
+        #[zbus(object_server)] server: &ObjectServer,
+    ) -> fdo::Result<()> {
         server.remove::<Battery, _>(device.as_str()).await.ok();
         server.remove::<Device, _>(device.as_str()).await?;
         Ok(())
@@ -190,7 +200,13 @@ impl Device {
         };
         let me = header.path().map(|p| p.to_owned()).unwrap();
         let reply = conn
-            .call_method(Some(sender.as_str()), agent_path.as_str(), Some("org.bluez.Agent1"), "RequestConfirmation", &(me, 123456u32))
+            .call_method(
+                Some(sender.as_str()),
+                agent_path.as_str(),
+                Some("org.bluez.Agent1"),
+                "RequestConfirmation",
+                &(me, 123456u32),
+            )
             .await;
         match reply {
             Ok(_) => {

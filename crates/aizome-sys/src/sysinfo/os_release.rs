@@ -74,20 +74,11 @@ pub fn os_release() -> OsRelease {
 /// unterminated quote) are skipped; a key given twice keeps its last value.
 pub fn parse_os_release(text: &str) -> OsRelease {
     let fields = parse_assignments(text);
-    let get = |key: &str| {
-        fields
-            .iter()
-            .rev()
-            .find(|(k, _)| k == key)
-            .map(|(_, v)| v.clone())
-            .filter(|v| !v.is_empty())
-    };
+    let get = |key: &str| fields.iter().rev().find(|(k, _)| k == key).map(|(_, v)| v.clone()).filter(|v| !v.is_empty());
     OsRelease {
         name: get("NAME").unwrap_or_else(|| "Linux".into()),
         id: get("ID").unwrap_or_else(|| "linux".into()),
-        id_like: get("ID_LIKE")
-            .map(|v| v.split_ascii_whitespace().map(str::to_owned).collect())
-            .unwrap_or_default(),
+        id_like: get("ID_LIKE").map(|v| v.split_ascii_whitespace().map(str::to_owned).collect()).unwrap_or_default(),
         pretty_name: get("PRETTY_NAME").unwrap_or_else(|| "Linux".into()),
         version: get("VERSION"),
         version_id: get("VERSION_ID"),

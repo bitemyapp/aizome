@@ -78,8 +78,7 @@ fn in_store(path: &str) -> bool {
         return true;
     }
     // An /etc file that is a link into /etc/static (NixOS's environment.etc).
-    std::fs::read_link(path)
-        .is_ok_and(|target| target.starts_with("/etc/static") || target.starts_with("/nix/store"))
+    std::fs::read_link(path).is_ok_and(|target| target.starts_with("/etc/static") || target.starts_with("/nix/store"))
 }
 
 // --- timedated -------------------------------------------------------------

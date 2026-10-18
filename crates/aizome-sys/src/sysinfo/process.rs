@@ -160,8 +160,7 @@ impl SystemdUnit {
     /// with no unit, such as `/` (kernel threads) or a bare slice.
     pub fn from_cgroup(path: &str) -> Option<SystemdUnit> {
         let components: Vec<&str> = path.split('/').filter(|c| !c.is_empty()).collect();
-        let position =
-            components.iter().rposition(|c| c.ends_with(".service") || c.ends_with(".scope"))?;
+        let position = components.iter().rposition(|c| c.ends_with(".service") || c.ends_with(".scope"))?;
         let name = components.get(position)?;
         let manager = components
             .get(..position)
@@ -217,8 +216,7 @@ fn unescape_unit(text: &str) -> String {
     while let Some((&byte, tail)) = rest.split_first() {
         if byte == b'\\'
             && let Some(hex) = tail.get(1..3).filter(|_| tail.first() == Some(&b'x'))
-            && let Some(value) =
-                std::str::from_utf8(hex).ok().and_then(|h| u8::from_str_radix(h, 16).ok())
+            && let Some(value) = std::str::from_utf8(hex).ok().and_then(|h| u8::from_str_radix(h, 16).ok())
         {
             bytes.push(value);
             rest = tail.get(3..).unwrap_or_default();
@@ -434,12 +432,7 @@ pub(crate) fn parse_cmdline(bytes: &[u8]) -> Vec<String> {
 
 /// The real uid from `/proc/PID/status` (`Uid:\treal\teffective\tsaved\tfs`).
 pub(crate) fn parse_status_uid(text: &str) -> Option<u32> {
-    text.lines()
-        .find_map(|line| line.strip_prefix("Uid:"))?
-        .split_ascii_whitespace()
-        .next()?
-        .parse()
-        .ok()
+    text.lines().find_map(|line| line.strip_prefix("Uid:"))?.split_ascii_whitespace().next()?.parse().ok()
 }
 
 /// The cgroup path from `/proc/PID/cgroup`: the cgroup v2 line (`0::PATH`),
@@ -448,8 +441,7 @@ pub(crate) fn parse_cgroup(text: &str) -> Option<String> {
     let mut v1 = None;
     for line in text.lines() {
         let mut parts = line.splitn(3, ':');
-        let (Some(id), Some(controllers), Some(path)) = (parts.next(), parts.next(), parts.next())
-        else {
+        let (Some(id), Some(controllers), Some(path)) = (parts.next(), parts.next(), parts.next()) else {
             continue;
         };
         if id == "0" && controllers.is_empty() {
@@ -476,9 +468,7 @@ pub(crate) fn lookup_user_name(uid: u32) -> Option<String> {
         let mut found: *mut libc::passwd = std::ptr::null_mut();
         // SAFETY: every pointer is valid for the duration of the call and
         // `buffer.len()` is its true size.
-        let status = unsafe {
-            libc::getpwuid_r(uid, &mut entry, buffer.as_mut_ptr(), buffer.len(), &mut found)
-        };
+        let status = unsafe { libc::getpwuid_r(uid, &mut entry, buffer.as_mut_ptr(), buffer.len(), &mut found) };
         if status == libc::ERANGE && size < 1 << 20 {
             size *= 2;
             continue;
@@ -556,8 +546,7 @@ impl ProcessSampler {
     /// being read are left out.
     pub fn sample(&mut self) -> Vec<Process> {
         let now = Instant::now();
-        let uptime = super::read_attr(self.proc_root.join("uptime"))
-            .and_then(|text| super::load::parse_uptime(&text));
+        let uptime = super::read_attr(self.proc_root.join("uptime")).and_then(|text| super::load::parse_uptime(&text));
         self.sample_at(now, uptime)
     }
 
@@ -622,9 +611,7 @@ impl ProcessSampler {
                 self.boot_time = Some(boot);
                 boot
             }
-            None => uptime
-                .and_then(|up| SystemTime::now().checked_sub(up))
-                .unwrap_or(SystemTime::UNIX_EPOCH),
+            None => uptime.and_then(|up| SystemTime::now().checked_sub(up)).unwrap_or(SystemTime::UNIX_EPOCH),
         }
     }
 
@@ -636,9 +623,7 @@ impl ProcessSampler {
 
         let same = self.known.get(&pid).filter(|known| known.start_ticks == stat.start_ticks);
         let previous_ticks = same.map(|known| known.cpu_ticks);
-        let young = context
-            .uptime_ticks
-            .is_some_and(|up| up.saturating_sub(stat.start_ticks) < context.fresh_ticks);
+        let young = context.uptime_ticks.is_some_and(|up| up.saturating_sub(stat.start_ticks) < context.fresh_ticks);
         if same.is_none_or(|known| known.comm != stat.comm || young) {
             let known = self.read_details(&dir, &stat, previous_ticks)?;
             self.known.insert(pid, known);
@@ -647,16 +632,11 @@ impl ProcessSampler {
 
         let cpu_percent = match (context.interval, previous_ticks) {
             (Some(interval), Some(previous)) => {
-                ticks.saturating_sub(previous) as f64
-                    / context.ticks_per_second as f64
-                    / interval.seconds
-                    * 100.0
+                ticks.saturating_sub(previous) as f64 / context.ticks_per_second as f64 / interval.seconds * 100.0
             }
             // New since the previous sample: everything it used, it used
             // within the interval.
-            (Some(interval), None)
-                if interval.since_ticks.is_some_and(|then| stat.start_ticks >= then) =>
-            {
+            (Some(interval), None) if interval.since_ticks.is_some_and(|then| stat.start_ticks >= then) => {
                 ticks as f64 / context.ticks_per_second as f64 / interval.seconds * 100.0
             }
             _ => 0.0,
@@ -708,11 +688,8 @@ impl ProcessSampler {
             Err(_) => None,
         };
         let unit = cgroup.as_deref().and_then(SystemdUnit::from_cgroup);
-        let user = self
-            .users
-            .entry(uid)
-            .or_insert_with(|| lookup_user_name(uid).unwrap_or_else(|| uid.to_string()))
-            .clone();
+        let user =
+            self.users.entry(uid).or_insert_with(|| lookup_user_name(uid).unwrap_or_else(|| uid.to_string())).clone();
         Some(Known {
             start_ticks: stat.start_ticks,
             comm: stat.comm.clone(),
@@ -778,10 +755,9 @@ mod tests {
 
     #[test]
     fn stat_names_may_hold_spaces_and_parentheses() {
-        let stat = parse_stat(
-            "4242 (Web Content (x)) S 1 4242 4242 0 -1 0 0 0 0 0 1500 250 0 0 20 -5 31 0 777 0 52000 0\n",
-        )
-        .unwrap();
+        let stat =
+            parse_stat("4242 (Web Content (x)) S 1 4242 4242 0 -1 0 0 0 0 0 1500 250 0 0 20 -5 31 0 777 0 52000 0\n")
+                .unwrap();
         assert_eq!(stat.comm, "Web Content (x)");
         assert_eq!(stat.utime, 1500);
         assert_eq!(stat.stime, 250);
@@ -825,11 +801,14 @@ mod tests {
     #[test]
     fn cgroups_prefer_the_v2_line() {
         assert_eq!(
-            parse_cgroup("0::/user.slice/user-1000.slice/user@1000.service/app.slice/app-com.anthropic.Claude-4006.scope\n")
-                .as_deref(),
+            parse_cgroup(
+                "0::/user.slice/user-1000.slice/user@1000.service/app.slice/app-com.anthropic.Claude-4006.scope\n"
+            )
+            .as_deref(),
             Some("/user.slice/user-1000.slice/user@1000.service/app.slice/app-com.anthropic.Claude-4006.scope")
         );
-        let hybrid = "12:cpuset:/\n1:name=systemd:/system.slice/nix-daemon.service\n0::/system.slice/nix-daemon.service\n";
+        let hybrid =
+            "12:cpuset:/\n1:name=systemd:/system.slice/nix-daemon.service\n0::/system.slice/nix-daemon.service\n";
         assert_eq!(parse_cgroup(hybrid).as_deref(), Some("/system.slice/nix-daemon.service"));
         let v1 = "3:cpu,cpuacct:/\n1:name=systemd:/system.slice/sshd.service\n";
         assert_eq!(parse_cgroup(v1).as_deref(), Some("/system.slice/sshd.service"));
@@ -839,10 +818,9 @@ mod tests {
 
     #[test]
     fn units_come_from_the_deepest_service_or_scope() {
-        let unit = SystemdUnit::from_cgroup(
-            "/user.slice/user-1000.slice/user@1000.service/session.slice/pipewire.service",
-        )
-        .unwrap();
+        let unit =
+            SystemdUnit::from_cgroup("/user.slice/user-1000.slice/user@1000.service/session.slice/pipewire.service")
+                .unwrap();
         assert_eq!(unit.name, "pipewire.service");
         assert_eq!(unit.manager, UnitManager::User(1000));
         assert!(unit.is_user() && unit.is_service() && !unit.is_scope());
@@ -852,15 +830,12 @@ mod tests {
 
         // A login session's scope is the system manager's, though it sits
         // under the user's slice.
-        let session =
-            SystemdUnit::from_cgroup("/user.slice/user-1000.slice/session-3.scope").unwrap();
+        let session = SystemdUnit::from_cgroup("/user.slice/user-1000.slice/session-3.scope").unwrap();
         assert_eq!(session.name, "session-3.scope");
         assert_eq!(session.manager, UnitManager::System);
 
         // The user manager itself.
-        let manager =
-            SystemdUnit::from_cgroup("/user.slice/user-1000.slice/user@1000.service/init.scope")
-                .unwrap();
+        let manager = SystemdUnit::from_cgroup("/user.slice/user-1000.slice/user@1000.service/init.scope").unwrap();
         assert_eq!(manager.name, "init.scope");
         assert_eq!(manager.manager, UnitManager::User(1000));
 
@@ -876,18 +851,10 @@ mod tests {
 
     #[test]
     fn app_ids_follow_the_desktop_naming_convention() {
-        let app = |name: &str| {
-            SystemdUnit { name: name.into(), manager: UnitManager::User(1000) }.app_id()
-        };
+        let app = |name: &str| SystemdUnit { name: name.into(), manager: UnitManager::User(1000) }.app_id();
         assert_eq!(app("app-aizome-foot-1234.scope").as_deref(), Some("foot"));
-        assert_eq!(
-            app("app-com.anthropic.Claude-4006.scope").as_deref(),
-            Some("com.anthropic.Claude")
-        );
-        assert_eq!(
-            app("app-gnome-org.gnome.Nautilus@12345.service").as_deref(),
-            Some("org.gnome.Nautilus")
-        );
+        assert_eq!(app("app-com.anthropic.Claude-4006.scope").as_deref(), Some("com.anthropic.Claude"));
+        assert_eq!(app("app-gnome-org.gnome.Nautilus@12345.service").as_deref(), Some("org.gnome.Nautilus"));
         assert_eq!(app("app-org.gnome.Terminal.service").as_deref(), Some("org.gnome.Terminal"));
         assert_eq!(app(r"app-aizome-foot\x2dserver-99.scope").as_deref(), Some("foot-server"));
         assert_eq!(app("pipewire.service"), None);
@@ -982,21 +949,14 @@ mod tests {
         }
 
         #[allow(clippy::too_many_arguments)]
-        fn process(
-            &self,
-            pid: u32,
-            comm: &str,
-            uid: u32,
-            ticks: u64,
-            start: u64,
-            cmdline: &str,
-            cgroup: &str,
-        ) {
+        fn process(&self, pid: u32, comm: &str, uid: u32, ticks: u64, start: u64, cmdline: &str, cgroup: &str) {
             let dir = format!("{pid}");
             self.0
                 .file(
                     &format!("{dir}/stat"),
-                    &format!("{pid} ({comm}) S 1 {pid} {pid} 0 -1 4194560 0 0 0 0 {ticks} 0 0 0 20 0 3 0 {start} 0 256 0\n"),
+                    &format!(
+                        "{pid} ({comm}) S 1 {pid} {pid} 0 -1 4194560 0 0 0 0 {ticks} 0 0 0 20 0 3 0 {start} 0 256 0\n"
+                    ),
                 )
                 .file(&format!("{dir}/status"), &format!("Name:\t{comm}\nUid:\t{uid}\t{uid}\t{uid}\t{uid}\n"))
                 .file(&format!("{dir}/cmdline"), cmdline)
@@ -1046,9 +1006,7 @@ mod tests {
 
         // Two seconds later "busy" has used 3 s of CPU: 150% of one CPU.
         fake.process(100, "busy", 1000, 3 * hz, 10 * hz, "busy\0--spin\0", "/x.scope");
-        let second = by_pid(
-            sampler.sample_at(start + Duration::from_secs(2), Some(Duration::from_secs(102))),
-        );
+        let second = by_pid(sampler.sample_at(start + Duration::from_secs(2), Some(Duration::from_secs(102))));
         let busy = &second[&100];
         assert!((busy.cpu_percent - 150.0).abs() < 0.01, "{}", busy.cpu_percent);
         let cpus = online_cpus() as f32;
@@ -1072,9 +1030,7 @@ mod tests {
 
         // The process execs: same pid and start, new comm.
         fake.process(300, "vim", 1000, 100, 10 * hz, "vim\0notes.txt\0", "/a.service");
-        let after_exec = by_pid(
-            sampler.sample_at(start + Duration::from_secs(1), Some(Duration::from_secs(101))),
-        );
+        let after_exec = by_pid(sampler.sample_at(start + Duration::from_secs(1), Some(Duration::from_secs(101))));
         assert_eq!(after_exec[&300].args, ["vim", "notes.txt"]);
         assert_eq!(after_exec[&300].cpu_percent, 0.0, "CPU carries over an exec");
 
@@ -1082,9 +1038,7 @@ mod tests {
         // started within the interval and used 0.5 s of CPU in it.
         fake.remove(300);
         fake.process(300, "sleep", 1001, hz / 2, 101 * hz + 50, "sleep\0", "/b.service");
-        let reused = by_pid(
-            sampler.sample_at(start + Duration::from_secs(2), Some(Duration::from_secs(102))),
-        );
+        let reused = by_pid(sampler.sample_at(start + Duration::from_secs(2), Some(Duration::from_secs(102))));
         let sleep = &reused[&300];
         assert_eq!(sleep.args, ["sleep"]);
         assert_eq!(sleep.user, "bob");
@@ -1120,17 +1074,11 @@ mod tests {
             "foot\0",
             "/user.slice/user-1000.slice/user@1000.service/app.slice/app-aizome-foot-400.scope",
         );
-        let moved = by_pid(
-            sampler.sample_at(start + Duration::from_secs(1), Some(Duration::from_secs(101))),
-        );
+        let moved = by_pid(sampler.sample_at(start + Duration::from_secs(1), Some(Duration::from_secs(101))));
         assert_eq!(moved[&400].unit.as_ref().unwrap().name, "app-aizome-foot-400.scope");
 
         fake.remove(400);
-        assert!(
-            sampler
-                .sample_at(start + Duration::from_secs(2), Some(Duration::from_secs(102)))
-                .is_empty()
-        );
+        assert!(sampler.sample_at(start + Duration::from_secs(2), Some(Duration::from_secs(102))).is_empty());
         assert!(sampler.known.is_empty());
     }
 
@@ -1174,9 +1122,7 @@ mod tests {
         assert!(me.memory > 0);
         assert!(me.threads >= 1);
         assert!(me.start_time <= SystemTime::now());
-        assert!(
-            SystemTime::now().duration_since(me.start_time).unwrap() < Duration::from_secs(600)
-        );
+        assert!(SystemTime::now().duration_since(me.start_time).unwrap() < Duration::from_secs(600));
         assert!(list.iter().any(|p| p.kernel_thread && p.args.is_empty()));
         assert!(list.iter().all(|p| p.machine_cpu_percent <= 100.0 && p.cpu_percent >= 0.0));
         sort_processes(&mut list, SortKey::Cpu, true);

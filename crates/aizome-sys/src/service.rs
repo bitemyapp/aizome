@@ -93,15 +93,9 @@ impl<T> std::fmt::Debug for Task<T> {
 impl<T: Send + 'static> Task<T> {
     /// Run `work` on a new thread; when it returns, store its result and
     /// call `wake`.
-    pub(crate) fn spawn(
-        name: &str,
-        wake: &Wake,
-        work: impl FnOnce() -> Result<T> + Send + 'static,
-    ) -> Task<T> {
+    pub(crate) fn spawn(name: &str, wake: &Wake, work: impl FnOnce() -> Result<T> + Send + 'static) -> Task<T> {
         let (task, done) = Task::pending(wake.clone());
-        let spawned = std::thread::Builder::new()
-            .name(format!("aizome-sys {name}"))
-            .spawn(move || done.finish(work()));
+        let spawned = std::thread::Builder::new().name(format!("aizome-sys {name}")).spawn(move || done.finish(work()));
         if let Err(error) = spawned {
             // The closure (and the Done inside it) is gone; report on a
             // fresh one.
@@ -114,11 +108,7 @@ impl<T: Send + 'static> Task<T> {
 impl<T> Task<T> {
     /// A task and the handle that finishes it.
     pub(crate) fn pending(wake: Wake) -> (Task<T>, Done<T>) {
-        let slot = Arc::new(Slot {
-            result: Mutex::new(None),
-            done: Condvar::new(),
-            finished: AtomicBool::new(false),
-        });
+        let slot = Arc::new(Slot { result: Mutex::new(None), done: Condvar::new(), finished: AtomicBool::new(false) });
         (Task { slot: slot.clone() }, Done { slot: Some(slot), wake })
     }
 
@@ -168,12 +158,8 @@ impl<T> Task<T> {
                 return Some(result);
             }
             let left = deadline.checked_duration_since(std::time::Instant::now())?;
-            result = self
-                .slot
-                .done
-                .wait_timeout(result, left)
-                .map(|(guard, _)| guard)
-                .unwrap_or_else(|e| e.into_inner().0);
+            result =
+                self.slot.done.wait_timeout(result, left).map(|(guard, _)| guard).unwrap_or_else(|e| e.into_inner().0);
         }
     }
 }
@@ -225,11 +211,7 @@ pub(crate) struct Model<M> {
 
 impl<M> Model<M> {
     pub(crate) fn new(initial: M, wake: Wake) -> Model<M> {
-        Model {
-            current: RwLock::new(Arc::new(initial)),
-            generation: AtomicU64::new(0),
-            wakes: Mutex::new(vec![wake]),
-        }
+        Model { current: RwLock::new(Arc::new(initial)), generation: AtomicU64::new(0), wakes: Mutex::new(vec![wake]) }
     }
 
     /// The current snapshot (an `Arc` clone).

@@ -83,16 +83,14 @@ pub use cpu::{CoreUsage, CpuSampler, CpuUsage};
 pub use dmi::{Chassis, HostModel, host_model};
 pub use gpu::{Gpu, PCI_IDS_PATHS, gpus, gpus_with_pci_ids};
 pub use hardware::{
-    CpuInfo, Disk, Hardware, architecture, cpu_info, disks, hardware, hardware_with_pci_ids,
-    hostname, kernel_release, pretty_hostname,
+    CpuInfo, Disk, Hardware, architecture, cpu_info, disks, hardware, hardware_with_pci_ids, hostname, kernel_release,
+    pretty_hostname,
 };
 pub use io::{DiskIo, DiskIoSampler, DiskIoStat, InterfaceIo, NetIo, NetSampler};
 pub use load::{LoadAverage, boot_time, load_average, uptime};
 pub use memory::{Memory, memory};
 pub use os_release::{OsRelease, os_release, parse_os_release};
-pub use process::{
-    Process, ProcessSampler, ProcessState, SortKey, SystemdUnit, UnitManager, sort_processes,
-};
+pub use process::{Process, ProcessSampler, ProcessState, SortKey, SystemdUnit, UnitManager, sort_processes};
 pub use sensors::{Temperature, cpu_temperature, pick_cpu_temperature, temperatures};
 pub use signal::{Signal, kill, signal_process, signal_started, terminate};
 
@@ -219,8 +217,7 @@ impl TestTree {
         use std::sync::atomic::{AtomicU32, Ordering};
         static COUNT: AtomicU32 = AtomicU32::new(0);
         let n = COUNT.fetch_add(1, Ordering::Relaxed);
-        let dir = std::env::temp_dir()
-            .join(format!("aizome-sys-sysinfo-{}-{n}-{name}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("aizome-sys-sysinfo-{}-{n}-{name}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).expect("create test tree");
         TestTree(dir)

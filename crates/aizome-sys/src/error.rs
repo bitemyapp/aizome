@@ -61,9 +61,7 @@ impl Error {
             | "org.freedesktop.DBus.Error.Spawn.ChildExited"
             | "org.freedesktop.DBus.Error.Spawn.ExecFailed"
             | "org.freedesktop.DBus.Error.Spawn.ServiceNotFound" => Error::Unavailable(message),
-            "org.freedesktop.DBus.Error.NoReply" | "org.freedesktop.DBus.Error.Timeout" => {
-                Error::Timeout
-            }
+            "org.freedesktop.DBus.Error.NoReply" | "org.freedesktop.DBus.Error.Timeout" => Error::Timeout,
             "org.freedesktop.DBus.Error.UnknownObject"
             | "org.freedesktop.DBus.Error.UnknownInterface"
             | "org.freedesktop.DBus.Error.UnknownMethod"
@@ -76,9 +74,7 @@ impl Error {
             "org.freedesktop.DBus.Error.InvalidArgs"
             | "org.bluez.Error.InvalidArguments"
             | "org.freedesktop.NetworkManager.Settings.Connection.InvalidProperty"
-            | "org.freedesktop.NetworkManager.Settings.InvalidConnection" => {
-                Error::InvalidArgument(message)
-            }
+            | "org.freedesktop.NetworkManager.Settings.InvalidConnection" => Error::InvalidArgument(message),
             "org.bluez.Error.Canceled"
             | "org.bluez.Error.AuthenticationCanceled"
             | "org.freedesktop.UDisks2.Error.Cancelled"
@@ -116,9 +112,7 @@ impl Error {
         match self {
             Error::Unavailable(what) if what.is_empty() => "The service is not running".into(),
             Error::Unavailable(what) => format!("Not available: {what}"),
-            Error::ManagedBySystem(what) if what.is_empty() => {
-                "Managed by the system configuration".into()
-            }
+            Error::ManagedBySystem(what) if what.is_empty() => "Managed by the system configuration".into(),
             Error::ManagedBySystem(what) => format!("Managed by the system configuration ({what})"),
             Error::NotAuthorized(what) if what.is_empty() => "Not allowed".into(),
             Error::NotAuthorized(what) => format!("Not allowed: {what}"),
@@ -156,12 +150,8 @@ impl From<zbus::Error> for Error {
             }
             zbus::Error::FDO(fdo) => Error::from(*fdo),
             zbus::Error::InputOutput(io) => Error::Io(io.to_string()),
-            zbus::Error::InterfaceNotFound | zbus::Error::Unsupported => {
-                Error::Unavailable(error.to_string())
-            }
-            zbus::Error::Variant(variant) => {
-                Error::Failed(format!("unexpected data from the service: {variant}"))
-            }
+            zbus::Error::InterfaceNotFound | zbus::Error::Unsupported => Error::Unavailable(error.to_string()),
+            zbus::Error::Variant(variant) => Error::Failed(format!("unexpected data from the service: {variant}")),
             other => Error::Failed(other.to_string()),
         }
     }
@@ -201,18 +191,12 @@ mod tests {
 
     #[test]
     fn dbus_errors_are_sorted_by_what_they_mean() {
-        assert!(matches!(
-            Error::from_dbus("org.freedesktop.DBus.Error.ServiceUnknown", "x"),
-            Error::Unavailable(_)
-        ));
+        assert!(matches!(Error::from_dbus("org.freedesktop.DBus.Error.ServiceUnknown", "x"), Error::Unavailable(_)));
         assert!(matches!(
             Error::from_dbus("org.freedesktop.PolicyKit1.Error.NotAuthorized", "no"),
             Error::NotAuthorized(_)
         ));
-        assert_eq!(
-            Error::from_dbus("org.freedesktop.UDisks2.Error.NotAuthorizedDismissed", ""),
-            Error::Cancelled
-        );
+        assert_eq!(Error::from_dbus("org.freedesktop.UDisks2.Error.NotAuthorizedDismissed", ""), Error::Cancelled);
         // NixOS's patched timedated and localed refuse with NotSupported
         // and a message naming NixOS.
         assert!(matches!(
@@ -222,9 +206,6 @@ mod tests {
             ),
             Error::ManagedBySystem(_)
         ));
-        assert!(matches!(
-            Error::from_dbus("org.example.Odd", "Something"),
-            Error::DBus { .. }
-        ));
+        assert!(matches!(Error::from_dbus("org.example.Odd", "Something"), Error::DBus { .. }));
     }
 }

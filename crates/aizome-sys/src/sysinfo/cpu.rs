@@ -67,18 +67,9 @@ pub(crate) struct CpuTimes {
 
 impl CpuTimes {
     fn total(&self) -> u64 {
-        [
-            self.user,
-            self.nice,
-            self.system,
-            self.idle,
-            self.iowait,
-            self.irq,
-            self.softirq,
-            self.steal,
-        ]
-        .iter()
-        .fold(0u64, |sum, &n| sum.saturating_add(n))
+        [self.user, self.nice, self.system, self.idle, self.iowait, self.irq, self.softirq, self.steal]
+            .iter()
+            .fold(0u64, |sum, &n| sum.saturating_add(n))
     }
 
     /// The counters accumulated since `earlier`; a counter that went
@@ -209,21 +200,14 @@ impl CpuSampler {
     }
 
     /// Fold a new reading in and report use since the previous one.
-    pub(crate) fn update(
-        &mut self,
-        stat: ProcStat,
-        frequency: impl Fn(u32) -> Option<u32>,
-    ) -> CpuUsage {
+    pub(crate) fn update(&mut self, stat: ProcStat, frequency: impl Fn(u32) -> Option<u32>) -> CpuUsage {
         let mut usage = CpuUsage::default();
         if let Some(now) = stat.total {
             let delta = now.since(&self.previous_total.unwrap_or_default());
             let total = delta.total();
             usage.total = busy_percent(&delta);
             usage.user = percent(delta.user.saturating_add(delta.nice), total);
-            usage.system = percent(
-                delta.system.saturating_add(delta.irq).saturating_add(delta.softirq),
-                total,
-            );
+            usage.system = percent(delta.system.saturating_add(delta.irq).saturating_add(delta.softirq), total);
             usage.iowait = percent(delta.iowait, total);
             usage.steal = percent(delta.steal, total);
             self.previous_total = Some(now);
@@ -289,8 +273,7 @@ softirq 1 2 3 4 5 6 7 8 9 10 11
 
     #[test]
     fn malformed_and_short_lines_are_skipped() {
-        let stat =
-            parse_proc_stat("cpu 1 2 x 4\ncpu0 1 2 3\ncpu1 10 0 10 80\ncpuX 1 2 3 4\nbtime\n\n");
+        let stat = parse_proc_stat("cpu 1 2 x 4\ncpu0 1 2 3\ncpu1 10 0 10 80\ncpuX 1 2 3 4\nbtime\n\n");
         assert_eq!(stat.total, None);
         assert_eq!(stat.cores.len(), 1);
         assert_eq!(stat.cores[0].0, 1);
@@ -302,10 +285,8 @@ softirq 1 2 3 4 5 6 7 8 9 10 11
     fn the_first_sample_is_since_boot_and_later_ones_are_deltas() {
         let mut sampler = CpuSampler::new();
         // 100 ticks: 20 user, 10 nice, 10 system, 50 idle, 10 iowait.
-        let first = sampler.update(
-            parse_proc_stat("cpu 20 10 10 50 10 0 0 0 0 0\ncpu0 20 10 10 50 10 0 0 0 0 0\n"),
-            |_| Some(2400),
-        );
+        let first = sampler
+            .update(parse_proc_stat("cpu 20 10 10 50 10 0 0 0 0 0\ncpu0 20 10 10 50 10 0 0 0 0 0\n"), |_| Some(2400));
         assert_eq!(first.total, 40.0);
         assert_eq!(first.user, 30.0);
         assert_eq!(first.system, 10.0);
@@ -314,10 +295,8 @@ softirq 1 2 3 4 5 6 7 8 9 10 11
         assert_eq!(first.cores[0].frequency_mhz, Some(2400));
 
         // 200 more ticks: 150 user, 10 system, 10 irq, 30 idle.
-        let second = sampler.update(
-            parse_proc_stat("cpu 170 10 20 80 10 10 0 0 0 0\ncpu0 170 10 20 80 10 10 0 0 0 0\n"),
-            |_| None,
-        );
+        let second = sampler
+            .update(parse_proc_stat("cpu 170 10 20 80 10 10 0 0 0 0\ncpu0 170 10 20 80 10 10 0 0 0 0\n"), |_| None);
         assert_eq!(second.total, 85.0);
         assert_eq!(second.user, 75.0);
         assert_eq!(second.system, 10.0);
@@ -335,10 +314,7 @@ softirq 1 2 3 4 5 6 7 8 9 10 11
         assert_eq!(same.total, 0.0);
         assert_eq!(same.cores[0].index, 3);
         assert_eq!(same.cores[0].percent, 0.0);
-        let back = sampler
-            .update(parse_proc_stat("cpu 1 0 1 8 0 0 0 0 0 0\ncpu3 1 0 1 8 0 0 0 0 0 0\n"), |_| {
-                None
-            });
+        let back = sampler.update(parse_proc_stat("cpu 1 0 1 8 0 0 0 0 0 0\ncpu3 1 0 1 8 0 0 0 0 0 0\n"), |_| None);
         assert_eq!(back.total, 0.0);
         assert_eq!(back.cores[0].percent, 0.0);
     }
@@ -346,10 +322,8 @@ softirq 1 2 3 4 5 6 7 8 9 10 11
     #[test]
     fn cores_come_out_in_index_order() {
         let mut sampler = CpuSampler::new();
-        let usage = sampler.update(
-            parse_proc_stat("cpu 1 1 1 1\ncpu2 1 1 1 1\ncpu0 1 1 1 1\ncpu1 1 1 1 1\n"),
-            |_| None,
-        );
+        let usage =
+            sampler.update(parse_proc_stat("cpu 1 1 1 1\ncpu2 1 1 1 1\ncpu0 1 1 1 1\ncpu1 1 1 1 1\n"), |_| None);
         let indexes: Vec<u32> = usage.cores.iter().map(|c| c.index).collect();
         assert_eq!(indexes, [0, 1, 2]);
     }

@@ -492,10 +492,8 @@ fn odd_players_show_what_they_can() {
 
     // Signals with the wrong types: metadata that isn't a dictionary, a
     // Seeked position as u64.
-    let changed: HashMap<&str, Value<'_>> = HashMap::from([
-        ("Metadata", Value::from("nonsense")),
-        ("PlaybackStatus", Value::from(3u8)),
-    ]);
+    let changed: HashMap<&str, Value<'_>> =
+        HashMap::from([("Metadata", Value::from("nonsense")), ("PlaybackStatus", Value::from(3u8))]);
     conn.emit_signal(
         None::<()>,
         PATH,
@@ -535,7 +533,8 @@ fn a_flood_of_signals_does_not_hold_up_replies() {
     let flood = bus.builder().build().unwrap();
     // While the slow player is being read, thousands of signals arrive on
     // the rules that hear every player; they mustn't block the reply.
-    let _slow = bus.builder().name("org.mpris.MediaPlayer2.slow").unwrap().serve_at(PATH, SlowRoot).unwrap().build().unwrap();
+    let _slow =
+        bus.builder().name("org.mpris.MediaPlayer2.slow").unwrap().serve_at(PATH, SlowRoot).unwrap().build().unwrap();
     for position in 0..5000i64 {
         flood.emit_signal(None::<()>, PATH, "org.mpris.MediaPlayer2.Player", "Seeked", &(position,)).unwrap();
     }
@@ -561,9 +560,12 @@ fn changes_wake_the_ui() {
     let bus = test_bus!();
     let woken = Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let counter = woken.clone();
-    let mpris = Mpris::with_bus(bus.bus(), Wake::new(move || {
-        counter.fetch_add(1, Ordering::SeqCst);
-    }));
+    let mpris = Mpris::with_bus(
+        bus.bus(),
+        Wake::new(move || {
+            counter.fetch_add(1, Ordering::SeqCst);
+        }),
+    );
     let seen = mpris.generation();
     let (_vlc, _) = serve(&bus, VLC, "VLC media player", "Paused");
     assert!(eventually(|| mpris.generation() > seen && mpris.snapshot().players.len() == 1));
@@ -586,13 +588,31 @@ fn lists_this_sessions_players() {
         );
         println!(
             "    can: control={} play={} pause={} next={} previous={} seek={} raise={} quit={}",
-            p.can_control, p.can_play, p.can_pause, p.can_go_next, p.can_go_previous, p.can_seek, p.can_raise, p.can_quit
+            p.can_control,
+            p.can_play,
+            p.can_pause,
+            p.can_go_next,
+            p.can_go_previous,
+            p.can_seek,
+            p.can_raise,
+            p.can_quit
         );
         let m = &p.metadata;
         println!(
             "    track {:?}: {:?} by {:?} on {:?}, length {:?}, art {:?}, url {:?}",
-            m.track_id, m.title, m.artist(), m.album, m.length, m.art_url, m.url
+            m.track_id,
+            m.title,
+            m.artist(),
+            m.album,
+            m.length,
+            m.art_url,
+            m.url
         );
-        println!("    position {:?} (read {:?}), estimated now {:?}", p.last_position, p.last_position_at.elapsed(), p.position());
+        println!(
+            "    position {:?} (read {:?}), estimated now {:?}",
+            p.last_position,
+            p.last_position_at.elapsed(),
+            p.position()
+        );
     }
 }

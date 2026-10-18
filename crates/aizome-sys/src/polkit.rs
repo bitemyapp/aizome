@@ -686,9 +686,15 @@ mod tests {
 
     #[test]
     fn helper_lines() {
-        assert_eq!(parse_line("PAM_PROMPT_ECHO_OFF Password: "), HelperLine::Prompt { text: "Password: ".into(), echo: false });
+        assert_eq!(
+            parse_line("PAM_PROMPT_ECHO_OFF Password: "),
+            HelperLine::Prompt { text: "Password: ".into(), echo: false }
+        );
         assert_eq!(parse_line("PAM_PROMPT_ECHO_ON Login:\n"), HelperLine::Prompt { text: "Login:".into(), echo: true });
-        assert_eq!(parse_line("PAM_ERROR_MSG Authentication failure"), HelperLine::Error("Authentication failure".into()));
+        assert_eq!(
+            parse_line("PAM_ERROR_MSG Authentication failure"),
+            HelperLine::Error("Authentication failure".into())
+        );
         assert_eq!(parse_line("PAM_TEXT_INFO Touch the reader"), HelperLine::Info("Touch the reader".into()));
         assert_eq!(parse_line("SUCCESS"), HelperLine::Success);
         assert_eq!(parse_line("FAILURE"), HelperLine::Failure);

@@ -240,8 +240,14 @@ pub(crate) fn power_device(path: &str, p: &Props) -> PowerDevice {
         icon_name: p.str("IconName"),
         charge_threshold_enabled: p.bool("ChargeThresholdEnabled"),
         charge_threshold_supported: p.bool("ChargeThresholdSupported"),
-        charge_start_threshold: p.opt_i64("ChargeStartThreshold").and_then(|n| u32::try_from(n).ok()).filter(|&n| n > 0 && n < 100),
-        charge_end_threshold: p.opt_i64("ChargeEndThreshold").and_then(|n| u32::try_from(n).ok()).filter(|&n| n > 0 && n <= 100),
+        charge_start_threshold: p
+            .opt_i64("ChargeStartThreshold")
+            .and_then(|n| u32::try_from(n).ok())
+            .filter(|&n| n > 0 && n < 100),
+        charge_end_threshold: p
+            .opt_i64("ChargeEndThreshold")
+            .and_then(|n| u32::try_from(n).ok())
+            .filter(|&n| n > 0 && n <= 100),
     }
 }
 
@@ -296,11 +302,9 @@ impl Upower {
     pub fn new(wake: Wake) -> Upower {
         match Bus::system() {
             Ok(bus) => Upower::with_bus(bus, wake),
-            Err(_) => Upower {
-                bus: None,
-                model: Arc::new(Model::new(UpowerState::default(), wake)),
-                stop: Stop::default(),
-            },
+            Err(_) => {
+                Upower { bus: None, model: Arc::new(Model::new(UpowerState::default(), wake)), stop: Stop::default() }
+            }
         }
     }
 
@@ -312,8 +316,13 @@ impl Upower {
         let mut present = false;
         let mut dirty = false;
         let follower = model.clone();
-        bus::follow(bus.clone(), UPOWER, vec![signals_from(UPOWER)], true, stop.clone(), move |bus, event| {
-            match event {
+        bus::follow(
+            bus.clone(),
+            UPOWER,
+            vec![signals_from(UPOWER)],
+            true,
+            stop.clone(),
+            move |bus, event| match event {
                 Event::Appeared => {
                     present = true;
                     (objects, display) = load(bus);
@@ -344,9 +353,11 @@ impl Upower {
                         }
                         (IFACE_KBD, "BrightnessChanged" | "BrightnessChangedWithSource") => {
                             if let Some(levels) = objects.map.get_mut(&path).and_then(|o| o.get_mut(KBD_LEVELS))
-                                && let Ok(value) = msg.body().deserialize::<(i32,)>().map(|(v,)| v).or_else(|_| {
-                                    msg.body().deserialize::<(i32, String)>().map(|(v, _)| v)
-                                })
+                                && let Ok(value) = msg
+                                    .body()
+                                    .deserialize::<(i32,)>()
+                                    .map(|(v,)| v)
+                                    .or_else(|_| msg.body().deserialize::<(i32, String)>().map(|(v, _)| v))
                             {
                                 levels.insert("Brightness".into(), zbus::zvariant::OwnedValue::from(value));
                                 dirty = true;
@@ -367,8 +378,8 @@ impl Upower {
                         dirty = false;
                     }
                 }
-            }
-        });
+            },
+        );
         Upower { bus: Some(bus), model, stop }
     }
 
@@ -384,9 +395,13 @@ impl Upower {
     pub fn history(&self, path: &str, kind: &str, timespan: u32, resolution: u32) -> Task<Vec<HistoryPoint>> {
         let (path, kind) = (path.to_owned(), kind.to_owned());
         bus::spawn(&self.bus, "UPower", self.model.wake(), move |bus| {
-            let mut points: Vec<(u32, f64, u32)> = bus.call(UPOWER, &path, IFACE_DEVICE, "GetHistory", &(kind, timespan, resolution))?;
+            let mut points: Vec<(u32, f64, u32)> =
+                bus.call(UPOWER, &path, IFACE_DEVICE, "GetHistory", &(kind, timespan, resolution))?;
             points.sort_by_key(|p| p.0);
-            Ok(points.into_iter().map(|(time, value, state)| HistoryPoint { time, value, state: BatteryState::from_u32(state) }).collect())
+            Ok(points
+                .into_iter()
+                .map(|(time, value, state)| HistoryPoint { time, value, state: BatteryState::from_u32(state) })
+                .collect())
         })
     }
 
@@ -504,9 +519,18 @@ mod tests {
         put(
             "/d/mouse",
             IFACE_DEVICE,
-            vec![("Type", owned(5u32)), ("IsPresent", owned(true)), ("Percentage", owned(20.0f64)), ("Model", owned("MX Master"))],
+            vec![
+                ("Type", owned(5u32)),
+                ("IsPresent", owned(true)),
+                ("Percentage", owned(20.0f64)),
+                ("Model", owned("MX Master")),
+            ],
         );
-        put("/d/display", IFACE_DEVICE, vec![("Type", owned(2u32)), ("IsPresent", owned(true)), ("Percentage", owned(57.0f64))]);
+        put(
+            "/d/display",
+            IFACE_DEVICE,
+            vec![("Type", owned(2u32)), ("IsPresent", owned(true)), ("Percentage", owned(57.0f64))],
+        );
         put("/k", KBD_LEVELS, vec![("Brightness", owned(1i32)), ("MaxBrightness", owned(2i32))]);
         let state = build(&objects, Some("/d/display"));
         assert!(state.on_battery && state.lid_present && !state.plugged_in());

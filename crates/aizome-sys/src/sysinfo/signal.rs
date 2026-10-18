@@ -99,8 +99,7 @@ pub(crate) fn send_checked(pid: u32, signal: Signal, start_ticks: Option<u64>) -
     let gone = || Error::NotFound(format!("process {pid} has exited"));
 
     let status = std::fs::read_to_string(format!("/proc/{pid}/status")).map_err(|_| gone())?;
-    let uid = parse_status_uid(&status)
-        .ok_or_else(|| Error::Failed(format!("/proc/{pid}/status has no Uid line")))?;
+    let uid = parse_status_uid(&status).ok_or_else(|| Error::Failed(format!("/proc/{pid}/status has no Uid line")))?;
     // SAFETY: getuid has no preconditions and cannot fail.
     if uid != unsafe { libc::getuid() } {
         return Err(Error::NotAuthorized(format!("process {pid} belongs to another user")));
@@ -148,8 +147,7 @@ fn checked_pid(pid: u32) -> Result<libc::pid_t> {
     if pid == std::process::id() {
         return Err(Error::InvalidArgument("refusing to signal this process itself".into()));
     }
-    libc::pid_t::try_from(pid)
-        .map_err(|_| Error::InvalidArgument(format!("{pid} is not a process ID")))
+    libc::pid_t::try_from(pid).map_err(|_| Error::InvalidArgument(format!("{pid} is not a process ID")))
 }
 
 /// A pidfd for `pid`, or `None` where pidfds aren't available (old kernels,
@@ -174,9 +172,7 @@ fn open_pidfd(pid: u32, raw: libc::pid_t) -> Result<Option<OwnedFd>> {
 fn signal_error(pid: u32, signal: Signal, error: &std::io::Error) -> Error {
     match error.raw_os_error() {
         Some(libc::ESRCH) => Error::NotFound(format!("process {pid} has exited")),
-        Some(libc::EPERM) => {
-            Error::NotAuthorized(format!("not allowed to send {} to process {pid}", signal.name()))
-        }
+        Some(libc::EPERM) => Error::NotAuthorized(format!("not allowed to send {} to process {pid}", signal.name())),
         _ => Error::Failed(format!("sending {} to process {pid}: {error}", signal.name())),
     }
 }
@@ -192,14 +188,8 @@ mod tests {
     fn init_nothing_and_ourselves_are_refused() {
         assert!(matches!(terminate(0), Err(Error::InvalidArgument(_))));
         assert!(matches!(kill(1), Err(Error::InvalidArgument(_))));
-        assert!(matches!(
-            signal_process(std::process::id(), Signal::Stop),
-            Err(Error::InvalidArgument(_))
-        ));
-        assert!(matches!(
-            signal_process(u32::MAX, Signal::Terminate),
-            Err(Error::InvalidArgument(_))
-        ));
+        assert!(matches!(signal_process(std::process::id(), Signal::Stop), Err(Error::InvalidArgument(_))));
+        assert!(matches!(signal_process(u32::MAX, Signal::Terminate), Err(Error::InvalidArgument(_))));
     }
 
     #[test]
@@ -255,10 +245,7 @@ mod tests {
         let pid = child.id();
         let text = std::fs::read_to_string(format!("/proc/{pid}/stat")).unwrap();
         let start = parse_stat(&text).unwrap().start_ticks;
-        assert!(matches!(
-            send_checked(pid, Signal::Kill, Some(start + 1)),
-            Err(Error::NotFound(_))
-        ));
+        assert!(matches!(send_checked(pid, Signal::Kill, Some(start + 1)), Err(Error::NotFound(_))));
         send_checked(pid, Signal::Kill, Some(start)).unwrap();
         assert_eq!(child.wait().unwrap().signal(), Some(libc::SIGKILL));
     }
@@ -292,10 +279,7 @@ mod tests {
             .ok()
             .and_then(|s| s.trim().parse().ok())
             .unwrap_or(32768);
-        let unused = (2..max)
-            .rev()
-            .find(|pid| !std::path::Path::new(&format!("/proc/{pid}")).exists())
-            .unwrap();
+        let unused = (2..max).rev().find(|pid| !std::path::Path::new(&format!("/proc/{pid}")).exists()).unwrap();
         assert!(matches!(terminate(unused), Err(Error::NotFound(_))));
     }
 }

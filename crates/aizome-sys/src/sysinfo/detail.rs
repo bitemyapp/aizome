@@ -249,16 +249,24 @@ mod tests {
             "Name:\tchrome\nUid:\t1000\t1000\t1000\t1000\nVmSize:\t 100000 kB\nVmRSS:\t  20480 kB\nRssAnon:\t  10240 kB\n\
              RssFile:\t   8192 kB\nRssShmem:\t   2048 kB\nVmSwap:\t     4 kB\nvoluntary_ctxt_switches:\t150\nnonvoluntary_ctxt_switches:\t7\n",
         );
-        assert_eq!((s.uid, s.resident, s.anon, s.swap, s.virt), (1000, 20480 * 1024, 10240 * 1024, 4096, 100000 * 1024));
+        assert_eq!(
+            (s.uid, s.resident, s.anon, s.swap, s.virt),
+            (1000, 20480 * 1024, 10240 * 1024, 4096, 100000 * 1024)
+        );
         assert_eq!((s.voluntary_switches, s.involuntary_switches), (150, 7));
         let m = parse_smaps_rollup(
             "55a0-7ffd ---p 00000000 00:00 0 [rollup]\nRss: 2000 kB\nPss: 1500 kB\nShared_Clean: 400 kB\nShared_Dirty: 100 kB\n\
              Private_Clean: 300 kB\nPrivate_Dirty: 1200 kB\nSwap: 8 kB\nSwapPss: 4 kB\n",
         )
         .unwrap();
-        assert_eq!((m.pss, m.private, m.shared, m.swap, m.swap_pss), (1500 * 1024, 1500 * 1024, 500 * 1024, 8192, 4096));
+        assert_eq!(
+            (m.pss, m.private, m.shared, m.swap, m.swap_pss),
+            (1500 * 1024, 1500 * 1024, 500 * 1024, 8192, 4096)
+        );
         assert_eq!(parse_smaps_rollup("nothing"), None);
-        let io = parse_process_io("rchar: 1\nwchar: 2\nread_bytes: 4096\nwrite_bytes: 8192\ncancelled_write_bytes: 0\n").unwrap();
+        let io =
+            parse_process_io("rchar: 1\nwchar: 2\nread_bytes: 4096\nwrite_bytes: 8192\ncancelled_write_bytes: 0\n")
+                .unwrap();
         assert_eq!((io.read_bytes, io.write_bytes), (4096, 8192));
         assert_eq!(parse_process_io("rchar: 1\n"), None);
     }

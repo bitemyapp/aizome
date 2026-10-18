@@ -38,9 +38,7 @@ impl Manager {
     ) -> fdo::Result<OwnedObjectPath> {
         self.log.lock().unwrap().created.push((name.clone(), real_name.clone(), account_type));
         let user = path("/org/freedesktop/Accounts/User1002");
-        server
-            .at(user.as_str(), FakeUser::new(1002, &name, &real_name, account_type, self.log.clone()))
-            .await?;
+        server.at(user.as_str(), FakeUser::new(1002, &name, &real_name, account_type, self.log.clone())).await?;
         self.users.push(user.clone());
         Manager::user_added(&emitter, user.clone()).await?;
         Ok(user)
@@ -107,12 +105,20 @@ impl FakeUser {
     fn system_account(&self) -> bool {
         self.uid < 1000
     }
-    async fn set_real_name(&mut self, name: String, #[zbus(signal_emitter)] emitter: SignalEmitter<'_>) -> fdo::Result<()> {
+    async fn set_real_name(
+        &mut self,
+        name: String,
+        #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
+    ) -> fdo::Result<()> {
         self.real_name = name;
         FakeUser::changed(&emitter).await?;
         Ok(())
     }
-    async fn set_account_type(&mut self, kind: i32, #[zbus(signal_emitter)] emitter: SignalEmitter<'_>) -> fdo::Result<()> {
+    async fn set_account_type(
+        &mut self,
+        kind: i32,
+        #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
+    ) -> fdo::Result<()> {
         self.account_type = kind;
         FakeUser::changed(&emitter).await?;
         Ok(())

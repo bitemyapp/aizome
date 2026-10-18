@@ -327,10 +327,7 @@ pub(crate) fn fallback_identity(bus_name: &str) -> String {
 /// (the latest to start, when several are), else the one that stopped
 /// playing last, else the one that changed last.
 pub(crate) fn choose_active(players: &[Player]) -> Option<String> {
-    players
-        .iter()
-        .max_by_key(|p| (p.is_playing(), p.played, p.changed))
-        .map(|p| p.bus_name.clone())
+    players.iter().max_by_key(|p| (p.is_playing(), p.played, p.changed)).map(|p| p.bus_name.clone())
 }
 
 /// The metadata's length, for estimates made before a snapshot is built.
@@ -419,7 +416,8 @@ mod tests {
 
     #[test]
     fn players_read_leniently() {
-        let root = props(vec![("Identity", owned("  ")), ("DesktopEntry", owned("vlc.desktop")), ("CanRaise", owned(1u8))]);
+        let root =
+            props(vec![("Identity", owned("  ")), ("DesktopEntry", owned("vlc.desktop")), ("CanRaise", owned(1u8))]);
         let player = props(vec![
             ("PlaybackStatus", owned("playing")),
             ("LoopStatus", owned("Sometimes")),
@@ -429,7 +427,16 @@ mod tests {
             ("CanPlay", owned(true)),
             ("CanSeek", owned("yes")),
         ]);
-        let p = Player::from_props("org.mpris.MediaPlayer2.vlc.instance42", ":1.7", &root, &player, -5, Instant::now(), 0, 1);
+        let p = Player::from_props(
+            "org.mpris.MediaPlayer2.vlc.instance42",
+            ":1.7",
+            &root,
+            &player,
+            -5,
+            Instant::now(),
+            0,
+            1,
+        );
         assert_eq!(p.identity, "vlc");
         assert_eq!(p.desktop_entry, "vlc");
         assert!(p.can_raise && !p.can_quit);
@@ -462,7 +469,8 @@ mod tests {
     #[test]
     fn the_active_player_is_the_one_playing_else_the_last_played_else_the_last_changed() {
         let player = |name: &str, status: PlaybackStatus, played: u64, changed: u64| {
-            let mut p = Player::from_props(name, ":1.1", &Props::new(), &Props::new(), 0, Instant::now(), played, changed);
+            let mut p =
+                Player::from_props(name, ":1.1", &Props::new(), &Props::new(), 0, Instant::now(), played, changed);
             p.status = status;
             p
         };

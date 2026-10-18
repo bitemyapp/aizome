@@ -138,8 +138,7 @@ pub fn hardware_with_pci_ids(pci_ids: Option<&Path>) -> Hardware {
 
 /// The processor's model, cores and threads.
 pub fn cpu_info() -> CpuInfo {
-    let parsed =
-        std::fs::read_to_string(CPUINFO).map(|text| parse_cpuinfo(&text)).unwrap_or_default();
+    let parsed = std::fs::read_to_string(CPUINFO).map(|text| parse_cpuinfo(&text)).unwrap_or_default();
     let topology = cpu_topology_in(Path::new(CPU_ROOT));
     CpuInfo {
         model: parsed.model.or_else(|| read_attr(DEVICE_TREE_MODEL)),
@@ -213,8 +212,7 @@ pub(crate) fn parse_cpuinfo(text: &str) -> ParsedCpuinfo {
     }
     finish(&mut current, &mut in_processor);
     parsed.model = parsed.model.or(hardware);
-    parsed.cores =
-        (!ids_missing && !pairs.is_empty()).then(|| u32::try_from(pairs.len()).ok()).flatten();
+    parsed.cores = (!ids_missing && !pairs.is_empty()).then(|| u32::try_from(pairs.len()).ok()).flatten();
     parsed
 }
 
@@ -235,8 +233,8 @@ pub(crate) fn cpu_topology_in(root: &Path) -> Option<(u32, u32)> {
             continue;
         }
         let topology = entry.path().join("topology");
-        let Some(siblings) = read_attr(topology.join("core_cpus_list"))
-            .or_else(|| read_attr(topology.join("thread_siblings_list")))
+        let Some(siblings) =
+            read_attr(topology.join("core_cpus_list")).or_else(|| read_attr(topology.join("thread_siblings_list")))
         else {
             continue;
         };
@@ -262,8 +260,7 @@ pub(crate) fn disks_in(root: &Path) -> Vec<Disk> {
         let Ok(name) = entry.file_name().into_string() else {
             continue;
         };
-        if ["loop", "ram", "zram", "dm-", "md", "nbd"].iter().any(|prefix| name.starts_with(prefix))
-        {
+        if ["loop", "ram", "zram", "dm-", "md", "nbd"].iter().any(|prefix| name.starts_with(prefix)) {
             continue;
         }
         let dir = entry.path();
@@ -396,17 +393,9 @@ Model\t\t: Raspberry Pi 4 Model B Rev 1.4
 
     #[test]
     fn cpu_model_names_are_tidied() {
-        let name = |model: &str| {
-            CpuInfo { model: Some(model.into()), ..CpuInfo::default() }.display_name()
-        };
-        assert_eq!(
-            name("Intel(R) Core(TM) Ultra 7 365").as_deref(),
-            Some("Intel Core Ultra 7 365")
-        );
-        assert_eq!(
-            name("Intel(R) Core(TM) i7-8550U CPU @ 1.80GHz").as_deref(),
-            Some("Intel Core i7-8550U")
-        );
+        let name = |model: &str| CpuInfo { model: Some(model.into()), ..CpuInfo::default() }.display_name();
+        assert_eq!(name("Intel(R) Core(TM) Ultra 7 365").as_deref(), Some("Intel Core Ultra 7 365"));
+        assert_eq!(name("Intel(R) Core(TM) i7-8550U CPU @ 1.80GHz").as_deref(), Some("Intel Core i7-8550U"));
         assert_eq!(
             name("11th Gen Intel(R) Core(TM) i7-1165G7 @ 2.80GHz").as_deref(),
             Some("11th Gen Intel Core i7-1165G7")
@@ -415,10 +404,7 @@ Model\t\t: Raspberry Pi 4 Model B Rev 1.4
             name("AMD Ryzen 7 7840U w/ Radeon  780M Graphics").as_deref(),
             Some("AMD Ryzen 7 7840U w/ Radeon 780M Graphics")
         );
-        assert_eq!(
-            name("Intel(R) Xeon(R) CPU E5-2680 v4 @ 2.40GHz").as_deref(),
-            Some("Intel Xeon CPU E5-2680 v4")
-        );
+        assert_eq!(name("Intel(R) Xeon(R) CPU E5-2680 v4 @ 2.40GHz").as_deref(), Some("Intel Xeon CPU E5-2680 v4"));
         assert_eq!(name("(R) (TM)"), None);
         assert_eq!(CpuInfo::default().display_name(), None);
     }
@@ -482,10 +468,7 @@ Model\t\t: Raspberry Pi 4 Model B Rev 1.4
     #[test]
     fn machine_info_gives_the_pretty_hostname() {
         assert_eq!(
-            parse_pretty_hostname(
-                "PRETTY_HOSTNAME=\"Chris's ThinkPad\"\nICON_NAME=computer-laptop\n"
-            )
-            .as_deref(),
+            parse_pretty_hostname("PRETTY_HOSTNAME=\"Chris's ThinkPad\"\nICON_NAME=computer-laptop\n").as_deref(),
             Some("Chris's ThinkPad")
         );
         assert_eq!(parse_pretty_hostname("PRETTY_HOSTNAME=\n"), None);
@@ -499,11 +482,7 @@ Model\t\t: Raspberry Pi 4 Model B Rev 1.4
         let hardware = hardware();
         let took = started.elapsed();
         println!("{hardware:#?}");
-        println!(
-            "CPU: {:?}; model: {:?}; took {took:?}",
-            hardware.cpu.display_name(),
-            hardware.model.display_name()
-        );
+        println!("CPU: {:?}; model: {:?}; took {took:?}", hardware.cpu.display_name(), hardware.model.display_name());
         assert!(hardware.cpu.model.is_some());
         assert!(hardware.cpu.threads >= 1);
         assert!(hardware.cpu.cores.is_some_and(|c| c >= 1 && c <= hardware.cpu.threads));

@@ -38,13 +38,7 @@ pub(crate) fn parse_loadavg(text: &str) -> Option<LoadAverage> {
     let mut average = || fields.next()?.parse::<f32>().ok().filter(|n| n.is_finite() && *n >= 0.0);
     let (one, five, fifteen) = (average()?, average()?, average()?);
     let (running, total) = fields.next()?.split_once('/')?;
-    Some(LoadAverage {
-        one,
-        five,
-        fifteen,
-        running: running.parse().ok()?,
-        total: total.parse().ok()?,
-    })
+    Some(LoadAverage { one, five, fifteen, running: running.parse().ok()?, total: total.parse().ok()? })
 }
 
 /// How long the system has been up (`/proc/uptime`), including time spent

@@ -185,7 +185,10 @@ fn serve(bus: &common::TestBus, timezone_env: &str) -> (Vec<zbus::blocking::Conn
         .unwrap()
         .name("org.freedesktop.hostname1")
         .unwrap()
-        .serve_at("/org/freedesktop/timedate1", Timedated { timezone: "America/Chicago".into(), ntp: true, calls: calls.clone() })
+        .serve_at(
+            "/org/freedesktop/timedate1",
+            Timedated { timezone: "America/Chicago".into(), ntp: true, calls: calls.clone() },
+        )
         .unwrap()
         .serve_at("/org/freedesktop/locale1", Localed)
         .unwrap()

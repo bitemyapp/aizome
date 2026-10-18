@@ -127,11 +127,7 @@ fn classify_disk(sys_block: &Path, name: &str, disks: &[DiskCounters]) -> DiskCl
         .map(|d| d.name.as_str())
         .filter(|&d| d != name && name.starts_with(d))
         .find(|&d| sys_block.join(sys_name(d)).join(sys_name(name)).is_dir());
-    DiskClass {
-        whole_disk: false,
-        parent: parent.map(str::to_owned),
-        virtual_device: parent.is_none_or(is_virtual),
-    }
+    DiskClass { whole_disk: false, parent: parent.map(str::to_owned), virtual_device: parent.is_none_or(is_virtual) }
 }
 
 /// Measures disk throughput between calls to [`sample`](Self::sample); the
@@ -157,10 +153,7 @@ impl DiskIoSampler {
         DiskIoSampler::with_paths(DISKSTATS, SYS_BLOCK)
     }
 
-    pub(crate) fn with_paths(
-        diskstats: impl Into<PathBuf>,
-        sys_block: impl Into<PathBuf>,
-    ) -> DiskIoSampler {
+    pub(crate) fn with_paths(diskstats: impl Into<PathBuf>, sys_block: impl Into<PathBuf>) -> DiskIoSampler {
         DiskIoSampler {
             previous: HashMap::new(),
             classes: HashMap::new(),
@@ -183,10 +176,7 @@ impl DiskIoSampler {
     }
 
     pub(crate) fn update(&mut self, disks: Vec<DiskCounters>, now: Instant) -> DiskIo {
-        let seconds = self
-            .last
-            .map(|last| now.saturating_duration_since(last).as_secs_f64())
-            .filter(|&s| s > 0.0);
+        let seconds = self.last.map(|last| now.saturating_duration_since(last).as_secs_f64()).filter(|&s| s > 0.0);
         self.last = Some(now);
         self.classes.retain(|name, _| disks.iter().any(|d| &d.name == name));
 
@@ -208,12 +198,10 @@ impl DiskIoSampler {
             };
             if let (Some(seconds), Some(before)) = (seconds, self.previous.get(&disk.name)) {
                 let delta = |now: u64, then: u64| now.saturating_sub(then) as f64;
-                stat.read_per_sec =
-                    delta(disk.sectors_read, before.sectors_read) * SECTOR as f64 / seconds;
-                stat.write_per_sec =
-                    delta(disk.sectors_written, before.sectors_written) * SECTOR as f64 / seconds;
-                stat.busy_percent = (delta(disk.io_ms, before.io_ms) / (seconds * 1000.0) * 100.0)
-                    .clamp(0.0, 100.0) as f32;
+                stat.read_per_sec = delta(disk.sectors_read, before.sectors_read) * SECTOR as f64 / seconds;
+                stat.write_per_sec = delta(disk.sectors_written, before.sectors_written) * SECTOR as f64 / seconds;
+                stat.busy_percent =
+                    (delta(disk.io_ms, before.io_ms) / (seconds * 1000.0) * 100.0).clamp(0.0, 100.0) as f32;
             }
             if stat.whole_disk && !stat.virtual_device {
                 io.read_per_sec += stat.read_per_sec;
@@ -321,10 +309,7 @@ impl NetSampler {
         NetSampler::with_paths(NET_DEV, SYS_CLASS_NET)
     }
 
-    pub(crate) fn with_paths(
-        net_dev: impl Into<PathBuf>,
-        sys_class_net: impl Into<PathBuf>,
-    ) -> NetSampler {
+    pub(crate) fn with_paths(net_dev: impl Into<PathBuf>, sys_class_net: impl Into<PathBuf>) -> NetSampler {
         NetSampler {
             previous: HashMap::new(),
             classes: HashMap::new(),
@@ -347,10 +332,7 @@ impl NetSampler {
     }
 
     pub(crate) fn update(&mut self, interfaces: Vec<NetCounters>, now: Instant) -> NetIo {
-        let seconds = self
-            .last
-            .map(|last| now.saturating_duration_since(last).as_secs_f64())
-            .filter(|&s| s > 0.0);
+        let seconds = self.last.map(|last| now.saturating_duration_since(last).as_secs_f64()).filter(|&s| s > 0.0);
         self.last = Some(now);
         self.classes.retain(|name, _| interfaces.iter().any(|i| &i.name == name));
 
@@ -369,10 +351,8 @@ impl NetSampler {
                 ..InterfaceIo::default()
             };
             if let (Some(seconds), Some(before)) = (seconds, self.previous.get(&interface.name)) {
-                stat.rx_per_sec =
-                    interface.rx_bytes.saturating_sub(before.rx_bytes) as f64 / seconds;
-                stat.tx_per_sec =
-                    interface.tx_bytes.saturating_sub(before.tx_bytes) as f64 / seconds;
+                stat.rx_per_sec = interface.rx_bytes.saturating_sub(before.rx_bytes) as f64 / seconds;
+                stat.tx_per_sec = interface.tx_bytes.saturating_sub(before.tx_bytes) as f64 / seconds;
             }
             if !stat.virtual_device {
                 io.rx_per_sec += stat.rx_per_sec;
@@ -405,11 +385,7 @@ mod tests {
 
     fn fake_sys_block() -> TestTree {
         let tree = TestTree::new("sys-block");
-        tree.dir("nvme0n1/device")
-            .dir("nvme0n1/nvme0n1p1")
-            .dir("nvme0n1/nvme0n1p2")
-            .dir("loop1")
-            .dir("dm-0");
+        tree.dir("nvme0n1/device").dir("nvme0n1/nvme0n1p1").dir("nvme0n1/nvme0n1p2").dir("loop1").dir("dm-0");
         tree
     }
 
@@ -433,8 +409,7 @@ mod tests {
         let start = Instant::now();
         let first = sampler.update(disks.clone(), start);
         assert_eq!(first.read_per_sec, 0.0, "no rates in the first sample");
-        let get =
-            |io: &DiskIo, name: &str| io.devices.iter().find(|d| d.name == name).unwrap().clone();
+        let get = |io: &DiskIo, name: &str| io.devices.iter().find(|d| d.name == name).unwrap().clone();
         let nvme = get(&first, "nvme0n1");
         assert!(nvme.whole_disk && !nvme.virtual_device && nvme.parent.is_none());
         assert_eq!(nvme.read_total, 254839442 * 512);
@@ -469,10 +444,8 @@ mod tests {
         let mut sampler = DiskIoSampler::with_paths("/unused", &tree.0);
         let start = Instant::now();
         sampler.update(parse_diskstats(DISKSTATS_1), start);
-        let io = sampler.update(
-            parse_diskstats(" 259 0 nvme0n1 1 0 1 0 1 0 1 0 0 1 0\n"),
-            start + Duration::from_secs(1),
-        );
+        let io =
+            sampler.update(parse_diskstats(" 259 0 nvme0n1 1 0 1 0 1 0 1 0 0 1 0\n"), start + Duration::from_secs(1));
         assert_eq!(io.devices.len(), 1);
         assert_eq!(io.read_per_sec, 0.0);
         assert_eq!(io.devices[0].busy_percent, 0.0);
@@ -518,8 +491,7 @@ virbr0:    0       0    0    0    0     0          0         0        0       0 
         let mut sampler = NetSampler::with_paths("/unused", &tree.0);
         let start = Instant::now();
         let first = sampler.update(parse_net_dev(NET_DEV_1), start);
-        let flags: Vec<(bool, bool)> =
-            first.interfaces.iter().map(|i| (i.loopback, i.virtual_device)).collect();
+        let flags: Vec<(bool, bool)> = first.interfaces.iter().map(|i| (i.loopback, i.virtual_device)).collect();
         assert_eq!(flags, [(true, true), (false, false), (false, true), (false, true)]);
         assert_eq!(first.rx_per_sec, 0.0);
 
@@ -570,13 +542,7 @@ virbr0:    0       0    0    0    0     0          0         0        0       0 
         for i in &net_io.interfaces {
             println!(
                 "{:<12} loopback={} virtual={} rx {:.0} B/s tx {:.0} B/s (total {} / {})",
-                i.name,
-                i.loopback,
-                i.virtual_device,
-                i.rx_per_sec,
-                i.tx_per_sec,
-                i.rx_total,
-                i.tx_total
+                i.name, i.loopback, i.virtual_device, i.rx_per_sec, i.tx_per_sec, i.rx_total, i.tx_total
             );
         }
         assert!(!first.devices.is_empty());

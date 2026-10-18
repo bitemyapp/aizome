@@ -128,11 +128,7 @@ impl Bus {
                 .cache_properties(zbus::proxy::CacheProperties::No)
                 .build()
                 .await?;
-            let flags = if opts.interactive {
-                MethodFlags::AllowInteractiveAuth.into()
-            } else {
-                Default::default()
-            };
+            let flags = if opts.interactive { MethodFlags::AllowInteractiveAuth.into() } else { Default::default() };
             proxy.call_with_flags::<_, B, R>(method, flags, body).await
         };
         match with_timeout(opts.timeout, call).await {
@@ -149,8 +145,7 @@ impl Bus {
         R: TryFrom<OwnedValue>,
         R::Error: Into<zvariant::Error>,
     {
-        let value: OwnedValue =
-            self.call(dest, path, "org.freedesktop.DBus.Properties", "Get", &(iface, name))?;
+        let value: OwnedValue = self.call(dest, path, "org.freedesktop.DBus.Properties", "Get", &(iface, name))?;
         R::try_from(value).map_err(|e| Error::from(e.into()))
     }
 
@@ -169,14 +164,7 @@ impl Bus {
         value: impl Into<Value<'v>>,
     ) -> Result<()> {
         let value: Value<'v> = value.into();
-        self.call_with(
-            Opts::ACTION,
-            dest,
-            path,
-            "org.freedesktop.DBus.Properties",
-            "Set",
-            &(iface, name, value),
-        )
+        self.call_with(Opts::ACTION, dest, path, "org.freedesktop.DBus.Properties", "Set", &(iface, name, value))
     }
 
     /// The unique name owning `name`, if anyone does.
@@ -224,10 +212,7 @@ fn connect(builder: zbus::connection::Builder<'static>) -> Result<zbus::Connecti
 }
 
 /// `future`'s output, or `None` once `timeout` passes.
-pub(crate) async fn with_timeout<T>(
-    timeout: Duration,
-    future: impl std::future::Future<Output = T>,
-) -> Option<T> {
+pub(crate) async fn with_timeout<T>(timeout: Duration, future: impl std::future::Future<Output = T>) -> Option<T> {
     futures_lite::future::or(async { Some(future.await) }, async {
         async_io::Timer::after(timeout).await;
         None
@@ -325,11 +310,9 @@ pub(crate) trait PropsExt {
     /// An array of byte strings (`aay`).
     fn bytestrings(&self, key: &str) -> Vec<String> {
         match self.value(key) {
-            Some(Value::Array(array)) => array
-                .iter()
-                .map(|item| bytes_to_string(&value_bytes(item)))
-                .filter(|s| !s.is_empty())
-                .collect(),
+            Some(Value::Array(array)) => {
+                array.iter().map(|item| bytes_to_string(&value_bytes(item))).filter(|s| !s.is_empty()).collect()
+            }
             _ => Vec::new(),
         }
     }
@@ -357,10 +340,9 @@ impl PropsExt for HashMap<String, &Value<'static>> {
 /// empty.
 pub(crate) fn value_dict<'a>(value: &'a Value<'static>) -> HashMap<String, &'a Value<'static>> {
     match unwrap_variant(value) {
-        Value::Dict(dict) => dict
-            .iter()
-            .filter_map(|(key, value)| Some((value_str(key)?, unwrap_variant(value))))
-            .collect(),
+        Value::Dict(dict) => {
+            dict.iter().filter_map(|(key, value)| Some((value_str(key)?, unwrap_variant(value)))).collect()
+        }
         _ => HashMap::new(),
     }
 }
@@ -484,9 +466,7 @@ impl Objects {
     pub(crate) fn load(bus: &Bus, dest: &str, root: &str) -> Result<Objects> {
         let all: ManagedObjects =
             bus.call(dest, root, "org.freedesktop.DBus.ObjectManager", "GetManagedObjects", &())?;
-        Ok(Objects {
-            map: all.into_iter().map(|(path, ifaces)| (path.to_string(), ifaces)).collect(),
-        })
+        Ok(Objects { map: all.into_iter().map(|(path, ifaces)| (path.to_string(), ifaces)).collect() })
     }
 
     pub(crate) fn get(&self, path: &str, iface: &str) -> Option<&Props> {
@@ -495,9 +475,7 @@ impl Objects {
 
     /// Objects with `iface`, by path.
     pub(crate) fn with<'a>(&'a self, iface: &'a str) -> impl Iterator<Item = (&'a str, &'a Props)> {
-        self.map
-            .iter()
-            .filter_map(move |(path, ifaces)| Some((path.as_str(), ifaces.get(iface)?)))
+        self.map.iter().filter_map(move |(path, ifaces)| Some((path.as_str(), ifaces.get(iface)?)))
     }
 
     /// Apply `InterfacesAdded`, `InterfacesRemoved` and `PropertiesChanged`.
@@ -509,9 +487,7 @@ impl Objects {
         };
         match (iface.as_str(), member.as_str()) {
             ("org.freedesktop.DBus.ObjectManager", "InterfacesAdded") => {
-                if let Ok((path, ifaces)) =
-                    msg.body().deserialize::<(OwnedObjectPath, HashMap<String, Props>)>()
-                {
+                if let Ok((path, ifaces)) = msg.body().deserialize::<(OwnedObjectPath, HashMap<String, Props>)>() {
                     let entry = self.map.entry(path.to_string()).or_default();
                     for (iface, props) in ifaces {
                         entry.insert(iface, props);
@@ -534,9 +510,7 @@ impl Objects {
             }
             ("org.freedesktop.DBus.Properties", "PropertiesChanged") => {
                 let Some(path) = header.path() else { return applied };
-                if let Ok((iface, changed, invalidated)) =
-                    msg.body().deserialize::<(String, Props, Vec<String>)>()
-                {
+                if let Ok((iface, changed, invalidated)) = msg.body().deserialize::<(String, Props, Vec<String>)>() {
                     // Only objects we know: a property change can race ahead
                     // of InterfacesAdded, which then brings everything.
                     if let Some(props) = self.map.get_mut(path.as_str()).and_then(|o| o.get_mut(&iface)) {
@@ -708,13 +682,7 @@ async fn subscribe(conn: &zbus::Connection, rule: &str) -> Result<zbus::MessageS
     Ok(zbus::MessageStream::for_match_rule(rule, conn, Some(1024)).await?)
 }
 
-fn dispatch(
-    bus: &Bus,
-    name: &str,
-    owner: &mut Option<String>,
-    msg: Message,
-    handle: &mut impl FnMut(&Bus, Event),
-) {
+fn dispatch(bus: &Bus, name: &str, owner: &mut Option<String>, msg: Message, handle: &mut impl FnMut(&Bus, Event)) {
     let header = msg.header();
     let sender = header.sender().map(|s| s.as_str().to_owned());
     if sender.as_deref() == Some("org.freedesktop.DBus")
@@ -811,7 +779,8 @@ pub(crate) fn follow_props(
         Event::Signal(msg) => {
             if msg.header().path().is_some_and(|p| p.as_str() == path)
                 && member(&msg).1 == "PropertiesChanged"
-                && let Ok((changed_iface, changed, invalidated)) = msg.body().deserialize::<(String, Props, Vec<String>)>()
+                && let Ok((changed_iface, changed, invalidated)) =
+                    msg.body().deserialize::<(String, Props, Vec<String>)>()
                 && changed_iface == iface
                 && let Some(props) = props.as_mut()
             {

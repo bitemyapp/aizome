@@ -30,10 +30,9 @@ pub struct Zone {
 
 /// Where tzdata is: `$TZDIR`, NixOS's `/etc/zoneinfo`, the usual places.
 pub fn zoneinfo_dir() -> Option<PathBuf> {
-    let candidates = std::env::var_os("TZDIR")
-        .map(PathBuf::from)
-        .into_iter()
-        .chain(["/etc/zoneinfo", "/usr/share/zoneinfo", "/usr/lib/zoneinfo", "/usr/share/lib/zoneinfo"].map(PathBuf::from));
+    let candidates = std::env::var_os("TZDIR").map(PathBuf::from).into_iter().chain(
+        ["/etc/zoneinfo", "/usr/share/zoneinfo", "/usr/lib/zoneinfo", "/usr/share/lib/zoneinfo"].map(PathBuf::from),
+    );
     candidates.into_iter().find(|dir| dir.join("zone1970.tab").is_file())
 }
 

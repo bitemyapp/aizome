@@ -293,12 +293,18 @@ mod tests {
                 "ipv6".to_owned(),
                 HashMap::from([
                     ("method".to_owned(), v("disabled")),
-                    ("dns".to_owned(), v(vec![Ipv6Addr::new(0x2606, 0x4700, 0x4700, 0, 0, 0, 0, 0x1111).octets().to_vec()])),
+                    (
+                        "dns".to_owned(),
+                        v(vec![Ipv6Addr::new(0x2606, 0x4700, 0x4700, 0, 0, 0, 0, 0x1111).octets().to_vec()]),
+                    ),
                 ]),
             ),
             (
                 "802-11-wireless".to_owned(),
-                HashMap::from([("ssid".to_owned(), v(b"Home".to_vec())), ("assigned-mac-address".to_owned(), v("stable"))]),
+                HashMap::from([
+                    ("ssid".to_owned(), v(b"Home".to_vec())),
+                    ("assigned-mac-address".to_owned(), v("stable")),
+                ]),
             ),
             ("802-11-wireless-security".to_owned(), HashMap::from([("key-mgmt".to_owned(), v("sae"))])),
         ]);
@@ -322,8 +328,17 @@ mod tests {
     #[test]
     fn ipv6_and_private_addresses_edit_the_right_keys() {
         let mut s: EditableSettings = HashMap::from([
-            ("ipv6".to_owned(), HashMap::from([("method".to_owned(), Value::from("manual")), ("address-data".to_owned(), Value::from(Vec::<String>::new()))])),
-            ("802-11-wireless".to_owned(), HashMap::from([("cloned-mac-address".to_owned(), Value::from(vec![2u8, 0, 0, 0, 0, 1]))])),
+            (
+                "ipv6".to_owned(),
+                HashMap::from([
+                    ("method".to_owned(), Value::from("manual")),
+                    ("address-data".to_owned(), Value::from(Vec::<String>::new())),
+                ]),
+            ),
+            (
+                "802-11-wireless".to_owned(),
+                HashMap::from([("cloned-mac-address".to_owned(), Value::from(vec![2u8, 0, 0, 0, 0, 1]))]),
+            ),
         ]);
         apply_ipv6_method(&mut s, "disabled");
         assert_eq!(s["ipv6"]["method"], Value::from("disabled"));

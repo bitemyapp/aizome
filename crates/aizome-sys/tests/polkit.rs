@@ -30,7 +30,8 @@ type Subject = (String, HashMap<String, OwnedValue>);
 #[zbus::interface(name = "org.freedesktop.PolicyKit1.Authority")]
 impl Authority {
     fn register_authentication_agent(&self, subject: Subject, locale: String, path: String) {
-        let session = subject.1.get("session-id").and_then(|v| String::try_from(v.try_clone().ok()?).ok()).unwrap_or_default();
+        let session =
+            subject.1.get("session-id").and_then(|v| String::try_from(v.try_clone().ok()?).ok()).unwrap_or_default();
         assert_eq!(subject.0, "unix-session");
         self.log.lock().unwrap().agents.push((session, locale, path));
     }
@@ -88,7 +89,8 @@ fn begin(polkitd: &zbus::blocking::Connection, agent: &str, cookie: &str) -> zbu
 }
 
 fn has_passwd_entry() -> bool {
-    std::fs::read_to_string("/etc/passwd").is_ok_and(|p| p.lines().any(|l| l.split(':').nth(2) == Some(&me().to_string())))
+    std::fs::read_to_string("/etc/passwd")
+        .is_ok_and(|p| p.lines().any(|l| l.split(':').nth(2) == Some(&me().to_string())))
 }
 
 /// A UI that answers every prompt from a list, retrying after failures.
@@ -207,7 +209,9 @@ fn dismissing_the_dialog_cancels() {
     .unwrap();
     let result = begin(&polkitd, &agent_name, "cookie-7");
     match result {
-        Err(zbus::Error::MethodError(name, _, _)) => assert_eq!(name.as_str(), "org.freedesktop.PolicyKit1.Error.Cancelled"),
+        Err(zbus::Error::MethodError(name, _, _)) => {
+            assert_eq!(name.as_str(), "org.freedesktop.PolicyKit1.Error.Cancelled")
+        }
         other => panic!("{other:?}"),
     }
     assert_eq!(events.lock().unwrap().last().unwrap(), "done false");

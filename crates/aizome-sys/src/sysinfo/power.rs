@@ -81,12 +81,16 @@ pub(crate) fn battery_draw_at(root: &Path) -> (Option<f64>, bool) {
     let mut discharging = false;
     for e in std::fs::read_dir(root).into_iter().flatten().flatten() {
         let p = e.path();
-        if read_attr(p.join("type")).as_deref() != Some("Battery") || read_attr(p.join("status")).as_deref() != Some("Discharging") {
+        if read_attr(p.join("type")).as_deref() != Some("Battery")
+            || read_attr(p.join("status")).as_deref() != Some("Discharging")
+        {
             continue;
         }
         discharging = true;
         let at = |n: &str| read_u64(p.join(n));
-        let watts = at("power_now").map(|uw| uw as f64 / 1e6).or_else(|| Some(at("current_now")? as f64 * at("voltage_now")? as f64 / 1e12));
+        let watts = at("power_now")
+            .map(|uw| uw as f64 / 1e6)
+            .or_else(|| Some(at("current_now")? as f64 * at("voltage_now")? as f64 / 1e12));
         if let Some(w) = watts {
             *draw.get_or_insert(0.0) += w;
         }

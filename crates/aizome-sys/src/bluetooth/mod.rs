@@ -259,19 +259,17 @@ pub(crate) fn build(objects: &Objects) -> BluetoothState {
             name: p.str("Name"),
             alias: p.str("Alias"),
             powered: p.bool("Powered"),
-            power_state: p.opt_str("PowerState").unwrap_or_else(|| {
-                if p.bool("Powered") { "on".into() } else { "off".into() }
-            }),
+            power_state: p
+                .opt_str("PowerState")
+                .unwrap_or_else(|| if p.bool("Powered") { "on".into() } else { "off".into() }),
             discoverable: p.bool("Discoverable"),
             discoverable_timeout: p.u32("DiscoverableTimeout"),
             pairable: p.bool("Pairable"),
             discovering: p.bool("Discovering"),
         })
         .collect();
-    let mut devices: Vec<Device> = objects
-        .with(IFACE_DEVICE)
-        .map(|(path, p)| device(path, p, objects.get(path, IFACE_BATTERY)))
-        .collect();
+    let mut devices: Vec<Device> =
+        objects.with(IFACE_DEVICE).map(|(path, p)| device(path, p, objects.get(path, IFACE_BATTERY))).collect();
     devices.sort_by(|a, b| {
         b.connected
             .cmp(&a.connected)
@@ -289,9 +287,7 @@ fn device(path: &str, p: &Props, battery: Option<&Props>) -> Device {
     let alias = p.opt_str("Alias").filter(|a| !a.trim().is_empty());
     // BlueZ makes the alias from the address when the device sent no name
     // (with dashes for colons).
-    let alias_is_address = alias
-        .as_deref()
-        .is_some_and(|a| a.replace('-', ":").eq_ignore_ascii_case(&address));
+    let alias_is_address = alias.as_deref().is_some_and(|a| a.replace('-', ":").eq_ignore_ascii_case(&address));
     let has_name = own_name.is_some() || (alias.is_some() && !alias_is_address);
     let icon = p.str("Icon");
     Device {
@@ -352,8 +348,13 @@ impl Bluetooth {
         let mut present = false;
         let mut dirty = false;
         let follower_model = model.clone();
-        bus::follow(bus.clone(), BLUEZ, vec![signals_from(BLUEZ)], false, stop.clone(), move |bus, event| {
-            match event {
+        bus::follow(
+            bus.clone(),
+            BLUEZ,
+            vec![signals_from(BLUEZ)],
+            false,
+            stop.clone(),
+            move |bus, event| match event {
                 Event::Appeared => {
                     present = true;
                     objects = Objects::load(bus, BLUEZ, "/").unwrap_or_else(|error| {
@@ -380,8 +381,8 @@ impl Bluetooth {
                         dirty = false;
                     }
                 }
-            }
-        });
+            },
+        );
         Bluetooth {
             bus: Some(bus),
             model,
@@ -406,7 +407,13 @@ impl Bluetooth {
         bus::spawn(&self.bus, "BlueZ", self.model.wake(), work)
     }
 
-    fn set(&self, path: &str, iface: &'static str, name: &'static str, value: impl Into<zbus::zvariant::Value<'static>> + Send + 'static) -> Task<()> {
+    fn set(
+        &self,
+        path: &str,
+        iface: &'static str,
+        name: &'static str,
+        value: impl Into<zbus::zvariant::Value<'static>> + Send + 'static,
+    ) -> Task<()> {
         let path = path.to_owned();
         self.task(move |bus| bus.set(BLUEZ, &path, iface, name, value))
     }
@@ -448,17 +455,21 @@ impl Bluetooth {
     /// is called or this process leaves the bus.
     pub fn start_discovery(&self, adapter: &str) -> Task<()> {
         let adapter = adapter.to_owned();
-        self.task(move |bus| match bus.call_with::<_, ()>(Opts::ACTION, BLUEZ, &adapter, IFACE_ADAPTER, "StartDiscovery", &()) {
-            Err(Error::DBus { name, .. }) if name == "org.bluez.Error.InProgress" => Ok(()),
-            other => other,
+        self.task(move |bus| {
+            match bus.call_with::<_, ()>(Opts::ACTION, BLUEZ, &adapter, IFACE_ADAPTER, "StartDiscovery", &()) {
+                Err(Error::DBus { name, .. }) if name == "org.bluez.Error.InProgress" => Ok(()),
+                other => other,
+            }
         })
     }
 
     pub fn stop_discovery(&self, adapter: &str) -> Task<()> {
         let adapter = adapter.to_owned();
-        self.task(move |bus| match bus.call_with::<_, ()>(Opts::ACTION, BLUEZ, &adapter, IFACE_ADAPTER, "StopDiscovery", &()) {
-            Err(Error::DBus { name, .. }) if name == "org.bluez.Error.Failed" => Ok(()),
-            other => other,
+        self.task(move |bus| {
+            match bus.call_with::<_, ()>(Opts::ACTION, BLUEZ, &adapter, IFACE_ADAPTER, "StopDiscovery", &()) {
+                Err(Error::DBus { name, .. }) if name == "org.bluez.Error.Failed" => Ok(()),
+                other => other,
+            }
         })
     }
 
@@ -493,7 +504,9 @@ impl Bluetooth {
 
     pub fn disconnect(&self, device: &str) -> Task<()> {
         let device = device.to_owned();
-        self.task(move |bus| bus.call_with(Opts::long(CONNECT_TIMEOUT), BLUEZ, &device, IFACE_DEVICE, "Disconnect", &()))
+        self.task(move |bus| {
+            bus.call_with(Opts::long(CONNECT_TIMEOUT), BLUEZ, &device, IFACE_DEVICE, "Disconnect", &())
+        })
     }
 
     /// Whether the device may connect without asking.

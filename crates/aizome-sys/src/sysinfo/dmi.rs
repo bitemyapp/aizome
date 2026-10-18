@@ -89,11 +89,7 @@ impl HostModel {
     /// firmware's name without a corporate suffix. From the board vendor if
     /// the system vendor is missing.
     pub fn vendor_name(&self) -> Option<String> {
-        self.vendor
-            .as_deref()
-            .or(self.board_vendor.as_deref())
-            .map(tidy_vendor)
-            .filter(|v| !v.is_empty())
+        self.vendor.as_deref().or(self.board_vendor.as_deref()).map(tidy_vendor).filter(|v| !v.is_empty())
     }
 
     /// A name for "About this computer", such as "Lenovo ThinkPad X1 Carbon
@@ -116,9 +112,7 @@ impl HostModel {
         let (vendor, product) = match product {
             Some(product) => (vendor, product),
             None => match &self.board_name {
-                Some(board) => {
-                    (self.board_vendor.as_deref().map(tidy_vendor).or(vendor), board.clone())
-                }
+                Some(board) => (self.board_vendor.as_deref().map(tidy_vendor).or(vendor), board.clone()),
                 None => return self.device_tree_model.clone(),
             },
         };
@@ -307,10 +301,7 @@ mod tests {
 
     #[test]
     fn display_names_combine_vendor_and_model() {
-        assert_eq!(
-            model("Dell Inc.", "XPS 13 9310").display_name().as_deref(),
-            Some("Dell XPS 13 9310")
-        );
+        assert_eq!(model("Dell Inc.", "XPS 13 9310").display_name().as_deref(), Some("Dell XPS 13 9310"));
         assert_eq!(
             model("HP", "HP EliteBook 840 G8 Notebook PC").display_name().as_deref(),
             Some("HP EliteBook 840 G8 Notebook PC")
@@ -378,10 +369,8 @@ mod tests {
         let model = host_model_in(&empty.0);
         assert_eq!(model, HostModel::default());
         assert_eq!(model.display_name(), None);
-        let board = HostModel {
-            device_tree_model: Some("Raspberry Pi 4 Model B Rev 1.4".into()),
-            ..HostModel::default()
-        };
+        let board =
+            HostModel { device_tree_model: Some("Raspberry Pi 4 Model B Rev 1.4".into()), ..HostModel::default() };
         assert_eq!(board.display_name().as_deref(), Some("Raspberry Pi 4 Model B Rev 1.4"));
     }
 

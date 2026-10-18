@@ -128,7 +128,13 @@ mod tests {
     use super::*;
 
     fn block(uuid: &str) -> BlockDevice {
-        BlockDevice { path: "/b/sdb1".into(), device: "/dev/sdb1".into(), size: 100, id_uuid: uuid.into(), ..Default::default() }
+        BlockDevice {
+            path: "/b/sdb1".into(),
+            device: "/dev/sdb1".into(),
+            size: 100,
+            id_uuid: uuid.into(),
+            ..Default::default()
+        }
     }
 
     #[test]

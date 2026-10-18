@@ -197,7 +197,10 @@ impl Logind {
                     };
                     lock(&fshared).session_path = Some(path.clone()).filter(|p| !p.is_empty());
                     let can = |method: &str| {
-                        Can::parse(&bus.call::<_, String>(LOGIN1, MANAGER_PATH, IFACE_MANAGER, method, &()).unwrap_or_default())
+                        Can::parse(
+                            &bus.call::<_, String>(LOGIN1, MANAGER_PATH, IFACE_MANAGER, method, &())
+                                .unwrap_or_default(),
+                        )
                     };
                     state = LogindState {
                         available: true,
@@ -427,7 +430,13 @@ impl Drop for Logind {
 }
 
 fn take_delay(bus: &Bus) -> Result<OwnedFd> {
-    bus.call(LOGIN1, MANAGER_PATH, IFACE_MANAGER, "Inhibit", &("sleep", WHO, "Locking the screen before sleep", "delay"))
+    bus.call(
+        LOGIN1,
+        MANAGER_PATH,
+        IFACE_MANAGER,
+        "Inhibit",
+        &("sleep", WHO, "Locking the screen before sleep", "delay"),
+    )
 }
 
 /// The session to follow: its id and object path.

@@ -103,11 +103,8 @@ impl Hints {
     /// The hints as an `a{sv}`, for `Notify`. Flags that are off and the
     /// normal urgency are left out, as absent hints mean the same.
     pub(crate) fn to_dbus(&self) -> HashMap<String, Value<'_>> {
-        let mut hints: HashMap<String, Value<'_>> = self
-            .other
-            .iter()
-            .filter_map(|(key, value)| Some((key.clone(), value.try_clone().ok()?.into())))
-            .collect();
+        let mut hints: HashMap<String, Value<'_>> =
+            self.other.iter().filter_map(|(key, value)| Some((key.clone(), value.try_clone().ok()?.into()))).collect();
         let mut put = |key: &str, value: Value<'static>| {
             hints.insert(key.to_owned(), value);
         };
@@ -334,7 +331,8 @@ mod tests {
         assert_eq!(h.image_path.as_deref(), Some("new-name"), "the current name wins");
         assert!(h.other.is_empty(), "known hints of the wrong type are dropped");
 
-        for (level, urgency) in [(0, Urgency::Low), (1, Urgency::Normal), (2, Urgency::Critical), (9, Urgency::Normal)] {
+        for (level, urgency) in [(0, Urgency::Low), (1, Urgency::Normal), (2, Urgency::Critical), (9, Urgency::Normal)]
+        {
             assert_eq!(hints(vec![("urgency", owned(level as u8))]).urgency, urgency);
         }
         assert_eq!(hints(vec![("urgency", owned("high"))]).urgency, Urgency::Normal);

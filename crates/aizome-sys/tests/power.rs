@@ -4,9 +4,7 @@
 mod common;
 
 use aizome_sys::Wake;
-use aizome_sys::power::{
-    Backlight, BatteryState, Can, Logind, PowerKind, PowerProfiles, SessionEvent, Upower,
-};
+use aizome_sys::power::{Backlight, BatteryState, Can, Logind, PowerKind, PowerProfiles, SessionEvent, Upower};
 use common::{eventually, path};
 use std::collections::HashMap;
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
@@ -35,7 +33,10 @@ impl UpowerManager {
         false
     }
     fn enumerate_devices(&self) -> Vec<OwnedObjectPath> {
-        vec![path("/org/freedesktop/UPower/devices/battery_BAT0"), path("/org/freedesktop/UPower/devices/line_power_AC")]
+        vec![
+            path("/org/freedesktop/UPower/devices/battery_BAT0"),
+            path("/org/freedesktop/UPower/devices/line_power_AC"),
+        ]
     }
     fn get_display_device(&self) -> OwnedObjectPath {
         path("/org/freedesktop/UPower/devices/DisplayDevice")
@@ -112,7 +113,11 @@ impl Kbd {
     fn get_brightness(&self) -> i32 {
         self.level
     }
-    async fn set_brightness(&mut self, value: i32, #[zbus(signal_emitter)] emitter: SignalEmitter<'_>) -> fdo::Result<()> {
+    async fn set_brightness(
+        &mut self,
+        value: i32,
+        #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
+    ) -> fdo::Result<()> {
         self.level = value;
         Kbd::brightness_changed(&emitter, value).await?;
         Ok(())
@@ -171,7 +176,10 @@ fn upower_batteries_peripherals_and_keyboard_light() {
         let manager = server.interface::<_, UpowerManager>("/org/freedesktop/UPower").await.unwrap();
         UpowerManager::device_added(manager.signal_emitter(), path(mouse)).await.unwrap();
     });
-    assert!(eventually(|| upower.snapshot().peripherals().any(|d| d.kind == PowerKind::Mouse && d.model == "MX Master 3")));
+    assert!(eventually(|| upower
+        .snapshot()
+        .peripherals()
+        .any(|d| d.kind == PowerKind::Mouse && d.model == "MX Master 3")));
 
     // The keyboard light key cycles 0 → 1.
     assert_eq!(upower.cycle_keyboard_brightness().wait().unwrap(), 1);
@@ -300,7 +308,11 @@ impl LoginManager {
         self.log.lock().unwrap().calls.push(format!("Suspend({interactive}, flag={flag})"));
     }
     fn get_session(&self, id: String) -> fdo::Result<OwnedObjectPath> {
-        if id == "7" { Ok(path("/org/freedesktop/login1/session/_37")) } else { Err(fdo::Error::Failed("no session".into())) }
+        if id == "7" {
+            Ok(path("/org/freedesktop/login1/session/_37"))
+        } else {
+            Err(fdo::Error::Failed("no session".into()))
+        }
     }
     fn inhibit(&self, what: String, who: String, _why: String, mode: String) -> zbus::zvariant::OwnedFd {
         let mut log = self.log.lock().unwrap();
@@ -384,7 +396,10 @@ fn logind_actions_events_and_the_sleep_delay() {
     assert!(eventually(|| logind.available()));
     let state = logind.snapshot();
     assert_eq!(state.session_path, "/org/freedesktop/login1/session/_37");
-    assert_eq!((state.can_suspend, state.can_hibernate, state.can_power_off), (Can::Yes, Can::NotApplicable, Can::Challenge));
+    assert_eq!(
+        (state.can_suspend, state.can_hibernate, state.can_power_off),
+        (Can::Yes, Can::NotApplicable, Can::Challenge)
+    );
     assert!(state.session_active);
     assert!(state.can_power_off.offered() && !state.can_hibernate.offered());
 
@@ -401,8 +416,14 @@ fn logind_actions_events_and_the_sleep_delay() {
     assert!(logind.snapshot().sleep_delay_held);
     assert!(log.lock().unwrap().calls.contains(&"Inhibit(sleep, Aizome, delay)".to_owned()));
     let emit = |start: bool| {
-        fake.emit_signal(None::<&str>, "/org/freedesktop/login1", "org.freedesktop.login1.Manager", "PrepareForSleep", &(start,))
-            .unwrap();
+        fake.emit_signal(
+            None::<&str>,
+            "/org/freedesktop/login1",
+            "org.freedesktop.login1.Manager",
+            "PrepareForSleep",
+            &(start,),
+        )
+        .unwrap();
     };
     emit(true);
     assert!(eventually(|| logind.snapshot().preparing_for_sleep));
@@ -436,7 +457,12 @@ fn backlight_steps_through_logind() {
     std::fs::write(dir.join("actual_brightness"), "248\n").unwrap();
     std::fs::write(dir.join("type"), "raw\n").unwrap();
     let (_fake, log) = serve_logind(&bus, root.clone());
-    let backlight = Backlight::with(Some(bus.bus()), root.clone(), Some("/org/freedesktop/login1/session/_37".into()), Wake::none());
+    let backlight = Backlight::with(
+        Some(bus.bus()),
+        root.clone(),
+        Some("/org/freedesktop/login1/session/_37".into()),
+        Wake::none(),
+    );
     assert!(backlight.available());
     let level = backlight.step(0.05).wait().unwrap();
     assert!((level - 0.55).abs() < 0.005, "{level}");

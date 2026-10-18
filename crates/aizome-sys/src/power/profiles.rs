@@ -9,7 +9,11 @@ use crate::service::{Model, Stop, Task, Wake, service_handle};
 use std::sync::{Arc, Mutex};
 
 const NAMES: [(&str, &str, &str); 2] = [
-    ("org.freedesktop.UPower.PowerProfiles", "/org/freedesktop/UPower/PowerProfiles", "org.freedesktop.UPower.PowerProfiles"),
+    (
+        "org.freedesktop.UPower.PowerProfiles",
+        "/org/freedesktop/UPower/PowerProfiles",
+        "org.freedesktop.UPower.PowerProfiles",
+    ),
     ("net.hadess.PowerProfiles", "/net/hadess/PowerProfiles", "net.hadess.PowerProfiles"),
 ];
 

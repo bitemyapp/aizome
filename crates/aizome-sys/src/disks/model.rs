@@ -60,11 +60,8 @@ impl DisksState {
 
     /// The partitions of a partition table's block, by offset.
     pub fn partitions(&self, table: &str) -> Vec<&BlockDevice> {
-        let mut parts: Vec<&BlockDevice> = self
-            .blocks
-            .iter()
-            .filter(|b| b.partition.as_ref().is_some_and(|p| p.table == table))
-            .collect();
+        let mut parts: Vec<&BlockDevice> =
+            self.blocks.iter().filter(|b| b.partition.as_ref().is_some_and(|p| p.table == table)).collect();
         parts.sort_by_key(|b| b.partition.as_ref().map(|p| p.offset).unwrap_or(0));
         parts
     }
@@ -127,7 +124,9 @@ impl DisksState {
             let logical: Vec<(u64, u64)> = parts
                 .iter()
                 .filter_map(|b| b.partition.as_ref())
-                .filter(|p| p.is_contained && p.offset >= container.offset && p.offset < container.offset + container.size)
+                .filter(|p| {
+                    p.is_contained && p.offset >= container.offset && p.offset < container.offset + container.size
+                })
                 // Each logical partition has its EBR in the MiB before it.
                 .map(|p| (p.offset.saturating_sub(MIB), p.offset + p.size))
                 .collect();
@@ -620,7 +619,9 @@ fn drive(path: &str, p: &Props, ata: Option<&Props>, nvme: Option<&Props>) -> Dr
             power_on_hours: Some(a.u64("SmartPowerOnSeconds") / 3600).filter(|&h| h > 0),
             bad_sectors: a.opt_i64("SmartNumBadSectors").and_then(|n| u64::try_from(n).ok()),
             attributes_failing: a.opt_i64("SmartNumAttributesFailing").and_then(|n| u64::try_from(n).ok()),
-            attributes_failed_in_past: a.opt_i64("SmartNumAttributesFailedInThePast").and_then(|n| u64::try_from(n).ok()),
+            attributes_failed_in_past: a
+                .opt_i64("SmartNumAttributesFailedInThePast")
+                .and_then(|n| u64::try_from(n).ok()),
             critical_warnings: Vec::new(),
             selftest_status: a.str("SmartSelftestStatus"),
             selftest_percent_remaining: a.opt_i64("SmartSelftestPercentRemaining").and_then(|n| u32::try_from(n).ok()),
@@ -699,7 +700,8 @@ fn block(objects: &Objects, path: &str, p: &Props) -> BlockDevice {
                 mount_points,
             }
         }),
-        partition_table: get(IFACE_TABLE).map(|t| PartitionTable { kind: t.str("Type"), partitions: t.strings("Partitions") }),
+        partition_table: get(IFACE_TABLE)
+            .map(|t| PartitionTable { kind: t.str("Type"), partitions: t.strings("Partitions") }),
         partition: get(IFACE_PARTITION).map(|part| {
             let type_id = part.str("Type");
             let flags = part.u64("Flags");
@@ -718,10 +720,8 @@ fn block(objects: &Objects, path: &str, p: &Props) -> BlockDevice {
                 is_contained: part.bool("IsContained"),
             }
         }),
-        encrypted: get(IFACE_ENCRYPTED).map(|e| Encrypted {
-            cleartext_device: e.path("CleartextDevice"),
-            hint_type: e.str("HintEncryptionType"),
-        }),
+        encrypted: get(IFACE_ENCRYPTED)
+            .map(|e| Encrypted { cleartext_device: e.path("CleartextDevice"), hint_type: e.str("HintEncryptionType") }),
         swap: get(IFACE_SWAP).map(|s| Swap { active: s.bool("Active") }),
         loop_device: get(IFACE_LOOP).map(|l| LoopDevice {
             backing_file: l.bytestring("BackingFile"),
@@ -732,10 +732,8 @@ fn block(objects: &Objects, path: &str, p: &Props) -> BlockDevice {
 }
 
 fn job(path: &str, p: &Props) -> Job {
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_micros() as u64)
-        .unwrap_or(0);
+    let now =
+        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_micros() as u64).unwrap_or(0);
     let end = p.u64("ExpectedEndTime");
     Job {
         path: path.to_owned(),
@@ -820,7 +818,12 @@ mod tests {
         let mut o = Objects::default();
         let b = "/org/freedesktop/UDisks2/block_devices/";
         let d = "/org/freedesktop/UDisks2/drives/";
-        put(&mut o, MANAGER_PATH, IFACE_MANAGER, vec![("Version", owned("2.11.2")), ("SupportedFilesystems", owned(vec!["ext4", "vfat"]))]);
+        put(
+            &mut o,
+            MANAGER_PATH,
+            IFACE_MANAGER,
+            vec![("Version", owned("2.11.2")), ("SupportedFilesystems", owned(vec!["ext4", "vfat"]))],
+        );
         put(
             &mut o,
             &format!("{d}usb"),
@@ -836,20 +839,40 @@ mod tests {
                 ("SortKey", owned("01hotplug")),
             ],
         );
-        put(&mut o, &format!("{d}nvme"), IFACE_DRIVE, vec![("Model", owned("Samsung SSD")), ("SortKey", owned("00coldplug"))]);
+        put(
+            &mut o,
+            &format!("{d}nvme"),
+            IFACE_DRIVE,
+            vec![("Model", owned("Samsung SSD")), ("SortKey", owned("00coldplug"))],
+        );
         put(
             &mut o,
             &format!("{d}nvme"),
             IFACE_NVME,
-            vec![("SmartTemperature", owned(318u16)), ("SmartPowerOnHours", owned(172u64)), ("SmartCriticalWarning", owned(Vec::<String>::new()))],
+            vec![
+                ("SmartTemperature", owned(318u16)),
+                ("SmartPowerOnHours", owned(172u64)),
+                ("SmartCriticalWarning", owned(Vec::<String>::new())),
+            ],
         );
-        put(&mut o, &format!("{b}sdb"), IFACE_BLOCK, vec![("Device", bytes("/dev/sdb")), ("Size", owned(100 * GIB)), ("Drive", op(&format!("{d}usb")))]);
+        put(
+            &mut o,
+            &format!("{b}sdb"),
+            IFACE_BLOCK,
+            vec![("Device", bytes("/dev/sdb")), ("Size", owned(100 * GIB)), ("Drive", op(&format!("{d}usb")))],
+        );
         put(&mut o, &format!("{b}sdb"), IFACE_TABLE, vec![("Type", owned("gpt"))]);
         put(
             &mut o,
             &format!("{b}sdb1"),
             IFACE_BLOCK,
-            vec![("Device", bytes("/dev/sdb1")), ("Size", owned(512 * MIB)), ("IdType", owned("vfat")), ("IdUsage", owned("filesystem")), ("IdLabel", owned("ESP"))],
+            vec![
+                ("Device", bytes("/dev/sdb1")),
+                ("Size", owned(512 * MIB)),
+                ("IdType", owned("vfat")),
+                ("IdUsage", owned("filesystem")),
+                ("IdLabel", owned("ESP")),
+            ],
         );
         put(
             &mut o,
@@ -869,7 +892,12 @@ mod tests {
             &mut o,
             &format!("{b}sdb10"),
             IFACE_BLOCK,
-            vec![("Device", bytes("/dev/sdb10")), ("Size", owned(50 * GIB)), ("IdType", owned("ext4")), ("IdUsage", owned("filesystem"))],
+            vec![
+                ("Device", bytes("/dev/sdb10")),
+                ("Size", owned(50 * GIB)),
+                ("IdType", owned("ext4")),
+                ("IdUsage", owned("filesystem")),
+            ],
         );
         put(
             &mut o,
@@ -890,13 +918,23 @@ mod tests {
             &mut o,
             &format!("{b}sdb2"),
             IFACE_BLOCK,
-            vec![("Device", bytes("/dev/sdb2")), ("Size", owned(GIB)), ("IdType", owned("crypto_LUKS")), ("IdUsage", owned("crypto"))],
+            vec![
+                ("Device", bytes("/dev/sdb2")),
+                ("Size", owned(GIB)),
+                ("IdType", owned("crypto_LUKS")),
+                ("IdUsage", owned("crypto")),
+            ],
         );
         put(
             &mut o,
             &format!("{b}sdb2"),
             IFACE_PARTITION,
-            vec![("Number", owned(2u32)), ("Offset", owned(60 * GIB)), ("Size", owned(GIB)), ("Table", op(&format!("{b}sdb")))],
+            vec![
+                ("Number", owned(2u32)),
+                ("Offset", owned(60 * GIB)),
+                ("Size", owned(GIB)),
+                ("Table", op(&format!("{b}sdb"))),
+            ],
         );
         put(&mut o, &format!("{b}sdb2"), IFACE_ENCRYPTED, vec![("CleartextDevice", op("/"))]);
         put(
