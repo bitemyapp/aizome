@@ -395,13 +395,9 @@ impl Upower {
     pub fn history(&self, path: &str, kind: &str, timespan: u32, resolution: u32) -> Task<Vec<HistoryPoint>> {
         let (path, kind) = (path.to_owned(), kind.to_owned());
         bus::spawn(&self.bus, "UPower", self.model.wake(), move |bus| {
-            let mut points: Vec<(u32, f64, u32)> =
+            let points: Vec<(u32, f64, u32)> =
                 bus.call(UPOWER, &path, IFACE_DEVICE, "GetHistory", &(kind, timespan, resolution))?;
-            points.sort_by_key(|p| p.0);
-            Ok(points
-                .into_iter()
-                .map(|(time, value, state)| HistoryPoint { time, value, state: BatteryState::from_u32(state) })
-                .collect())
+            Ok(history_points(points))
         })
     }
 
@@ -433,6 +429,19 @@ impl Drop for Upower {
     fn drop(&mut self) {
         self.stop.stop();
     }
+}
+
+/// `GetHistory`'s answer as readings, oldest first. UPower records a
+/// point only when the value changes, and marks where its record breaks off
+/// with a point of value 0 and state unknown, at the second of the last
+/// reading. That isn't a reading: drawn as one, the charge dives to 0% and
+/// climbs back across the gap.
+fn history_points(mut raw: Vec<(u32, f64, u32)>) -> Vec<HistoryPoint> {
+    raw.sort_by_key(|p| p.0);
+    raw.into_iter()
+        .map(|(time, value, state)| HistoryPoint { time, value, state: BatteryState::from_u32(state) })
+        .filter(|p| !(p.state == BatteryState::Unknown && p.value == 0.0))
+        .collect()
 }
 
 /// Everything UPower knows, read at once.
@@ -544,5 +553,18 @@ mod tests {
         assert_eq!(battery.charge_cycles, None, "-1 means unknown");
         assert_eq!(state.peripherals().map(|d| d.model.as_str()).collect::<Vec<_>>(), ["MX Master"]);
         assert_eq!(state.keyboard_backlights[0].max_brightness, 2);
+    }
+
+    #[test]
+    fn history_leaves_out_upowers_gap_markers() {
+        // As UPower answers, newest first: discharging this morning, and
+        // last night's reading at 80% with the marker it left when the
+        // machine shut down, at the same second.
+        let raw = vec![(1_000_900, 78.0, 2), (1_000_600, 79.0, 2), (1_000_000, 80.0, 5), (1_000_000, 0.0, 0)];
+        let points = history_points(raw);
+        let values: Vec<(u32, f64)> = points.iter().map(|p| (p.time, p.value)).collect();
+        assert_eq!(values, [(1_000_000, 80.0), (1_000_600, 79.0), (1_000_900, 78.0)]);
+        assert_eq!(points[0].state, BatteryState::PendingCharge);
+        assert_eq!(points[2].state, BatteryState::Discharging);
     }
 }
