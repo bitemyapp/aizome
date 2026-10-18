@@ -69,7 +69,8 @@ input (through the compositor's own paths, for tests and scripts)
   input scroll DX DY | key NAME [down|up] | chord super+shift+3 | type TEXT
                                 a key or button without down or up is pressed
                                 and released; type taps keys for letters,
-                                digits, space and plain punctuation
+                                digits, space and punctuation (Shift where a
+                                US layout needs it: capitals, ! ( * + ? …)
 ";
 
 fn main() -> ExitCode {
@@ -430,12 +431,20 @@ fn parse(command: &str, mut args: Vec<String>) -> Result<Request, String> {
                     need(&args, 2, "text")?;
                     let mut v = Vec::new();
                     for c in args[1..].join(" ").chars() {
+                        // Punctuation typed with Shift, on a US layout.
+                        const SHIFTED: &[(char, &str)] = &[
+                            ('!', "1"), ('@', "2"), ('#', "3"), ('$', "4"), ('%', "5"), ('^', "6"), ('&', "7"),
+                            ('*', "8"), ('(', "9"), (')', "0"), ('_', "-"), ('+', "="), ('{', "["), ('}', "]"),
+                            ('|', "\\"), (':', ";"), ('"', "'"), ('<', ","), ('>', "."), ('?', "/"), ('~', "grave"),
+                        ];
+                        let base = SHIFTED.iter().find(|(s, _)| *s == c).map(|(_, b)| *b);
                         let key = match c {
                             ' ' => "space".to_string(),
                             '\n' => "enter".to_string(),
-                            c => c.to_string(),
+                            '`' => "grave".to_string(),
+                            c => base.map_or_else(|| c.to_string(), str::to_string),
                         };
-                        let shifted = c.is_ascii_uppercase();
+                        let shifted = c.is_ascii_uppercase() || base.is_some();
                         let key = if shifted { key.to_lowercase() } else { key };
                         if shifted {
                             v.push(Synthetic::Chord { keys: format!("shift+{key}") });

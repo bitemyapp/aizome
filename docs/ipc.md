@@ -97,8 +97,8 @@ Protocol version: **1** (`version` reports it).
 
 `aizomectl input key NAME` and `input button NAME` press and release
 (a tap); add `down` or `up` for one half. `aizomectl input type TEXT` taps
-the keys for letters (Shift for capitals), digits, spaces and plain
-punctuation.
+the keys for letters, digits, spaces and punctuation, with Shift where a
+US layout needs it (capitals, `!` `(` `*` `+` `?` and the like).
 
 ## Responses
 
