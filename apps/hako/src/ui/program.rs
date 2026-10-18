@@ -63,13 +63,15 @@ impl Program for Hako {
         }
         if Some(window) == self.ops_window {
             self.ops_window = None;
+            self.reparent_questions(cx, window);
             return true;
         }
         self.windows.remove(&window);
         if self.windows.is_empty() && !self.jobs.is_empty() {
-            // Operations go on with their window, until they're done.
+            // Operations go on without their window, until they're done.
             self.show_operations(cx);
         }
+        self.reparent_questions(cx, window);
         self.save_settings();
         true
     }
@@ -96,6 +98,10 @@ impl Program for Hako {
                 let w = self.owner(w);
                 self.windows.remove(&w);
                 cx.close_window(w);
+                self.reparent_questions(cx, w);
+                if self.windows.is_empty() && !self.jobs.is_empty() {
+                    self.show_operations(cx);
+                }
                 self.save_settings();
             }
             Msg::Requests(rs) => {

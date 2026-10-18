@@ -906,6 +906,12 @@ impl<Msg: Clone + Send + 'static> Widget for ViewWidget<Msg> {
                     self.emit(cx, (self.v.handlers.drag)(DragEvent::Start));
                 }
                 let at = cx.window_rect().origin() + pos.to_vec2();
+                if self.v.spots.window_bounds().is_some_and(|win| !win.inflate(-2.0, -2.0).contains(at)) {
+                    // Out of the window: the desktop carries it on.
+                    self.end_drag(cx);
+                    self.emit(cx, (self.v.handlers.drag)(DragEvent::Leave(at)));
+                    return Status::Handled;
+                }
                 let target = self.v.spots.at(at);
                 let st = cx.state::<ViewState>();
                 if target != st.over {

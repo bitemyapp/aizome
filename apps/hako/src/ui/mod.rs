@@ -6,6 +6,7 @@ pub mod app;
 pub mod browser;
 pub mod clipboard;
 pub mod dnd;
+pub mod dragout;
 pub mod fileview;
 pub mod instance;
 pub mod jobs;
