@@ -620,8 +620,8 @@ impl Pane for Printers {
         // The default printer.
         if !state.printers.is_empty() {
             let labels: Vec<&str> = state.printers.iter().map(|p| p.display_name()).collect();
-            let at =
-                state.default_printer().and_then(|d| state.printers.iter().position(|p| p.name == d.name)).unwrap_or(0);
+            // None chosen shows none, so the first printer can be chosen too.
+            let at = state.default_printer().and_then(|d| state.printers.iter().position(|p| p.name == d.name));
             let shown = |n: &str| state.printer(n).map(|p| p.display_name().to_owned()).unwrap_or_else(|| n.to_owned());
             let help = match (&state.user_default, &state.system_default) {
                 (None, Some(s)) => format!("Everyone's default is {}", shown(s)),
@@ -632,7 +632,13 @@ impl Pane for Printers {
             sections.push(vcx.section(
                 "",
                 vec![
-                        form::row("Default printer", form::choice(&labels, at, Msg::Default))
+                        form::row(
+                            "Default printer",
+                            dropdown(labels.iter().map(|l| (*l).to_owned()), at)
+                                .placeholder("None")
+                                .on_select(Msg::Default)
+                                .min_width(160.0),
+                        )
                             .help(help)
                             .entry("default-printer"),
                     ],
@@ -642,7 +648,8 @@ impl Pane for Printers {
         let mut rows: Vec<Row<Msg>> = Vec::new();
         for p in &state.printers {
             let jobs: Vec<&Job> = state.jobs_on(&p.name).collect();
-            rows.push(printer_row(self, p, &jobs));
+            let default = state.default_printer().is_some_and(|d| d.name == p.name);
+            rows.push(printer_row(self, p, &jobs, default));
             if self.expanded.as_deref() == Some(p.name.as_str()) {
                 rows.extend(printer_details(self, p, &jobs));
             }
@@ -677,7 +684,7 @@ impl Pane for Printers {
     }
 }
 
-fn printer_row(p: &Printers, printer: &Printer, jobs: &[&Job]) -> Row<Msg> {
+fn printer_row(p: &Printers, printer: &Printer, jobs: &[&Job], default: bool) -> Row<Msg> {
     let words = state_words(printer, jobs);
     let colour = match printer.state {
         PrinterState::Stopped => Tile::Red,
@@ -702,7 +709,8 @@ fn printer_row(p: &Printers, printer: &Printer, jobs: &[&Job]) -> Row<Msg> {
     .spacing(10.0)
     .align(Align::Center)
     .width(Fill);
-    if printer.is_user_default || (printer.is_system_default && !printer.is_user_default) {
+    // The one documents go to: yours, else everyone's (never both).
+    if default {
         line = line.push(badge("Default").role(Role::Success));
     }
     if !jobs.is_empty() {
@@ -802,7 +810,7 @@ fn service_name(uri: &str) -> Option<String> {
     let host = rest.split('/').next()?;
     let at = host.find("._ipp").or_else(|| host.find("._pdl-datastream")).or_else(|| host.find("._printer"))?;
     let mut name = Vec::new();
-    let bytes = host[..at].as_bytes();
+    let bytes = &host.as_bytes()[..at];
     let mut i = 0;
     while i < bytes.len() {
         if bytes[i] == b'%'
@@ -980,6 +988,7 @@ pub fn sample() -> PrintersState {
         "ipp://brother.local:631/ipp/print",
     );
     laser.is_user_default = true;
+    laser.is_system_default = true;
     let mut inkjet = printer(
         "Canon_TS8350",
         "Canon TS8350",
@@ -1113,5 +1122,37 @@ mod tests {
         assert!(!already_added(&found, &others));
         // A backend that asks for an address is never "added".
         assert!(!already_added(&device("ipp"), &others));
+    }
+}
+
+#[cfg(test)]
+mod default_tests {
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    use aizome_kit::testing::Harness;
+
+    use super::Msg;
+    use crate::app::{AppMsg, Shitsurae, Start};
+
+    #[test]
+    fn only_the_printer_documents_go_to_says_default() {
+        let dir = std::env::temp_dir().join(format!("shitsurae-default-printer-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut h = Harness::new(Shitsurae::sample(dir.join("settings.toml"), Start::parse("printers")));
+        let w = h.window();
+        let badges = |h: &Harness<Shitsurae>| h.texts(w).iter().filter(|t| *t == "Default").count();
+        for _ in 0..20 {
+            h.advance(Duration::from_millis(50));
+        }
+        assert_eq!(badges(&h), 1);
+        // Yours becomes the Canon; everyone's stays the Brother.
+        h.send(AppMsg::Pane("printers", Arc::new(Msg::Default(1))));
+        for _ in 0..20 {
+            h.advance(Duration::from_millis(50));
+        }
+        assert!(h.texts(w).iter().any(|t| t.starts_with("Yours; everyone's is")), "{:?}", h.texts(w));
+        assert_eq!(badges(&h), 1, "{:?}", h.texts(w));
     }
 }
