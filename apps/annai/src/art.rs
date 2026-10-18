@@ -35,7 +35,10 @@ pub struct Art {
 /// Draw `art` in `b`: the scene centred on `sunk`.
 pub fn paint(c: &mut Canvas, b: Rect, art: &Art, theme: &Theme) {
     c.fill_rect(b, theme.sunk());
-    let o = Point::new(b.x0 + ((b.width() - SCENE.width) / 2.0).round(), b.y0 + ((b.height() - SCENE.height) / 2.0).round());
+    let o = Point::new(
+        b.x0 + ((b.width() - SCENE.width) / 2.0).round(),
+        b.y0 + ((b.height() - SCENE.height) / 2.0).round(),
+    );
     c.save();
     c.translate(o.to_vec2());
     let t = f64::from(art.t);
@@ -147,7 +150,8 @@ fn tab(c: &mut Canvas, theme: &Theme, x: f64, y: f64, title: &str, focused: bool
     let p = pal(theme);
     let w = tab_width(theme, title);
     let r = Rect::new(x, y - TAB, x + w, y);
-    let (fill, ink) = if focused { (theme.focus(), color(p.on_focus)) } else { (color(p.tab_idle), color(p.tab_idle_text)) };
+    let (fill, ink) =
+        if focused { (theme.focus(), color(p.on_focus)) } else { (color(p.tab_idle), color(p.tab_idle_text)) };
     c.fill_rect(r, fill);
     draw::top(c, r, theme.bevel_hi(), 1.0);
     let mid = r.y0 + TAB / 2.0;
@@ -180,7 +184,10 @@ fn frame(c: &mut Canvas, theme: &Theme, r: Rect, focused: bool, terminal: bool) 
         if terminal {
             let w = [0.5, 0.8, 0.35, 0.7, 0.6][i % 5] * inner.width();
             c.fill_rect(Rect::new(inner.x0, y, inner.x0 + 10.0, y + 5.0), color(p.green));
-            c.fill_rect(Rect::new(inner.x0 + 14.0, y, (inner.x0 + 14.0 + w * 0.8).min(inner.x1), y + 5.0), theme.text3().with_alpha(0.6));
+            c.fill_rect(
+                Rect::new(inner.x0 + 14.0, y, (inner.x0 + 14.0 + w * 0.8).min(inner.x1), y + 5.0),
+                theme.text3().with_alpha(0.6),
+            );
         } else {
             let w = [0.9, 0.75, 0.95, 0.4, 0.85, 0.6][i % 6] * inner.width();
             let col = if i == 0 { color(p.blue) } else { theme.faint().with_alpha(0.55) };
@@ -301,7 +308,15 @@ fn menu(c: &mut Canvas, theme: &Theme, at: Point, w: f64, title: Option<&str>, p
                     c.stroke(&chev, &StrokeStyle::new(1.5), if *lit { ink } else { theme.text3() });
                 } else if !keys.is_empty() {
                     let kw = width(theme, keys, mono(11.0));
-                    text_mid(c, theme, keys, (rr.x1 - 10.0 - kw).round(), rr.y0 + ROW / 2.0, mono(11.0), if *lit { ink } else { theme.text3() });
+                    text_mid(
+                        c,
+                        theme,
+                        keys,
+                        (rr.x1 - 10.0 - kw).round(),
+                        rr.y0 + ROW / 2.0,
+                        mono(11.0),
+                        if *lit { ink } else { theme.text3() },
+                    );
                 }
                 y += ROW;
             }
@@ -312,7 +327,15 @@ fn menu(c: &mut Canvas, theme: &Theme, at: Point, w: f64, title: Option<&str>, p
 
 /// The global menu bar in `r`: the Toolchest button (lit when open), the
 /// app's name and menus, and the Desks strip with `desk` current.
-fn menubar(c: &mut Canvas, theme: &Theme, r: Rect, app: &str, menus: &[&str], toolchest: bool, desk: Option<usize>) -> Rect {
+fn menubar(
+    c: &mut Canvas,
+    theme: &Theme,
+    r: Rect,
+    app: &str,
+    menus: &[&str],
+    toolchest: bool,
+    desk: Option<usize>,
+) -> Rect {
     let p = pal(theme);
     c.fill_rect(r, color(p.bar));
     draw::bottom(c, r, theme.bevel_lo(), 1.0);
@@ -323,7 +346,15 @@ fn menubar(c: &mut Canvas, theme: &Theme, r: Rect, app: &str, menus: &[&str], to
         c.fill_rect(button, theme.selection());
     }
     mark(c, theme, Point::new(r.x0 + 8.0, (mid - 8.0).round()), 4.0, true, 3.0);
-    text_mid(c, theme, "Toolchest", r.x0 + 30.0, mid, ui(13.0, 650.0), if toolchest { theme.on_selection() } else { theme.text() });
+    text_mid(
+        c,
+        theme,
+        "Toolchest",
+        r.x0 + 30.0,
+        mid,
+        ui(13.0, 650.0),
+        if toolchest { theme.on_selection() } else { theme.text() },
+    );
     c.fill_rect(Rect::new(button.x1, r.y0 + 4.0, button.x1 + 1.0, r.y1 - 4.0), theme.line());
     let mut x = button.x1 + 12.0;
     x += text_mid(c, theme, app, x, mid, ui(13.0, 700.0), theme.text()) + 14.0;
@@ -387,7 +418,10 @@ fn welcome(c: &mut Canvas, theme: &Theme, t: f64) {
         let a = width(theme, "a", spec);
         let i = width(theme, "ı", spec);
         let cx = wx + a + i / 2.0;
-        c.fill_rect(Rect::new((cx - 0.6 * m).round(), top.round(), (cx + 0.6 * m).round(), (top + 0.6 * m).round()), color(brand.amber));
+        c.fill_rect(
+            Rect::new((cx - 0.6 * m).round(), top.round(), (cx + 0.6 * m).round(), (top + 0.6 * m).round()),
+            color(brand.amber),
+        );
     }
     // 藍染, set down the right.
     let seal = ui(2.0 * m * 0.95, 600.0);
@@ -396,12 +430,18 @@ fn welcome(c: &mut Canvas, theme: &Theme, t: f64) {
         text(c, theme, ch, Point::new(sx, top + k as f64 * 2.0 * m - 2.0), seal, color(brand.seal));
     }
     // The dye ramp, by its old names.
-    let ramp = [("甕覗", "kamenozoki", brand.pale), ("縹", "hanada", brand.mid), ("藍", "ai", brand.deep), ("琥珀", "kohaku", brand.amber)];
+    let ramp = [
+        ("甕覗", "kamenozoki", brand.pale),
+        ("縹", "hanada", brand.mid),
+        ("藍", "ai", brand.deep),
+        ("琥珀", "kohaku", brand.amber),
+    ];
     let cell = 132.0;
     let rx = ((SCENE.width - cell * 4.0) / 2.0).round();
     for (k, (kanji, name, col)) in ramp.iter().enumerate() {
         let x = rx + k as f64 * cell;
-        let shown = if k < 3 { seg(t, 600.0 + 700.0 * k as f64, 1100.0 + 700.0 * k as f64) } else { seg(t, 2800.0, 3100.0) };
+        let shown =
+            if k < 3 { seg(t, 600.0 + 700.0 * k as f64, 1100.0 + 700.0 * k as f64) } else { seg(t, 2800.0, 3100.0) };
         c.fill_rect(Rect::new(x, 182.0, x + 24.0, 206.0), color(*col).with_alpha(shown as f32 * 0.85 + 0.15));
         text_mid(c, theme, kanji, x + 32.0, 188.0, ui(12.0, 500.0), theme.text2());
         text_mid(c, theme, name, x + 32.0, 202.0, mono(10.0), theme.text3());
@@ -496,7 +536,14 @@ fn menus(c: &mut Canvas, theme: &Theme, t: f64) {
     };
     let mut pointer_at = p;
     if sub_open {
-        let rows = [item("Zoom In", "❖+"), item("Zoom Out", "❖−"), item("Actual Size", "❖0"), item("Zoom to Fit", "❖9"), Row::Sep, item("Slideshow", "⇧❖F")];
+        let rows = [
+            item("Zoom In", "❖+"),
+            item("Zoom Out", "❖−"),
+            item("Actual Size", "❖0"),
+            item("Zoom to Fit", "❖9"),
+            Row::Sep,
+            item("Slideshow", "⇧❖F"),
+        ];
         let base = Point::new(at.x + 170.0 - 2.0, at.y + 20.0 + 4.0 + 2.0 * ROW - 20.0);
         let torn = Point::new(base.x + 140.0, base.y + 40.0);
         let sub_at = lerp_pt(base, torn, tear);
@@ -504,7 +551,11 @@ fn menus(c: &mut Canvas, theme: &Theme, t: f64) {
         if t >= 3000.0 {
             // The pointer takes the title strip and drags it.
             let grip = Point::new(sub_at.x + 90.0, sub_at.y + 10.0);
-            pointer_at = if t < 3300.0 { lerp_pt(Point::new(at.x + 60.0, at.y + 75.0), grip, seg(t, 3000.0, 3300.0)) } else { grip };
+            pointer_at = if t < 3300.0 {
+                lerp_pt(Point::new(at.x + 60.0, at.y + 75.0), grip, seg(t, 3000.0, 3300.0))
+            } else {
+                grip
+            };
         } else if view_lit {
             pointer_at = Point::new(at.x + 60.0, at.y + 75.0);
         }
@@ -516,7 +567,11 @@ fn menus(c: &mut Canvas, theme: &Theme, t: f64) {
     }
     if (1000.0..1400.0).contains(&t) {
         let r = 4.0 + 14.0 * seg(t, 1000.0, 1400.0);
-        c.stroke(&Circle::new(p, r), &StrokeStyle::new(2.0), theme.focus().with_alpha((1.0 - seg(t, 1000.0, 1400.0)) as f32));
+        c.stroke(
+            &Circle::new(p, r),
+            &StrokeStyle::new(2.0),
+            theme.focus().with_alpha((1.0 - seg(t, 1000.0, 1400.0)) as f32),
+        );
     }
     pointer(c, pointer_at);
 }
@@ -597,7 +652,15 @@ fn palette(c: &mut Canvas, theme: &Theme, t: f64) {
         let hw = text_mid(c, theme, hit, mx, rr.y0 + 12.0, ui(13.0, 500.0), if lit { ink } else { color(p.blue) });
         c.fill_rect(Rect::new(mx, rr.y0 + 19.0, mx + hw, rr.y0 + 20.0), if lit { ink } else { color(p.blue) });
         let w2 = text_mid(c, theme, rest, mx + hw, rr.y0 + 12.0, ui(13.0, 500.0), ink);
-        text_mid(c, theme, path, mx + hw + w2 + 8.0, rr.y0 + 12.0, ui(11.0, 400.0), if lit { ink.with_alpha(0.75) } else { theme.text3() });
+        text_mid(
+            c,
+            theme,
+            path,
+            mx + hw + w2 + 8.0,
+            rr.y0 + 12.0,
+            ui(11.0, 400.0),
+            if lit { ink.with_alpha(0.75) } else { theme.text3() },
+        );
         if !keys.is_empty() {
             let kw = keys.len() as f64 * 22.0;
             chord(c, theme, Point::new(list_x1 - 10.0 - kw, rr.y0 + 3.0), keys, 18.0, false);
@@ -621,7 +684,15 @@ fn palette(c: &mut Canvas, theme: &Theme, t: f64) {
     let layout = TextLayout::wrapped(coach, &theme.style(ui(11.5, 400.0), theme.text2()), r.x1 - dx - 14.0);
     c.draw_text(&layout, Point::new(dx, r.y0 + 142.0));
     draw::separator(c, theme, r.x0 + 1.0, r.x1 - 1.0, r.y1 - 24.0);
-    text_mid(c, theme, "↑↓ move   ↩ run   ⇥ scope   ❖K actions   esc close", r.x0 + 12.0, r.y1 - 11.0, mono(9.5), theme.text3());
+    text_mid(
+        c,
+        theme,
+        "↑↓ move   ↩ run   ⇥ scope   ❖K actions   esc close",
+        r.x0 + 12.0,
+        r.y1 - 11.0,
+        mono(9.5),
+        theme.text3(),
+    );
 }
 
 /// The Toolchest open from the bar, the Desks strip moving with ⌃❖→, and
@@ -635,7 +706,8 @@ fn desks(c: &mut Canvas, theme: &Theme, t: f64) {
         _ => 0,
     };
     let open = (500.0..3000.0).contains(&t);
-    let button = menubar(c, theme, Rect::new(0.0, 0.0, SCENE.width, 24.0), "Hako", &["File", "Edit", "Go"], open, Some(desk));
+    let button =
+        menubar(c, theme, Rect::new(0.0, 0.0, SCENE.width, 24.0), "Hako", &["File", "Edit", "Go"], open, Some(desk));
     // The Deskbar, at the top right under the bar.
     let db = Rect::new(408.0, 34.0, SCENE.width - 4.0, 252.0);
     shadow(c, theme, db);
@@ -648,7 +720,10 @@ fn desks(c: &mut Canvas, theme: &Theme, t: f64) {
     ];
     let mut y = db.y0 + 6.0;
     for (ai, (name, n, wins)) in apps.iter().enumerate() {
-        c.fill_rect(Rect::new(db.x0 + 10.0, y + 5.0, db.x0 + 22.0, y + 17.0), color([p.blue, p.green][ai]).with_alpha(0.9));
+        c.fill_rect(
+            Rect::new(db.x0 + 10.0, y + 5.0, db.x0 + 22.0, y + 17.0),
+            color([p.blue, p.green][ai]).with_alpha(0.9),
+        );
         text_mid(c, theme, name, db.x0 + 30.0, y + 11.0, ui(13.0, 650.0), theme.text());
         let nw = width(theme, n, mono(11.0));
         text_mid(c, theme, n, db.x1 - 10.0 - nw, y + 11.0, mono(11.0), theme.text3());
@@ -661,7 +736,13 @@ fn desks(c: &mut Canvas, theme: &Theme, t: f64) {
             }
             let hidden = *tag == "hidden";
             let spec = FontSpec { italic: hidden, ..ui(12.5, 400.0) };
-            let ink = if focused { theme.text() } else if hidden { theme.text3() } else { theme.text2() };
+            let ink = if focused {
+                theme.text()
+            } else if hidden {
+                theme.text3()
+            } else {
+                theme.text2()
+            };
             text_mid(c, theme, title, db.x0 + 32.0, y + 10.0, spec, ink);
             if !tag.is_empty() {
                 let tw = width(theme, tag, ui(11.0, 400.0));
@@ -683,10 +764,25 @@ fn desks(c: &mut Canvas, theme: &Theme, t: f64) {
     let drop = Rect::new(db.x0 + 8.0, y, db.x1 - 8.0, (y + 22.0).min(db.y1 - 6.0));
     c.stroke(&drop.inset(-0.5), &StrokeStyle::new(1.0).with_dash(vec![3.0, 3.0], 0.0), theme.line2());
     let dw = width(theme, "Drop to park", ui(11.5, 400.0));
-    text_mid(c, theme, "Drop to park", (drop.x0 + (drop.width() - dw) / 2.0).round(), drop.y0 + 11.0, ui(11.5, 400.0), theme.text3());
+    text_mid(
+        c,
+        theme,
+        "Drop to park",
+        (drop.x0 + (drop.width() - dw) / 2.0).round(),
+        drop.y0 + 11.0,
+        ui(11.5, 400.0),
+        theme.text3(),
+    );
     // The Toolchest.
     if open {
-        let rows = [sub("Applications", (900.0..2000.0).contains(&t)), sub("Places", false), sub("Desks", (2000.0..3000.0).contains(&t)), sub("Find", false), sub("System", false), sub("Session", false)];
+        let rows = [
+            sub("Applications", (900.0..2000.0).contains(&t)),
+            sub("Places", false),
+            sub("Desks", (2000.0..3000.0).contains(&t)),
+            sub("Find", false),
+            sub("System", false),
+            sub("Session", false),
+        ];
         let m = menu(c, theme, Point::new(button.x0, button.y1 + 1.0), 180.0, Some("Toolchest"), false, &rows);
         // The mark in its title strip.
         mark(c, theme, Point::new(m.x1 - 34.0, m.y0 + 4.0), 3.0, true, 3.0);
@@ -708,7 +804,8 @@ fn command_key(c: &mut Canvas, theme: &Theme, t: f64) {
     let (letter, what) = chords[k];
     let key = 34.0;
     let gap = 4.0;
-    let rows: [&[&str]; 3] = [&["Q", "W", "E", "R", "T", "Y"], &["A", "S", "D", "F", "G", "H"], &["Z", "X", "C", "V", "B", "N"]];
+    let rows: [&[&str]; 3] =
+        [&["Q", "W", "E", "R", "T", "Y"], &["A", "S", "D", "F", "G", "H"], &["Z", "X", "C", "V", "B", "N"]];
     let kb_w = 6.0 * (key + gap) - gap;
     let x0 = 70.0;
     let y0 = 30.0;
@@ -752,13 +849,30 @@ fn yours(c: &mut Canvas, theme: &Theme, t: f64) {
         let b = Brand::for_theme(name);
         for (rect, col) in b.mark_rects() {
             let [x, y, w, h] = rect.map(f64::from);
-            c.fill_rect(Rect::new(bar.x0 + 4.0 + x * 2.0, bar.y0 + 2.0 + y * 2.0, bar.x0 + 4.0 + (x + w) * 2.0, bar.y0 + 2.0 + (y + h) * 2.0), color(col));
+            c.fill_rect(
+                Rect::new(
+                    bar.x0 + 4.0 + x * 2.0,
+                    bar.y0 + 2.0 + y * 2.0,
+                    bar.x0 + 4.0 + (x + w) * 2.0,
+                    bar.y0 + 2.0 + (y + h) * 2.0,
+                ),
+                color(col),
+            );
         }
         for i in 0..4 {
-            c.fill_rect(Rect::new(bar.x0 + 18.0 + i as f64 * 22.0, bar.y0 + 5.0, bar.x0 + 34.0 + i as f64 * 22.0, bar.y0 + 8.0), color(p.text2).with_alpha(0.7));
+            c.fill_rect(
+                Rect::new(bar.x0 + 18.0 + i as f64 * 22.0, bar.y0 + 5.0, bar.x0 + 34.0 + i as f64 * 22.0, bar.y0 + 8.0),
+                color(p.text2).with_alpha(0.7),
+            );
         }
         // A window behind, and one in front with the focus.
-        for (k, (wr, focused)) in [(Rect::new(r.x0 + 120.0, r.y0 + 40.0, r.x1 - 16.0, r.y1 - 26.0), false), (Rect::new(r.x0 + 20.0, r.y0 + 52.0, r.x0 + 170.0, r.y1 - 14.0), true)].into_iter().enumerate() {
+        for (k, (wr, focused)) in [
+            (Rect::new(r.x0 + 120.0, r.y0 + 40.0, r.x1 - 16.0, r.y1 - 26.0), false),
+            (Rect::new(r.x0 + 20.0, r.y0 + 52.0, r.x0 + 170.0, r.y1 - 14.0), true),
+        ]
+        .into_iter()
+        .enumerate()
+        {
             let _ = k;
             c.fill_rect(Rect::new(wr.x0 + 2.0, wr.y1, wr.x1 + 2.0, wr.y1 + 2.0), color(p.slab));
             c.fill_rect(Rect::new(wr.x1, wr.y0 - 12.0 + 2.0, wr.x1 + 2.0, wr.y1), color(p.slab));
@@ -766,13 +880,24 @@ fn yours(c: &mut Canvas, theme: &Theme, t: f64) {
             draw::border(c, wr, color(p.bevel_lo), 1.0);
             let tabr = Rect::new(wr.x0, wr.y0 - 12.0, wr.x0 + 60.0, wr.y0);
             c.fill_rect(tabr, if focused { color(p.focus) } else { color(p.tab_idle) });
-            c.fill_rect(Rect::new(tabr.x0 + 14.0, tabr.y0 + 5.0, tabr.x1 - 8.0, tabr.y0 + 7.0), if focused { color(p.on_focus) } else { color(p.tab_idle_text) });
+            c.fill_rect(
+                Rect::new(tabr.x0 + 14.0, tabr.y0 + 5.0, tabr.x1 - 8.0, tabr.y0 + 7.0),
+                if focused { color(p.on_focus) } else { color(p.tab_idle_text) },
+            );
             if focused {
                 c.fill_rect(Rect::new(wr.x0, wr.y0, wr.x1, wr.y0 + 1.5), color(p.focus));
             }
             for i in 0..4 {
                 let w = [0.8, 0.6, 0.9, 0.5][i] * (wr.width() - 20.0);
-                c.fill_rect(Rect::new(wr.x0 + 10.0, wr.y0 + 10.0 + i as f64 * 10.0, wr.x0 + 10.0 + w, wr.y0 + 13.0 + i as f64 * 10.0), if i == 0 { color(p.blue) } else { color(p.faint).with_alpha(0.6) });
+                c.fill_rect(
+                    Rect::new(
+                        wr.x0 + 10.0,
+                        wr.y0 + 10.0 + i as f64 * 10.0,
+                        wr.x0 + 10.0 + w,
+                        wr.y0 + 13.0 + i as f64 * 10.0,
+                    ),
+                    if i == 0 { color(p.blue) } else { color(p.faint).with_alpha(0.6) },
+                );
             }
             // The selection, in ai.
             c.fill_rect(Rect::new(wr.x0 + 10.0, wr.y0 + 28.0, wr.x0 + 70.0, wr.y0 + 35.0), color(p.selection));
@@ -795,7 +920,14 @@ fn yours(c: &mut Canvas, theme: &Theme, t: f64) {
         c.fill_rect(sw, col);
         if i == fi {
             let w = width(theme, names[i], ui(11.0, 600.0));
-            text(c, theme, names[i], Point::new((sw.x0 + 13.0 - w / 2.0).round(), 240.0), ui(11.0, 600.0), theme.text2());
+            text(
+                c,
+                theme,
+                names[i],
+                Point::new((sw.x0 + 13.0 - w / 2.0).round(), 240.0),
+                ui(11.0, 600.0),
+                theme.text2(),
+            );
         }
         x += 44.0;
     }

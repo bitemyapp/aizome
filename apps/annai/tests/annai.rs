@@ -136,7 +136,9 @@ fn goldens() {
             let name = format!("page{}-{t}", page + 1);
             h.save_png(w, Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("annai-{name}@2x.png")), 2.0);
             if !h.theme().has_ui_font() {
-                eprintln!("skipping the golden {name}: Archivo isn't installed (set AIZOME_FONT_DIR=~/work/.aizome-fonts)");
+                eprintln!(
+                    "skipping the golden {name}: Archivo isn't installed (set AIZOME_FONT_DIR=~/work/.aizome-fonts)"
+                );
                 continue;
             }
             assert_golden(&mut h, w, golden(&name), 1.0);

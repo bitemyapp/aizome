@@ -10,7 +10,10 @@ fn main() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn")).init();
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.iter().any(|a| a == "--help" || a == "-h") {
-        println!("aizome-annai [--first-run]\n\nAizome's welcome. --first-run shows it only at the first login (or at\nevery login with \"Show at login\" on), and records that in\n{}.", state::path().display());
+        println!(
+            "aizome-annai [--first-run]\n\nAizome's welcome. --first-run shows it only at the first login (or at\nevery login with \"Show at login\" on), and records that in\n{}.",
+            state::path().display()
+        );
         return;
     }
     let path = state::path();

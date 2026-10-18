@@ -111,7 +111,11 @@ impl Program for Annai {
 
     fn launched(&mut self, cx: &mut Cx<Msg>) {
         self.window = cx.open_window(
-            WindowSpec::new("Welcome to Aizome").size(WIDTH, HEIGHT).min_size(WIDTH, HEIGHT).max_size(WIDTH, HEIGHT).resizable(false),
+            WindowSpec::new("Welcome to Aizome")
+                .size(WIDTH, HEIGHT)
+                .min_size(WIDTH, HEIGHT)
+                .max_size(WIDTH, HEIGHT)
+                .resizable(false),
         );
         // Shown: the first run is over.
         if self.state.shown.is_none() {
@@ -184,8 +188,16 @@ impl Program for Annai {
 
     fn menus(&self) -> MenuBar<Msg> {
         let mut go = Menu::new("Go")
-            .item(MenuItem::new("Previous Page", Msg::Back).shortcut(Shortcut::key(ShortcutKey::Left)).enabled(self.page > 0))
-            .item(MenuItem::new("Next Page", Msg::Next).shortcut(Shortcut::key(ShortcutKey::Right)).enabled(self.page + 1 < PAGES))
+            .item(
+                MenuItem::new("Previous Page", Msg::Back)
+                    .shortcut(Shortcut::key(ShortcutKey::Left))
+                    .enabled(self.page > 0),
+            )
+            .item(
+                MenuItem::new("Next Page", Msg::Next)
+                    .shortcut(Shortcut::key(ShortcutKey::Right))
+                    .enabled(self.page + 1 < PAGES),
+            )
             .separator();
         for (i, p) in crate::pages::PAGES.iter().enumerate() {
             let digit = char::from(b'1' + i as u8);

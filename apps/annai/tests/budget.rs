@@ -30,7 +30,14 @@ fn draw(h: &mut Harness<Annai>, w: aizome_kit::WindowKey) -> f64 {
 fn report(name: &str, mut v: Vec<Duration>, area: f64) {
     v.sort();
     let p = |q: f64| v[((v.len() - 1) as f64 * q) as usize].as_secs_f64() * 1e3;
-    eprintln!("annai {name}: p50 {:.2} ms, p95 {:.2} ms, max {:.2} ms, {:.0}% of the window drawn (n={}, at 2×)", p(0.5), p(0.95), p(1.0), area * 100.0, v.len());
+    eprintln!(
+        "annai {name}: p50 {:.2} ms, p95 {:.2} ms, max {:.2} ms, {:.0}% of the window drawn (n={}, at 2×)",
+        p(0.5),
+        p(0.95),
+        p(1.0),
+        area * 100.0,
+        v.len()
+    );
 }
 
 #[test]

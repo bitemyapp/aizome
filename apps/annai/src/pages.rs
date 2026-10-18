@@ -2,9 +2,9 @@
 //! command key, Shitsurae's doors, the footer.
 
 use aizome_kit::prelude::*;
+use aizome_kit::row;
 use aizome_kit::sidestep_ui::PointerButton;
 use aizome_kit::widget::Event;
-use aizome_kit::row;
 
 use crate::app::{Annai, Msg, PAGES as COUNT};
 
@@ -92,20 +92,35 @@ pub fn words(page: usize) -> Element<Msg> {
         5 => {
             let col = |items: &[(&[&str], &str)]| -> Element<Msg> {
                 aizome_kit::widgets::layout::column(
-                    items.iter().map(|(ks, what)| row![keys(ks), text(*what).role(Role::Text2)].spacing(8.0).into()).collect(),
+                    items
+                        .iter()
+                        .map(|(ks, what)| row![keys(ks), text(*what).role(Role::Text2)].spacing(8.0).into())
+                        .collect(),
                 )
                 .spacing(2.0)
                 .into()
             };
-            parts.push(row![col(&ESSENTIALS[..5]), col(&ESSENTIALS[5..])].spacing(40.0).padding([6.0, 0.0, 0.0, 0.0]).into());
+            parts.push(
+                row![col(&ESSENTIALS[..5]), col(&ESSENTIALS[5..])].spacing(40.0).padding([6.0, 0.0, 0.0, 0.0]).into(),
+            );
         }
         6 => {
-            let doors = DOORS.iter().map(|(icon, label, pane)| button(*label).icon(*icon).on_press(Msg::Settings(pane)).id(format!("door-{pane}")).into()).collect();
+            let doors = DOORS
+                .iter()
+                .map(|(icon, label, pane)| {
+                    button(*label).icon(*icon).on_press(Msg::Settings(pane)).id(format!("door-{pane}")).into()
+                })
+                .collect();
             parts.push(aizome_kit::widgets::layout::row(doors).spacing(10.0).padding([6.0, 0.0, 0.0, 0.0]).into());
         }
         _ => {}
     }
-    aizome_kit::widgets::layout::column(parts).spacing(10.0).padding([18.0, 60.0, 0.0, 60.0]).width(Fill).height(Fill).into()
+    aizome_kit::widgets::layout::column(parts)
+        .spacing(10.0)
+        .padding([18.0, 60.0, 0.0, 60.0])
+        .width(Fill)
+        .height(Fill)
+        .into()
 }
 
 /// Where the pages are: a square each, the one showing in the focus
