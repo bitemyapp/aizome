@@ -6,8 +6,12 @@ use resvg::{tiny_skia, usvg};
 
 /// An SVG file at `px` × `px`, as straight RGBA.
 pub fn rasterize(path: &Path, px: u32) -> Option<(u32, u32, Vec<u8>)> {
-    let data = std::fs::read(path).ok()?;
-    let tree = usvg::Tree::from_data(&data, &usvg::Options::default()).ok()?;
+    rasterize_data(&std::fs::read(path).ok()?, px)
+}
+
+/// SVG source at `px` × `px`, as straight RGBA.
+pub fn rasterize_data(data: &[u8], px: u32) -> Option<(u32, u32, Vec<u8>)> {
+    let tree = usvg::Tree::from_data(data, &usvg::Options::default()).ok()?;
     let mut pixmap = tiny_skia::Pixmap::new(px, px)?;
     let size = tree.size();
     let k = (px as f32 / size.width()).min(px as f32 / size.height());

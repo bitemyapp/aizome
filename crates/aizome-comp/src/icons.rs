@@ -2,9 +2,10 @@
 //! theme (hicolor and the configured theme, PNG or SVG), rasterized once
 //! per size and cached as textures.
 //!
-//! Tabs show an app's icon as a glyph in the tab's ink colour (its
-//! silhouette), as the boards draw line glyphs there; the switcher shows
-//! it in colour.
+//! Tabs show a line glyph in the tab's ink colour, as the boards draw
+//! there: Lucide's, for Aizome's apps and the common ones the shell's
+//! Deskbar knows (the same glyphs), else the app's icon as a silhouette.
+//! The switcher shows the icon in colour.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -89,8 +90,15 @@ impl Icons {
     pub fn texture(&mut self, app_id: &str, size: i32, scale: u32, tint: Tint) -> Option<&IconTexture> {
         let key = (app_id.to_string(), size, scale, tint);
         if !self.textures.contains_key(&key) {
-            let file = self.file(app_id);
-            let tex = file.and_then(|f| rasterize(&f, size, scale, tint)).or_else(|| match tint {
+            let line = match tint {
+                Tint::Ink(_) => line_glyph(app_id).and_then(|svg| {
+                    let (w, h, rgba) = crate::svg::rasterize_data(svg.as_bytes(), (size as u32 * scale).max(16))?;
+                    tinted(w, h, rgba, size, scale, tint)
+                }),
+                Tint::Color => None,
+            };
+            let file = if line.is_some() { None } else { self.file(app_id) };
+            let tex = line.or_else(|| file.and_then(|f| rasterize(&f, size, scale, tint))).or_else(|| match tint {
                 Tint::Ink(c) => Some(generic_glyph(size, scale, c)),
                 Tint::Color => Some(generic_tile(app_id, size, scale)),
             });
@@ -161,8 +169,51 @@ fn to_buffer(image: Image, size: i32, scale: u32) -> Option<IconTexture> {
     Some(IconTexture { buffer, size })
 }
 
+/// The Lucide glyph an app's tab shows, by the last part of its app ID, as
+/// the shell's Deskbar picks them (`aizome-shell`'s `apps::catalog::glyph_for`).
+fn line_glyph(app_id: &str) -> Option<&'static str> {
+    macro_rules! lucide {
+        ($name:literal) => {
+            include_str!(concat!("../../aizome-kit/icons/lucide/", $name, ".svg"))
+        };
+    }
+    let id = app_id.to_ascii_lowercase();
+    let id = id.strip_suffix(".desktop").unwrap_or(&id);
+    Some(match id.rsplit('.').next().unwrap_or(id) {
+        "shitsurae" => lucide!("settings"),
+        "yukimi" => lucide!("package"),
+        "hako" | "nautilus" | "thunar" | "dolphin" | "pcmanfm" | "nemo" => lucide!("folder"),
+        "sumi" | "code" | "codium" | "zed" | "helix" | "nvim" | "emacs" | "gedit" => lucide!("code"),
+        "fusen" => lucide!("sticky-note"),
+        "koyomi" => lucide!("calendar-days"),
+        "tokei" => lucide!("clock"),
+        "soroban" => lucide!("calculator"),
+        "tenki" => lucide!("cloud-sun"),
+        "tansu" => lucide!("hard-drive"),
+        "kura" => lucide!("chart-pie"),
+        "myaku" => lucide!("activity"),
+        "shashin" | "imv" | "eog" | "loupe" => lucide!("image"),
+        "annai" => lucide!("compass"),
+        "foot" | "footclient" | "alacritty" | "kitty" | "wezterm" | "ghostty" | "konsole" | "terminal" | "xterm" => {
+            lucide!("square-terminal")
+        }
+        "firefox" | "chromium" | "chromium-browser" | "google-chrome" | "brave-browser" | "epiphany" | "librewolf" => {
+            lucide!("globe")
+        }
+        "thunderbird" | "evolution" | "geary" | "mail" => lucide!("mail"),
+        "mpv" | "vlc" | "totem" => lucide!("film"),
+        "gimp" | "inkscape" | "krita" => lucide!("paintbrush"),
+        _ => return None,
+    })
+}
+
 fn rasterize(path: &Path, size: i32, scale: u32, tint: Tint) -> Option<IconTexture> {
     let (w, h, rgba) = load_rgba(path, (size as u32 * scale).max(16))?;
+    tinted(w, h, rgba, size, scale, tint)
+}
+
+/// Straight RGBA, in one colour if `tint` asks, drawn `size` points square.
+fn tinted(w: u32, h: u32, rgba: Vec<u8>, size: i32, scale: u32, tint: Tint) -> Option<IconTexture> {
     let mut rgba = rgba;
     if let Tint::Ink(c) = tint {
         for p in rgba.as_chunks_mut::<4>().0 {
@@ -364,5 +415,19 @@ mod tests {
         assert_eq!(desktop_key(&f, "Name").as_deref(), Some("Example"));
         assert_eq!(desktop_key(&f, "Exec"), None);
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn tabs_draw_line_glyphs_not_silhouettes() {
+        // Aizome's apps and foot get Lucide's glyphs, drawn as lines: an
+        // icon tile's silhouette would be a solid square.
+        for id in ["org.aizome.Sumi", "org.aizome.Tokei", "foot", "org.mozilla.firefox"] {
+            let svg = line_glyph(id).unwrap_or_else(|| panic!("a glyph for {id}"));
+            let (w, h, rgba) = crate::svg::rasterize_data(svg.as_bytes(), 26).expect("it rasterizes");
+            let covered = rgba.as_chunks::<4>().0.iter().filter(|p| p[3] > 128).count();
+            assert!(covered * 2 < (w * h) as usize, "{id}: {covered} of {} pixels inked", w * h);
+            assert!(covered > 20, "{id}: something is drawn");
+        }
+        assert!(line_glyph("org.example.Unknown").is_none());
     }
 }
