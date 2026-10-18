@@ -254,7 +254,15 @@ impl ButtonWidget {
 
 /// A button's face for its state. Returns the label's colour.
 #[allow(clippy::too_many_arguments)]
-fn paint_face(cx: &mut PaintCx, face: Rect, primary: bool, plain: bool, destructive: bool, enabled: bool, selected: bool) -> Color {
+fn paint_face(
+    cx: &mut PaintCx,
+    face: Rect,
+    primary: bool,
+    plain: bool,
+    destructive: bool,
+    enabled: bool,
+    selected: bool,
+) -> Color {
     let t = cx.theme();
     let (hover, pressed) = (cx.is_hovered() && enabled, cx.is_pressed() && enabled);
     if !enabled {
@@ -324,7 +332,15 @@ impl Widget for ButtonWidget {
         let t = cx.theme();
         let face = self.face(t, cx.size());
         let enabled = self.usable() || (self.enabled && self.on_press.is_none() && self.selected);
-        let fg = paint_face(cx, face, self.style == ButtonStyle::Primary, self.style == ButtonStyle::Plain, self.destructive, enabled, self.selected);
+        let fg = paint_face(
+            cx,
+            face,
+            self.style == ButtonStyle::Primary,
+            self.style == ButtonStyle::Plain,
+            self.destructive,
+            enabled,
+            self.selected,
+        );
         let tw = match &self.label {
             Some(l) if !l.is_empty() => cx.layout_text(l, &self.label_spec(t, fg), None).size().width.ceil(),
             _ => 0.0,
@@ -334,7 +350,11 @@ impl Widget for ButtonWidget {
         let content = tw + iw + gap;
         let x0 = ((face.width() - content) / 2.0).round().max(4.0);
         if let Some(i) = self.icon {
-            let c = if self.style == ButtonStyle::Plain && tw == 0.0 && enabled && !cx.is_hovered() { t.text2() } else { fg };
+            let c = if self.style == ButtonStyle::Plain && tw == 0.0 && enabled && !cx.is_hovered() {
+                t.text2()
+            } else {
+                fg
+            };
             i.draw(cx.canvas, Point::new(x0, face.y0 + ((face.height() - iw) / 2.0).round()), iw, c);
         }
         if let Some(l) = &self.label
@@ -446,7 +466,11 @@ impl<Msg> Toggle<Msg> {
 
 impl<Msg> From<Toggle<Msg>> for Element<Msg> {
     fn from(t: Toggle<Msg>) -> Element<Msg> {
-        Element::from_raw(RawElement::new(ToggleWidget { on: t.on, on_toggle: t.on_toggle, enabled: t.enabled }, t.common, Vec::new()))
+        Element::from_raw(RawElement::new(
+            ToggleWidget { on: t.on, on_toggle: t.on_toggle, enabled: t.enabled },
+            t.common,
+            Vec::new(),
+        ))
     }
 }
 
@@ -484,11 +508,23 @@ impl Widget for ToggleWidget {
         let track = draw::centered(b, 32.0, 16.0);
         let usable = self.usable();
         if self.on {
-            let fill = if !usable { t.line2() } else if cx.is_hovered() { t.selection().mix(Color::WHITE, 0.08) } else { t.selection() };
+            let fill = if !usable {
+                t.line2()
+            } else if cx.is_hovered() {
+                t.selection().mix(Color::WHITE, 0.08)
+            } else {
+                t.selection()
+            };
             cx.canvas.fill_rect(track, fill);
             draw::border(cx.canvas, track, t.bevel_lo(), 1.0);
         } else {
-            draw::sunken(cx.canvas, t, track, if cx.is_hovered() && usable { t.hover(t.sunk()) } else { t.sunk() }, if usable { t.line2() } else { t.line() });
+            draw::sunken(
+                cx.canvas,
+                t,
+                track,
+                if cx.is_hovered() && usable { t.hover(t.sunk()) } else { t.sunk() },
+                if usable { t.line2() } else { t.line() },
+            );
         }
         let k = 12.0;
         let x = if self.on { track.x1 - 2.0 - k } else { track.x0 + 2.0 };
@@ -561,7 +597,14 @@ pub struct Checkbox<Msg> {
 crate::builder!(Checkbox);
 
 pub fn checkbox<Msg>(label: impl Into<Arc<str>>, checked: bool) -> Checkbox<Msg> {
-    Checkbox { common: Common::default(), label: label.into(), checked, on_toggle: None, enabled: true, _m: PhantomData }
+    Checkbox {
+        common: Common::default(),
+        label: label.into(),
+        checked,
+        on_toggle: None,
+        enabled: true,
+        _m: PhantomData,
+    }
 }
 
 impl<Msg: Send + 'static> Checkbox<Msg> {
@@ -580,7 +623,14 @@ impl<Msg> Checkbox<Msg> {
 
 impl<Msg> From<Checkbox<Msg>> for Element<Msg> {
     fn from(c: Checkbox<Msg>) -> Element<Msg> {
-        let w = Check { label: c.label, kind: CheckKind::Box, on: c.checked, on_toggle: c.on_toggle, on_select: None, enabled: c.enabled };
+        let w = Check {
+            label: c.label,
+            kind: CheckKind::Box,
+            on: c.checked,
+            on_toggle: c.on_toggle,
+            on_select: None,
+            enabled: c.enabled,
+        };
         Element::from_raw(RawElement::new(w, c.common, Vec::new()))
     }
 }
@@ -602,7 +652,11 @@ impl<Msg, V> crate::element::Layoutable for Radio<Msg, V> {
     }
 }
 
-pub fn radio<Msg, V: Copy + PartialEq + 'static>(label: impl Into<Arc<str>>, value: V, selected: Option<V>) -> Radio<Msg, V> {
+pub fn radio<Msg, V: Copy + PartialEq + 'static>(
+    label: impl Into<Arc<str>>,
+    value: V,
+    selected: Option<V>,
+) -> Radio<Msg, V> {
     Radio {
         common: Common::default(),
         label: label.into(),
@@ -630,7 +684,14 @@ impl<Msg: Send + 'static, V: Copy + 'static> Radio<Msg, V> {
 
 impl<Msg, V> From<Radio<Msg, V>> for Element<Msg> {
     fn from(r: Radio<Msg, V>) -> Element<Msg> {
-        let w = Check { label: r.label, kind: CheckKind::Radio, on: r.selected, on_toggle: None, on_select: r.on_select, enabled: r.enabled };
+        let w = Check {
+            label: r.label,
+            kind: CheckKind::Radio,
+            on: r.selected,
+            on_toggle: None,
+            on_select: r.on_select,
+            enabled: r.enabled,
+        };
         Element::from_raw(RawElement::new(w, r.common, Vec::new()))
     }
 }
@@ -679,7 +740,11 @@ impl Widget for Check {
 
     fn layout(&mut self, cx: &mut LayoutCx, bc: Constraints) -> Size {
         let t = cx.env.theme;
-        let tw = if self.label.is_empty() { 0.0 } else { cx.measure(&self.label, &ui(t, t.metrics.body, 400.0, t.text())).width.ceil() + 8.0 };
+        let tw = if self.label.is_empty() {
+            0.0
+        } else {
+            cx.measure(&self.label, &ui(t, t.metrics.body, 400.0, t.text())).width.ceil() + 8.0
+        };
         bc.constrain(Size::new(MARK + tw + 2.0, t.metrics.control))
     }
 
@@ -687,12 +752,19 @@ impl Widget for Check {
         let t = cx.theme();
         let b = cx.bounds();
         let usable = self.usable();
-        let mark = Rect::new(1.0, ((b.height() - MARK) / 2.0).round(), 1.0 + MARK, ((b.height() - MARK) / 2.0).round() + MARK);
+        let mark =
+            Rect::new(1.0, ((b.height() - MARK) / 2.0).round(), 1.0 + MARK, ((b.height() - MARK) / 2.0).round() + MARK);
         let hover = cx.is_hovered() && usable;
         match self.kind {
             CheckKind::Box => {
                 if self.on {
-                    let fill = if !usable { t.line2() } else if hover { t.selection().mix(Color::WHITE, 0.08) } else { t.selection() };
+                    let fill = if !usable {
+                        t.line2()
+                    } else if hover {
+                        t.selection().mix(Color::WHITE, 0.08)
+                    } else {
+                        t.selection()
+                    };
                     cx.canvas.fill_rect(mark, fill);
                     draw::border(cx.canvas, mark, t.bevel_lo(), 1.0);
                     Icon::Check.draw(cx.canvas, Point::new(mark.x0 + 1.0, mark.y0 + 1.0), 12.0, t.on_selection());
@@ -703,9 +775,21 @@ impl Widget for Check {
             }
             CheckKind::Radio => {
                 let c = Circle::new(mark.center(), MARK / 2.0 - 0.5);
-                let fill = if self.on { if usable { t.selection() } else { t.line2() } } else if hover { t.hover(t.sunk()) } else { t.sunk() };
+                let fill = if self.on {
+                    if usable { t.selection() } else { t.line2() }
+                } else if hover {
+                    t.hover(t.sunk())
+                } else {
+                    t.sunk()
+                };
                 cx.canvas.fill(&c, fill);
-                let edge = if self.on { t.bevel_lo() } else if usable { t.line2() } else { t.line() };
+                let edge = if self.on {
+                    t.bevel_lo()
+                } else if usable {
+                    t.line2()
+                } else {
+                    t.line()
+                };
                 cx.canvas.stroke(&c, &sidestep_ui::StrokeStyle::new(1.0), edge);
                 if self.on {
                     cx.canvas.fill(&Circle::new(mark.center(), 3.0), t.on_selection());
@@ -918,7 +1002,8 @@ impl Widget for SliderWidget {
         if self.ticks > 1 {
             for i in 0..self.ticks {
                 let tx = (track.x0 + track.width() * i as f64 / (self.ticks - 1) as f64).round();
-                cx.canvas.fill_rect(Rect::new(tx, cy + THUMB.1 / 2.0 + 1.0, tx + 1.0, cy + THUMB.1 / 2.0 + 4.0), t.line2());
+                cx.canvas
+                    .fill_rect(Rect::new(tx, cy + THUMB.1 / 2.0 + 1.0, tx + 1.0, cy + THUMB.1 / 2.0 + 4.0), t.line2());
             }
         }
         let thumb = Rect::new(x - THUMB.0 / 2.0, cy - THUMB.1 / 2.0, x + THUMB.0 / 2.0, cy + THUMB.1 / 2.0);
@@ -1156,7 +1241,10 @@ impl Widget for StepperWidget {
         let usable = self.usable();
         draw::sunken(cx.canvas, t, b, t.sunk(), if usable { t.line2() } else { t.line() });
         let zone = cx.state::<StepperState>().map_or(0, |s| s.zone);
-        for (z, icon, r) in [(-1i8, Icon::Minus, Rect::new(b.x0, b.y0, b.x0 + h, b.y1)), (1, Icon::Plus, Rect::new(b.x1 - h, b.y0, b.x1, b.y1))] {
+        for (z, icon, r) in [
+            (-1i8, Icon::Minus, Rect::new(b.x0, b.y0, b.x0 + h, b.y1)),
+            (1, Icon::Plus, Rect::new(b.x1 - h, b.y0, b.x1, b.y1)),
+        ] {
             let at_end = (z < 0 && self.value <= self.min) || (z > 0 && self.value >= self.max);
             let live = usable && !at_end;
             if live {
@@ -1171,9 +1259,17 @@ impl Widget for StepperWidget {
             } else {
                 draw::border(cx.canvas, r, t.line(), 1.0);
             }
-            icon.draw(cx.canvas, Point::new(r.x0 + (h - 12.0) / 2.0, r.y0 + (h - 12.0) / 2.0), 12.0, if live { t.text() } else { t.faint() });
+            icon.draw(
+                cx.canvas,
+                Point::new(r.x0 + (h - 12.0) / 2.0, r.y0 + (h - 12.0) / 2.0),
+                12.0,
+                if live { t.text() } else { t.faint() },
+            );
         }
-        let spec = TextSpec::new(FontSpec { tabular: true, ..FontSpec::mono(t.metrics.body) }, if usable { t.text() } else { t.faint() });
+        let spec = TextSpec::new(
+            FontSpec { tabular: true, ..FontSpec::mono(t.metrics.body) },
+            if usable { t.text() } else { t.faint() },
+        );
         cx.draw_text_in(&self.label(), &spec, Rect::new(b.x0 + h, b.y0, b.x1 - h, b.y1), Align::Center);
     }
 
@@ -1253,7 +1349,10 @@ pub struct Segmented<Msg> {
 
 crate::builder!(Segmented);
 
-pub fn segmented<Msg, S: Into<Arc<str>>>(options: impl IntoIterator<Item = S>, selected: impl Into<Option<usize>>) -> Segmented<Msg> {
+pub fn segmented<Msg, S: Into<Arc<str>>>(
+    options: impl IntoIterator<Item = S>,
+    selected: impl Into<Option<usize>>,
+) -> Segmented<Msg> {
     Segmented {
         common: Common::default(),
         options: options.into_iter().map(|s| (Some(s.into()), None)).collect(),
@@ -1265,7 +1364,10 @@ pub fn segmented<Msg, S: Into<Arc<str>>>(options: impl IntoIterator<Item = S>, s
 }
 
 /// Icon segments (each with a tooltip-like label for assistive tech).
-pub fn segmented_icons<Msg>(options: impl IntoIterator<Item = Icon>, selected: impl Into<Option<usize>>) -> Segmented<Msg> {
+pub fn segmented_icons<Msg>(
+    options: impl IntoIterator<Item = Icon>,
+    selected: impl Into<Option<usize>>,
+) -> Segmented<Msg> {
     Segmented {
         common: Common::default(),
         options: options.into_iter().map(|i| (None, Some(i))).collect(),
@@ -1292,7 +1394,13 @@ impl<Msg> Segmented<Msg> {
 
 impl<Msg> From<Segmented<Msg>> for Element<Msg> {
     fn from(s: Segmented<Msg>) -> Element<Msg> {
-        let w = SegWidget { options: s.options, selected: s.selected, on_select: s.on_select, enabled: s.enabled, edges: Vec::new() };
+        let w = SegWidget {
+            options: s.options,
+            selected: s.selected,
+            on_select: s.on_select,
+            enabled: s.enabled,
+            edges: Vec::new(),
+        };
         Element::from_raw(RawElement::new(w, s.common, Vec::new()))
     }
 }
@@ -1342,7 +1450,9 @@ impl Widget for SegWidget {
         let t = cx.env.theme;
         let mut widths = Vec::new();
         for (i, (label, icon)) in self.options.iter().enumerate() {
-            let tw = label.as_ref().map_or(0.0, |l| cx.measure(l, &SegWidget::spec(t, self.selected == Some(i), t.text())).width.ceil());
+            let tw = label
+                .as_ref()
+                .map_or(0.0, |l| cx.measure(l, &SegWidget::spec(t, self.selected == Some(i), t.text())).width.ceil());
             let iw = if icon.is_some() { 14.0 } else { 0.0 };
             widths.push((tw + iw + if tw > 0.0 && iw > 0.0 { 6.0 } else { 0.0 } + 20.0).max(32.0));
         }
@@ -1445,7 +1555,10 @@ impl Widget for SegWidget {
     }
 
     fn semantics(&self) -> Option<Semantics> {
-        let label = self.selected.and_then(|i| self.options.get(i)).and_then(|(l, i)| l.as_deref().map(str::to_owned).or(i.map(|i| i.name().to_owned())));
+        let label = self
+            .selected
+            .and_then(|i| self.options.get(i))
+            .and_then(|(l, i)| l.as_deref().map(str::to_owned).or(i.map(|i| i.name().to_owned())));
         Some(Semantics { role: SemanticRole::TabList, value: label, disabled: !self.usable(), ..Default::default() })
     }
 }
@@ -1467,7 +1580,10 @@ pub struct Dropdown<Msg> {
 
 crate::builder!(Dropdown);
 
-pub fn dropdown<Msg, S: Into<String>>(options: impl IntoIterator<Item = S>, selected: impl Into<Option<usize>>) -> Dropdown<Msg> {
+pub fn dropdown<Msg, S: Into<String>>(
+    options: impl IntoIterator<Item = S>,
+    selected: impl Into<Option<usize>>,
+) -> Dropdown<Msg> {
     Dropdown {
         common: Common::default(),
         options: options.into_iter().map(Into::into).collect(),
@@ -1547,11 +1663,7 @@ impl DropdownWidget {
 
     fn face(&self, t: &Theme, size: Size) -> Rect {
         let r = Rect::from_origin_size(Point::ZERO, size);
-        if self.compact {
-            draw::centered(r, r.width(), t.metrics.control_compact)
-        } else {
-            r
-        }
+        if self.compact { draw::centered(r, r.width(), t.metrics.control_compact) } else { r }
     }
 
     fn open(&self, cx: &mut EventCx) {
@@ -1626,7 +1738,12 @@ impl Widget for DropdownWidget {
         };
         let spec = self.spec(t, color);
         cx.draw_text_in(self.label(), &spec, Rect::new(face.x0 + 8.0, face.y0, face.x1 - 22.0, face.y1), Align::Start);
-        Icon::ChevronDown.draw(cx.canvas, Point::new(face.x1 - 18.0, face.y0 + ((face.height() - 10.0) / 2.0).round()), 10.0, color);
+        Icon::ChevronDown.draw(
+            cx.canvas,
+            Point::new(face.x1 - 18.0, face.y0 + ((face.height() - 10.0) / 2.0).round()),
+            10.0,
+            color,
+        );
     }
 
     fn hash(&self, h: &mut PaintHasher) {
@@ -1697,7 +1814,11 @@ pub struct Progress<Msg> {
 crate::builder!(Progress);
 
 pub fn progress<Msg>(fraction: f64) -> Progress<Msg> {
-    Progress { common: Common::sized(Length::Fill, Length::Shrink), fraction: Some(fraction.clamp(0.0, 1.0)), _m: PhantomData }
+    Progress {
+        common: Common::sized(Length::Fill, Length::Shrink),
+        fraction: Some(fraction.clamp(0.0, 1.0)),
+        _m: PhantomData,
+    }
 }
 
 /// Busy for a while unknown: a block slides along the track, slowly, and
@@ -1765,7 +1886,10 @@ impl Widget for ProgressWidget {
                 // Still stripes, every 8pt.
                 let mut x = inner.x0;
                 while x < inner.x1 {
-                    cx.canvas.fill_rect(Rect::new(x, inner.y0, (x + 4.0).min(inner.x1), inner.y1), t.selection().with_alpha(0.6));
+                    cx.canvas.fill_rect(
+                        Rect::new(x, inner.y0, (x + 4.0).min(inner.x1), inner.y1),
+                        t.selection().with_alpha(0.6),
+                    );
                     x += 8.0;
                 }
             }
@@ -1809,7 +1933,14 @@ pub struct Meter<Msg> {
 crate::builder!(Meter);
 
 pub fn meter<Msg>(values: impl Into<Vec<f32>>) -> Meter<Msg> {
-    Meter { common: Common::sized(Length::Shrink, Length::Fixed(14.0)), values: values.into(), role: Role::Success, bar: 3.0, gap: 1.0, _m: PhantomData }
+    Meter {
+        common: Common::sized(Length::Shrink, Length::Fixed(14.0)),
+        values: values.into(),
+        role: Role::Success,
+        bar: 3.0,
+        gap: 1.0,
+        _m: PhantomData,
+    }
 }
 
 impl<Msg> Meter<Msg> {
@@ -1831,7 +1962,11 @@ impl<Msg> Meter<Msg> {
 
 impl<Msg> From<Meter<Msg>> for Element<Msg> {
     fn from(m: Meter<Msg>) -> Element<Msg> {
-        Element::from_raw(RawElement::new(MeterWidget { values: m.values, role: m.role, bar: m.bar, gap: m.gap }, m.common, Vec::new()))
+        Element::from_raw(RawElement::new(
+            MeterWidget { values: m.values, role: m.role, bar: m.bar, gap: m.gap },
+            m.common,
+            Vec::new(),
+        ))
     }
 }
 
@@ -2036,7 +2171,11 @@ impl<Msg> ImageEl<Msg> {
 
 impl<Msg> From<ImageEl<Msg>> for Element<Msg> {
     fn from(i: ImageEl<Msg>) -> Element<Msg> {
-        Element::from_raw(RawElement::new(ImageWidget { image: i.image, fit: i.fit, revision: i.revision }, i.common, Vec::new()))
+        Element::from_raw(RawElement::new(
+            ImageWidget { image: i.image, fit: i.fit, revision: i.revision },
+            i.common,
+            Vec::new(),
+        ))
     }
 }
 
@@ -2104,7 +2243,12 @@ impl Widget for ImageWidget {
                 let ky = b.height() / s.height;
                 let k = if self.fit == Fit::Contain { kx.min(ky) } else { kx.max(ky) };
                 let (w, h) = (s.width * k, s.height * k);
-                Rect::new(b.x0 + (b.width() - w) / 2.0, b.y0 + (b.height() - h) / 2.0, b.x0 + (b.width() + w) / 2.0, b.y0 + (b.height() + h) / 2.0)
+                Rect::new(
+                    b.x0 + (b.width() - w) / 2.0,
+                    b.y0 + (b.height() - h) / 2.0,
+                    b.x0 + (b.width() + w) / 2.0,
+                    b.y0 + (b.height() + h) / 2.0,
+                )
             }
         };
         cx.canvas.save();
@@ -2124,7 +2268,12 @@ impl Widget for ImageWidget {
                     let size = Size::new(f64::from(device.0) / scale, f64::from(device.1) / scale);
                     let image = self.image.clone();
                     sidestep_ui::offscreen::render(size, scale, sidestep_ui::Appearance::DARK, |c| {
-                        c.draw_image_with(&image, None, Rect::from_origin_size(Point::ZERO, size), ImageOptions::default());
+                        c.draw_image_with(
+                            &image,
+                            None,
+                            Rect::from_origin_size(Point::ZERO, size),
+                            ImageOptions::default(),
+                        );
                     })
                 })
             }

@@ -65,9 +65,16 @@ pub enum EditorAction {
     Undo,
     Redo,
     /// Replace characters `range` with `text` (find and replace).
-    Replace { range: Range<usize>, text: String },
+    Replace {
+        range: Range<usize>,
+        text: String,
+    },
     /// Replace every occurrence of `query` with `text`.
-    ReplaceAll { query: String, text: String, ignore_case: bool },
+    ReplaceAll {
+        query: String,
+        text: String,
+        ignore_case: bool,
+    },
 }
 
 impl EditorAction {
@@ -447,7 +454,8 @@ impl EditorContent {
             return Vec::new();
         }
         let text = self.rope.to_string();
-        let (hay, needle) = if ignore_case { (text.to_lowercase(), query.to_lowercase()) } else { (text.clone(), query.to_owned()) };
+        let (hay, needle) =
+            if ignore_case { (text.to_lowercase(), query.to_lowercase()) } else { (text.clone(), query.to_owned()) };
         if hay.len() != text.len() {
             // Case folding changed lengths: fall back to exact matching.
             return find_bytes(&text, query).into_iter().map(|r| to_chars(&text, r)).collect();

@@ -67,17 +67,30 @@ impl Program for Bench {
         match self.mode {
             Mode::Settings => self.settings(),
             Mode::Editor => column![
-                aizome_kit::toolbar(vec![dropdown(["Markdown"], 0).on_select(|_| Msg::Nothing).compact().into(), spacer().into(), aizome_kit::status_text("Ln 48, Col 12")]),
+                aizome_kit::toolbar(vec![
+                    dropdown(["Markdown"], 0).on_select(|_| Msg::Nothing).compact().into(),
+                    spacer().into(),
+                    aizome_kit::status_text("Ln 48, Col 12")
+                ]),
                 text_editor(&self.content).on_action(Msg::Edit).line_numbers(true).id("editor")
             ]
             .into(),
             Mode::List => {
                 let rows = self.rows.clone();
-                virtual_list(rows.len(), 24.0, move |i| aizome_kit::row![icon(Icon::File).size(14.0), text(rows[i].clone()), spacer(), text("4.2 KB").mono().role(Role::Text3)].spacing(8.0).padding([0.0, 10.0]))
-                    .selected(self.selected.iter().copied())
-                    .on_select(Msg::Select)
-                    .id("list")
-                    .into()
+                virtual_list(rows.len(), 24.0, move |i| {
+                    aizome_kit::row![
+                        icon(Icon::File).size(14.0),
+                        text(rows[i].clone()),
+                        spacer(),
+                        text("4.2 KB").mono().role(Role::Text3)
+                    ]
+                    .spacing(8.0)
+                    .padding([0.0, 10.0])
+                })
+                .selected(self.selected.iter().copied())
+                .on_select(Msg::Select)
+                .id("list")
+                .into()
             }
         }
     }
@@ -85,7 +98,9 @@ impl Program for Bench {
 
 impl Bench {
     fn new(mode: Mode) -> Bench {
-        let doc: String = (0..2000).map(|i| format!("Line {i}: operations stay in points; each window renders at its output's scale.\n")).collect();
+        let doc: String = (0..2000)
+            .map(|i| format!("Line {i}: operations stay in points; each window renders at its output's scale.\n"))
+            .collect();
         Bench {
             toggles: vec![false; 24],
             field: String::new(),
@@ -98,7 +113,21 @@ impl Bench {
 
     fn settings(&self) -> Element<Msg> {
         let mut side = vec![aizome_kit::caption("System")];
-        for (i, n) in ["Network", "Bluetooth", "Sound", "Displays", "Appearance", "Keyboard", "Mouse", "Printers", "Users", "Power"].iter().enumerate() {
+        for (i, n) in [
+            "Network",
+            "Bluetooth",
+            "Sound",
+            "Displays",
+            "Appearance",
+            "Keyboard",
+            "Mouse",
+            "Printers",
+            "Users",
+            "Power",
+        ]
+        .iter()
+        .enumerate()
+        {
             side.push(aizome_kit::sidebar_item(Icon::Settings, *n, i == 0).on_press(Msg::Nothing).into());
         }
         let mut sections = Vec::new();
@@ -106,14 +135,28 @@ impl Bench {
             let mut rows = Vec::new();
             for r in 0..6 {
                 let i = s * 6 + r;
-                rows.push(aizome_kit::form_row(format!("Setting {i}"), toggle(self.toggles[i]).on_toggle(move |b| Msg::Toggle(i, b)).id(format!("t{i}"))).description("What it does, in a few words.").into());
+                rows.push(
+                    aizome_kit::form_row(
+                        format!("Setting {i}"),
+                        toggle(self.toggles[i]).on_toggle(move |b| Msg::Toggle(i, b)).id(format!("t{i}")),
+                    )
+                    .description("What it does, in a few words.")
+                    .into(),
+                );
             }
             sections.push(aizome_kit::form_section(format!("Section {s}"), rows));
         }
         let content = scroll(
             aizome_kit::widgets::layout::column(
                 std::iter::once(text_field(&self.field).placeholder("Name").on_change(Msg::Field).id("field").into())
-                    .chain(std::iter::once(aizome_kit::row![button("Apply").primary().on_press(Msg::Nothing).id("b1"), button("Revert").on_press(Msg::Nothing).id("b2")].spacing(8.0).into()))
+                    .chain(std::iter::once(
+                        aizome_kit::row![
+                            button("Apply").primary().on_press(Msg::Nothing).id("b1"),
+                            button("Revert").on_press(Msg::Nothing).id("b2")
+                        ]
+                        .spacing(8.0)
+                        .into(),
+                    ))
                     .chain(sections)
                     .collect(),
             )
@@ -158,7 +201,15 @@ fn measure(h: &mut Harness<Bench>, w: WindowKey, mut act: impl FnMut(&mut Harnes
         times.push(total);
     }
     let renders = offscreen::frame_stats()
-        .map(|s| format!("; Sidestep: record {}/{} µs, rasterize {}/{} µs (p50/p95)", s.record.p50.as_micros(), s.record.p95.as_micros(), s.rasterize.p50.as_micros(), s.rasterize.p95.as_micros()))
+        .map(|s| {
+            format!(
+                "; Sidestep: record {}/{} µs, rasterize {}/{} µs (p50/p95)",
+                s.record.p50.as_micros(),
+                s.record.p95.as_micros(),
+                s.rasterize.p50.as_micros(),
+                s.rasterize.p95.as_micros()
+            )
+        })
         .unwrap_or_default();
     offscreen::set_frame_stats(None);
     eprintln!(
@@ -235,15 +286,27 @@ fn interactions_stay_within_four_milliseconds() {
     let mut overhead = Vec::new();
     for _ in 0..50 {
         let s = Instant::now();
-        let img = aizome_kit::sidestep_ui::offscreen::render(Size::new(1440.0, 900.0), SCALE, aizome_kit::sidestep_ui::Appearance::DARK, |c| {
-            c.fill_rect(Rect::new(0.0, 0.0, 1.0, 1.0), Color::BLACK);
-        });
+        let img = aizome_kit::sidestep_ui::offscreen::render(
+            Size::new(1440.0, 900.0),
+            SCALE,
+            aizome_kit::sidestep_ui::Appearance::DARK,
+            |c| {
+                c.fill_rect(Rect::new(0.0, 0.0, 1.0, 1.0), Color::BLACK);
+            },
+        );
         drop(img);
         overhead.push(s.elapsed().as_secs_f64() * 1e6);
     }
     overhead.sort_by(f64::total_cmp);
     report("(Offscreen buffer for a whole 2880 × 1800 frame: allocation and copy only)", &overhead);
-    for (name, t) in [("hover", &hover), ("toggle", &toggle), ("typing", &typing), ("editing", &editing), ("scrolling", &scrolling), ("keys", &keys)] {
+    for (name, t) in [
+        ("hover", &hover),
+        ("toggle", &toggle),
+        ("typing", &typing),
+        ("editing", &editing),
+        ("scrolling", &scrolling),
+        ("keys", &keys),
+    ] {
         let p50 = t[t.len() / 2] / 1000.0;
         assert!(p50 < 4.0, "{name}: p50 {p50:.2} ms");
     }

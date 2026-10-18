@@ -237,11 +237,7 @@ impl FieldWidget {
         } else {
             value_offset
         };
-        if !preedit.is_empty() && value_offset > caret {
-            base + preedit.len()
-        } else {
-            base
-        }
+        if !preedit.is_empty() && value_offset > caret { base + preedit.len() } else { base }
     }
 
     /// An offset in the text shown as a value offset.
@@ -276,7 +272,8 @@ impl FieldWidget {
         let st = cx.state::<FieldState>();
         let (caret, anchor) = (st.caret.min(value.len()), st.anchor.min(value.len()));
         let range = caret.min(anchor)..caret.max(anchor);
-        let group = st.last_edit.is_some_and(|(t, k)| k == kind && kind != EditKind::Other && now.duration_since(t) < GROUP);
+        let group =
+            st.last_edit.is_some_and(|(t, k)| k == kind && kind != EditKind::Other && now.duration_since(t) < GROUP);
         if !group {
             st.history.push((value.clone(), caret, anchor));
             if st.history.len() > 200 {
@@ -464,14 +461,21 @@ impl Widget for FieldWidget {
         let focused = st.focused;
         // What shows: the text (as dots for a password) with what an input
         // method is composing at the caret.
-        let mut shown: String = if self.password { BULLET.to_string().repeat(self.value.chars().count()) } else { self.value.to_string() };
+        let mut shown: String =
+            if self.password { BULLET.to_string().repeat(self.value.chars().count()) } else { self.value.to_string() };
         let at = self.shown_offset(caret, "", caret);
         if !preedit.is_empty() {
             shown.insert_str(at, &preedit);
         }
         let empty = shown.is_empty();
         let text = if empty { self.placeholder.as_deref().unwrap_or("").to_owned() } else { shown.clone() };
-        let color = if empty { t.text3() } else if self.enabled { t.text() } else { t.faint() };
+        let color = if empty {
+            t.text3()
+        } else if self.enabled {
+            t.text()
+        } else {
+            t.faint()
+        };
         let laid = cx.env.text.layout(t, &text, &self.spec(t, color), None);
         let width = if bc.max.width.is_finite() { bc.max.width } else { 160.0 };
         let visible = (width - self.left() - self.right()).max(1.0);
@@ -490,7 +494,10 @@ impl Widget for FieldWidget {
         cx.state::<FieldState>().scroll = scroll;
         self.scroll = scroll;
         self.caret = if empty { 0 } else { caret_shown };
-        let (a, b) = (self.shown_offset(caret.min(anchor), &preedit, caret), self.shown_offset(caret.max(anchor), &preedit, caret));
+        let (a, b) = (
+            self.shown_offset(caret.min(anchor), &preedit, caret),
+            self.shown_offset(caret.max(anchor), &preedit, caret),
+        );
         self.sel = if focused || a != b { a..b } else { 0..0 };
         self.preedit = at..at + preedit.len();
         self.shown = shown;
@@ -556,7 +563,14 @@ impl Widget for FieldWidget {
     }
 
     fn hash(&self, h: &mut PaintHasher) {
-        h.str(&self.shown).add(&(self.caret, self.sel.clone(), self.preedit.clone(), self.enabled, self.search, self.password));
+        h.str(&self.shown).add(&(
+            self.caret,
+            self.sel.clone(),
+            self.preedit.clone(),
+            self.enabled,
+            self.search,
+            self.password,
+        ));
         h.f64(self.scroll).add(&self.error.as_deref()).add(&self.placeholder.as_deref());
     }
 
@@ -650,7 +664,8 @@ impl Widget for FieldWidget {
                 let st = cx.state::<FieldState>();
                 st.focused = *on;
                 st.blink_off = false;
-                if *on && !std::mem::replace(&mut st.primed, true)
+                if *on
+                    && !std::mem::replace(&mut st.primed, true)
                     && let Some(r) = &self.select_on_focus
                 {
                     let v = &self.value;

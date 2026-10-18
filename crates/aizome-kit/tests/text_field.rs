@@ -122,7 +122,10 @@ fn input_methods_compose_then_commit() {
     assert_eq!(h.program().name, "", "composing isn't the text yet");
     h.ime(w, Some("日本"), "");
     assert_eq!(h.program().name, "日本");
-    assert!(h.platform.text_input.values().any(|(on, caret)| *on && caret.is_some()), "the input method knows where the caret is");
+    assert!(
+        h.platform.text_input.values().any(|(on, caret)| *on && caret.is_some()),
+        "the input method knows where the caret is"
+    );
 }
 
 #[test]

@@ -172,7 +172,8 @@ impl Platform for TestPlatform {
 
     fn set_timer(&mut self, after: Duration, repeat: bool) -> u64 {
         self.next_token += 1;
-        self.timers.insert(self.next_token, (self.clock + after, repeat.then_some(after.max(Duration::from_millis(1)))));
+        self.timers
+            .insert(self.next_token, (self.clock + after, repeat.then_some(after.max(Duration::from_millis(1)))));
         self.next_token
     }
 
@@ -587,10 +588,12 @@ impl<P: Program> Harness<P> {
             Key::Character(s) if !mods.super_key() && !mods.control() => Some(s.clone()),
             _ => None,
         };
-        let press = KeyEvent { key: k.clone(), text, pressed: true, repeat: false, code: 0, modifiers: mods, composing: None };
+        let press =
+            KeyEvent { key: k.clone(), text, pressed: true, repeat: false, code: 0, modifiers: mods, composing: None };
         self.rt.core.key(win, press, &mut self.platform);
         self.rt.flush(&mut self.platform);
-        let release = KeyEvent { key: k, text: None, pressed: false, repeat: false, code: 0, modifiers: mods, composing: None };
+        let release =
+            KeyEvent { key: k, text: None, pressed: false, repeat: false, code: 0, modifiers: mods, composing: None };
         self.rt.core.key(win, release, &mut self.platform);
         self.rt.flush(&mut self.platform);
     }
@@ -650,7 +653,8 @@ impl<P: Program> Harness<P> {
 
     /// The popup windows of the kit, raw: for driving menus.
     pub fn popup_keyboard(&mut self, popup: u32, k: Key, mods: Modifiers) {
-        let press = KeyEvent { key: k, text: None, pressed: true, repeat: false, code: 0, modifiers: mods, composing: None };
+        let press =
+            KeyEvent { key: k, text: None, pressed: true, repeat: false, code: 0, modifiers: mods, composing: None };
         self.rt.core.key(popup, press, &mut self.platform);
         self.rt.flush(&mut self.platform);
     }
@@ -660,7 +664,11 @@ impl<P: Program> Harness<P> {
     /// Where the first element showing exactly `text` is.
     pub fn find(&self, key: WindowKey, text: &str) -> Option<Rect> {
         let w = self.rt.core.wins.get(&self.win(key))?;
-        w.tree.nodes.iter().find(|n| !n.dead && n.widget.text() == Some(text) && n.clip.intersect(n.rect).area() > 0.0).map(|n| n.rect)
+        w.tree
+            .nodes
+            .iter()
+            .find(|n| !n.dead && n.widget.text() == Some(text) && n.clip.intersect(n.rect).area() > 0.0)
+            .map(|n| n.rect)
     }
 
     /// Where the element given `.id(name)` is.
@@ -808,7 +816,14 @@ impl<P: Program> Harness<P> {
         let damage = self.platform.damage.remove(&win).unwrap_or_default();
         let scrolls = self.platform.scrolls.remove(&win).unwrap_or_default();
         let at = |x: i64, y: i64| (y as usize * w as usize + x as usize) * 4;
-        let bound = |r: Rect| (r.x0.floor().max(0.0) as i64, r.y0.floor().max(0.0) as i64, (r.x1.ceil() as i64).min(w as i64), (r.y1.ceil() as i64).min(h as i64));
+        let bound = |r: Rect| {
+            (
+                r.x0.floor().max(0.0) as i64,
+                r.y0.floor().max(0.0) as i64,
+                (r.x1.ceil() as i64).min(w as i64),
+                (r.y1.ceil() as i64).min(h as i64),
+            )
+        };
         // The area drawn: the damage's union.
         let mut mask = vec![false; w as usize * h as usize];
         for r in &damage {
@@ -821,7 +836,8 @@ impl<P: Program> Harness<P> {
         }
         let damaged = mask.iter().filter(|m| **m).count() as f64;
         let check = FrameCheck { differs: 0.0, damaged, moves: scrolls.len() };
-        let Some((pw, ph, mut px)) = self.platform.frames.remove(&win).filter(|(pw, ph, _)| (*pw, *ph) == (w, h)) else {
+        let Some((pw, ph, mut px)) = self.platform.frames.remove(&win).filter(|(pw, ph, _)| (*pw, *ph) == (w, h))
+        else {
             self.platform.frames.insert(win, (w, h, fresh));
             return check;
         };
@@ -961,7 +977,13 @@ pub fn difference(a: &[u8], b: &[u8], tolerance: u8) -> f64 {
     if a.len() != b.len() || a.is_empty() {
         return 1.0;
     }
-    let off = a.as_chunks::<4>().0.iter().zip(b.as_chunks::<4>().0).filter(|(p, q)| p.iter().zip(q.iter()).any(|(x, y)| x.abs_diff(*y) > tolerance)).count();
+    let off = a
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .zip(b.as_chunks::<4>().0)
+        .filter(|(p, q)| p.iter().zip(q.iter()).any(|(x, y)| x.abs_diff(*y) > tolerance))
+        .count();
     off as f64 / (a.len() / 4) as f64
 }
 
@@ -982,6 +1004,11 @@ pub fn assert_golden<P: Program>(h: &mut Harness<P>, key: WindowKey, path: impl 
     if diff > 0.005 {
         let actual = path.with_extension("actual.png");
         let _ = write_png(&actual, w, hgt, &px);
-        panic!("{} differs from what's drawn in {:.2}% of its pixels (see {})", path.display(), diff * 100.0, actual.display());
+        panic!(
+            "{} differs from what's drawn in {:.2}% of its pixels (see {})",
+            path.display(),
+            diff * 100.0,
+            actual.display()
+        );
     }
 }

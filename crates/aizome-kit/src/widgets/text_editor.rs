@@ -352,7 +352,15 @@ impl EditorWidget {
     /// Lay `line` out at `width`, with the selection, what's composed and
     /// the program's styles.
     #[allow(clippy::too_many_arguments)]
-    fn lay(&self, t: &Theme, cache: &mut TextCache, line: usize, width: Option<f64>, preedit: &str, focused: bool) -> Laid {
+    fn lay(
+        &self,
+        t: &Theme,
+        cache: &mut TextCache,
+        line: usize,
+        width: Option<f64>,
+        preedit: &str,
+        focused: bool,
+    ) -> Laid {
         let rope = &self.snap.rope;
         let start = rope.line_to_char(line);
         let raw = line_text(rope, line);
@@ -454,7 +462,19 @@ impl EditorWidget {
         text.hash(&mut fx);
         (selection.clone(), pre.clone(), selects_break, focused).hash(&mut fx);
         for (r, s) in &styled {
-            (r.start, r.end, s.role, s.weight.map(f32::to_bits), s.italic, s.underline, s.strikethrough, s.alpha.map(f32::to_bits), s.mono, s.size.map(f64::to_bits)).hash(&mut fx);
+            (
+                r.start,
+                r.end,
+                s.role,
+                s.weight.map(f32::to_bits),
+                s.italic,
+                s.underline,
+                s.strikethrough,
+                s.alpha.map(f32::to_bits),
+                s.mono,
+                s.size.map(f64::to_bits),
+            )
+                .hash(&mut fx);
         }
         let key = fx.finish();
         Laid { line, start, y: 0.0, h, layout, text: text.into(), preedit: pre, selection, selects_break, key }
@@ -626,7 +646,10 @@ impl EditorWidget {
         let width = self.wrap_width(&t, self.size.width);
         let focused = cx.state::<EditorState>().focused;
         let lines = self.line_count();
-        let (mut top, mut off) = (cx.state::<EditorState>().top_line.min(lines.saturating_sub(1)), cx.state::<EditorState>().top_offset + delta.y);
+        let (mut top, mut off) = (
+            cx.state::<EditorState>().top_line.min(lines.saturating_sub(1)),
+            cx.state::<EditorState>().top_offset + delta.y,
+        );
         while off < 0.0 && top > 0 {
             top -= 1;
             off += self.lay(&t, cx.text_cache(), top, width, "", focused).h;
@@ -744,7 +767,9 @@ impl EditorWidget {
                 };
                 return if done { Status::Handled } else { Status::Ignored };
             }
-            Key::Character(c) if m.control() && !m.super_key() && c == "k" => self.edit(cx, EditorAction::Delete(Granularity::Line)),
+            Key::Character(c) if m.control() && !m.super_key() && c == "k" => {
+                self.edit(cx, EditorAction::Delete(Granularity::Line))
+            }
             _ => match &k.text {
                 Some(t) if !t.is_empty() => self.edit(cx, EditorAction::Insert(t.clone())),
                 _ => return Status::Ignored,
@@ -761,7 +786,10 @@ impl Widget for EditorWidget {
 
     fn layout(&mut self, cx: &mut LayoutCx, bc: Constraints) -> Size {
         let t = cx.env.theme;
-        let size = Size::new(if bc.max.width.is_finite() { bc.max.width } else { 480.0 }, if bc.max.height.is_finite() { bc.max.height } else { 320.0 });
+        let size = Size::new(
+            if bc.max.width.is_finite() { bc.max.width } else { 480.0 },
+            if bc.max.height.is_finite() { bc.max.height } else { 320.0 },
+        );
         self.size = size;
         let font = self.font(t);
         self.line_h = (font.size * self.opts.line_height).round();
@@ -844,7 +872,10 @@ impl Widget for EditorWidget {
         self.lines = laid;
         self.caret = self.caret_rect(head, preedit_caret);
         // Sideways, without wrapping: keep the caret in sight.
-        if !self.opts.wrap && reveal && let Some(c) = self.caret {
+        if !self.opts.wrap
+            && reveal
+            && let Some(c) = self.caret
+        {
             let visible = size.width - self.text_x - self.opts.padding;
             let x = c.x0 - self.text_x + scroll_x;
             if x - scroll_x > visible {
@@ -866,8 +897,11 @@ impl Widget for EditorWidget {
         st.top_offset = off;
         st.scroll_x = scroll_x;
         let current = |l: &Laid| self.opts.current_line && l.line == caret_line;
-        let drawn: Vec<(usize, f64, f64, u64)> =
-            self.lines.iter().map(|l| (l.line, l.y, l.h, l.key ^ (current(l) as u64) ^ (self.gutter.to_bits() << 1))).collect();
+        let drawn: Vec<(usize, f64, f64, u64)> = self
+            .lines
+            .iter()
+            .map(|l| (l.line, l.y, l.h, l.key ^ (current(l) as u64) ^ (self.gutter.to_bits() << 1)))
+            .collect();
         st.drawn = drawn.clone();
         st.caret = self.caret;
         let full = width_changed || old.is_empty();
@@ -945,7 +979,11 @@ impl Widget for EditorWidget {
                     }
                     let a = byte_of(&raw, m.start.saturating_sub(l.start).min(len));
                     let b = byte_of(&raw, m.end.saturating_sub(l.start).min(len));
-                    let c = if Some(i) == self.opts.current_mark { t.focus().with_alpha(0.55) } else { t.focus().with_alpha(0.25) };
+                    let c = if Some(i) == self.opts.current_mark {
+                        t.focus().with_alpha(0.55)
+                    } else {
+                        t.focus().with_alpha(0.25)
+                    };
                     for r in l.layout.selection_rects(a..b) {
                         cx.canvas.fill_rect(r + origin.to_vec2(), c);
                     }
@@ -965,7 +1003,11 @@ impl Widget for EditorWidget {
             cx.canvas.draw_text(&l.layout, origin);
             cx.canvas.restore();
             if self.opts.line_numbers {
-                let spec = if l.line == caret_line { TextSpec { color: t.text3(), ..num_spec.clone() } } else { num_spec.clone() };
+                let spec = if l.line == caret_line {
+                    TextSpec { color: t.text3(), ..num_spec.clone() }
+                } else {
+                    num_spec.clone()
+                };
                 // On the first row's baseline.
                 let number = cx.layout_text(&format!("{}", l.line + 1), &spec, None);
                 let base = l.layout.lines().first().map_or(0.0, |r| r.baseline);
@@ -978,7 +1020,12 @@ impl Widget for EditorWidget {
         {
             let spec = TextSpec::new(self.font(t), t.text3());
             let y = self.lines.first().map_or(8.0, |l| l.y);
-            cx.draw_text_in(p, &spec, Rect::new(self.text_x, y, size.width, y + self.line_h), crate::layout::Align::Start);
+            cx.draw_text_in(
+                p,
+                &spec,
+                Rect::new(self.text_x, y, size.width, y + self.line_h),
+                crate::layout::Align::Start,
+            );
         }
         let blink_off = cx.state::<EditorState>().is_some_and(|s| s.blink_off);
         if focused
@@ -1044,7 +1091,11 @@ impl Widget for EditorWidget {
     fn event(&mut self, cx: &mut EventCx, event: &Event) -> Status {
         match event {
             Event::Scroll { delta, .. } => {
-                if self.scroll_by(cx, *delta) { Status::Handled } else { Status::Ignored }
+                if self.scroll_by(cx, *delta) {
+                    Status::Handled
+                } else {
+                    Status::Ignored
+                }
             }
             Event::PointerDown { pos, button: PointerButton::Left, clicks, mods } => {
                 let at = self.hit(*pos);
@@ -1067,7 +1118,8 @@ impl Widget for EditorWidget {
                     n if *n >= 3 => {
                         let line = text.char_to_line(at.min(text.len_chars()));
                         let s = text.line_to_char(line);
-                        let e = if line + 1 < text.len_lines() { text.line_to_char(line + 1) } else { text.len_chars() };
+                        let e =
+                            if line + 1 < text.len_lines() { text.line_to_char(line + 1) } else { text.len_chars() };
                         s..e
                     }
                     _ => at..at,
@@ -1092,7 +1144,11 @@ impl Widget for EditorWidget {
                     }
                     _ => {
                         let (_, e) = self.line_bounds(at);
-                        let b = if kind == 3 { (e + 1).min(self.snap.rope.len_chars()) } else { self.word_bounds(at, true).max(at) };
+                        let b = if kind == 3 {
+                            (e + 1).min(self.snap.rope.len_chars())
+                        } else {
+                            self.word_bounds(at, true).max(at)
+                        };
                         (from.start, b)
                     }
                 };
@@ -1211,7 +1267,11 @@ impl Widget for EditorWidget {
                 self.edit(cx, EditorAction::Redo);
                 self.snap.can_redo
             }
-            EditCommand::Find | EditCommand::FindNext | EditCommand::FindPrevious | EditCommand::UseSelectionForFind | EditCommand::Replace => {
+            EditCommand::Find
+            | EditCommand::FindNext
+            | EditCommand::FindPrevious
+            | EditCommand::UseSelectionForFind
+            | EditCommand::Replace => {
                 let Some(f) = &self.on_find else { return false };
                 let req = match command {
                     EditCommand::Find => FindRequest::Show,
@@ -1259,4 +1319,3 @@ impl Widget for EditorWidget {
         })
     }
 }
-

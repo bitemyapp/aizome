@@ -66,7 +66,13 @@ impl Picker<'_> {
     }
 
     /// The row a key moves to (and whether it extends), if it's one.
-    fn key(&self, cx: &mut EventCx, k: &sidestep_ui::KeyEvent, page: usize, names: Option<&dyn Fn(usize) -> String>) -> Option<(usize, bool)> {
+    fn key(
+        &self,
+        cx: &mut EventCx,
+        k: &sidestep_ui::KeyEvent,
+        page: usize,
+        names: Option<&dyn Fn(usize) -> String>,
+    ) -> Option<(usize, bool)> {
         if self.count == 0 {
             return None;
         }
@@ -207,7 +213,11 @@ pub struct Table<Msg> {
 
 crate::builder!(Table);
 
-pub fn table<Msg: 'static, E: Into<Element<Msg>>>(columns: Vec<Column>, rows: usize, cell: impl Fn(usize, usize) -> E + 'static) -> Table<Msg> {
+pub fn table<Msg: 'static, E: Into<Element<Msg>>>(
+    columns: Vec<Column>,
+    rows: usize,
+    cell: impl Fn(usize, usize) -> E + 'static,
+) -> Table<Msg> {
     Table {
         common: Common::sized(Length::Fill, Length::Fill),
         columns,
@@ -395,10 +405,18 @@ impl Widget for TableWidget {
             self.row_height = cx.theme().metrics.row;
         }
         let rh = self.row_height;
-        let size = bc.constrain(Size::new(if bc.max.width.is_finite() { bc.max.width } else { 480.0 }, if bc.max.height.is_finite() { bc.max.height } else { 320.0 }));
+        let size = bc.constrain(Size::new(
+            if bc.max.width.is_finite() { bc.max.width } else { 480.0 },
+            if bc.max.height.is_finite() { bc.max.height } else { 320.0 },
+        ));
         self.size = size;
         let user = cx.state::<TableState>().widths.clone();
-        self.widths = self.columns.iter().enumerate().map(|(i, c)| user.get(i).copied().flatten().unwrap_or(c.width).max(c.min)).collect();
+        self.widths = self
+            .columns
+            .iter()
+            .enumerate()
+            .map(|(i, c)| user.get(i).copied().flatten().unwrap_or(c.width).max(c.min))
+            .collect();
         // The last column takes what's left.
         let total: f64 = self.widths.iter().sum();
         if total < size.width
@@ -446,7 +464,10 @@ impl Widget for TableWidget {
                     Align::Center => x + ((w - s.width) / 2.0).round(),
                     Align::Start => x,
                 };
-                cx.place_child(i, Point::new(x, self.header() + r as f64 * rh - offy + ((rh - s.height) / 2.0).round()));
+                cx.place_child(
+                    i,
+                    Point::new(x, self.header() + r as f64 * rh - offy + ((rh - s.height) / 2.0).round()),
+                );
             }
         }
         size
@@ -529,8 +550,14 @@ impl Widget for TableWidget {
                 cx.invalidate();
                 Status::Ignored
             }
-            Event::PointerMove { pos, .. } if self.drag_out.as_ref().is_some_and(|f| drag_moved(cx, *pos, &self.selected, f)) => Status::Handled,
-            Event::PointerUp { button: PointerButton::Left, .. } if self.drag_out.is_some() && cx.state::<TableState>().resizing.is_none() => {
+            Event::PointerMove { pos, .. }
+                if self.drag_out.as_ref().is_some_and(|f| drag_moved(cx, *pos, &self.selected, f)) =>
+            {
+                Status::Handled
+            }
+            Event::PointerUp { button: PointerButton::Left, .. }
+                if self.drag_out.is_some() && cx.state::<TableState>().resizing.is_none() =>
+            {
                 if let Some(i) = drag_released(cx) {
                     cx.state::<PickState>().anchor = Some(i);
                     cx.state::<PickState>().cursor = Some(i);
@@ -548,7 +575,10 @@ impl Widget for TableWidget {
                     cx.invalidate();
                     return Status::Handled;
                 }
-                let near = (pos.y < self.header()).then(|| self.edge_at(pos.x, scroll_x)).flatten().filter(|c| c + 1 < self.columns.len());
+                let near = (pos.y < self.header())
+                    .then(|| self.edge_at(pos.x, scroll_x))
+                    .flatten()
+                    .filter(|c| c + 1 < self.columns.len());
                 if near != cx.state::<TableState>().near_edge {
                     cx.state::<TableState>().near_edge = near;
                     cx.set_cursor(if near.is_some() { Cursor::ColResize } else { Cursor::Default });
@@ -595,7 +625,10 @@ impl Widget for TableWidget {
                 match button {
                     PointerButton::Left => {
                         let mods = cx.modifiers();
-                        if *clicks < 2 && self.drag_out.is_some() && drag_pressed(cx, *pos, i, &self.selected, !mods.super_key() && !mods.shift()) {
+                        if *clicks < 2
+                            && self.drag_out.is_some()
+                            && drag_pressed(cx, *pos, i, &self.selected, !mods.super_key() && !mods.shift())
+                        {
                             cx.state::<PickState>().cursor = Some(i);
                             return Status::Handled;
                         }
@@ -866,7 +899,14 @@ impl TreeWidget {
 
     fn flatten(&mut self, own: &HashSet<u64>) {
         let mut rows = Vec::new();
-        fn walk(w: &TreeWidget, items: &[TreeItem], path: &mut Vec<usize>, depth: usize, own: &HashSet<u64>, rows: &mut Vec<Row>) {
+        fn walk(
+            w: &TreeWidget,
+            items: &[TreeItem],
+            path: &mut Vec<usize>,
+            depth: usize,
+            own: &HashSet<u64>,
+            rows: &mut Vec<Row>,
+        ) {
             for (i, it) in items.iter().enumerate() {
                 path.push(i);
                 let open = it.children.is_some() && w.is_open(it.id, own);
@@ -883,7 +923,8 @@ impl TreeWidget {
             std::hash::Hash::hash(&(r.id, r.open, r.depth), &mut fx);
         }
         self.shape = std::hash::Hasher::finish(&fx);
-        self.selected_rows = rows.iter().enumerate().filter(|(_, r)| self.selected.contains(&r.id)).map(|(i, _)| i).collect();
+        self.selected_rows =
+            rows.iter().enumerate().filter(|(_, r)| self.selected.contains(&r.id)).map(|(i, _)| i).collect();
         self.rows = rows;
     }
 
@@ -951,7 +992,10 @@ impl Widget for TreeWidget {
         let own = cx.state::<OpenState>().open.clone();
         self.flatten(&own);
         let rh = self.row_height;
-        let size = bc.constrain(Size::new(if bc.max.width.is_finite() { bc.max.width } else { 280.0 }, if bc.max.height.is_finite() { bc.max.height } else { self.rows.len() as f64 * rh }));
+        let size = bc.constrain(Size::new(
+            if bc.max.width.is_finite() { bc.max.width } else { 280.0 },
+            if bc.max.height.is_finite() { bc.max.height } else { self.rows.len() as f64 * rh },
+        ));
         self.width = size.width;
         let st = cx.state::<ScrollState>();
         st.viewport = size;
@@ -1037,7 +1081,9 @@ impl Widget for TreeWidget {
     }
 
     fn event(&mut self, cx: &mut EventCx, event: &Event) -> Status {
-        if !matches!(event, Event::Key(_)) && (Scroller { dir: Direction::Vertical }).event(cx, event) == Status::Handled {
+        if !matches!(event, Event::Key(_))
+            && (Scroller { dir: Direction::Vertical }).event(cx, event) == Status::Handled
+        {
             return Status::Handled;
         }
         match event {
@@ -1129,6 +1175,10 @@ impl Widget for TreeWidget {
     }
 
     fn semantics(&self) -> Option<Semantics> {
-        Some(Semantics { role: SemanticRole::Tree, value: Some(format!("{} rows", self.rows.len())), ..Default::default() })
+        Some(Semantics {
+            role: SemanticRole::Tree,
+            value: Some(format!("{} rows", self.rows.len())),
+            ..Default::default()
+        })
     }
 }

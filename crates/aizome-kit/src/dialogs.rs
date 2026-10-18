@@ -8,19 +8,19 @@
 use std::marker::PhantomData;
 use std::path::PathBuf;
 
+use crate::Layoutable;
 use crate::element::{Element, MsgFn, MsgMap, RawElement};
 use crate::engine::{Core, KitMsg};
+use crate::icons::Icon;
 use crate::layout::{Align, Length};
 use crate::platform::{Platform, WinId};
 use crate::program::WindowKey;
 use crate::text::text;
 use crate::theme::Role;
-use crate::icons::Icon;
 use crate::widgets::controls::{button, checkbox, icon_button};
 use crate::widgets::layout::container;
-use crate::widgets::text_field::text_field;
 use crate::widgets::layout::{column, row, spacer};
-use crate::Layoutable;
+use crate::widgets::text_field::text_field;
 
 /// How an alert's button behaves.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -100,7 +100,10 @@ impl<Msg: Clone + Send + 'static> Alert<Msg> {
 
 pub(crate) fn show_alert(core: &mut Core, win: WinId, spec: AlertSpec) {
     let id = core.fresh_id();
-    core.alerts.insert(id, crate::engine::AlertState { window: win, title: spec.title, message: spec.message, buttons: spec.buttons });
+    core.alerts.insert(
+        id,
+        crate::engine::AlertState { window: win, title: spec.title, message: spec.message, buttons: spec.buttons },
+    );
     if let Some(w) = core.wins.get_mut(&win) {
         w.alerts.push(id);
         w.dirty = true;
@@ -303,8 +306,18 @@ impl PanelState {
                         if self.dialog.directories {
                             continue;
                         }
-                        let ext = std::path::Path::new(&name).extension().and_then(|x| x.to_str()).unwrap_or("").to_lowercase();
-                        if !self.dialog.filters.is_empty() && !self.dialog.filters.iter().any(|(_, exts)| exts.iter().any(|x| x.eq_ignore_ascii_case(&ext))) {
+                        let ext = std::path::Path::new(&name)
+                            .extension()
+                            .and_then(|x| x.to_str())
+                            .unwrap_or("")
+                            .to_lowercase();
+                        if !self.dialog.filters.is_empty()
+                            && !self
+                                .dialog
+                                .filters
+                                .iter()
+                                .any(|(_, exts)| exts.iter().any(|x| x.eq_ignore_ascii_case(&ext)))
+                        {
                             continue;
                         }
                     }
@@ -458,7 +471,8 @@ pub(crate) fn panel_element(core: &Core, id: u64) -> Option<RawElement> {
     let m = move |msg: PanelMsg| KitMsg::Panel { panel: id, msg };
     let title = p.dialog.title.clone().unwrap_or_else(|| if p.save { "Save".into() } else { "Open".into() });
     // The path bar: each folder up to here.
-    let mut crumbs: Vec<Element<KitMsg>> = vec![icon_button(Icon::ArrowUp).on_press(m(PanelMsg::Up)).tooltip("Enclosing folder").into()];
+    let mut crumbs: Vec<Element<KitMsg>> =
+        vec![icon_button(Icon::ArrowUp).on_press(m(PanelMsg::Up)).tooltip("Enclosing folder").into()];
     let mut acc = PathBuf::new();
     let parts: Vec<_> = p.dir.components().collect();
     for (i, c) in parts.iter().enumerate() {
@@ -490,9 +504,14 @@ pub(crate) fn panel_element(core: &Core, id: u64) -> Option<RawElement> {
             let e = &entries[i];
             let icon = if e.dir { Icon::Folder } else { Icon::File };
             let size = if e.dir { String::new() } else { human(e.size) };
-            crate::row![crate::icons::icon(icon).size(16.0), text(e.name.clone()), spacer(), text(size).mono().tabular().size(11.0).role(Role::Text3)]
-                .spacing(8.0)
-                .padding([0.0, 10.0])
+            crate::row![
+                crate::icons::icon(icon).size(16.0),
+                text(e.name.clone()),
+                spacer(),
+                text(size).mono().tabular().size(11.0).role(Role::Text3)
+            ]
+            .spacing(8.0)
+            .padding([0.0, 10.0])
         })
         .selected(p.selected.iter().copied())
         .on_select(move |s| m(PanelMsg::Select(s)))
@@ -507,16 +526,36 @@ pub(crate) fn panel_element(core: &Core, id: u64) -> Option<RawElement> {
     let mut bottom: Vec<Element<KitMsg>> = Vec::new();
     if p.save {
         bottom.push(text("Save as").role(Role::Text2).into());
-        bottom.push(text_field(&p.name).on_change(move |s| KitMsg::Panel { panel: id, msg: PanelMsg::Name(s) }).on_submit(m(PanelMsg::Confirm)).id("panel-name").width(Length::Fixed(240.0)).into());
+        bottom.push(
+            text_field(&p.name)
+                .on_change(move |s| KitMsg::Panel { panel: id, msg: PanelMsg::Name(s) })
+                .on_submit(m(PanelMsg::Confirm))
+                .id("panel-name")
+                .width(Length::Fixed(240.0))
+                .into(),
+        );
     }
-    bottom.push(checkbox("Show hidden files", p.hidden).on_toggle(move |b| KitMsg::Panel { panel: id, msg: PanelMsg::Hidden(b) }).into());
+    bottom.push(
+        checkbox("Show hidden files", p.hidden)
+            .on_toggle(move |b| KitMsg::Panel { panel: id, msg: PanelMsg::Hidden(b) })
+            .into(),
+    );
     bottom.push(spacer().into());
     bottom.push(button("Cancel").cancel().on_press(m(PanelMsg::Cancel)).into());
     bottom.push(button(confirm).default().enabled(can).on_press(m(PanelMsg::Confirm)).into());
     let body: Element<KitMsg> = column(vec![
-        row(vec![text(title).weight(aizome_theme::typeface::WEIGHT_SEMIBOLD).size(core.theme.metrics.title).into()]).padding([12.0, 16.0, 8.0, 16.0]).into(),
+        row(vec![text(title).weight(aizome_theme::typeface::WEIGHT_SEMIBOLD).size(core.theme.metrics.title).into()])
+            .padding([12.0, 16.0, 8.0, 16.0])
+            .into(),
         container(row(crumbs).spacing(2.0)).padding([0.0, 12.0, 8.0, 12.0]).width(Length::Fill).into(),
-        container(sidebar_layout(column(side), multi_files).first_size(170.0)).edges(crate::widgets::layout::Edge::Line, crate::widgets::layout::Sides { top: true, right: false, bottom: true, left: false }).width(Length::Fill).height(Length::Fill).into(),
+        container(sidebar_layout(column(side), multi_files).first_size(170.0))
+            .edges(
+                crate::widgets::layout::Edge::Line,
+                crate::widgets::layout::Sides { top: true, right: false, bottom: true, left: false },
+            )
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .into(),
         row(bottom).spacing(10.0).padding([10.0, 16.0, 12.0, 16.0]).width(Length::Fill).into(),
     ])
     .width(Length::Fixed(640.0))

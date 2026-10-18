@@ -10,11 +10,11 @@
 #[path = "../examples/gallery/views.rs"]
 mod views;
 
+use aizome_kit::Appearance;
 use aizome_kit::prelude::*;
 use aizome_kit::sidestep_ui::{Modifiers, NamedKey, PointerButton};
 use aizome_kit::testing::{Harness, assert_golden};
 use aizome_kit::theme::ThemeChoice;
-use aizome_kit::Appearance;
 use views::{Gallery, Msg, Page};
 
 fn snapshot(name: &str) -> std::path::PathBuf {

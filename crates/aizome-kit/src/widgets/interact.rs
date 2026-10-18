@@ -63,7 +63,9 @@ impl<Msg: Clone + Send + 'static> Popover<Msg> {
 
 impl<Msg> From<Popover<Msg>> for Element<Msg> {
     fn from(p: Popover<Msg>) -> Element<Msg> {
-        let w = PopoverWidget { content: Some(PopoverContent { content: p.content, open: p.open, on_dismiss: p.on_dismiss }) };
+        let w = PopoverWidget {
+            content: Some(PopoverContent { content: p.content, open: p.open, on_dismiss: p.on_dismiss }),
+        };
         Element::from_raw(RawElement { widget: Box::new(w), common: p.common, children: vec![p.anchor] })
     }
 }
@@ -108,7 +110,11 @@ impl<Msg> From<ContextMenu<Msg>> for Element<Msg> {
         // The wrapper takes its child's size.
         common.width = c.child.common.width;
         common.height = c.child.common.height;
-        Element::from_raw(RawElement { widget: Box::new(ContextWidget { menu: c.menu }), common, children: vec![c.child] })
+        Element::from_raw(RawElement {
+            widget: Box::new(ContextWidget { menu: c.menu }),
+            common,
+            children: vec![c.child],
+        })
     }
 }
 
@@ -135,7 +141,9 @@ impl Widget for ContextWidget {
                 cx.open_context_menu(self.menu.clone(), *pos);
                 Status::Handled
             }
-            Event::PointerDown { pos, button: PointerButton::Left, mods, .. } if mods.control() && !mods.super_key() => {
+            Event::PointerDown { pos, button: PointerButton::Left, mods, .. }
+                if mods.control() && !mods.super_key() =>
+            {
                 cx.open_context_menu(self.menu.clone(), *pos);
                 Status::Handled
             }
@@ -300,7 +308,13 @@ impl Widget for MouseWidget {
 
     fn hit(&self) -> bool {
         let h = &self.h;
-        h.press.is_some() || h.release.is_some() || h.double.is_some() || h.right.is_some() || h.hover.is_some() || h.moved.is_some() || h.drag.is_some()
+        h.press.is_some()
+            || h.release.is_some()
+            || h.double.is_some()
+            || h.right.is_some()
+            || h.hover.is_some()
+            || h.moved.is_some()
+            || h.drag.is_some()
     }
 
     fn solid(&self) -> bool {
@@ -341,7 +355,11 @@ impl Widget for MouseWidget {
                     let last = cx.state::<MouseState>().last.replace(*pos).unwrap_or(start);
                     cx.emit_any(f.make(DragEvent::Move { start, at: *pos, delta: *pos - last }));
                 }
-                if h.moved.is_some() || h.drag.is_some() || h.hover.is_some() || h.drag_out.is_some() { Status::Handled } else { Status::Ignored }
+                if h.moved.is_some() || h.drag.is_some() || h.hover.is_some() || h.drag_out.is_some() {
+                    Status::Handled
+                } else {
+                    Status::Ignored
+                }
             }
             Event::PointerLeave => {
                 let st = cx.state::<MouseState>();
@@ -388,7 +406,11 @@ impl Widget for MouseWidget {
                 if let Some(m) = &h.release {
                     cx.emit(m);
                 }
-                if h.release.is_some() || h.drag.is_some() || h.drag_out.is_some() { Status::Handled } else { Status::Ignored }
+                if h.release.is_some() || h.drag.is_some() || h.drag_out.is_some() {
+                    Status::Handled
+                } else {
+                    Status::Ignored
+                }
             }
             Event::PointerDown { pos, button: PointerButton::Right, .. } => match &h.right {
                 Some(f) => {
@@ -397,7 +419,9 @@ impl Widget for MouseWidget {
                 }
                 None => Status::Ignored,
             },
-            Event::DragOver { urls, has_text, .. } if h.drop.is_some() && (!urls.is_empty() || *has_text) => Status::Handled,
+            Event::DragOver { urls, has_text, .. } if h.drop.is_some() && (!urls.is_empty() || *has_text) => {
+                Status::Handled
+            }
             Event::Drop { pos, urls, text } => match &h.drop {
                 Some(f) => {
                     cx.emit_any(f.make(Dropped { at: *pos, urls: urls.clone(), text: text.clone() }));
@@ -435,7 +459,10 @@ impl<Msg, S> crate::element::Layoutable for CanvasEl<Msg, S> {
     }
 }
 
-pub fn canvas<Msg, S: Hash + 'static>(state: S, draw: impl Fn(&mut Canvas, Rect, &S, &Theme) + 'static) -> CanvasEl<Msg, S> {
+pub fn canvas<Msg, S: Hash + 'static>(
+    state: S,
+    draw: impl Fn(&mut Canvas, Rect, &S, &Theme) + 'static,
+) -> CanvasEl<Msg, S> {
     CanvasEl {
         common: Common::sized(Length::Fill, Length::Fill),
         state,
@@ -485,7 +512,15 @@ impl<Msg: Send + 'static, S: Hash + 'static> CanvasEl<Msg, S> {
 impl<Msg, S: Hash + 'static> From<CanvasEl<Msg, S>> for Element<Msg> {
     fn from(c: CanvasEl<Msg, S>) -> Element<Msg> {
         let hash = hash_of(&c.state);
-        let w = CanvasWidget { state: c.state, hash, draw: c.draw, on_event: c.on_event, parts: c.parts, focusable: c.focusable, ring: c.ring };
+        let w = CanvasWidget {
+            state: c.state,
+            hash,
+            draw: c.draw,
+            on_event: c.on_event,
+            parts: c.parts,
+            focusable: c.focusable,
+            ring: c.ring,
+        };
         Element::from_raw(RawElement::new(w, c.common, Vec::new()))
     }
 }
@@ -506,7 +541,10 @@ impl<S: 'static> Widget for CanvasWidget<S> {
     }
 
     fn layout(&mut self, cx: &mut LayoutCx, bc: Constraints) -> Size {
-        let size = bc.constrain(Size::new(if bc.max.width.is_finite() { bc.max.width } else { 200.0 }, if bc.max.height.is_finite() { bc.max.height } else { 120.0 }));
+        let size = bc.constrain(Size::new(
+            if bc.max.width.is_finite() { bc.max.width } else { 200.0 },
+            if bc.max.height.is_finite() { bc.max.height } else { 120.0 },
+        ));
         if let Some(f) = &self.parts {
             let now = f(&self.state, size);
             let st = cx.state::<CanvasParts>();

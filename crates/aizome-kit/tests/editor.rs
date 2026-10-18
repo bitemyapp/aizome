@@ -214,7 +214,12 @@ fn an_editor_as_the_board() {
     let e = h.find_id(w, "editor").unwrap();
     // Select from "fills" on line 8 into line 9.
     h.press(w, Point::new(e.x0 + 52.0 + 8.0 * 9.0, e.y0 + 8.0 + 21.0 * 7.0 + 10.0), PointerButton::Left, 1);
-    h.drag(w, Point::new(e.x0 + 52.0 + 8.0 * 9.0, e.y0 + 8.0 + 21.0 * 7.0 + 10.0), Point::new(e.x0 + 52.0 + 8.0 * 15.0, e.y0 + 8.0 + 21.0 * 8.0 + 10.0), 4);
+    h.drag(
+        w,
+        Point::new(e.x0 + 52.0 + 8.0 * 9.0, e.y0 + 8.0 + 21.0 * 7.0 + 10.0),
+        Point::new(e.x0 + 52.0 + 8.0 * 15.0, e.y0 + 8.0 + 21.0 * 8.0 + 10.0),
+        4,
+    );
     let out = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("editor.png");
     h.save_png(w, &out, 2.0);
     assert!(h.selection(w).is_some());

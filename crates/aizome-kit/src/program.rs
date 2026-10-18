@@ -7,8 +7,8 @@ use crate::element::Element;
 use crate::icons::Icon;
 use crate::layout::{Rect, Size};
 use crate::menu::MenuBar;
-pub use sidestep_ui::layer_shell::{Anchors, KeyboardInteractivity, Layer, LayerOptions, Margins};
 pub use sidestep_ui::Output;
+pub use sidestep_ui::layer_shell::{Anchors, KeyboardInteractivity, Layer, LayerOptions, Margins};
 
 /// A request for an activation token ([`Cx::request_activation_token`]).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -288,7 +288,12 @@ impl WindowSpec {
     /// points (0 along an axis it's anchored at both ends of: the
     /// compositor's choice).
     pub fn layer(options: LayerOptions, width: f64, height: f64) -> WindowSpec {
-        WindowSpec { size: Size::new(width, height), resizable: false, kind: WindowKind::Layer(options), ..WindowSpec::new("") }
+        WindowSpec {
+            size: Size::new(width, height),
+            resizable: false,
+            kind: WindowKind::Layer(options),
+            ..WindowSpec::new("")
+        }
     }
 
     /// The lock screen's surface on output `output`.

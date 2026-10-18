@@ -177,7 +177,8 @@ impl<Msg: Clone + Send + 'static> MenuStyle<Msg> {
     /// opened from this menu's top left, as near as the kit knows (beside
     /// its row), to put the palette where the submenu was.
     pub fn on_tear_off_sub(mut self, f: impl Fn(Vec<usize>, Vec2) -> Msg + 'static) -> Self {
-        self.look.tear_sub = Some(TearSub { path: Vec::new(), offset: Vec2::ZERO, map: MsgMap::new(move |(p, o)| f(p, o)) });
+        self.look.tear_sub =
+            Some(TearSub { path: Vec::new(), offset: Vec2::ZERO, map: MsgMap::new(move |(p, o)| f(p, o)) });
         self
     }
 }
@@ -383,7 +384,13 @@ impl MenuView {
                 .collect();
         }
         let mut found: Vec<(u32, Vec<usize>, bool, String)> = Vec::new();
-        fn walk(spec: &MenuSpec, path: &mut Vec<usize>, trail: &str, query: &str, found: &mut Vec<(u32, Vec<usize>, bool, String)>) {
+        fn walk(
+            spec: &MenuSpec,
+            path: &mut Vec<usize>,
+            trail: &str,
+            query: &str,
+            found: &mut Vec<(u32, Vec<usize>, bool, String)>,
+        ) {
             for (i, it) in spec.items.iter().enumerate() {
                 path.push(i);
                 match it {
@@ -547,7 +554,8 @@ impl Widget for MenuView {
         let mut out = Vec::new();
         let mut y = self.top() + 4.0;
         let mark = if self.look.mark { 18.0 } else { 0.0 };
-        let mut widest: f64 = self.look.title.as_ref().map_or(0.0, |t| cx.measure(t, &MenuView::strip_spec(theme)).width + 56.0 + mark);
+        let mut widest: f64 =
+            self.look.title.as_ref().map_or(0.0, |t| cx.measure(t, &MenuView::strip_spec(theme)).width + 56.0 + mark);
         if filtered {
             widest = widest.max(cx.measure(&self.query, &label).width + 40.0);
             y += m.menu_row;
@@ -602,7 +610,11 @@ impl Widget for MenuView {
             let close = self.close_box();
             draw::border(cx.canvas, close, fg, 1.5);
             let spec = MenuView::strip_spec(t);
-            let right = if self.look.pin.is_some() || self.look.tear_off.is_some() { self.pin_box().x0 } else { strip.x1 - 6.0 };
+            let right = if self.look.pin.is_some() || self.look.tear_off.is_some() {
+                self.pin_box().x0
+            } else {
+                strip.x1 - 6.0
+            };
             let mut x = close.x1 + 7.0;
             if self.look.mark {
                 // The mark at 12pt: its tab and three stripes, on whole points.
@@ -610,7 +622,12 @@ impl Widget for MenuView {
                 let m = 3.0;
                 let y = (strip.y0 + (strip.height() - 12.0) / 2.0).round();
                 for ([rx, ry, rw, rh], c) in brand.mark_rects() {
-                    let r = Rect::new(x + rx as f64 * m, y + ry as f64 * m, x + (rx + rw) as f64 * m, y + (ry + rh) as f64 * m);
+                    let r = Rect::new(
+                        x + rx as f64 * m,
+                        y + ry as f64 * m,
+                        x + (rx + rw) as f64 * m,
+                        y + (ry + rh) as f64 * m,
+                    );
                     cx.canvas.fill_rect(r, crate::theme::color(c));
                 }
                 x += 18.0;
@@ -628,7 +645,12 @@ impl Widget for MenuView {
         let query = state.map(|s| s.query.as_str()).unwrap_or("");
         if !query.is_empty() {
             let r = Rect::new(1.0, self.top() + 4.0, self.width - 1.0, self.top() + 4.0 + t.metrics.menu_row);
-            Icon::Search.draw(cx.canvas, Point::new(r.x0 + PAD - 2.0, r.y0 + (r.height() - 13.0) / 2.0), 13.0, t.text3());
+            Icon::Search.draw(
+                cx.canvas,
+                Point::new(r.x0 + PAD - 2.0, r.y0 + (r.height() - 13.0) / 2.0),
+                13.0,
+                t.text3(),
+            );
             let spec = TextSpec { color: t.text(), ..label_spec.clone() };
             let w = cx.draw_text_in(query, &spec, Rect::new(r.x0 + PAD + 16.0, r.y0, r.x1 - PAD, r.y1), Align::Start);
             // The caret after what's typed.
@@ -637,7 +659,12 @@ impl Widget for MenuView {
             draw::separator(cx.canvas, t, 1.0, self.width - 1.0, r.y1 - 1.0);
             if self.rows.is_empty() {
                 let none = Rect::new(r.x0 + PAD, r.y1, r.x1 - PAD, r.y1 + t.metrics.menu_row);
-                cx.draw_text_in("No items match", &TextSpec { color: t.faint(), ..label_spec.clone() }, none, Align::Start);
+                cx.draw_text_in(
+                    "No items match",
+                    &TextSpec { color: t.faint(), ..label_spec.clone() },
+                    none,
+                    Align::Start,
+                );
             }
         }
         for (i, row) in self.rows.iter().enumerate() {
@@ -649,7 +676,8 @@ impl Widget for MenuView {
             match row.kind {
                 RowKind::Separator => draw::separator(cx.canvas, t, 1.0, self.width - 1.0, row.y + 4.0),
                 RowKind::Header => {
-                    let spec = TextSpec { letter_spacing: 1.2, ..TextSpec::new(FontSpec::mono(t.metrics.caption), t.text3()) };
+                    let spec =
+                        TextSpec { letter_spacing: 1.2, ..TextSpec::new(FontSpec::mono(t.metrics.caption), t.text3()) };
                     let text = item.map(label_of).unwrap_or("").to_uppercase();
                     cx.draw_text_in(&text, &spec, Rect::new(r.x0 + PAD, r.y0 + 6.0, r.x1 - PAD, r.y1), Align::Start);
                 }
@@ -676,7 +704,12 @@ impl Widget for MenuView {
                     let mut right = r.x1 - PAD;
                     if row.kind == RowKind::Submenu {
                         let c = if hot { t.on_selection() } else { t.text3() };
-                        Icon::ChevronRight.draw(cx.canvas, Point::new(right - 12.0, r.y0 + (r.height() - 12.0) / 2.0), 12.0, c);
+                        Icon::ChevronRight.draw(
+                            cx.canvas,
+                            Point::new(right - 12.0, r.y0 + (r.height() - 12.0) / 2.0),
+                            12.0,
+                            c,
+                        );
                         right -= ARROW;
                     }
                     if let Some(ItemSpec::Submenu(m)) = item
@@ -690,21 +723,42 @@ impl Widget for MenuView {
                         if a.checked {
                             Icon::Check.draw(cx.canvas, Point::new(r.x0 + PAD - 3.0, gy), 14.0, fg);
                         } else if let Some(icon) = a.icon {
-                            icon.draw(cx.canvas, Point::new(r.x0 + PAD - 3.0, gy), 14.0, if hot { fg } else { t.text3() });
+                            icon.draw(
+                                cx.canvas,
+                                Point::new(r.x0 + PAD - 3.0, gy),
+                                14.0,
+                                if hot { fg } else { t.text3() },
+                            );
                         }
                         if let Some(s) = a.shortcut {
-                            let c = if hot { t.on_selection() } else if row.enabled { t.text3() } else { t.faint() };
+                            let c = if hot {
+                                t.on_selection()
+                            } else if row.enabled {
+                                t.text3()
+                            } else {
+                                t.faint()
+                            };
                             let spec = TextSpec { color: c, ..sc_spec.clone() };
                             let w = cx.draw_text_in(&s.label(), &spec, Rect::new(x, r.y0, right, r.y1), Align::End);
                             right -= w + 16.0;
                         }
                     }
                     let spec = TextSpec { color: fg, ..label_spec.clone() };
-                    let w = cx.draw_text_in(item.map(label_of).unwrap_or(""), &spec, Rect::new(x, r.y0, right.max(x), r.y1), Align::Start);
+                    let w = cx.draw_text_in(
+                        item.map(label_of).unwrap_or(""),
+                        &spec,
+                        Rect::new(x, r.y0, right.max(x), r.y1),
+                        Align::Start,
+                    );
                     if !row.trail.is_empty() {
                         let c = if hot { t.on_selection() } else { t.text3() };
                         let spec = TextSpec { color: c, ..sc_spec.clone() };
-                        cx.draw_text_in(&row.trail, &spec, Rect::new(x + w + 10.0, r.y0, right.max(x + w + 10.0), r.y1), Align::Start);
+                        cx.draw_text_in(
+                            &row.trail,
+                            &spec,
+                            Rect::new(x + w + 10.0, r.y0, right.max(x + w + 10.0), r.y1),
+                            Align::Start,
+                        );
                     }
                 }
             }
@@ -804,7 +858,9 @@ impl Widget for MenuView {
                 }
                 Status::Handled
             }
-            Event::PointerDown { pos, button: PointerButton::Left, .. } if self.look.title.is_some() && self.strip_rect().contains(*pos) => {
+            Event::PointerDown { pos, button: PointerButton::Left, .. }
+                if self.look.title.is_some() && self.strip_rect().contains(*pos) =>
+            {
                 if self.close_box().inflate(4.0, 4.0).contains(*pos) {
                     self.close(cx);
                 } else if (self.look.pin.is_some() || self.look.tear_off.is_some()) && self.pin_box().contains(*pos) {
@@ -852,7 +908,8 @@ impl Widget for MenuView {
                     Key::Named(NamedKey::Enter) => {
                         let hover = cx.state::<MenuState>().hover;
                         let filtered = !cx.state::<MenuState>().query.is_empty();
-                        let target = hover.or_else(|| filtered.then(|| (0..self.rows.len()).find(|&i| self.selectable(i))).flatten());
+                        let target = hover
+                            .or_else(|| filtered.then(|| (0..self.rows.len()).find(|&i| self.selectable(i))).flatten());
                         if let Some(i) = target {
                             self.activate_row(cx, i);
                         }

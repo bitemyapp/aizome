@@ -165,8 +165,7 @@ impl Constraints {
         Constraints { min: size, max: size }
     }
 
-    pub const UNBOUNDED: Constraints =
-        Constraints { min: Size::ZERO, max: Size::new(f64::INFINITY, f64::INFINITY) };
+    pub const UNBOUNDED: Constraints = Constraints { min: Size::ZERO, max: Size::new(f64::INFINITY, f64::INFINITY) };
 
     /// `size` brought within the constraints.
     pub fn constrain(&self, size: Size) -> Size {
@@ -221,7 +220,6 @@ impl Constraints {
         self.min == self.max
     }
 }
-
 
 #[cfg(test)]
 mod tests {

@@ -713,13 +713,23 @@ impl<P: Program> sidestep_ui::Handler for Glue<P> {
         rt.session_lock_finished(&mut p);
     }
 
-    fn activation_token(&mut self, cx: &mut sidestep_ui::Cx, request: sidestep_ui::ActivationRequest, token: Option<String>) {
+    fn activation_token(
+        &mut self,
+        cx: &mut sidestep_ui::Cx,
+        request: sidestep_ui::ActivationRequest,
+        token: Option<String>,
+    ) {
         let Some(id) = self.maps.activations.remove(&request) else { return };
         let (rt, mut p) = self.split(cx);
         rt.activation_token(id, token, &mut p);
     }
 
-    fn provide_drag_data(&mut self, cx: &mut sidestep_ui::Cx, drag: sidestep_ui::DragId, mime: &str) -> Option<Vec<u8>> {
+    fn provide_drag_data(
+        &mut self,
+        cx: &mut sidestep_ui::Cx,
+        drag: sidestep_ui::DragId,
+        mime: &str,
+    ) -> Option<Vec<u8>> {
         let id = *self.maps.drags.get(&drag)?;
         let (rt, mut p) = self.split(cx);
         rt.provide_drag_data(id, mime, &mut p)

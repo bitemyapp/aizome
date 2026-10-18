@@ -1,9 +1,9 @@
 //! Full screen, asked for and told of, and pinches over a canvas.
 
+use aizome_kit::WindowState;
 use aizome_kit::prelude::*;
 use aizome_kit::testing::Harness;
 use aizome_kit::widget::Event;
-use aizome_kit::WindowState;
 
 #[derive(Default)]
 struct Viewer {

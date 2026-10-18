@@ -202,8 +202,16 @@ fn items(spec: &MenuSpec, path: &str) -> Vec<proto::Item> {
                 icon: a.icon.map(|i| i.name().to_owned()),
                 items: Vec::new(),
             },
-            ItemSpec::Separator => proto::Item { id: 0, kind: proto::ItemKind::Separator, enabled: false, ..Default::default() },
-            ItemSpec::Header(t) => proto::Item { id: 0, kind: proto::ItemKind::Header, label: t.clone(), enabled: false, ..Default::default() },
+            ItemSpec::Separator => {
+                proto::Item { id: 0, kind: proto::ItemKind::Separator, enabled: false, ..Default::default() }
+            }
+            ItemSpec::Header(t) => proto::Item {
+                id: 0,
+                kind: proto::ItemKind::Header,
+                label: t.clone(),
+                enabled: false,
+                ..Default::default()
+            },
             ItemSpec::Submenu(m) => {
                 let sub = format!("{path}/{}", m.title);
                 proto::Item {

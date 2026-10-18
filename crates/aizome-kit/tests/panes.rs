@@ -1,11 +1,11 @@
 //! Window furniture: a Settings-like pane (sidebar, forms), an editor's
 //! toolbar, splits, popovers, context menus and mouse areas.
 
+use aizome_kit::Appearance;
 use aizome_kit::column;
 use aizome_kit::prelude::*;
 use aizome_kit::sidestep_ui::{Modifiers, NamedKey, PointerButton};
 use aizome_kit::testing::Harness;
-use aizome_kit::Appearance;
 
 #[derive(Default)]
 struct Settings {
@@ -71,7 +71,9 @@ impl Program for Settings {
             items.push(sidebar_item(*icon, *name, self.pane == i).on_press(Msg::Pane(i)).id(*name).into());
         }
         let sidebar = aizome_kit::widgets::layout::column(items).padding([0.0, 0.0, 8.0, 0.0]);
-        let menu = Menu::new("Network").item(MenuItem::new("Copy Address", Msg::Pick("copy"))).item(MenuItem::new("Forget", Msg::Pick("forget")));
+        let menu = Menu::new("Network")
+            .item(MenuItem::new("Copy Address", Msg::Pick("copy")))
+            .item(MenuItem::new("Forget", Msg::Pick("forget")));
         let content = scroll(
             column![
                 text("Appearance").size(20.0).semibold(),
@@ -79,17 +81,41 @@ impl Program for Settings {
                     "Look",
                     vec![
                         form_row("Theme", segmented(["Night", "Day", "Auto"], self.theme).on_select(Msg::Theme)).into(),
-                        form_row("Size", dropdown(["Small", "Medium", "Large"], self.size).on_select(Msg::Size).id("size"))
-                            .description("Scales type and controls, not pixels.")
-                            .into(),
-                        form_row("Brightness", slider(self.brightness, 0.0..=1.0).on_change(Msg::Brightness).width(200.0)).into(),
+                        form_row(
+                            "Size",
+                            dropdown(["Small", "Medium", "Large"], self.size).on_select(Msg::Size).id("size")
+                        )
+                        .description("Scales type and controls, not pixels.")
+                        .into(),
+                        form_row(
+                            "Brightness",
+                            slider(self.brightness, 0.0..=1.0).on_change(Msg::Brightness).width(200.0)
+                        )
+                        .into(),
                     ],
                 ),
                 form_section(
                     "Network",
                     vec![
-                        context_menu(form_row("Wi-Fi", toggle(self.wifi).on_toggle(Msg::Wifi).id("wifi")).icon(Icon::Wifi), menu).id("wifi-row").into(),
-                        form_row("Details", popover(button("Details…").on_press(Msg::Panel(true)).id("details"), column![text("Kestrel-5G").semibold(), text("192.168.1.24").mono().role(Role::Text3)].spacing(4.0).padding(12.0).width(220.0), self.panel).on_dismiss(Msg::Panel(false))).into(),
+                        context_menu(
+                            form_row("Wi-Fi", toggle(self.wifi).on_toggle(Msg::Wifi).id("wifi")).icon(Icon::Wifi),
+                            menu
+                        )
+                        .id("wifi-row")
+                        .into(),
+                        form_row(
+                            "Details",
+                            popover(
+                                button("Details…").on_press(Msg::Panel(true)).id("details"),
+                                column![text("Kestrel-5G").semibold(), text("192.168.1.24").mono().role(Role::Text3)]
+                                    .spacing(4.0)
+                                    .padding(12.0)
+                                    .width(220.0),
+                                self.panel
+                            )
+                            .on_dismiss(Msg::Panel(false))
+                        )
+                        .into(),
                     ],
                 ),
                 aizome_kit::mouse_area(container(text("Drop files here").role(Role::Text3)).padding(12.0).width(Fill))

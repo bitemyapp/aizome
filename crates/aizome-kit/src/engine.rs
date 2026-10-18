@@ -58,10 +58,19 @@ pub(crate) enum KitMsg {
 /// What a timer is for.
 pub(crate) enum TimerUse {
     /// The program's `after` or `every`.
-    App { msg: MsgFn, repeat: bool },
+    App {
+        msg: MsgFn,
+        repeat: bool,
+    },
     /// A widget's tick.
-    Tick { win: WinId, node: NodeId },
-    Tooltip { win: WinId, node: NodeId },
+    Tick {
+        win: WinId,
+        node: NodeId,
+    },
+    Tooltip {
+        win: WinId,
+        node: NodeId,
+    },
     /// Publish the menus to the shell.
     Menus,
 }
@@ -82,10 +91,18 @@ pub(crate) enum WinKind {
 #[allow(clippy::large_enum_variant)]
 pub(crate) enum PopupKind {
     /// A menu (a pop-up button's, a context menu, a bar menu, a submenu).
-    Menu { spec: MenuSpec, look: MenuLook, bar: Option<usize> },
+    Menu {
+        spec: MenuSpec,
+        look: MenuLook,
+        bar: Option<usize>,
+    },
     /// A popover element's content, from the owner's tree, shown against
     /// `anchor` (the node's rectangle when last placed).
-    Popover { node: NodeId, on_dismiss: Option<MsgFn>, anchor: Rect },
+    Popover {
+        node: NodeId,
+        on_dismiss: Option<MsgFn>,
+        anchor: Rect,
+    },
     Tooltip,
 }
 
@@ -267,7 +284,10 @@ impl Core {
             WindowKind::Layer(o) => (OpenKind::Layer(o.clone()), None),
             WindowKind::Lock { output } => (OpenKind::Lock { output: *output }, None),
             WindowKind::Popup { parent, anchor, placement, grab } => match self.window_of(*parent) {
-                Some(p) => (OpenKind::Popup { parent: p, anchor: *anchor, placement: placement.placement(), grab: *grab }, None),
+                Some(p) => (
+                    OpenKind::Popup { parent: p, anchor: *anchor, placement: placement.placement(), grab: *grab },
+                    None,
+                ),
                 None => {
                     log::warn!("a popup over a window that isn't open");
                     return WindowKey::NONE;
@@ -299,7 +319,11 @@ impl Core {
     /// How tall the in-window menu bar is over a window of `spec` (none
     /// where menus go to the shell, or the window has no bar).
     pub fn menu_strip(&self, spec: &WindowSpec) -> f64 {
-        if self.in_window_menus && spec.has_menu_bar() && !self.menubar.is_empty() { self.theme.metrics.target } else { 0.0 }
+        if self.in_window_menus && spec.has_menu_bar() && !self.menubar.is_empty() {
+            self.theme.metrics.target
+        } else {
+            0.0
+        }
     }
 
     /// The menu strip's height over window `win`, if it's an app's.
@@ -334,7 +358,12 @@ impl Core {
         match self.keys.remove(&key) {
             Some(KeyTarget::Window(win)) => {
                 // Sheets and dialogs go with it.
-                let sheets: Vec<WindowKey> = self.keys.iter().filter(|(_, t)| **t == KeyTarget::Sheet { parent: win }).map(|(k, _)| *k).collect();
+                let sheets: Vec<WindowKey> = self
+                    .keys
+                    .iter()
+                    .filter(|(_, t)| **t == KeyTarget::Sheet { parent: win })
+                    .map(|(k, _)| *k)
+                    .collect();
                 for s in sheets {
                     self.keys.remove(&s);
                 }
@@ -479,7 +508,14 @@ impl Core {
             WinKind::Popup { .. } => "popup",
         });
         let mut tree = Tree::new(root, base);
-        let mut env = Env { focus: w.active_focus(), theme: &self.theme, text: &mut self.text, states: &mut w.states, now: Instant::now(), on_selection: false };
+        let mut env = Env {
+            focus: w.active_focus(),
+            theme: &self.theme,
+            text: &mut self.text,
+            states: &mut w.states,
+            now: Instant::now(),
+            on_selection: false,
+        };
         tree.layout_window(w.size, &mut env);
         let damage = if w.built {
             settle(&mut tree, &w.snapshot, w.focused, win, platform)
@@ -546,7 +582,14 @@ impl Core {
             }
         }
         let size = w.size;
-        let mut env = Env { focus: w.active_focus(), theme: &self.theme, text: &mut self.text, states: &mut w.states, now: Instant::now(), on_selection: false };
+        let mut env = Env {
+            focus: w.active_focus(),
+            theme: &self.theme,
+            text: &mut self.text,
+            states: &mut w.states,
+            now: Instant::now(),
+            on_selection: false,
+        };
         w.tree.layout_window(size, &mut env);
         let dead = w.tree.nodes.iter().filter(|n| n.dead).count();
         if dead > 256 && dead > w.tree.nodes.len() / 2 {
@@ -578,7 +621,14 @@ impl Core {
     fn build_popup(&mut self, win: WinId, root: RawElement, platform: &mut dyn Platform) -> Size {
         let Some(w) = self.wins.get_mut(&win) else { return Size::ZERO };
         let mut tree = Tree::new(root, NodeId::ROOT.child("popup"));
-        let mut env = Env { focus: w.active_focus(), theme: &self.theme, text: &mut self.text, states: &mut w.states, now: Instant::now(), on_selection: false };
+        let mut env = Env {
+            focus: w.active_focus(),
+            theme: &self.theme,
+            text: &mut self.text,
+            states: &mut w.states,
+            now: Instant::now(),
+            on_selection: false,
+        };
         let size = tree.layout_free(Size::new(1200.0, 900.0), &mut env);
         let size = Size::new(size.width.ceil(), size.height.ceil());
         if w.built && size == w.size {
@@ -624,7 +674,14 @@ impl Core {
         // grows back, and only ever widens (it doesn't jump about).
         let Some(w) = self.wins.get_mut(&win) else { return };
         let mut tree = Tree::new(root, NodeId::ROOT.child("popup"));
-        let mut env = Env { focus: w.active_focus(), theme: &self.theme, text: &mut self.text, states: &mut w.states, now: Instant::now(), on_selection: false };
+        let mut env = Env {
+            focus: w.active_focus(),
+            theme: &self.theme,
+            text: &mut self.text,
+            states: &mut w.states,
+            now: Instant::now(),
+            on_selection: false,
+        };
         let natural = tree.layout_free(Size::new(1200.0, 900.0), &mut env);
         let size = Size::new(natural.width.ceil().max(w.size.width), natural.height.ceil());
         tree.layout_window(size, &mut env);
@@ -650,7 +707,8 @@ impl Core {
         let Some(w) = self.wins.get(&win) else { return };
         let mut moved = Vec::new();
         for &p in &w.popups {
-            if let Some(WinKind::Popup { kind: PopupKind::Popover { node, anchor, .. }, .. }) = self.wins.get(&p).map(|pw| &pw.kind)
+            if let Some(WinKind::Popup { kind: PopupKind::Popover { node, anchor, .. }, .. }) =
+                self.wins.get(&p).map(|pw| &pw.kind)
                 && let Some(i) = w.tree.get(*node)
                 && w.tree.nodes[i].rect != *anchor
             {
@@ -658,7 +716,9 @@ impl Core {
             }
         }
         for (p, rect) in moved {
-            if let Some(WinKind::Popup { kind: PopupKind::Popover { anchor, .. }, .. }) = self.wins.get_mut(&p).map(|pw| &mut pw.kind) {
+            if let Some(WinKind::Popup { kind: PopupKind::Popover { anchor, .. }, .. }) =
+                self.wins.get_mut(&p).map(|pw| &mut pw.kind)
+            {
                 *anchor = rect;
             }
             platform.set_popup_anchor(p, rect);
@@ -748,7 +808,12 @@ impl Core {
                 w.popups
                     .iter()
                     .copied()
-                    .filter(|p| matches!(self.wins.get(p).map(|w| &w.kind), Some(WinKind::Popup { kind: PopupKind::Menu { .. }, .. })))
+                    .filter(|p| {
+                        matches!(
+                            self.wins.get(p).map(|w| &w.kind),
+                            Some(WinKind::Popup { kind: PopupKind::Menu { .. }, .. })
+                        )
+                    })
                     .collect()
             })
             .unwrap_or_default();
@@ -757,9 +822,7 @@ impl Core {
             self.close_win(m, platform);
         }
         // The in-window bar's open title goes back.
-        if had
-            && let Some(w) = self.wins.get_mut(&top)
-        {
+        if had && let Some(w) = self.wins.get_mut(&top) {
             let before = w.states.len();
             w.states.retain(|_, s| !s.is::<crate::widgets::menus::BarState>());
             if w.states.len() != before {
@@ -795,7 +858,16 @@ impl Core {
         self.settle_menu(&mut spec);
         let root = MenuView::element(spec.clone(), look.clone());
         let keyboard = look.keyboard;
-        let menu = self.open_popup(win, anchor, placement, true, PopupKind::Menu { spec, look, bar: None }, root, mapper, platform);
+        let menu = self.open_popup(
+            win,
+            anchor,
+            placement,
+            true,
+            PopupKind::Menu { spec, look, bar: None },
+            root,
+            mapper,
+            platform,
+        );
         if keyboard {
             self.highlight_first_row(menu, platform);
         }
@@ -824,7 +896,16 @@ impl Core {
         let Some(mut spec) = self.menubar.get(index).cloned() else { return };
         self.settle_menu(&mut spec);
         let root = MenuView::element(spec.clone(), MenuLook::default());
-        self.open_popup(win, anchor, Placement::Below, true, PopupKind::Menu { spec, look: MenuLook::default(), bar: Some(index) }, root, None, platform);
+        self.open_popup(
+            win,
+            anchor,
+            Placement::Below,
+            true,
+            PopupKind::Menu { spec, look: MenuLook::default(), bar: Some(index) },
+            root,
+            None,
+            platform,
+        );
         // Closing the last menu put the bar's title back; this one's open.
         if let Some(w) = self.wins.get_mut(&win)
             && let Some(n) = w.tree.nodes.iter().find(|n| !n.dead && n.widget.name() == "menu-bar")
@@ -855,7 +936,12 @@ impl Core {
                 w.popups
                     .iter()
                     .copied()
-                    .filter(|p| matches!(self.wins.get(p).map(|w| &w.kind), Some(WinKind::Popup { kind: PopupKind::Menu { .. }, .. })))
+                    .filter(|p| {
+                        matches!(
+                            self.wins.get(p).map(|w| &w.kind),
+                            Some(WinKind::Popup { kind: PopupKind::Menu { .. }, .. })
+                        )
+                    })
                     .collect()
             })
             .unwrap_or_default()
@@ -884,7 +970,16 @@ impl Core {
         let look = look.sub(&sub.title, &path, anchor);
         self.settle_menu(&mut sub);
         let root = MenuView::element(sub.clone(), look.clone());
-        self.open_popup(win, anchor, Placement::Beside, true, PopupKind::Menu { spec: sub, look, bar: None }, root, mapper, platform);
+        self.open_popup(
+            win,
+            anchor,
+            Placement::Beside,
+            true,
+            PopupKind::Menu { spec: sub, look, bar: None },
+            root,
+            mapper,
+            platform,
+        );
     }
 
     /// An item of the menu at `node` in `win` was chosen: close the menus,
@@ -952,7 +1047,8 @@ impl Core {
     }
 
     fn expand_window_list(&self, spec: &mut MenuSpec) {
-        let at = spec.items.iter().position(|i| matches!(i, ItemSpec::Action(a) if a.role == Some(MenuRole::WindowList)));
+        let at =
+            spec.items.iter().position(|i| matches!(i, ItemSpec::Action(a) if a.role == Some(MenuRole::WindowList)));
         let Some(at) = at else { return };
         let mut items = Vec::new();
         for (win, _key) in self.app_windows() {
@@ -1008,7 +1104,16 @@ impl Core {
                     }
                 }
                 None => {
-                    self.open_popup(win, anchor, Placement::Below, true, PopupKind::Popover { node, on_dismiss, anchor }, root, mapper, platform);
+                    self.open_popup(
+                        win,
+                        anchor,
+                        Placement::Below,
+                        true,
+                        PopupKind::Popover { node, on_dismiss, anchor },
+                        root,
+                        mapper,
+                        platform,
+                    );
                 }
             }
         }
@@ -1056,7 +1161,14 @@ impl Core {
         let mut out = Out::default();
         let local = localize(event, origin);
         let status = {
-            let mut env = Env { focus: w.active_focus(), theme: &self.theme, text: &mut self.text, states: &mut w.states, now: Instant::now(), on_selection: false };
+            let mut env = Env {
+                focus: w.active_focus(),
+                theme: &self.theme,
+                text: &mut self.text,
+                states: &mut w.states,
+                now: Instant::now(),
+                on_selection: false,
+            };
             let mut cx = EventCx {
                 tree: &w.tree,
                 node: idx,
@@ -1092,7 +1204,23 @@ impl Core {
 
     /// Carry out what a handler asked for.
     fn apply(&mut self, win: WinId, idx: usize, out: Out, platform: &mut dyn Platform) {
-        let Out { msgs, damage, rebuild, relayout, focus, capture, cursor, ime, ticks, menus, close_popup, reveal, begin_move, drag, .. } = out;
+        let Out {
+            msgs,
+            damage,
+            rebuild,
+            relayout,
+            focus,
+            capture,
+            cursor,
+            ime,
+            ticks,
+            menus,
+            close_popup,
+            reveal,
+            begin_move,
+            drag,
+            ..
+        } = out;
         if let Some(source) = drag {
             // The pointer is the compositor's now: nothing here is pressed.
             if let Some(w) = self.wins.get_mut(&win) {
@@ -1117,7 +1245,8 @@ impl Core {
                 platform.invalidate(win, r);
             }
         }
-        let menu_popup = matches!(self.wins.get(&win).map(|w| &w.kind), Some(WinKind::Popup { kind: PopupKind::Menu { .. }, .. }));
+        let menu_popup =
+            matches!(self.wins.get(&win).map(|w| &w.kind), Some(WinKind::Popup { kind: PopupKind::Menu { .. }, .. }));
         if rebuild && menu_popup {
             self.relayout_popup(win, platform);
         }
@@ -1210,7 +1339,14 @@ impl Core {
             let mut widget = std::mem::replace(&mut w.tree.nodes[i].widget, Box::new(Vacant));
             let mut out = Out::default();
             {
-                let mut env = Env { focus: w.active_focus(), theme: &self.theme, text: &mut self.text, states: &mut w.states, now: Instant::now(), on_selection: false };
+                let mut env = Env {
+                    focus: w.active_focus(),
+                    theme: &self.theme,
+                    text: &mut self.text,
+                    states: &mut w.states,
+                    now: Instant::now(),
+                    on_selection: false,
+                };
                 let mut cx = EventCx {
                     tree: &w.tree,
                     node: i,
@@ -1319,7 +1455,8 @@ impl Core {
             platform.set_cursor(win, cursor);
         }
         // Tooltips: the nearest one around what's under the pointer.
-        let tip = path.iter().rev().copied().find(|&i| w.tree.nodes[i].common.tooltip.is_some()).map(|i| w.tree.nodes[i].id);
+        let tip =
+            path.iter().rev().copied().find(|&i| w.tree.nodes[i].common.tooltip.is_some()).map(|i| w.tree.nodes[i].id);
         let shown = w.tooltip_shown.take();
         let pending = w.tooltip.take();
         if let Some((_, token)) = pending {
@@ -1411,7 +1548,12 @@ impl Core {
                 .popups
                 .iter()
                 .copied()
-                .filter(|p| matches!(self.wins.get(p).map(|w| &w.kind), Some(WinKind::Popup { kind: PopupKind::Menu { .. }, .. })))
+                .filter(|p| {
+                    matches!(
+                        self.wins.get(p).map(|w| &w.kind),
+                        Some(WinKind::Popup { kind: PopupKind::Menu { .. }, .. })
+                    )
+                })
                 .collect();
             for m in menus {
                 self.close_win(m, platform);
@@ -1493,7 +1635,15 @@ impl Core {
         self.stats.event(started.elapsed());
     }
 
-    pub fn scroll(&mut self, win: WinId, p: Point, delta: Vec2, phase: ScrollPhase, momentum: ScrollPhase, platform: &mut dyn Platform) {
+    pub fn scroll(
+        &mut self,
+        win: WinId,
+        p: Point,
+        delta: Vec2,
+        phase: ScrollPhase,
+        momentum: ScrollPhase,
+        platform: &mut dyn Platform,
+    ) {
         let started = Instant::now();
         let Some(w) = self.wins.get(&win) else { return };
         if w.tree.root.is_none() {
@@ -1658,7 +1808,14 @@ impl Core {
         let id = w.tree.nodes[idx].id;
         let mut out = Out::default();
         let done = {
-            let mut env = Env { focus: w.active_focus(), theme: &self.theme, text: &mut self.text, states: &mut w.states, now: Instant::now(), on_selection: false };
+            let mut env = Env {
+                focus: w.active_focus(),
+                theme: &self.theme,
+                text: &mut self.text,
+                states: &mut w.states,
+                now: Instant::now(),
+                on_selection: false,
+            };
             let mut cx = EventCx {
                 tree: &w.tree,
                 node: idx,
@@ -1706,7 +1863,14 @@ impl Core {
     }
 
     /// A drag over `win` at `p`: whether something there takes it.
-    pub fn drag_over(&mut self, win: WinId, p: Point, urls: &[String], has_text: bool, platform: &mut dyn Platform) -> bool {
+    pub fn drag_over(
+        &mut self,
+        win: WinId,
+        p: Point,
+        urls: &[String],
+        has_text: bool,
+        platform: &mut dyn Platform,
+    ) -> bool {
         let Some(w) = self.wins.get(&win) else { return false };
         if w.tree.root.is_none() {
             return false;
@@ -1722,7 +1886,14 @@ impl Core {
     }
 
     /// A drop on `win` at `p`: whether something there took it.
-    pub fn drop(&mut self, win: WinId, p: Point, urls: Vec<String>, text: Option<String>, platform: &mut dyn Platform) -> bool {
+    pub fn drop(
+        &mut self,
+        win: WinId,
+        p: Point,
+        urls: Vec<String>,
+        text: Option<String>,
+        platform: &mut dyn Platform,
+    ) -> bool {
         let Some(w) = self.wins.get(&win) else { return false };
         if w.tree.root.is_none() {
             return false;
@@ -1742,14 +1913,22 @@ impl Core {
     /// An Edit command to the focused widget of `win` (or of the key
     /// window): whether one took it.
     pub fn command(&mut self, win: WinId, cmd: EditCommand, platform: &mut dyn Platform) -> bool {
-        let win = if self.wins.get(&win).is_some_and(|w| w.focused.is_some()) { win } else { self.key_window.unwrap_or(win) };
+        let win =
+            if self.wins.get(&win).is_some_and(|w| w.focused.is_some()) { win } else { self.key_window.unwrap_or(win) };
         let Some(w) = self.wins.get_mut(&win) else { return false };
         let Some(idx) = w.focused.and_then(|f| w.tree.get(f)) else { return false };
         let mut widget = std::mem::replace(&mut w.tree.nodes[idx].widget, Box::new(Vacant));
         let id = w.tree.nodes[idx].id;
         let mut out = Out::default();
         let done = {
-            let mut env = Env { focus: w.active_focus(), theme: &self.theme, text: &mut self.text, states: &mut w.states, now: Instant::now(), on_selection: false };
+            let mut env = Env {
+                focus: w.active_focus(),
+                theme: &self.theme,
+                text: &mut self.text,
+                states: &mut w.states,
+                now: Instant::now(),
+                on_selection: false,
+            };
             let mut cx = EventCx {
                 tree: &w.tree,
                 node: idx,
@@ -1792,7 +1971,8 @@ impl Core {
             MenuRole::About => crate::dialogs::show_about(self, app),
             // The shell's palette, on the app's commands.
             MenuRole::HelpSearch => {
-                let request = aizome_shell_proto::ShellRequest::Palette { scope: Some("commands".into()), query: String::new() };
+                let request =
+                    aizome_shell_proto::ShellRequest::Palette { scope: Some("commands".into()), query: String::new() };
                 self.queue.push_back(Box::new(KitMsg::AskShell(request)));
             }
             MenuRole::Tour => match std::process::Command::new("aizome-annai").spawn() {
@@ -1802,7 +1982,12 @@ impl Core {
                 }
                 Err(e) => log::warn!("the tour (aizome-annai): {e}"),
             },
-            MenuRole::Hide | MenuRole::HideOthers | MenuRole::ShowAll | MenuRole::Fill | MenuRole::StackWith | MenuRole::BringAllToFront => {
+            MenuRole::Hide
+            | MenuRole::HideOthers
+            | MenuRole::ShowAll
+            | MenuRole::Fill
+            | MenuRole::StackWith
+            | MenuRole::BringAllToFront => {
                 if let Some(wm) = &mut self.wm {
                     wm.perform(role, app);
                 } else {
@@ -1833,7 +2018,12 @@ impl Core {
                     Some(WinKind::Popup { owner, kind: PopupKind::Menu { .. } }) => Some(*owner),
                     _ => None,
                 };
-                if owner.is_some_and(|o| matches!(self.wins.get(&o).map(|w| &w.kind), Some(WinKind::Popup { kind: PopupKind::Menu { .. }, .. }))) {
+                if owner.is_some_and(|o| {
+                    matches!(
+                        self.wins.get(&o).map(|w| &w.kind),
+                        Some(WinKind::Popup { kind: PopupKind::Menu { .. }, .. })
+                    )
+                }) {
                     self.close_win(window, platform);
                 }
             }
@@ -1936,7 +2126,8 @@ impl Core {
 
     pub fn retheme(&mut self, appearance: Appearance, platform: &mut dyn Platform) {
         let theme = self.theme.rethemed(appearance);
-        let changed = theme.palette != self.theme.palette || theme.metrics != self.theme.metrics || appearance != self.appearance;
+        let changed =
+            theme.palette != self.theme.palette || theme.metrics != self.theme.metrics || appearance != self.appearance;
         if !changed {
             return;
         }
@@ -1968,7 +2159,13 @@ impl Core {
 /// The damage of `tree` laid out anew since `before`: content that
 /// scrolled moves as pixels (the platform hears that first), and the
 /// rest is drawn again.
-fn settle(tree: &mut Tree, before: &Snapshot, focus: Option<NodeId>, win: WinId, platform: &mut dyn Platform) -> Vec<Rect> {
+fn settle(
+    tree: &mut Tree,
+    before: &Snapshot,
+    focus: Option<NodeId>,
+    win: WinId,
+    platform: &mut dyn Platform,
+) -> Vec<Rect> {
     // `AIZOME_NO_PIXEL_SCROLL=1` draws what scrolled again instead (to
     // compare, or where moving pixels misbehaves).
     static DRAW_SCROLLS: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
@@ -2010,5 +2207,3 @@ fn fill(mut el: RawElement) -> RawElement {
     }
     el
 }
-
-

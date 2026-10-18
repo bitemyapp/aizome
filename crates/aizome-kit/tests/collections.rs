@@ -49,7 +49,11 @@ impl Program for Procs {
     fn view(&self, _w: WindowKey) -> Element<Msg> {
         let rows = self.rows.clone();
         let mut t = table(
-            vec![Column::new("Process").width(220.0).sortable(), Column::new("PID").width(80.0).align_end().sortable(), Column::new("CPU").align_end().sortable()],
+            vec![
+                Column::new("Process").width(220.0).sortable(),
+                Column::new("PID").width(80.0).align_end().sortable(),
+                Column::new("CPU").align_end().sortable(),
+            ],
             rows.len(),
             move |r, c| match c {
                 0 => text(rows[r].0.clone()),
@@ -70,7 +74,8 @@ impl Program for Procs {
 }
 
 fn procs() -> Procs {
-    let rows = (0..1000).map(|i| (format!("process-{:04}", (i * 7919) % 1000), 1000 + i, (i % 97) as f64 / 3.0)).collect();
+    let rows =
+        (0..1000).map(|i| (format!("process-{:04}", (i * 7919) % 1000), 1000 + i, (i % 97) as f64 / 3.0)).collect();
     Procs { rows: Arc::new(rows), selected: Vec::new(), sort: None }
 }
 
@@ -149,20 +154,41 @@ impl Program for Disks {
         }
     }
     fn view(&self, _w: WindowKey) -> Element<DMsg> {
-        column![tree(self.items.clone()).expanded(self.open.clone()).on_toggle(DMsg::Toggle).selected(self.selected.iter().copied()).on_select(DMsg::Select).id("tree")].into()
+        column![
+            tree(self.items.clone())
+                .expanded(self.open.clone())
+                .on_toggle(DMsg::Toggle)
+                .selected(self.selected.iter().copied())
+                .on_select(DMsg::Select)
+                .id("tree")
+        ]
+        .into()
     }
 }
 
 fn disks() -> Disks {
     let items = vec![
-        TreeItem::branch(1, "home", vec![
-            TreeItem::branch(2, "callen", vec![TreeItem::leaf(3, "work").icon(Icon::Folder).detail("41.2 GB"), TreeItem::leaf(4, "Downloads").icon(Icon::Download).detail("3.1 GB")])
+        TreeItem::branch(
+            1,
+            "home",
+            vec![
+                TreeItem::branch(
+                    2,
+                    "callen",
+                    vec![
+                        TreeItem::leaf(3, "work").icon(Icon::Folder).detail("41.2 GB"),
+                        TreeItem::leaf(4, "Downloads").icon(Icon::Download).detail("3.1 GB"),
+                    ],
+                )
                 .icon(Icon::House)
                 .detail("44.3 GB"),
-        ])
+            ],
+        )
         .icon(Icon::HardDrive)
         .detail("44.3 GB"),
-        TreeItem::branch(5, "nix", vec![TreeItem::leaf(6, "store").icon(Icon::Package).detail("88.0 GB")]).icon(Icon::HardDrive).detail("88.0 GB"),
+        TreeItem::branch(5, "nix", vec![TreeItem::leaf(6, "store").icon(Icon::Package).detail("88.0 GB")])
+            .icon(Icon::HardDrive)
+            .detail("88.0 GB"),
     ];
     Disks { items: Arc::new(items), open: Arc::new(HashSet::new()), selected: Vec::new(), toggled: Vec::new() }
 }

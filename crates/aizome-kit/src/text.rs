@@ -709,7 +709,8 @@ impl<Msg> RichText<Msg> {
 
 impl<Msg> From<RichText<Msg>> for Element<Msg> {
     fn from(t: RichText<Msg>) -> Element<Msg> {
-        let w = RichWidget { spans: t.spans, base: t.base, role: t.role, wrap: t.wrap, max_lines: t.max_lines, laid: None };
+        let w =
+            RichWidget { spans: t.spans, base: t.base, role: t.role, wrap: t.wrap, max_lines: t.max_lines, laid: None };
         let mut common = t.common;
         if common.width == Length::Shrink && t.wrap {
             common.width = Length::Fill;
@@ -774,7 +775,8 @@ mod tests {
     fn a_paragraph_cut_at_its_line_limit_ends_in_an_ellipsis() {
         let theme = Theme::new(Appearance::default());
         let mut cache = TextCache::default();
-        let text = "Operations stay in points. Each window renders at its output's scale: the integer one wherever it can.";
+        let text =
+            "Operations stay in points. Each window renders at its output's scale: the integer one wherever it can.";
         let mut spec = TextSpec::new(FontSpec::ui(13.0), theme.text());
         spec.wrap = Wrap::Words;
         spec.max_lines = 2;

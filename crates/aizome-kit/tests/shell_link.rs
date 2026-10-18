@@ -43,7 +43,12 @@ impl Program for Notes {
         }
     }
     fn view(&self, _w: WindowKey) -> Element<Msg> {
-        column![aizome_kit::mouse_area(container(text("Drop here")).padding(40.0).width(Fill)).on_drop(|d: aizome_kit::Dropped| Msg::Dropped(d.urls)).id("drop")].into()
+        column![
+            aizome_kit::mouse_area(container(text("Drop here")).padding(40.0).width(Fill))
+                .on_drop(|d: aizome_kit::Dropped| Msg::Dropped(d.urls))
+                .id("drop")
+        ]
+        .into()
     }
     fn menus(&self) -> MenuBar<Msg> {
         MenuBar::standard(&self.info()).with_file_menu(
@@ -107,7 +112,9 @@ fn menus_go_to_the_shell_and_its_choices_come_back() {
     let asked = read(&mut lines);
     assert_eq!(
         asked,
-        proto::AppMessage::Request { request: proto::ShellRequest::Palette { scope: Some("commands".into()), query: String::new() } }
+        proto::AppMessage::Request {
+            request: proto::ShellRequest::Palette { scope: Some("commands".into()), query: String::new() }
+        }
     );
     let _ = std::fs::remove_dir_all(&dir);
 }

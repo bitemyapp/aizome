@@ -260,7 +260,14 @@ pub struct FontSpec {
 
 impl FontSpec {
     pub fn ui(size: f64) -> FontSpec {
-        FontSpec { family: Family::Ui, size, weight: typeface::WEIGHT_REGULAR, italic: false, tabular: false, condensed: false }
+        FontSpec {
+            family: Family::Ui,
+            size,
+            weight: typeface::WEIGHT_REGULAR,
+            italic: false,
+            tabular: false,
+            condensed: false,
+        }
     }
 
     pub fn mono(size: f64) -> FontSpec {

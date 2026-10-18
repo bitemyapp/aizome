@@ -40,8 +40,14 @@ impl Program for Doc {
     fn update(&mut self, msg: Msg, cx: &mut Cx<Msg>) {
         let w = self.main.unwrap();
         match msg {
-            Msg::Open => cx.open_panel(w, FileDialog::new().directory(self.dir.clone()).filter("Text", &["txt", "md"]), Msg::Opened),
-            Msg::Save => cx.save_panel(w, FileDialog::new().directory(self.dir.clone()).file_name("untitled.md"), Msg::Saved),
+            Msg::Open => cx.open_panel(
+                w,
+                FileDialog::new().directory(self.dir.clone()).filter("Text", &["txt", "md"]),
+                Msg::Opened,
+            ),
+            Msg::Save => {
+                cx.save_panel(w, FileDialog::new().directory(self.dir.clone()).file_name("untitled.md"), Msg::Saved)
+            }
             Msg::Opened(p) => self.opened.push(p),
             Msg::Saved(p) => self.saved.push(p),
             Msg::Ask => cx.alert(
@@ -62,13 +68,23 @@ impl Program for Doc {
     }
     fn view(&self, w: WindowKey) -> Element<Msg> {
         if Some(w) == self.sheet {
-            return column![text("Export").semibold(), text_field("").placeholder("Name").id("sheet-name"), aizome_kit::row![spacer(), button("Done").default().on_press(Msg::CloseSheet)]]
-                .spacing(10.0)
-                .padding(16.0)
-                .width(360.0)
-                .into();
+            return column![
+                text("Export").semibold(),
+                text_field("").placeholder("Name").id("sheet-name"),
+                aizome_kit::row![spacer(), button("Done").default().on_press(Msg::CloseSheet)]
+            ]
+            .spacing(10.0)
+            .padding(16.0)
+            .width(360.0)
+            .into();
         }
-        column![button("Open…").on_press(Msg::Open).id("open"), button("Behind").on_press(Msg::Answer("behind")).id("behind")].spacing(8.0).padding(16.0).into()
+        column![
+            button("Open…").on_press(Msg::Open).id("open"),
+            button("Behind").on_press(Msg::Answer("behind")).id("behind")
+        ]
+        .spacing(8.0)
+        .padding(16.0)
+        .into()
     }
 }
 

@@ -158,7 +158,8 @@ impl Shortcut {
                             | (NamedKey::End, ShortcutKey::End)
                             | (NamedKey::PageUp, ShortcutKey::PageUp)
                             | (NamedKey::PageDown, ShortcutKey::PageDown)
-                    ) || matches!((n, k), (NamedKey::F(a), ShortcutKey::F(b)) if *a == b)
+                    )
+                    || matches!((n, k), (NamedKey::F(a), ShortcutKey::F(b)) if *a == b)
             }
             _ => false,
         }

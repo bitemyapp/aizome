@@ -35,8 +35,15 @@ enum Msg {
 
 impl Pages {
     fn new(page: Page) -> Pages {
-        let text: String = (0..400).map(|i| format!("Line {i}: operations stay in points, each window at its output's scale.\n")).collect();
-        Pages { page, selected: vec![3], content: EditorContent::new(&text), open: Arc::new((0..40u64).map(|i| i * 100).collect()) }
+        let text: String = (0..400)
+            .map(|i| format!("Line {i}: operations stay in points, each window at its output's scale.\n"))
+            .collect();
+        Pages {
+            page,
+            selected: vec![3],
+            content: EditorContent::new(&text),
+            open: Arc::new((0..40u64).map(|i| i * 100).collect()),
+        }
     }
 }
 
@@ -58,25 +65,78 @@ impl Program for Pages {
         }
     }
     fn view(&self, _w: WindowKey) -> Element<Msg> {
-        let rows = |i: usize| aizome_kit::row![icon(Icon::FileText).size(14.0), text(format!("file-{i:05}.md")), spacer(), text(format!("{} KB", i * 7)).mono()].spacing(8.0).padding([0.0, 10.0]);
+        let rows = |i: usize| {
+            aizome_kit::row![
+                icon(Icon::FileText).size(14.0),
+                text(format!("file-{i:05}.md")),
+                spacer(),
+                text(format!("{} KB", i * 7)).mono()
+            ]
+            .spacing(8.0)
+            .padding([0.0, 10.0])
+        };
         match self.page {
-            Page::List => virtual_list(10_000, 24.0, rows).selected(self.selected.iter().copied()).on_select(Msg::Select).id("view").into(),
-            Page::Scroll => scroll(column((0..80).map(|i| if i % 3 == 0 { button(format!("Button {i}")).on_press(Msg::Pressed).id(format!("b{i}")).into() } else { text(format!("A line of text, number {i}, long enough to wrap at this width maybe.")).wrap().into() }).collect::<Vec<_>>()).spacing(6.0).padding(12.0)).id("view").into(),
-            Page::Table => table(vec![Column::new("Name").width(220.0), Column::new("Kind").width(160.0), Column::new("Size").width(120.0).align_end()], 5_000, |r, c| -> Element<Msg> { match c {
-                0 => text(format!("file-{r:05}.md")).into(),
-                1 => text("Markdown document").role(Role::Text2).into(),
-                _ => text(format!("{} KB", r * 13 % 9000)).mono().into(),
-                }
-            })
+            Page::List => virtual_list(10_000, 24.0, rows)
+                .selected(self.selected.iter().copied())
+                .on_select(Msg::Select)
+                .id("view")
+                .into(),
+            Page::Scroll => scroll(
+                column(
+                    (0..80)
+                        .map(|i| {
+                            if i % 3 == 0 {
+                                button(format!("Button {i}")).on_press(Msg::Pressed).id(format!("b{i}")).into()
+                            } else {
+                                text(format!("A line of text, number {i}, long enough to wrap at this width maybe."))
+                                    .wrap()
+                                    .into()
+                            }
+                        })
+                        .collect::<Vec<_>>(),
+                )
+                .spacing(6.0)
+                .padding(12.0),
+            )
+            .id("view")
+            .into(),
+            Page::Table => table(
+                vec![
+                    Column::new("Name").width(220.0),
+                    Column::new("Kind").width(160.0),
+                    Column::new("Size").width(120.0).align_end(),
+                ],
+                5_000,
+                |r, c| -> Element<Msg> {
+                    match c {
+                        0 => text(format!("file-{r:05}.md")).into(),
+                        1 => text("Markdown document").role(Role::Text2).into(),
+                        _ => text(format!("{} KB", r * 13 % 9000)).mono().into(),
+                    }
+                },
+            )
             .selected(self.selected.iter().copied())
             .on_select(Msg::Select)
             .id("view")
             .into(),
             Page::Tree => {
-                let items: Vec<TreeItem> = (0..40u64).map(|b| TreeItem::branch(b * 100, format!("folder {b}"), (1..8).map(|l| TreeItem::leaf(b * 100 + l, format!("file {l}")).icon(Icon::FileText)).collect()).icon(Icon::Folder)).collect();
+                let items: Vec<TreeItem> = (0..40u64)
+                    .map(|b| {
+                        TreeItem::branch(
+                            b * 100,
+                            format!("folder {b}"),
+                            (1..8)
+                                .map(|l| TreeItem::leaf(b * 100 + l, format!("file {l}")).icon(Icon::FileText))
+                                .collect(),
+                        )
+                        .icon(Icon::Folder)
+                    })
+                    .collect();
                 tree(items).expanded(self.open.clone()).id("view").into()
             }
-            Page::Editor => text_editor(&self.content).on_action(Msg::Edit).line_numbers(true).wrap(false).id("view").into(),
+            Page::Editor => {
+                text_editor(&self.content).on_action(Msg::Edit).line_numbers(true).wrap(false).id("view").into()
+            }
             Page::Covered => stack![
                 virtual_list(10_000, 24.0, rows).id("view"),
                 container(text("Over the list")).padding(8.0).fill(Tone::Raised).border(Edge::Line).center(),
@@ -180,4 +240,3 @@ fn something_drawn_over_a_list_has_it_drawn_whole() {
     assert_eq!(c.differs, 0.0, "{c:?}");
     assert_eq!(c.moves, 0, "nothing moved under what's over it: {c:?}");
 }
-

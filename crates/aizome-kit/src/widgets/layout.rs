@@ -399,7 +399,12 @@ pub(crate) struct ContainerStyle {
 }
 
 pub fn container<Msg>(child: impl Into<Element<Msg>>) -> Container<Msg> {
-    Container { common: Common::default(), style: ContainerStyle::default(), child: Some(child.into().raw), _m: PhantomData }
+    Container {
+        common: Common::default(),
+        style: ContainerStyle::default(),
+        child: Some(child.into().raw),
+        _m: PhantomData,
+    }
 }
 
 impl<Msg> Container<Msg> {
@@ -641,7 +646,14 @@ pub struct Divider<Msg> {
 crate::builder!(Divider);
 
 pub fn divider<Msg>() -> Divider<Msg> {
-    Divider { common: Common::sized(Length::Fill, Length::Shrink), vertical: false, engraved: false, edge: Edge::Line, inset: 0.0, _m: PhantomData }
+    Divider {
+        common: Common::sized(Length::Fill, Length::Shrink),
+        vertical: false,
+        engraved: false,
+        edge: Edge::Line,
+        inset: 0.0,
+        _m: PhantomData,
+    }
 }
 
 impl<Msg> Divider<Msg> {

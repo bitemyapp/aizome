@@ -25,7 +25,13 @@ enum Msg {
 
 impl Files {
     fn new(n: usize) -> Files {
-        Files { names: std::rc::Rc::new((0..n).map(|i| format!("file-{i:05}.txt")).collect()), selected: Vec::new(), opened: Vec::new(), views: Cell::new(0), reveal: None }
+        Files {
+            names: std::rc::Rc::new((0..n).map(|i| format!("file-{i:05}.txt")).collect()),
+            selected: Vec::new(),
+            opened: Vec::new(),
+            views: Cell::new(0),
+            reveal: None,
+        }
     }
 }
 
@@ -55,14 +61,13 @@ impl Program for Files {
             Some(r) => list.reveal(r),
             None => list,
         };
-        list
-        .selected(self.selected.iter().copied())
-        .on_select(Msg::Select)
-        .on_activate(Msg::Open)
-        .multiple()
-        .type_select(move |i| types[i].clone())
-        .id("list")
-        .into()
+        list.selected(self.selected.iter().copied())
+            .on_select(Msg::Select)
+            .on_activate(Msg::Open)
+            .multiple()
+            .type_select(move |i| types[i].clone())
+            .id("list")
+            .into()
     }
 }
 
@@ -153,8 +158,9 @@ impl Program for Long {
         self.clicks += 1;
     }
     fn view(&self, _w: WindowKey) -> Element<LongMsg> {
-        let buttons: Vec<Element<LongMsg>> =
-            (0..30).map(|i| button(format!("Button {i}")).on_press(LongMsg::Click).id(format!("b{i}")).into()).collect();
+        let buttons: Vec<Element<LongMsg>> = (0..30)
+            .map(|i| button(format!("Button {i}")).on_press(LongMsg::Click).id(format!("b{i}")).into())
+            .collect();
         scroll(aizome_kit::widgets::layout::column(buttons).spacing(8.0).padding(8.0)).into()
     }
 }
@@ -201,7 +207,8 @@ fn extremes(h: &mut Harness<Files>, w: WindowKey, rect: Rect) -> (u8, u8) {
 #[test]
 fn a_selection_without_the_focus_keeps_its_text_readable() {
     use aizome_kit::theme::ThemeChoice;
-    let a = aizome_kit::Appearance { theme: ThemeChoice::Day, reduced_motion: true, ..aizome_kit::Appearance::default() };
+    let a =
+        aizome_kit::Appearance { theme: ThemeChoice::Day, reduced_motion: true, ..aizome_kit::Appearance::default() };
     let mut h = Harness::with(Files::new(20), a, false);
     let w = h.window();
     h.focus_window(w, true);

@@ -176,7 +176,8 @@ impl Tree {
         if let Some(content) = popover {
             self.popovers.push(Popover { node: idx, content });
         }
-        let kids: Vec<usize> = children.into_iter().enumerate().map(|(i, c)| self.mount_under(c, Some(idx), i, id)).collect();
+        let kids: Vec<usize> =
+            children.into_iter().enumerate().map(|(i, c)| self.mount_under(c, Some(idx), i, id)).collect();
         self.nodes[idx].children = kids;
         idx
     }
@@ -359,7 +360,15 @@ impl Tree {
         let mut bounds = node.own_rect();
         let reach = node.widget.overflow();
         let mut covers = node.rect.inflate(reach, reach).intersect(clip);
-        let join = |a: Rect, b: Rect| if b.area() <= 0.0 { a } else if a.area() <= 0.0 { b } else { a.union(b) };
+        let join = |a: Rect, b: Rect| {
+            if b.area() <= 0.0 {
+                a
+            } else if a.area() <= 0.0 {
+                b
+            } else {
+                a.union(b)
+            }
+        };
         for k in node.children.clone() {
             let (b, c) = self.finish(k, at, inner, generation);
             bounds = join(bounds, b);
@@ -488,7 +497,10 @@ impl Tree {
         if n.dead {
             return;
         }
-        if matches!(n.widget.focusable(), Focusable::Tab | Focusable::Click) && n.rect.width() > 0.0 && n.rect.height() > 0.0 {
+        if matches!(n.widget.focusable(), Focusable::Tab | Focusable::Click)
+            && n.rect.width() > 0.0
+            && n.rect.height() > 0.0
+        {
             out.push(idx);
         }
         for &k in &n.children {
@@ -512,7 +524,6 @@ impl Tree {
         }
         found
     }
-
 
     pub fn get(&self, id: NodeId) -> Option<usize> {
         self.by_id.get(&id).copied().filter(|&i| !self.nodes[i].dead)

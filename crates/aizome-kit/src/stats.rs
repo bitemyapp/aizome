@@ -82,7 +82,9 @@ impl Stats {
 
     /// p50 and p99 of each measure.
     pub fn summary(&self) -> String {
-        let line = |name: &str, s: &Samples| format!("{name}: p50 {}µs p99 {}µs (n={})", s.percentile(50.0), s.percentile(99.0), s.len());
+        let line = |name: &str, s: &Samples| {
+            format!("{name}: p50 {}µs p99 {}µs (n={})", s.percentile(50.0), s.percentile(99.0), s.len())
+        };
         [
             line("event", &self.event),
             line("update", &self.update),

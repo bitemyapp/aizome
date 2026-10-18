@@ -2,9 +2,9 @@
 
 pub mod chrome;
 pub mod controls;
+pub mod interact;
 pub mod layout;
 pub mod menus;
-pub mod interact;
 pub mod panes;
 pub mod scroll;
 pub mod table;

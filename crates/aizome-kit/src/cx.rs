@@ -9,14 +9,16 @@ use std::time::Duration;
 use crate::dialogs::{Alert, FileDialog};
 use crate::element::{AnyMsg, MsgFn, MsgMap};
 use crate::engine::{Core, TimerUse};
+use crate::layout::Rect;
 use crate::layout::{Point, Size};
 use crate::menu::{Menu, MenuRole};
-use crate::platform::{Platform, Waker, WinId};
-use crate::layout::Rect;
 use crate::platform::LayerChange;
-use crate::program::{ActivationRequest, Anchors, AppInfo, KeyboardInteractivity, Layer, Margins, Output, WindowKey, WindowSpec};
-use crate::widgets::menus::MenuStyle;
+use crate::platform::{Platform, Waker, WinId};
+use crate::program::{
+    ActivationRequest, Anchors, AppInfo, KeyboardInteractivity, Layer, Margins, Output, WindowKey, WindowSpec,
+};
 use crate::theme::Theme;
+use crate::widgets::menus::MenuStyle;
 
 /// What only the compositor can do for the Window and app menus (hide,
 /// fill, stack, bring to front): `aizome-ipc` implements it. Without
@@ -228,7 +230,8 @@ impl<Msg: Clone + Send + 'static> Cx<'_, Msg> {
     /// org.freedesktop.Notifications; the shell is that server).
     pub fn notify(&mut self, summary: &str, body: &str) {
         let app = self.core.info.name.clone();
-        let spawned = std::process::Command::new("notify-send").arg("--app-name").arg(app).arg(summary).arg(body).spawn();
+        let spawned =
+            std::process::Command::new("notify-send").arg("--app-name").arg(app).arg(summary).arg(body).spawn();
         if let Err(e) = spawned {
             log::info!("notification ({e}): {summary}: {body}");
         }
@@ -238,7 +241,8 @@ impl<Msg: Clone + Send + 'static> Cx<'_, Msg> {
     /// keyboard (now, or once it shows); right after `open_window`, in the
     /// window just opened, once it shows.
     pub fn focus(&mut self, name: &str) {
-        let opening = self.core.wins.values().filter(|w| w.key().is_some() && w.tree.root.is_none()).map(|w| w.id).max();
+        let opening =
+            self.core.wins.values().filter(|w| w.key().is_some() && w.tree.root.is_none()).map(|w| w.id).max();
         if let Some(w) = opening {
             self.core.pending_focus.push((Some(w), name.into()));
             return;
@@ -311,13 +315,23 @@ impl<Msg: Clone + Send + 'static> Cx<'_, Msg> {
     }
 
     /// Ask for files to open: `on_done` gets them, or `None` if cancelled.
-    pub fn open_panel(&mut self, window: WindowKey, dialog: FileDialog, on_done: impl Fn(Option<Vec<PathBuf>>) -> Msg + 'static) {
+    pub fn open_panel(
+        &mut self,
+        window: WindowKey,
+        dialog: FileDialog,
+        on_done: impl Fn(Option<Vec<PathBuf>>) -> Msg + 'static,
+    ) {
         let map = MsgMap::new(on_done);
         crate::dialogs::show_panel(self.core, window, dialog, false, map, self.platform);
     }
 
     /// Ask where to save: `on_done` gets the path, or `None` if cancelled.
-    pub fn save_panel(&mut self, window: WindowKey, dialog: FileDialog, on_done: impl Fn(Option<PathBuf>) -> Msg + 'static) {
+    pub fn save_panel(
+        &mut self,
+        window: WindowKey,
+        dialog: FileDialog,
+        on_done: impl Fn(Option<PathBuf>) -> Msg + 'static,
+    ) {
         let map: MsgMap<Option<Vec<PathBuf>>> =
             MsgMap::new(move |paths: Option<Vec<PathBuf>>| on_done(paths.and_then(|p| p.into_iter().next())));
         crate::dialogs::show_panel(self.core, window, dialog, true, map, self.platform);

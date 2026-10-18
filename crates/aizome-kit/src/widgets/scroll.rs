@@ -95,7 +95,10 @@ impl ScrollState {
     }
 
     fn max(&self) -> Vec2 {
-        Vec2::new((self.content.width - self.viewport.width).max(0.0), (self.content.height - self.viewport.height).max(0.0))
+        Vec2::new(
+            (self.content.width - self.viewport.width).max(0.0),
+            (self.content.height - self.viewport.height).max(0.0),
+        )
     }
 
     pub fn clamp(&mut self) {
@@ -236,7 +239,12 @@ impl Scroller {
             }
             // Keys scroll a view that has the focus (or anything under the
             // pointer while nothing has it), not one around a control.
-            Event::Key(k) if k.pressed && !k.modifiers.super_key() && !k.modifiers.control() && (cx.is_focused() || cx.nothing_focused()) => {
+            Event::Key(k)
+                if k.pressed
+                    && !k.modifiers.super_key()
+                    && !k.modifiers.control()
+                    && (cx.is_focused() || cx.nothing_focused()) =>
+            {
                 let v = Scroller::state(cx).viewport;
                 let page = (v.height - 40.0).max(40.0);
                 let d = match &k.key {
@@ -343,7 +351,12 @@ pub struct Scroll<Msg> {
 crate::builder!(Scroll);
 
 pub fn scroll<Msg>(child: impl Into<Element<Msg>>) -> Scroll<Msg> {
-    Scroll { common: Common::sized(Length::Fill, Length::Fill), dir: Direction::Vertical, child: child.into().raw, _m: PhantomData }
+    Scroll {
+        common: Common::sized(Length::Fill, Length::Fill),
+        dir: Direction::Vertical,
+        child: child.into().raw,
+        _m: PhantomData,
+    }
 }
 
 impl<Msg> Scroll<Msg> {
@@ -363,7 +376,11 @@ impl<Msg> Scroll<Msg> {
 
 impl<Msg> From<Scroll<Msg>> for Element<Msg> {
     fn from(s: Scroll<Msg>) -> Element<Msg> {
-        Element::from_raw(RawElement { widget: Box::new(ScrollWidget { dir: s.dir }), common: s.common, children: vec![s.child] })
+        Element::from_raw(RawElement {
+            widget: Box::new(ScrollWidget { dir: s.dir }),
+            common: s.common,
+            children: vec![s.child],
+        })
     }
 }
 
@@ -383,7 +400,10 @@ impl Widget for ScrollWidget {
         let child_bc = Constraints {
             // Content at least fills the view.
             min: view,
-            max: Size::new(if dir.x() { f64::INFINITY } else { view.width }, if dir.y() { f64::INFINITY } else { view.height }),
+            max: Size::new(
+                if dir.x() { f64::INFINITY } else { view.width },
+                if dir.y() { f64::INFINITY } else { view.height },
+            ),
         };
         let content = if cx.child_count() > 0 { cx.layout_child(0, child_bc) } else { Size::ZERO };
         let size = bc.constrain(Size::new(
@@ -443,7 +463,11 @@ impl Widget for ScrollWidget {
     }
 
     fn semantics(&self) -> Option<Semantics> {
-        Some(Semantics { role: SemanticRole::ScrollView, actions: vec![SemanticAction::ScrollIntoView], ..Default::default() })
+        Some(Semantics {
+            role: SemanticRole::ScrollView,
+            actions: vec![SemanticAction::ScrollIntoView],
+            ..Default::default()
+        })
     }
 }
 
@@ -529,7 +553,11 @@ pub(crate) fn drag_released(cx: &mut EventCx) -> Option<usize> {
 crate::builder!(List);
 
 /// A list of `count` rows `row_height` tall, built by `row` as they show.
-pub fn virtual_list<Msg: 'static, E: Into<Element<Msg>>>(count: usize, row_height: f64, row: impl Fn(usize) -> E + 'static) -> List<Msg> {
+pub fn virtual_list<Msg: 'static, E: Into<Element<Msg>>>(
+    count: usize,
+    row_height: f64,
+    row: impl Fn(usize) -> E + 'static,
+) -> List<Msg> {
     let build: Build = Rc::new(move |i| row(i).into().raw);
     List {
         common: Common::sized(Length::Fill, Length::Fill),
@@ -864,7 +892,11 @@ impl Widget for ListWidget {
             return Status::Handled;
         }
         match event {
-            Event::PointerMove { pos, .. } if self.drag_out.as_ref().is_some_and(|f| drag_moved(cx, *pos, &self.selected, f)) => Status::Handled,
+            Event::PointerMove { pos, .. }
+                if self.drag_out.as_ref().is_some_and(|f| drag_moved(cx, *pos, &self.selected, f)) =>
+            {
+                Status::Handled
+            }
             Event::PointerUp { button: PointerButton::Left, .. } if self.drag_out.is_some() => {
                 if let Some(i) = drag_released(cx) {
                     cx.state::<ListState>().anchor = Some(i);
@@ -891,7 +923,9 @@ impl Widget for ListWidget {
                             }
                             return Status::Handled;
                         }
-                        if self.drag_out.is_some() && drag_pressed(cx, *pos, i, &self.selected, !mods.super_key() && !mods.shift()) {
+                        if self.drag_out.is_some()
+                            && drag_pressed(cx, *pos, i, &self.selected, !mods.super_key() && !mods.shift())
+                        {
                             return Status::Handled;
                         }
                         let rows = if self.multi && mods.super_key() {
@@ -1003,7 +1037,15 @@ pub(crate) struct DrawnSelection(pub Vec<usize>);
 
 /// Redraw the rows (of height `rh`, from `top`, scrolled by `off`)
 /// whose selection changed since the list last drew.
-pub(crate) fn selection_damage(cx: &mut LayoutCx, now: &[usize], shown: &std::ops::Range<usize>, rh: f64, top: f64, off: f64, width: f64) {
+pub(crate) fn selection_damage(
+    cx: &mut LayoutCx,
+    now: &[usize],
+    shown: &std::ops::Range<usize>,
+    rh: f64,
+    top: f64,
+    off: f64,
+    width: f64,
+) {
     let before = std::mem::replace(&mut cx.state::<DrawnSelection>().0, now.to_vec());
     for &i in before.iter().filter(|i| !now.contains(i)).chain(now.iter().filter(|i| !before.contains(i))) {
         if shown.contains(&i) {

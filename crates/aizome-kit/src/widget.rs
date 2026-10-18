@@ -27,17 +27,40 @@ use crate::tree::{NodeId, Tree};
 /// widget's own coordinates.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Event {
-    PointerMove { pos: Point, mods: Modifiers },
-    PointerDown { pos: Point, button: PointerButton, clicks: u32, mods: Modifiers },
-    PointerUp { pos: Point, button: PointerButton, mods: Modifiers },
+    PointerMove {
+        pos: Point,
+        mods: Modifiers,
+    },
+    PointerDown {
+        pos: Point,
+        button: PointerButton,
+        clicks: u32,
+        mods: Modifiers,
+    },
+    PointerUp {
+        pos: Point,
+        button: PointerButton,
+        mods: Modifiers,
+    },
     /// The pointer left the widget (it was the one under the pointer).
     PointerLeave,
     /// Scrolling over the widget, in points (wheel lines already turned
     /// into points), positive toward the content's end.
-    Scroll { pos: Point, delta: Vec2, phase: ScrollPhase, momentum: ScrollPhase, mods: Modifiers },
+    Scroll {
+        pos: Point,
+        delta: Vec2,
+        phase: ScrollPhase,
+        momentum: ScrollPhase,
+        mods: Modifiers,
+    },
     /// A two-finger pinch over the widget: `scale` is the change since
     /// the last one, as a factor (1.1 is ten per cent larger).
-    Pinch { pos: Point, scale: f64, phase: ScrollPhase, mods: Modifiers },
+    Pinch {
+        pos: Point,
+        scale: f64,
+        phase: ScrollPhase,
+        mods: Modifiers,
+    },
     Key(KeyEvent),
     Ime(Ime),
     /// The widget got (true) or lost the keyboard focus.
@@ -47,9 +70,17 @@ pub enum Event {
     /// A tick the widget asked for came due ([`EventCx::request_tick`]).
     Tick,
     /// Files or text dropped on the widget.
-    Drop { pos: Point, urls: Vec<String>, text: Option<String> },
+    Drop {
+        pos: Point,
+        urls: Vec<String>,
+        text: Option<String>,
+    },
     /// A drag hovers over the widget: whether it would take it.
-    DragOver { pos: Point, urls: Vec<String>, has_text: bool },
+    DragOver {
+        pos: Point,
+        urls: Vec<String>,
+        has_text: bool,
+    },
 }
 
 /// Whether a widget used an event; unused ones go on to its parent.
@@ -803,7 +834,13 @@ impl EventCx<'_, '_> {
     /// `min_width` wide.
     pub fn open_menu(&mut self, menu: MenuSpec, anchor: Rect, min_width: f64) {
         let origin = self.tree.nodes[self.node].rect.origin().to_vec2();
-        self.out.menus.push(MenuRequest { menu, anchor: anchor + origin, at_point: false, opener: self.node, min_width });
+        self.out.menus.push(MenuRequest {
+            menu,
+            anchor: anchor + origin,
+            at_point: false,
+            opener: self.node,
+            min_width,
+        });
     }
 
     /// Open `menu` at `at` (its own coordinates), as a context menu.

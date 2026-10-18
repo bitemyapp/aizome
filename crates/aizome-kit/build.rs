@@ -22,7 +22,9 @@ fn main() {
     icons.sort();
     let mut out = String::new();
     out.push_str("/// An icon from Lucide (ISC licence; see `icons/lucide/LICENSE`).\n");
-    out.push_str("#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]\n#[non_exhaustive]\npub enum Icon {\n");
+    out.push_str(
+        "#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]\n#[non_exhaustive]\npub enum Icon {\n",
+    );
     for (name, _) in &icons {
         writeln!(out, "    /// Lucide's `{name}`.\n    {},", camel(name)).unwrap();
     }

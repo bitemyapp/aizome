@@ -202,7 +202,14 @@ impl Gallery {
                 button("I").toolbar().italic().on_press(Msg::Pressed),
                 button("</>").toolbar().mono().on_press(Msg::Pressed),
                 dropdown(["Markdown", "Plain Text", "Rust"], self.pick).on_select(Msg::Pick).compact(),
-                popover(button("Popover…").on_press(Msg::Popover(true)), column![text("A popover").semibold(), text("Floating, with the hard shadow.").role(Role::Text3)].spacing(4.0).padding(12.0), self.popover).on_dismiss(Msg::Popover(false)),
+                popover(
+                    button("Popover…").on_press(Msg::Popover(true)),
+                    column![text("A popover").semibold(), text("Floating, with the hard shadow.").role(Role::Text3)]
+                        .spacing(4.0)
+                        .padding(12.0),
+                    self.popover
+                )
+                .on_dismiss(Msg::Popover(false)),
             ]
             .spacing(6.0),
             Self::heading("Choices"),
@@ -225,16 +232,61 @@ impl Gallery {
                 stepper(self.stepper).range(8.0..=72.0).suffix(" pt").on_change(Msg::Stepper),
             ]
             .spacing(12.0),
-            aizome_kit::row![slider(self.slider, 0.0..=1.0).ticks(5).on_change(Msg::Slider).width(240.0), slider(0.3, 0.0..=1.0).width(160.0)].spacing(16.0),
+            aizome_kit::row![
+                slider(self.slider, 0.0..=1.0).ticks(5).on_change(Msg::Slider).width(240.0),
+                slider(0.3, 0.0..=1.0).width(160.0)
+            ]
+            .spacing(16.0),
             Self::heading("Progress and status"),
-            aizome_kit::row![progress(self.slider).width(200.0), progress_indeterminate().width(160.0), meter(vec![0.2, 0.5, 0.9, 0.35, 0.6, 0.1, 0.75, 0.4]), meter(vec![0.62]).role(Role::Accent)].spacing(16.0),
-            aizome_kit::row![badge("3"), badge("new").role(Role::Accent), keycap("❖"), keycap("⇧"), keycap("⌥"), keycap("⌃"), keycap("F"), text("❖⇧Z").mono().role(Role::Text3)].spacing(8.0),
+            aizome_kit::row![
+                progress(self.slider).width(200.0),
+                progress_indeterminate().width(160.0),
+                meter(vec![0.2, 0.5, 0.9, 0.35, 0.6, 0.1, 0.75, 0.4]),
+                meter(vec![0.62]).role(Role::Accent)
+            ]
+            .spacing(16.0),
+            aizome_kit::row![
+                badge("3"),
+                badge("new").role(Role::Accent),
+                keycap("❖"),
+                keycap("⇧"),
+                keycap("⌥"),
+                keycap("⌃"),
+                keycap("F"),
+                text("❖⇧Z").mono().role(Role::Text3)
+            ]
+            .spacing(8.0),
             Self::heading("Icons"),
             aizome_kit::widgets::layout::row(
-                [Icon::Wifi, Icon::Bluetooth, Icon::Volume2, Icon::BatteryMedium, Icon::Sun, Icon::Moon, Icon::Monitor, Icon::Keyboard, Icon::Printer, Icon::Lock, Icon::Bell, Icon::Search, Icon::Folder, Icon::HardDrive, Icon::Trash, Icon::Terminal, Icon::Calendar, Icon::Clock, Icon::Calculator, Icon::CloudSun, Icon::StickyNote, Icon::ChartLine, Icon::Cpu, Icon::Palette]
-                    .into_iter()
-                    .map(|i| icon(i).size(16.0).role(Role::Text2).into())
-                    .collect()
+                [
+                    Icon::Wifi,
+                    Icon::Bluetooth,
+                    Icon::Volume2,
+                    Icon::BatteryMedium,
+                    Icon::Sun,
+                    Icon::Moon,
+                    Icon::Monitor,
+                    Icon::Keyboard,
+                    Icon::Printer,
+                    Icon::Lock,
+                    Icon::Bell,
+                    Icon::Search,
+                    Icon::Folder,
+                    Icon::HardDrive,
+                    Icon::Trash,
+                    Icon::Terminal,
+                    Icon::Calendar,
+                    Icon::Clock,
+                    Icon::Calculator,
+                    Icon::CloudSun,
+                    Icon::StickyNote,
+                    Icon::ChartLine,
+                    Icon::Cpu,
+                    Icon::Palette
+                ]
+                .into_iter()
+                .map(|i| icon(i).size(16.0).role(Role::Text2).into())
+                .collect()
             )
             .spacing(10.0),
         ]
@@ -276,26 +328,61 @@ impl Gallery {
         let names = self.files.clone();
         let rows = self.files.clone();
         let items = Arc::new(vec![
-            TreeItem::branch(1, "home", vec![TreeItem::branch(2, "callen", vec![TreeItem::leaf(3, "work").icon(Icon::Folder).detail("41.2 GB"), TreeItem::leaf(4, "Downloads").icon(Icon::Download).detail("3.1 GB")]).icon(Icon::House).detail("44.3 GB")]).icon(Icon::HardDrive).detail("44.3 GB"),
-            TreeItem::branch(5, "nix", vec![TreeItem::leaf(6, "store").icon(Icon::Package).detail("88.0 GB")]).icon(Icon::HardDrive).detail("88.0 GB"),
+            TreeItem::branch(
+                1,
+                "home",
+                vec![
+                    TreeItem::branch(
+                        2,
+                        "callen",
+                        vec![
+                            TreeItem::leaf(3, "work").icon(Icon::Folder).detail("41.2 GB"),
+                            TreeItem::leaf(4, "Downloads").icon(Icon::Download).detail("3.1 GB"),
+                        ],
+                    )
+                    .icon(Icon::House)
+                    .detail("44.3 GB"),
+                ],
+            )
+            .icon(Icon::HardDrive)
+            .detail("44.3 GB"),
+            TreeItem::branch(5, "nix", vec![TreeItem::leaf(6, "store").icon(Icon::Package).detail("88.0 GB")])
+                .icon(Icon::HardDrive)
+                .detail("88.0 GB"),
         ]);
         aizome_kit::row![
             container(
-                virtual_list(files.len(), 24.0, move |i| aizome_kit::row![icon(Icon::FileText).size(14.0), text(files[i].0.clone())].spacing(8.0).padding([0.0, 10.0]))
-                    .selected(self.selected.iter().copied())
-                    .on_select(Msg::Select)
-                    .multiple()
-                    .type_select(move |i| names[i].0.clone())
-                    .reveal(self.reveal.unwrap_or(0))
+                virtual_list(files.len(), 24.0, move |i| aizome_kit::row![
+                    icon(Icon::FileText).size(14.0),
+                    text(files[i].0.clone())
+                ]
+                .spacing(8.0)
+                .padding([0.0, 10.0]))
+                .selected(self.selected.iter().copied())
+                .on_select(Msg::Select)
+                .multiple()
+                .type_select(move |i| names[i].0.clone())
+                .reveal(self.reveal.unwrap_or(0))
             )
             .border(Edge::Line)
             .padding(1.0)
             .width(170.0)
             .height(Fill),
             container(
-                table(vec![Column::new("Name").width(130.0).sortable(), Column::new("Size").width(80.0).align_end().sortable()], rows.len(), move |r, c| {
-                    if c == 0 { text(rows[r].0.clone()) } else { text(format!("{} KB", rows[r].1)).mono().tabular().role(Role::Text2) }
-                })
+                table(
+                    vec![
+                        Column::new("Name").width(130.0).sortable(),
+                        Column::new("Size").width(80.0).align_end().sortable()
+                    ],
+                    rows.len(),
+                    move |r, c| {
+                        if c == 0 {
+                            text(rows[r].0.clone())
+                        } else {
+                            text(format!("{} KB", rows[r].1)).mono().tabular().role(Role::Text2)
+                        }
+                    }
+                )
                 .selected(self.selected.iter().copied())
                 .on_select(Msg::Select)
                 .on_sort(Msg::Sort)
@@ -306,7 +393,17 @@ impl Gallery {
             .padding(1.0)
             .width(Fill)
             .height(Fill),
-            container(tree(items).expanded(self.open.clone()).on_toggle(Msg::Tree).selected(self.tree_selected.iter().copied()).on_select(Msg::TreeSelect)).border(Edge::Line).padding(1.0).width(190.0).height(Fill),
+            container(
+                tree(items)
+                    .expanded(self.open.clone())
+                    .on_toggle(Msg::Tree)
+                    .selected(self.tree_selected.iter().copied())
+                    .on_select(Msg::TreeSelect)
+            )
+            .border(Edge::Line)
+            .padding(1.0)
+            .width(190.0)
+            .height(Fill),
         ]
         .spacing(12.0)
         .padding(20.0)
@@ -322,18 +419,44 @@ impl Gallery {
                 aizome_kit::form_section(
                     "Look",
                     vec![
-                        aizome_kit::form_row("Theme", segmented(["Night", "Day", "High Contrast"], self.theme).on_select(Msg::Theme)).into(),
-                        aizome_kit::form_row("Focus colour", segmented(["Amber", "Cyan", "Rose", "Lime"], 0).on_select(|_| Msg::Pressed)).into(),
-                        aizome_kit::form_row("Size", dropdown(["Small", "Medium", "Large"], self.segment).on_select(Msg::Segment)).description("Scales type and controls, not pixels.").into(),
-                        aizome_kit::form_row("Reduced motion", toggle(self.toggles[1]).on_toggle(|b| Msg::Toggle(1, b))).into(),
+                        aizome_kit::form_row(
+                            "Theme",
+                            segmented(["Night", "Day", "High Contrast"], self.theme).on_select(Msg::Theme)
+                        )
+                        .into(),
+                        aizome_kit::form_row(
+                            "Focus colour",
+                            segmented(["Amber", "Cyan", "Rose", "Lime"], 0).on_select(|_| Msg::Pressed)
+                        )
+                        .into(),
+                        aizome_kit::form_row(
+                            "Size",
+                            dropdown(["Small", "Medium", "Large"], self.segment).on_select(Msg::Segment)
+                        )
+                        .description("Scales type and controls, not pixels.")
+                        .into(),
+                        aizome_kit::form_row(
+                            "Reduced motion",
+                            toggle(self.toggles[1]).on_toggle(|b| Msg::Toggle(1, b))
+                        )
+                        .into(),
                     ],
                 ),
                 aizome_kit::form_section(
                     "Network",
                     vec![
-                        aizome_kit::form_row("Wi-Fi", toggle(self.toggles[0]).on_toggle(|b| Msg::Toggle(0, b))).icon(Icon::Wifi).into(),
-                        aizome_kit::form_row("Bluetooth", toggle(self.toggles[2]).on_toggle(|b| Msg::Toggle(2, b))).icon(Icon::Bluetooth).into(),
-                        aizome_kit::form_row("Volume", slider(self.slider, 0.0..=1.0).on_change(Msg::Slider).width(200.0)).icon(Icon::Volume2).into(),
+                        aizome_kit::form_row("Wi-Fi", toggle(self.toggles[0]).on_toggle(|b| Msg::Toggle(0, b)))
+                            .icon(Icon::Wifi)
+                            .into(),
+                        aizome_kit::form_row("Bluetooth", toggle(self.toggles[2]).on_toggle(|b| Msg::Toggle(2, b)))
+                            .icon(Icon::Bluetooth)
+                            .into(),
+                        aizome_kit::form_row(
+                            "Volume",
+                            slider(self.slider, 0.0..=1.0).on_change(Msg::Slider).width(200.0)
+                        )
+                        .icon(Icon::Volume2)
+                        .into(),
                     ],
                 ),
             ]
@@ -439,19 +562,46 @@ impl Program for Gallery {
                         self.page = Page::Editor;
                         self.content.set_selection(aizome_kit::Selection::caret(120));
                     }
-                    let a = if self.presses % 20 == 19 { EditorAction::Backspace(aizome_kit::Granularity::Word) } else { EditorAction::Insert("x".into()) };
+                    let a = if self.presses % 20 == 19 {
+                        EditorAction::Backspace(aizome_kit::Granularity::Word)
+                    } else {
+                        EditorAction::Insert("x".into())
+                    };
                     self.presses += 1;
                     self.content.perform(a);
                     cx.after(std::time::Duration::from_millis(20), Msg::Demo);
                 }
                 Ok("popover") => self.popover = true,
-                Ok("alert") => cx.alert(w, Alert::new("Delete “notes.md”?", "It goes to the Trash.").destructive_button("Delete", Msg::Pressed).cancel_button("Cancel").default_button("Keep", Msg::Pressed)),
+                Ok("alert") => cx.alert(
+                    w,
+                    Alert::new("Delete “notes.md”?", "It goes to the Trash.")
+                        .destructive_button("Delete", Msg::Pressed)
+                        .cancel_button("Cancel")
+                        .default_button("Keep", Msg::Pressed),
+                ),
                 _ => {
                     let view = Menu::new("View")
-                        .items(PAGES.iter().enumerate().map(|(n, (p, i, name))| MenuItem::new(*name, Msg::Page(*p)).icon(*i).checked(self.page == *p).shortcut(Shortcut::cmd(char::from(b'1' + n as u8)))))
+                        .items(PAGES.iter().enumerate().map(|(n, (p, i, name))| {
+                            MenuItem::new(*name, Msg::Page(*p))
+                                .icon(*i)
+                                .checked(self.page == *p)
+                                .shortcut(Shortcut::cmd(char::from(b'1' + n as u8)))
+                        }))
                         .separator()
-                        .submenu(Menu::new("Theme").items(["Night", "Day", "High Contrast"].iter().enumerate().map(|(n, t)| MenuItem::new(*t, Msg::Theme(n)).checked(self.theme == n))));
-                    cx.show_menu(w, Rect::new(380.0, 120.0, 381.0, 121.0), view, MenuStyle::at_point().titled("View").on_tear_off(Msg::Pressed));
+                        .submenu(
+                            Menu::new("Theme").items(
+                                ["Night", "Day", "High Contrast"]
+                                    .iter()
+                                    .enumerate()
+                                    .map(|(n, t)| MenuItem::new(*t, Msg::Theme(n)).checked(self.theme == n)),
+                            ),
+                        );
+                    cx.show_menu(
+                        w,
+                        Rect::new(380.0, 120.0, 381.0, 121.0),
+                        view,
+                        MenuStyle::at_point().titled("View").on_tear_off(Msg::Pressed),
+                    );
                 }
             }
             return;
@@ -477,10 +627,20 @@ impl Program for Gallery {
         MenuBar::standard(&self.info()).with_menu(
             Menu::new("View")
                 .items(PAGES.iter().enumerate().map(|(n, (p, i, name))| {
-                    MenuItem::new(*name, Msg::Page(*p)).icon(*i).checked(self.page == *p).shortcut(Shortcut::cmd(char::from(b'1' + n as u8)))
+                    MenuItem::new(*name, Msg::Page(*p))
+                        .icon(*i)
+                        .checked(self.page == *p)
+                        .shortcut(Shortcut::cmd(char::from(b'1' + n as u8)))
                 }))
                 .separator()
-                .submenu(Menu::new("Theme").items(["Night", "Day", "High Contrast"].iter().enumerate().map(|(n, t)| MenuItem::new(*t, Msg::Theme(n)).checked(self.theme == n)))),
+                .submenu(
+                    Menu::new("Theme").items(
+                        ["Night", "Day", "High Contrast"]
+                            .iter()
+                            .enumerate()
+                            .map(|(n, t)| MenuItem::new(*t, Msg::Theme(n)).checked(self.theme == n)),
+                    ),
+                ),
         )
     }
 }

@@ -1,7 +1,7 @@
 //! A first look: a window of controls drawn offscreen.
 
-use aizome_kit::prelude::*;
 use aizome_kit::column;
+use aizome_kit::prelude::*;
 use aizome_kit::testing::Harness;
 
 #[derive(Default)]

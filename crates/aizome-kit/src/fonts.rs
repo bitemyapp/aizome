@@ -17,7 +17,13 @@ const FAMILIES: &[(&str, &[&str])] = &[
     (typeface::UI, &["Archivo[wdth,wght]", "Archivo-VF", "Archivo-Italic[wdth,wght]", "Archivo-Italic-VF"]),
     (
         typeface::MONO,
-        &["IBMPlexMono-Regular", "IBMPlexMono-Medium", "IBMPlexMono-SemiBold", "IBMPlexMono-Bold", "IBMPlexMono-Italic"],
+        &[
+            "IBMPlexMono-Regular",
+            "IBMPlexMono-Medium",
+            "IBMPlexMono-SemiBold",
+            "IBMPlexMono-Bold",
+            "IBMPlexMono-Italic",
+        ],
     ),
     (typeface::SYMBOLS, &["NotoSansSymbols2-Regular"]),
 ];

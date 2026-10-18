@@ -56,7 +56,12 @@ impl Program for Bar {
         match msg {
             Msg::Open(n) => {
                 let x = 40.0 * n as f64;
-                cx.show_menu(bar, Rect::new(x, 0.0, x + 40.0, 24.0), menu(), MenuStyle::below().on_closed(Msg::Closed(n)));
+                cx.show_menu(
+                    bar,
+                    Rect::new(x, 0.0, x + 40.0, 24.0),
+                    menu(),
+                    MenuStyle::below().on_closed(Msg::Closed(n)),
+                );
             }
             Msg::OpenLauncher => {
                 let style = MenuStyle::below().titled("Toolchest").on_type(Msg::Typed).on_closed(Msg::Closed(0));

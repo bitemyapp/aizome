@@ -9,14 +9,16 @@ use std::sync::Arc;
 use sidestep_ui::{Cursor, PointerButton};
 
 use crate::draw;
+use crate::element::Layoutable;
 use crate::element::{Common, Element, MsgFn, MsgMap, RawElement};
 use crate::hash::PaintHasher;
 use crate::icons::Icon;
 use crate::layout::{Align, Constraints, Length, Padding, Point, Rect, Size};
 use crate::text::{TextSpec, text};
 use crate::theme::{FontSpec, Role, Theme};
-use crate::widget::{Event, EventCx, Focusable, LayoutCx, PaintCx, SemanticAction, SemanticRole, Semantics, Status, Widget};
-use crate::element::Layoutable;
+use crate::widget::{
+    Event, EventCx, Focusable, LayoutCx, PaintCx, SemanticAction, SemanticRole, Semantics, Status, Widget,
+};
 use crate::widgets::layout::{Axis, Tone, container, flex_layout};
 
 // Splits.
@@ -172,7 +174,10 @@ impl Widget for SplitWidget {
     }
 
     fn layout(&mut self, cx: &mut LayoutCx, bc: Constraints) -> Size {
-        let size = Size::new(if bc.max.width.is_finite() { bc.max.width } else { 600.0 }, if bc.max.height.is_finite() { bc.max.height } else { 400.0 });
+        let size = Size::new(
+            if bc.max.width.is_finite() { bc.max.width } else { 600.0 },
+            if bc.max.height.is_finite() { bc.max.height } else { 400.0 },
+        );
         let total = if self.axis == Axis::Horizontal { size.width } else { size.height };
         let sidebar = cx.theme().metrics.sidebar;
         let wanted = cx.state::<SplitState>().at.unwrap_or(match self.start {
@@ -191,10 +196,13 @@ impl Widget for SplitWidget {
         cx.layout_child(0, Constraints::tight(a));
         cx.layout_child(1, Constraints::tight(b));
         cx.place_child(0, Point::ZERO);
-        cx.place_child(1, match self.axis {
-            Axis::Horizontal => Point::new(at + 1.0, 0.0),
-            Axis::Vertical => Point::new(0.0, at + 1.0),
-        });
+        cx.place_child(
+            1,
+            match self.axis {
+                Axis::Horizontal => Point::new(at + 1.0, 0.0),
+                Axis::Vertical => Point::new(0.0, at + 1.0),
+            },
+        );
         size
     }
 
@@ -294,7 +302,11 @@ pub struct SidebarItem<Msg> {
 
 crate::builder!(SidebarItem);
 
-pub fn sidebar_item<Msg>(icon: impl Into<Option<Icon>>, label: impl Into<Arc<str>>, selected: bool) -> SidebarItem<Msg> {
+pub fn sidebar_item<Msg>(
+    icon: impl Into<Option<Icon>>,
+    label: impl Into<Arc<str>>,
+    selected: bool,
+) -> SidebarItem<Msg> {
     SidebarItem {
         common: Common::sized(Length::Fill, Length::Shrink),
         icon: icon.into(),
@@ -323,7 +335,13 @@ impl<Msg> SidebarItem<Msg> {
 
 impl<Msg> From<SidebarItem<Msg>> for Element<Msg> {
     fn from(s: SidebarItem<Msg>) -> Element<Msg> {
-        let w = SidebarItemWidget { icon: s.icon, label: s.label, selected: s.selected, detail: s.detail, on_press: s.on_press };
+        let w = SidebarItemWidget {
+            icon: s.icon,
+            label: s.label,
+            selected: s.selected,
+            detail: s.detail,
+            on_press: s.on_press,
+        };
         Element::from_raw(RawElement::new(w, s.common, Vec::new()))
     }
 }
@@ -367,11 +385,17 @@ impl Widget for SidebarItemWidget {
         }
         let mut right = r.x1 - 10.0;
         if let Some(d) = &self.detail {
-            let spec = TextSpec::new(FontSpec { tabular: true, ..FontSpec::mono(t.metrics.small) }, if self.selected { fg } else { t.text3() });
+            let spec = TextSpec::new(
+                FontSpec { tabular: true, ..FontSpec::mono(t.metrics.small) },
+                if self.selected { fg } else { t.text3() },
+            );
             let w = cx.draw_text_in(d, &spec, Rect::new(x, 0.0, right, r.y1), Align::End);
             right -= w + 8.0;
         }
-        let spec = TextSpec::new(FontSpec { weight: if self.selected { 600.0 } else { 400.0 }, ..FontSpec::ui(t.metrics.body) }, fg);
+        let spec = TextSpec::new(
+            FontSpec { weight: if self.selected { 600.0 } else { 400.0 }, ..FontSpec::ui(t.metrics.body) },
+            fg,
+        );
         cx.draw_text_in(&self.label, &spec, Rect::new(x, 0.0, right, r.y1), Align::Start);
     }
 
@@ -426,7 +450,9 @@ impl Widget for SidebarItemWidget {
 /// spaced, `text3`.
 pub fn caption<Msg>(title: impl Into<Arc<str>>) -> Element<Msg> {
     let t: Arc<str> = title.into();
-    container(text(t).mono().size(10.5).letter_spacing(1.2).caps().role(Role::Text3)).padding([10.0, 10.0, 4.0, 10.0]).into()
+    container(text(t).mono().size(10.5).letter_spacing(1.2).caps().role(Role::Text3))
+        .padding([10.0, 10.0, 4.0, 10.0])
+        .into()
 }
 
 // Toolbars and status bars.
@@ -435,7 +461,12 @@ pub fn caption<Msg>(title: impl Into<Arc<str>>) -> Element<Msg> {
 /// 30pt): `toolbar(vec![dropdown(...).compact().into(), toolbar_separator(), button("B").toolbar().into(), spacer().into(), status_text("Ln 48, Col 12")])`.
 pub fn toolbar<Msg>(items: Vec<Element<Msg>>) -> Element<Msg> {
     let row: Element<Msg> = Element::from_raw(RawElement {
-        widget: Box::new(crate::widgets::layout::FlexWidget { axis: Axis::Horizontal, spacing: 4.0, padding: Padding::symmetric(0.0, 8.0), align: Align::Center }),
+        widget: Box::new(crate::widgets::layout::FlexWidget {
+            axis: Axis::Horizontal,
+            spacing: 4.0,
+            padding: Padding::symmetric(0.0, 8.0),
+            align: Align::Center,
+        }),
         common: Common::sized(Length::Fill, Length::Fill),
         children: items.into_iter().map(|e| e.raw).collect(),
     });
@@ -508,11 +539,20 @@ pub fn status_text<Msg>(s: impl Into<Arc<str>>) -> Element<Msg> {
 /// The bar along a window's bottom: `chrome`, a `line` top edge, 22pt.
 pub fn status_bar<Msg>(items: Vec<Element<Msg>>) -> Element<Msg> {
     let row: Element<Msg> = Element::from_raw(RawElement {
-        widget: Box::new(crate::widgets::layout::FlexWidget { axis: Axis::Horizontal, spacing: 12.0, padding: Padding::symmetric(0.0, 10.0), align: Align::Center }),
+        widget: Box::new(crate::widgets::layout::FlexWidget {
+            axis: Axis::Horizontal,
+            spacing: 12.0,
+            padding: Padding::symmetric(0.0, 10.0),
+            align: Align::Center,
+        }),
         common: Common::sized(Length::Fill, Length::Fill),
         children: items.into_iter().map(|e| e.raw).collect(),
     });
-    Element::from_raw(RawElement { widget: Box::new(StatusBar), common: Common::sized(Length::Fill, Length::Shrink), children: vec![row.raw] })
+    Element::from_raw(RawElement {
+        widget: Box::new(StatusBar),
+        common: Common::sized(Length::Fill, Length::Shrink),
+        children: vec![row.raw],
+    })
 }
 
 struct StatusBar;
@@ -559,7 +599,11 @@ pub fn form_section<Msg>(title: impl Into<Arc<str>>, rows: Vec<Element<Msg>>) ->
     });
     let mut items = Vec::new();
     if !title.is_empty() {
-        items.push(container(text(title).mono().size(10.5).letter_spacing(1.2).caps().role(Role::Text3)).padding([0.0, 2.0, 6.0, 2.0]).into());
+        items.push(
+            container(text(title).mono().size(10.5).letter_spacing(1.2).caps().role(Role::Text3))
+                .padding([0.0, 2.0, 6.0, 2.0])
+                .into(),
+        );
     }
     items.push(body);
     crate::widgets::layout::column(items).width(Length::Fill).into()
@@ -727,7 +771,6 @@ impl Widget for FormRowWidget {
         }
     }
 
-
     fn hash(&self, h: &mut PaintHasher) {
         h.str(&self.label).add(&(self.description.as_deref(), self.icon)).f64(self.label_size.width);
     }
@@ -740,4 +783,3 @@ impl Widget for FormRowWidget {
         Some(&self.label)
     }
 }
-

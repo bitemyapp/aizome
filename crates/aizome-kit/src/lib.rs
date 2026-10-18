@@ -49,20 +49,22 @@ pub mod platform;
 pub mod program;
 pub(crate) mod shell;
 pub mod stats;
+pub mod testing;
 pub mod text;
 pub mod theme;
 pub mod tree;
 pub mod widget;
-pub mod testing;
 pub mod widgets;
 
 pub use app::{LINE, run, try_run};
 pub use cx::{Cx, MsgSender, TimerHandle, WindowManager};
 pub use dialogs::{Alert, FileDialog};
+pub use editor::{EditorAction, EditorContent, Granularity, Highlighter, LineStyle, Selection};
 pub use element::{Element, Layoutable, children};
 pub use icons::{Icon, icon};
 pub use layout::{Align, Constraints, Length, Padding, Point, Rect, Size, Vec2};
 pub use menu::{Menu, MenuBar, MenuItem, MenuRole, Shortcut, ShortcutKey};
+pub use program::{ActivationRequest, Anchors, DragId, KeyboardInteractivity, Layer, LayerOptions, Margins, Output};
 pub use program::{AppInfo, Program, WindowKey, WindowKind, WindowSpec, WindowState};
 pub use sidestep_ui;
 pub use sidestep_ui::{Color, DragSource, DropAction, Image};
@@ -72,30 +74,31 @@ pub use widgets::controls::{
     Fit, badge, button, checkbox, dropdown, icon_button, image, keycap, meter, progress, progress_indeterminate, radio,
     segmented, segmented_icons, slider, stepper, toggle,
 };
+pub use widgets::interact::{DragEvent, Dropped, canvas, context_menu, mouse_area, popover, tooltip};
 pub use widgets::layout::{Edge, Sides, Tone, column, container, divider, row, space, spacer, stack};
 pub use widgets::menus::{MenuPlacement, MenuStyle, menu_view};
+pub use widgets::panes::{
+    caption, form_row, form_section, sidebar_item, sidebar_layout, split, status_bar, status_text, toolbar,
+    toolbar_separator,
+};
 pub use widgets::scroll::{Direction, list, scroll, virtual_list};
 pub use widgets::table::{Column, TreeItem, table, tree};
-pub use widgets::interact::{DragEvent, Dropped, canvas, context_menu, mouse_area, popover, tooltip};
-pub use widgets::panes::{caption, form_row, form_section, sidebar_item, sidebar_layout, split, status_bar, status_text, toolbar, toolbar_separator};
-pub use widgets::text_field::{search_field, text_field};
 pub use widgets::text_editor::{FindRequest, text_editor};
-pub use editor::{EditorAction, EditorContent, Granularity, Highlighter, LineStyle, Selection};
-pub use program::{Anchors, KeyboardInteractivity, Layer, LayerOptions, Margins, Output, ActivationRequest, DragId};
+pub use widgets::text_field::{search_field, text_field};
 
 /// Everything an app usually needs: `use aizome_kit::prelude::*;`.
 pub mod prelude {
     pub use crate::layout::{Fill, Shrink};
     pub use crate::{
-        Align, Alert, AppInfo, Color, Cx, Edge, Vec2, Element, FileDialog, Fit, FontSpec, Icon, Image, Layoutable, Length,
-        Menu, MenuBar, MenuItem, MenuRole, Padding, Point, Program, Rect, Role, Shortcut, ShortcutKey, Sides, Size,
-        Span, Theme, TimerHandle, Tone, WindowKey, WindowKind, WindowSpec, badge, button, checkbox, container,
-        divider, dropdown, icon, icon_button, image, keycap, meter, progress, progress_indeterminate, radio,
-        rich_text, segmented, segmented_icons, slider, space, spacer, stepper, text, toggle, text_field, search_field,
-        menu_view, MenuStyle, MenuPlacement, scroll, list, virtual_list, canvas, context_menu, mouse_area, popover,
-        tooltip, caption, form_row, form_section, sidebar_item, sidebar_layout, split, status_bar, status_text,
-        toolbar, toolbar_separator, DragEvent, Dropped, text_editor, EditorAction, EditorContent, FindRequest,
-        table, Column, tree, TreeItem, DragId, DragSource, DropAction,
+        Alert, Align, AppInfo, Color, Column, Cx, DragEvent, DragId, DragSource, DropAction, Dropped, Edge,
+        EditorAction, EditorContent, Element, FileDialog, FindRequest, Fit, FontSpec, Icon, Image, Layoutable, Length,
+        Menu, MenuBar, MenuItem, MenuPlacement, MenuRole, MenuStyle, Padding, Point, Program, Rect, Role, Shortcut,
+        ShortcutKey, Sides, Size, Span, Theme, TimerHandle, Tone, TreeItem, Vec2, WindowKey, WindowKind, WindowSpec,
+        badge, button, canvas, caption, checkbox, container, context_menu, divider, dropdown, form_row, form_section,
+        icon, icon_button, image, keycap, list, menu_view, meter, mouse_area, popover, progress,
+        progress_indeterminate, radio, rich_text, scroll, search_field, segmented, segmented_icons, sidebar_item,
+        sidebar_layout, slider, space, spacer, split, status_bar, status_text, stepper, table, text, text_editor,
+        text_field, toggle, toolbar, toolbar_separator, tooltip, tree, virtual_list,
     };
     pub use crate::{column, row, stack};
 }

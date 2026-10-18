@@ -85,7 +85,9 @@ impl Program for Shell {
         if self.locks.contains(&w) {
             return column![text("Locked")].into();
         }
-        aizome_kit::row![button("Edit").toolbar().on_press(Msg::OpenMenu), spacer(), text("21:42").mono()].padding([0.0, 8.0]).into()
+        aizome_kit::row![button("Edit").toolbar().on_press(Msg::OpenMenu), spacer(), text("21:42").mono()]
+            .padding([0.0, 8.0])
+            .into()
     }
     fn outputs_changed(&mut self, _cx: &mut Cx<Msg>) {
         self.outputs_seen += 1;
@@ -124,10 +126,17 @@ fn layer_surfaces_open_move_and_draw_see_through() {
     let mut h = Harness::new(Shell::default());
     let bar = h.window();
     let spec = &h.platform.windows.values().next().expect("a window").spec;
-    assert!(matches!(&spec.kind, aizome_kit::platform::OpenKind::Layer(o) if o.namespace == "aizome-menubar" && o.exclusive_zone == 24));
+    assert!(
+        matches!(&spec.kind, aizome_kit::platform::OpenKind::Layer(o) if o.namespace == "aizome-menubar" && o.exclusive_zone == 24)
+    );
     assert_eq!(spec.background, None, "desktop surfaces draw their own ground");
     h.send(Msg::Move(120));
-    assert!(h.platform.layer_changes.iter().any(|(_, c)| *c == aizome_kit::platform::LayerChange::Margins(Margins::new(0, 0, 0, 120))));
+    assert!(
+        h.platform
+            .layer_changes
+            .iter()
+            .any(|(_, c)| *c == aizome_kit::platform::LayerChange::Margins(Margins::new(0, 0, 0, 120)))
+    );
     assert_eq!(h.platform.input_regions.values().next(), Some(&Some(vec![Rect::new(0.0, 0.0, 100.0, 24.0)])));
     h.activation_token(1, Some("token-1"));
     assert_eq!(h.program().token.as_deref(), Some("token-1"));

@@ -28,7 +28,6 @@ impl MsgFn {
         MsgFn(Rc::new(move || Box::new(msg.clone())))
     }
 
-
     /// A message made by `f` each time.
     pub fn from_fn(f: impl Fn() -> AnyMsg + 'static) -> MsgFn {
         MsgFn(Rc::new(f))
@@ -58,7 +57,6 @@ impl<T: 'static> MsgMap<T> {
     pub fn new<Msg: Send + 'static>(f: impl Fn(T) -> Msg + 'static) -> MsgMap<T> {
         MsgMap(Rc::new(move |t| Box::new(f(t))))
     }
-
 
     pub fn make(&self, value: T) -> AnyMsg {
         (self.0)(value)

@@ -72,14 +72,16 @@ fn approx(a: Rect, b: Rect) -> bool {
 #[test]
 fn rows_share_leftover_room_by_portion() {
     let h = Harness::new(Probe::new(|_| {
-        column![row![
-            container(text("a")).width(100.0).height(20.0).id("fixed"),
-            container(text("b")).width(Length::FillPortion(1)).height(20.0).id("one"),
-            container(text("c")).width(Length::FillPortion(3)).height(20.0).id("three"),
+        column![
+            row![
+                container(text("a")).width(100.0).height(20.0).id("fixed"),
+                container(text("b")).width(Length::FillPortion(1)).height(20.0).id("one"),
+                container(text("c")).width(Length::FillPortion(3)).height(20.0).id("three"),
+            ]
+            .spacing(10.0)
+            .padding(20.0)
+            .width(Fill)
         ]
-        .spacing(10.0)
-        .padding(20.0)
-        .width(Fill)]
         .into()
     }));
     let w = h.window();
@@ -257,7 +259,8 @@ fn window_sizes_are_the_contents_under_an_in_window_menu_bar() {
 
 #[test]
 fn text_limited_to_lines_wraps_up_to_them() {
-    const WORDS: &str = "Operations stay in points. Each window renders at its output's scale: the integer one wherever it can.";
+    const WORDS: &str =
+        "Operations stay in points. Each window renders at its output's scale: the integer one wherever it can.";
     let h = Harness::new(Probe::new(|_| {
         column![
             container(text(WORDS)).width(120.0).id("one-line"),
@@ -273,7 +276,6 @@ fn text_limited_to_lines_wraps_up_to_them() {
     assert!(two > one * 1.6 && two < one * 2.4, "two lines: {two} (one: {one})");
     assert!(all > two * 1.5, "unlimited, it takes more: {all}");
 }
-
 
 #[test]
 fn a_picture_drawn_smaller_is_scaled_once_and_looks_the_same() {

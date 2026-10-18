@@ -68,7 +68,10 @@ impl Program for Files {
                 .into()
         };
         column![
-            mouse_area(container(text("Drag me")).padding(10.0)).on_drag(Msg::Drag).drag_out(|| DragSource::new().text("dragged text").promise("image/png")).id("chip"),
+            mouse_area(container(text("Drag me")).padding(10.0))
+                .on_drag(Msg::Drag)
+                .drag_out(|| DragSource::new().text("dragged text").promise("image/png"))
+                .id("chip"),
             container(rows).height(Fill),
         ]
         .into()
@@ -100,7 +103,10 @@ fn a_mouse_area_drags_out_past_a_few_points() {
     let drags = h.drags();
     assert_eq!(drags.len(), 1);
     let (id, carried) = drags[0];
-    assert!(format!("{carried:?}").contains("text/plain") && format!("{carried:?}").contains("image/png"), "{carried:?}");
+    assert!(
+        format!("{carried:?}").contains("text/plain") && format!("{carried:?}").contains("image/png"),
+        "{carried:?}"
+    );
     // on_drag heard the start and the moves up to the drag, then nothing.
     let moves = h.program().drags.iter().filter(|d| matches!(d, DragEvent::Move { .. })).count();
     assert!(matches!(h.program().drags[0], DragEvent::Start(_)) && moves == 1, "{:?}", h.program().drags);

@@ -57,7 +57,10 @@ impl Icon {
                 // On whole device pixels, so the picture maps one to one.
                 let o = canvas.transform() * at;
                 let snap = |v: f64| (v * scale).round() / scale;
-                let dst = Rect::from_origin_size(Point::new(snap(o.x) - (o.x - at.x), snap(o.y) - (o.y - at.y)), (size, size));
+                let dst = Rect::from_origin_size(
+                    Point::new(snap(o.x) - (o.x - at.x), snap(o.y) - (o.y - at.y)),
+                    (size, size),
+                );
                 canvas.draw_image_with(&img, None, dst, ImageOptions { alpha: 1.0, smooth: true, tint: Some(color) });
                 return;
             }
