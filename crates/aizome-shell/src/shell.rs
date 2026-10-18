@@ -69,6 +69,8 @@ pub enum Msg {
     /// selection), for a menu waiting on it.
     Selection(u64, Option<String>),
     Note(crate::notifications::server::NoteEvent),
+    /// Idle after starting: warm the palette.
+    WarmPalette,
     /// An output's wallpaper, scaled (or not: it didn't read).
     Wallpaper(crate::wallpaper::WallKey, Option<aizome_kit::Image>),
     /// The bell's flash of generation `n` has shown long enough.
@@ -250,7 +252,7 @@ pub struct Shell {
     pub logind_power_key: Option<String>,
     /// Night Light, as the compositor last told.
     pub night: Option<aizome_ipc::NightLightState>,
-    pub(crate) text: aizome_kit::text::TextCache,
+    pub text: aizome_kit::text::TextCache,
     launches: HashMap<ActivationRequest, (Launch, Option<PathBuf>)>,
     stream: Option<MsgSender<Msg>>,
     _settings_watch: Option<aizome_config::Watcher>,
@@ -1006,6 +1008,8 @@ impl Program for Shell {
     fn launched(&mut self, cx: &mut Cx<Msg>) {
         if self.opts.live {
             self.start_threads(cx);
+            // Once the first frames are out, ready the palette's text.
+            cx.after(std::time::Duration::from_secs(2), Msg::WarmPalette);
         }
         let outputs = cx.outputs();
         self.sync_screens(outputs, cx);
@@ -1076,6 +1080,10 @@ impl Program for Shell {
             Msg::Agenda(a) => self.agenda = a,
             Msg::FlashDone(n) => self.flash_done(n, cx),
             Msg::Wallpaper(key, image) => self.wallpaper_ready(key, image),
+            Msg::WarmPalette => {
+                let theme = cx.theme().clone();
+                self.warm_palette(&theme);
+            }
             Msg::LogindPowerKey(k) => self.logind_power_key = k,
             Msg::BarSide(d) => self.bar_side(d, cx),
             Msg::ToolchestTyped(text) => self.toolchest_typed(text, cx),

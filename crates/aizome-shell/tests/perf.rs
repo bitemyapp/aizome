@@ -92,3 +92,34 @@ fn typical_frames_fit_the_budget() {
         h.named(p, k, aizome_kit::sidestep_ui::Modifiers::NONE);
     }));
 }
+
+#[test]
+fn the_palettes_first_opening_after_warming() {
+    // A fresh shell, its palette's text laid out ahead at idle as the live
+    // shell does two seconds after starting; then the first opening:
+    // update, view, layout and the whole surface rasterised at 2×.
+    let mut h = scene(false);
+    let theme = h.theme().clone();
+    let t = Instant::now();
+    h.program_mut().warm_palette(&theme);
+    let warming = t.elapsed();
+    let t = Instant::now();
+    h.send(Msg::Run(aizome_shell::actions::Action::Palette { scope: None, query: String::new() }));
+    let p = window_titled(&h, "Palette");
+    let _ = h.render(p, 2.0);
+    let first = t.elapsed();
+    h.send(Msg::Palette(aizome_shell::palette::PaletteEvent::Ui(aizome_shell::palette::view::PaletteMsg::Close)));
+    let t = Instant::now();
+    h.send(Msg::Run(aizome_shell::actions::Action::Palette { scope: None, query: String::new() }));
+    let p = window_titled(&h, "Palette");
+    let _ = h.render(p, 2.0);
+    let again = t.elapsed();
+    println!(
+        "palette: warming {:.2} ms (once, at idle), first opening {:.2} ms, again {:.2} ms",
+        warming.as_secs_f64() * 1e3,
+        first.as_secs_f64() * 1e3,
+        again.as_secs_f64() * 1e3
+    );
+    let limit = if cfg!(debug_assertions) { Duration::from_millis(200) } else { Duration::from_millis(20) };
+    assert!(first < limit, "{first:?}");
+}

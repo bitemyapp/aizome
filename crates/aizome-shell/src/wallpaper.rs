@@ -141,3 +141,12 @@ mod tests {
         assert!(out.chunks(4).all(|p| p[0] <= 200 && p[3] == 255));
     }
 }
+
+/// How to draw a prepared wallpaper into `bounds` (points): pixel for
+/// pixel when it was made for them (the cheapest copy), else smoothly
+/// (the output changed and a new one is on its way).
+pub fn options(image: &Image, bounds: aizome_kit::layout::Rect) -> aizome_kit::sidestep_ui::ImageOptions {
+    let s = image.size();
+    let exact = (s.width - bounds.width()).abs() < 0.01 && (s.height - bounds.height()).abs() < 0.01;
+    aizome_kit::sidestep_ui::ImageOptions { smooth: !exact, ..Default::default() }
+}

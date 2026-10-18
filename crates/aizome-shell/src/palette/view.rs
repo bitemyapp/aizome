@@ -436,3 +436,41 @@ pub fn row_rect(sections: &[Section], index: usize, scroll: f64) -> Option<Rect>
     let y = 1.0 + QUERY + CHIPS + top - scroll;
     Some(Rect::new(1.0, y, WIDTH - DETAIL, y + ROW))
 }
+
+/// What the palette sets, in the sizes and weights it sets it in, to lay
+/// out once before it first opens: the faces loaded and the shaping warm,
+/// so its first frame isn't spent on them. `titles` are rows' titles and
+/// paths to set too.
+pub fn warm_texts(t: &aizome_kit::Theme, titles: &[String]) -> Vec<(String, aizome_kit::text::TextSpec)> {
+    use aizome_theme::typeface as tf;
+    let fg = t.text();
+    let f = t.metrics.factor;
+    let sample = "Commands, windows, files, apps, settings… ❯ ❖⇧⌥⌃ ↑↓ ↩ ⇥ esc › · 0123456789";
+    let specs = [
+        look::ui(20.0 * f, tf::WEIGHT_MEDIUM, fg),
+        look::ui(20.0 * f, tf::WEIGHT_SEMIBOLD, fg),
+        look::ui(14.0 * f, tf::WEIGHT_REGULAR, fg),
+        look::ui(13.0, tf::WEIGHT_REGULAR, fg),
+        look::ui(12.5 * f, tf::WEIGHT_REGULAR, fg),
+        look::ui(12.5 * f, tf::WEIGHT_SEMIBOLD, fg),
+        look::ui(12.0, tf::WEIGHT_REGULAR, fg),
+        look::mono(20.0, tf::WEIGHT_REGULAR, fg),
+        look::mono(15.0, tf::WEIGHT_REGULAR, fg),
+        look::mono(13.0, tf::WEIGHT_REGULAR, fg),
+        look::mono(12.5, tf::WEIGHT_REGULAR, fg),
+        look::mono(12.0, tf::WEIGHT_REGULAR, fg),
+        look::mono(12.0, tf::WEIGHT_MEDIUM, fg),
+        look::mono(11.5, tf::WEIGHT_REGULAR, fg),
+        look::mono(11.0, tf::WEIGHT_REGULAR, fg),
+        look::mono(10.5, tf::WEIGHT_BOLD, fg),
+        look::mono(10.5, tf::WEIGHT_MEDIUM, fg),
+    ];
+    let mut out: Vec<(String, aizome_kit::text::TextSpec)> = specs.iter().map(|s| (sample.to_owned(), s.clone())).collect();
+    let row = look::ui(14.0 * f, tf::WEIGHT_REGULAR, fg);
+    let trail = look::mono(12.0, tf::WEIGHT_REGULAR, fg);
+    for title in titles {
+        out.push((title.clone(), row.clone()));
+        out.push((title.clone(), trail.clone()));
+    }
+    out
+}

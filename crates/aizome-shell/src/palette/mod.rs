@@ -693,3 +693,22 @@ pub fn index_key(roots: &[PathBuf], skip: &[PathBuf]) -> String {
     }
     s
 }
+
+impl Shell {
+    /// At idle after starting: lay out what the palette sets, so its first
+    /// opening finds the faces loaded and the shaping warm.
+    pub fn warm_palette(&mut self, theme: &aizome_kit::Theme) {
+        let started = std::time::Instant::now();
+        let mut titles: Vec<String> = Vec::new();
+        for i in self.palette_items().into_iter().take(80) {
+            titles.push(i.title);
+            if !i.trail.is_empty() {
+                titles.push(i.trail);
+            }
+        }
+        for (text, spec) in view::warm_texts(theme, &titles) {
+            let _ = self.text.layout(theme, &text, &spec, None);
+        }
+        log::debug!("the palette's text laid out ahead in {:?}", started.elapsed());
+    }
+}

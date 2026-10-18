@@ -373,34 +373,56 @@ total):
 
 - The bar, steady (clock and meters): total p50 0.03–0.06 ms, p95 under
   0.25 ms, damage 2–9%.
-- The palette, typing and moving: p50 about 1 ms; its first frame on a
-  later opening 2.3 ms.
+- The palette, typing and moving: p50 about 1 ms.
 - The Toolchest (a kit menu popup): its first frame 1.5 ms.
 - Idle: no frames but the clock's each minute and a meter's when a bar
   visibly moves (the sampler only wakes the shell then); 2–4 clock ticks
   of CPU (20–40 ms) over 20 s, about 0.1–0.2%.
 
+First frames (17 October, Sidestep's banded rasteriser, the machine at a
+load of about 17 from other builds):
+
+| Surface | Before | Now |
+|---|---|---|
+| The desktop, its colour | 89 ms | 2.8 ms |
+| The desktop, with its wallpaper | 106 ms | 4.7 ms |
+| The palette's first opening after start | 6.7–9.9 ms | 5.4 ms (record 0.7, rasterise 4.6) |
+| The palette opened again | 2.3 ms | 0.9 ms |
+
+The wallpaper is read, decoded and scaled to each output's size in pixels
+on a worker thread (`wallpaper.rs`), once per output size and theme; the
+desktop shows its colour until it's ready, and then the picture lands one
+to one on the output's pixels, drawn without filtering: a copy. The
+palette's text (its sizes and weights, and the rows it opens with) is laid
+out once, two seconds after the shell starts, so the faces are loaded and
+the shaping warm when it first opens: 4–14 ms of the main thread, once, at
+idle. Headlessly (`tests/perf.rs`, `the_palettes_first_opening_after_warming`,
+release, the whole surface rasterised at 2× on one thread): warming 4 ms,
+the first opening 7.2–8.8 ms, again 5.3 ms.
+
 ### Memory
 
 RSS with a bar, desktop and Deskbar on one 2880 × 1800 output: 77 MB with
-the desktop colour, about 120 MB with a 2880 × 1800 wallpaper (the decoded
-image, 20 MB, and the desktop's raster), up to about 150 MB after the
-palette's first use (text and glyph caches, its surface's buffers). The
-file index (20 MB for a large home folder) is read only while the palette
-is open and dropped when it closes; it's rebuilt in the background when
-older than ten minutes.
+the desktop colour, about 120 MB with a 2880 × 1800 wallpaper (the scaled
+picture, 20 MB, and the desktop's raster; the decoded original lives only
+on the worker while it's scaled), up to about 150 MB after the palette's
+first use (text and glyph caches, its surface's buffers). Pictures for
+another output size or the other theme are let go. The file index (20 MB
+for a large home folder) is read only while the palette is open and
+dropped when it closes; it's rebuilt in the background when older than ten
+minutes, or when its folders or the ones it skips change.
 
 ### Exceptions
 
-- **A surface's first frame** draws all of it with cold text and glyph
-  caches: the palette's first opening after start 6.7–9.9 ms (record
-  2.5–5.7, rasterise 2.1–6.6, present ~2), the Deskbar's first frame 7.7 ms
-  (record 7.3 of it: every row's text shaped). Later openings reuse the
-  caches (2.3 ms for the palette).
-- **The desktop's first frame** at 2× is a full 2880 × 1800 raster: 89 ms
-  with the desktop colour, 106 ms with a wallpaper (its JPEG decoded on the
-  render thread, once per output size). It happens once, at start (or when
-  the output changes); the desktop redraws only an icon's rectangle after.
+- **The palette's first opening** rasterises its whole surface (1446 × 966
+  pixels at 2×: the panel, its shadow and some sixty runs of text) on the
+  render thread: 5.4 ms on a loaded machine, against 0.9 ms once the
+  surface exists. Laying its text out ahead removed the main thread's part
+  (record 16.5 ms cold before, 0.7 ms now); what's left is pixels, which
+  only a smaller palette would cut.
+- **The desktop's wallpaper frame** copies 2880 × 1800 pixels (4.7 ms
+  under load); it happens once per output size and theme, and the desktop
+  redraws only an icon's rectangle after.
 
 ## Shitsurae: Network, Bluetooth, Sound, Displays, Printers
 

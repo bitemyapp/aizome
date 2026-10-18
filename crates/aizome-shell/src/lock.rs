@@ -174,7 +174,7 @@ pub fn view(v: &LockView) -> Element<LockMsg> {
                 let k = (b.width() / s.width).max(b.height() / s.height);
                 let (cw, ch) = (b.width() / k, b.height() / k);
                 let src = Rect::new((s.width - cw) / 2.0, (s.height - ch) / 2.0, (s.width + cw) / 2.0, (s.height + ch) / 2.0);
-                cx.canvas.draw_image_with(img, Some(src), b, aizome_kit::sidestep_ui::ImageOptions::default());
+                cx.canvas.draw_image_with(img, Some(src), b, crate::wallpaper::options(img, b));
             }
         }
         // The kachi scrim, at 70%.
