@@ -8,7 +8,9 @@ use std::io::Read;
 use std::os::fd::OwnedFd;
 
 use smithay::output::Output;
-use smithay::reexports::wayland_protocols_wlr::gamma_control::v1::server::{zwlr_gamma_control_manager_v1, zwlr_gamma_control_v1};
+use smithay::reexports::wayland_protocols_wlr::gamma_control::v1::server::{
+    zwlr_gamma_control_manager_v1, zwlr_gamma_control_v1,
+};
 use smithay::reexports::wayland_server::{Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New};
 use tracing::debug;
 
@@ -31,7 +33,14 @@ pub fn create_global(dh: &DisplayHandle, filter: impl Fn(&Client) -> bool + Send
 }
 
 impl GlobalDispatch<Manager, GlobalData> for State {
-    fn bind(_: &mut State, _: &DisplayHandle, _: &Client, resource: New<Manager>, _: &GlobalData, init: &mut DataInit<'_, State>) {
+    fn bind(
+        _: &mut State,
+        _: &DisplayHandle,
+        _: &Client,
+        resource: New<Manager>,
+        _: &GlobalData,
+        init: &mut DataInit<'_, State>,
+    ) {
         init.init(resource, ());
     }
 
@@ -97,7 +106,12 @@ impl Dispatch<Control, ControlData> for State {
         }
     }
 
-    fn destroyed(state: &mut State, _: smithay::reexports::wayland_server::backend::ClientId, _: &Control, data: &ControlData) {
+    fn destroyed(
+        state: &mut State,
+        _: smithay::reexports::wayland_server::backend::ClientId,
+        _: &Control,
+        data: &ControlData,
+    ) {
         if let Some(output) = &data.output {
             release(state, output);
         }

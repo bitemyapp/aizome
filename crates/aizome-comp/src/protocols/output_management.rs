@@ -9,7 +9,9 @@ use smithay::reexports::wayland_protocols_wlr::output_management::v1::server::{
     zwlr_output_manager_v1 as manager, zwlr_output_mode_v1 as mode,
 };
 use smithay::reexports::wayland_server::protocol::wl_output::Transform as WlTransform;
-use smithay::reexports::wayland_server::{Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource, WEnum};
+use smithay::reexports::wayland_server::{
+    Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource, WEnum,
+};
 use smithay::utils::Transform;
 use tracing::warn;
 
@@ -119,7 +121,9 @@ fn new_head(az: &Aizome, inst: &mut Instance, output: &smithay::output::Output) 
     }
     let mut modes = Vec::new();
     for m in output.modes() {
-        let Ok(mr) = client.create_resource::<Mode, _, State>(dh, h.version().min(3), ModeData { mode: m }) else { continue };
+        let Ok(mr) = client.create_resource::<Mode, _, State>(dh, h.version().min(3), ModeData { mode: m }) else {
+            continue;
+        };
         h.mode(&mr);
         mr.size(m.size.w, m.size.h);
         mr.refresh(m.refresh);
@@ -147,9 +151,10 @@ fn send_state(az: &Aizome, inst: &Instance, output: &smithay::output::Output) {
     }
     h.enabled(1);
     if let Some(cur) = output.current_mode()
-        && let Some((mr, _)) = modes.iter().find(|(_, m)| *m == cur) {
-            h.current_mode(mr);
-        }
+        && let Some((mr, _)) = modes.iter().find(|(_, m)| *m == cur)
+    {
+        h.current_mode(mr);
+    }
     // A mirror sits where its source does.
     let r = az.output_rect(&az.mirror_source(output).unwrap_or_else(|| output.clone()));
     h.position(r.x, r.y);
@@ -159,13 +164,15 @@ fn send_state(az: &Aizome, inst: &Instance, output: &smithay::output::Output) {
 
 /// The outputs changed: tell every manager, then `done`.
 pub fn outputs_changed(az: &mut Aizome) {
-    let mut st = std::mem::replace(&mut az.output_management, OutputManagementState { instances: Vec::new(), serial: 0 });
+    let mut st =
+        std::mem::replace(&mut az.output_management, OutputManagementState { instances: Vec::new(), serial: 0 });
     st.serial = st.serial.wrapping_add(1);
     st.instances.retain(|i| i.manager.is_alive());
     let outputs = az.known_outputs();
     for inst in &mut st.instances {
         // Gone.
-        let gone: Vec<String> = inst.heads.keys().filter(|n| !outputs.iter().any(|o| &o.name() == *n)).cloned().collect();
+        let gone: Vec<String> =
+            inst.heads.keys().filter(|n| !outputs.iter().any(|o| &o.name() == *n)).cloned().collect();
         for n in gone {
             if let Some((h, modes)) = inst.heads.remove(&n) {
                 for (m, _) in modes {
@@ -187,7 +194,14 @@ pub fn outputs_changed(az: &mut Aizome) {
 }
 
 impl GlobalDispatch<Manager, GlobalData> for State {
-    fn bind(state: &mut State, _: &DisplayHandle, _: &Client, resource: New<Manager>, _: &GlobalData, init: &mut DataInit<'_, State>) {
+    fn bind(
+        state: &mut State,
+        _: &DisplayHandle,
+        _: &Client,
+        resource: New<Manager>,
+        _: &GlobalData,
+        init: &mut DataInit<'_, State>,
+    ) {
         let manager = init.init(resource, ());
         let mut inst = Instance { manager: manager.clone(), heads: HashMap::new() };
         for o in state.az.known_outputs() {
@@ -203,7 +217,15 @@ impl GlobalDispatch<Manager, GlobalData> for State {
 }
 
 impl Dispatch<Manager, ()> for State {
-    fn request(state: &mut State, _: &Client, m: &Manager, request: manager::Request, _: &(), _: &DisplayHandle, init: &mut DataInit<'_, State>) {
+    fn request(
+        state: &mut State,
+        _: &Client,
+        m: &Manager,
+        request: manager::Request,
+        _: &(),
+        _: &DisplayHandle,
+        init: &mut DataInit<'_, State>,
+    ) {
         match request {
             manager::Request::CreateConfiguration { id, serial } => {
                 init.init(id, ConfigData { serial, inner: Arc::new(Mutex::new(ConfigInner::default())) });
@@ -218,15 +240,41 @@ impl Dispatch<Manager, ()> for State {
 }
 
 impl Dispatch<Head, HeadData> for State {
-    fn request(_: &mut State, _: &Client, _: &Head, _: head::Request, _: &HeadData, _: &DisplayHandle, _: &mut DataInit<'_, State>) {}
+    fn request(
+        _: &mut State,
+        _: &Client,
+        _: &Head,
+        _: head::Request,
+        _: &HeadData,
+        _: &DisplayHandle,
+        _: &mut DataInit<'_, State>,
+    ) {
+    }
 }
 
 impl Dispatch<Mode, ModeData> for State {
-    fn request(_: &mut State, _: &Client, _: &Mode, _: mode::Request, _: &ModeData, _: &DisplayHandle, _: &mut DataInit<'_, State>) {}
+    fn request(
+        _: &mut State,
+        _: &Client,
+        _: &Mode,
+        _: mode::Request,
+        _: &ModeData,
+        _: &DisplayHandle,
+        _: &mut DataInit<'_, State>,
+    ) {
+    }
 }
 
 impl Dispatch<Configuration, ConfigData> for State {
-    fn request(state: &mut State, _: &Client, c: &Configuration, request: conf::Request, data: &ConfigData, _: &DisplayHandle, init: &mut DataInit<'_, State>) {
+    fn request(
+        state: &mut State,
+        _: &Client,
+        c: &Configuration,
+        request: conf::Request,
+        data: &ConfigData,
+        _: &DisplayHandle,
+        init: &mut DataInit<'_, State>,
+    ) {
         let mut inner = data.inner.lock().unwrap();
         match request {
             conf::Request::EnableHead { id, head } => {
@@ -281,7 +329,11 @@ impl Dispatch<Configuration, ConfigData> for State {
                     ch.scale.is_none_or(|s| (0.5..=4.0).contains(&s)) && state.az.known_output(&ch.name).is_some()
                 });
                 if !ok || test {
-                    if ok { c.succeeded() } else { c.failed() }
+                    if ok {
+                        c.succeeded()
+                    } else {
+                        c.failed()
+                    }
                     return;
                 }
                 let mut failed = false;

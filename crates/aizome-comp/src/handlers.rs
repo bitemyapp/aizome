@@ -5,11 +5,12 @@ use std::os::fd::OwnedFd;
 use std::sync::Arc;
 
 use smithay::backend::allocator::dmabuf::Dmabuf;
+use smithay::desktop::PopupKind;
 use smithay::input::pointer::{CursorImageStatus, PointerHandle};
 use smithay::input::{Seat, SeatHandler, SeatState};
+use smithay::reexports::wayland_server::Resource;
 use smithay::reexports::wayland_server::protocol::wl_data_source::WlDataSource;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
-use smithay::reexports::wayland_server::Resource;
 use smithay::utils::{Logical, Point, Rectangle};
 use smithay::wayland::compositor::{get_parent, with_states};
 use smithay::wayland::dmabuf::{DmabufGlobal, DmabufHandler, DmabufState, ImportNotifier};
@@ -27,16 +28,19 @@ use smithay::wayland::security_context::{SecurityContext, SecurityContextHandler
 use smithay::wayland::selection::data_device::{
     ClientDndGrabHandler, DataDeviceHandler, DataDeviceState, ServerDndGrabHandler, set_data_device_focus,
 };
-use smithay::wayland::selection::primary_selection::{PrimarySelectionHandler, PrimarySelectionState, set_primary_focus};
+use smithay::wayland::selection::primary_selection::{
+    PrimarySelectionHandler, PrimarySelectionState, set_primary_focus,
+};
 use smithay::wayland::selection::{SelectionHandler, SelectionTarget};
 use smithay::wayland::shell::xdg::ToplevelSurface;
 use smithay::wayland::shell::xdg::dialog::XdgDialogHandler;
 use smithay::wayland::shm::{ShmHandler, ShmState};
 use smithay::wayland::tablet_manager::TabletSeatHandler;
-use smithay::wayland::xdg_activation::{XdgActivationHandler, XdgActivationState, XdgActivationToken, XdgActivationTokenData};
+use smithay::wayland::xdg_activation::{
+    XdgActivationHandler, XdgActivationState, XdgActivationToken, XdgActivationTokenData,
+};
 use smithay::wayland::xdg_foreign::{XdgForeignHandler, XdgForeignState};
 use smithay::wayland::xdg_toplevel_icon::XdgToplevelIconHandler;
-use smithay::desktop::PopupKind;
 use tracing::{info, warn};
 
 use crate::focus::Focus;
@@ -87,7 +91,14 @@ pub enum SelectionData {
 impl SelectionHandler for State {
     type SelectionUserData = SelectionData;
 
-    fn send_selection(&mut self, _ty: SelectionTarget, _mime: String, fd: OwnedFd, _seat: Seat<Self>, data: &SelectionData) {
+    fn send_selection(
+        &mut self,
+        _ty: SelectionTarget,
+        _mime: String,
+        fd: OwnedFd,
+        _seat: Seat<Self>,
+        data: &SelectionData,
+    ) {
         let SelectionData::Bytes(bytes) = data.clone();
         // Write on a thread: the reader may be slow, and it mustn't stall us.
         std::thread::spawn(move || {
@@ -169,7 +180,8 @@ impl XdgActivationHandler for State {
         // window urgent.
         let valid = data.serial.as_ref().is_some_and(|(serial, seat)| {
             let Some(seat) = Seat::<State>::from_resource(seat) else { return false };
-            let recent = seat.get_keyboard().is_some_and(|k| k.last_enter().is_some_and(|l| serial.is_no_older_than(&l)));
+            let recent =
+                seat.get_keyboard().is_some_and(|k| k.last_enter().is_some_and(|l| serial.is_no_older_than(&l)));
             let client = data.client_id.clone();
             let has = |s: Option<WlSurface>| s.and_then(|s| s.client()).map(|c| c.id()) == client && client.is_some();
             let kb_focus = seat.get_keyboard().and_then(|k| k.current_focus()).map(|f| f.0);
@@ -247,7 +259,12 @@ impl PointerConstraintsHandler for State {
         }
     }
 
-    fn cursor_position_hint(&mut self, surface: &WlSurface, pointer: &PointerHandle<Self>, location: Point<f64, Logical>) {
+    fn cursor_position_hint(
+        &mut self,
+        surface: &WlSurface,
+        pointer: &PointerHandle<Self>,
+        location: Point<f64, Logical>,
+    ) {
         let active = with_pointer_constraint(surface, pointer, |c| c.is_some_and(|c| c.is_active()));
         if !active {
             return;

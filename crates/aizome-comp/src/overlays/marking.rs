@@ -11,9 +11,10 @@ use std::time::{Duration, Instant};
 use smithay::backend::renderer::{ImportAll, ImportMem, Renderer};
 use smithay::input::keyboard::{Keysym, keysyms};
 use smithay::input::pointer::{
-    AxisFrame, ButtonEvent, Focus as PointerFocusMode, GestureHoldBeginEvent, GestureHoldEndEvent, GesturePinchBeginEvent,
-    GesturePinchEndEvent, GesturePinchUpdateEvent, GestureSwipeBeginEvent, GestureSwipeEndEvent, GestureSwipeUpdateEvent,
-    GrabStartData, MotionEvent, PointerGrab, PointerInnerHandle, RelativeMotionEvent,
+    AxisFrame, ButtonEvent, Focus as PointerFocusMode, GestureHoldBeginEvent, GestureHoldEndEvent,
+    GesturePinchBeginEvent, GesturePinchEndEvent, GesturePinchUpdateEvent, GestureSwipeBeginEvent,
+    GestureSwipeEndEvent, GestureSwipeUpdateEvent, GrabStartData, MotionEvent, PointerGrab, PointerInnerHandle,
+    RelativeMotionEvent,
 };
 use smithay::output::Output;
 use smithay::reexports::calloop::timer::{TimeoutAction, Timer};
@@ -50,8 +51,16 @@ pub enum Verb {
 
 impl Verb {
     /// Clockwise from east, as screen angles (y down) go.
-    pub const ALL: [Verb; 8] =
-        [Verb::SplitRight, Verb::Stack, Verb::Park, Verb::Close, Verb::SplitLeft, Verb::Float, Verb::Fill, Verb::ToDesk];
+    pub const ALL: [Verb; 8] = [
+        Verb::SplitRight,
+        Verb::Stack,
+        Verb::Park,
+        Verb::Close,
+        Verb::SplitLeft,
+        Verb::Float,
+        Verb::Fill,
+        Verb::ToDesk,
+    ];
 
     pub fn label(self) -> &'static str {
         match self {
@@ -125,13 +134,15 @@ pub fn open(state: &mut State, win: WinId, at: (f64, f64), shown: bool) {
         // Show after the pause, if still held and not flicked.
         let _ = state.az.lh.insert_source(Timer::from_duration(PAUSE), move |_, _, state: &mut State| {
             if let Some(m) = &mut state.az.overlays.marking
-                && m.opened == opened && !m.shown {
-                    m.shown = true;
-                    if let Some(o) = m.output.clone() {
-                        state.az.queue_redraw(&o);
-                    }
-                    keep_on_output(state);
+                && m.opened == opened
+                && !m.shown
+            {
+                m.shown = true;
+                if let Some(o) = m.output.clone() {
+                    state.az.queue_redraw(&o);
                 }
+                keep_on_output(state);
+            }
             TimeoutAction::Drop
         });
     }
@@ -140,16 +151,20 @@ pub fn open(state: &mut State, win: WinId, at: (f64, f64), shown: bool) {
 /// The right button went down on a tab.
 pub fn press(state: &mut State, win: WinId, pos: Point<f64, Logical>, serial: Serial, _time: u32) {
     open(state, win, (pos.x, pos.y), false);
-    let grab = MarkingGrab { start: GrabStartData { focus: None, button: crate::input::BTN_RIGHT, location: pos }, moved: false };
+    let grab = MarkingGrab {
+        start: GrabStartData { focus: None, button: crate::input::BTN_RIGHT, location: pos },
+        moved: false,
+    };
     let Some(pointer) = state.az.seat.get_pointer() else { return };
     pointer.set_grab(state, grab, serial, PointerFocusMode::Clear);
 }
 
 fn close(state: &mut State) {
     if let Some(m) = state.az.overlays.marking.take()
-        && let Some(o) = m.output {
-            state.az.queue_redraw(&o);
-        }
+        && let Some(o) = m.output
+    {
+        state.az.queue_redraw(&o);
+    }
 }
 
 /// Runs the picked verb (or Desk).
@@ -223,7 +238,13 @@ pub struct MarkingGrab {
 }
 
 impl PointerGrab<State> for MarkingGrab {
-    fn motion(&mut self, data: &mut State, handle: &mut PointerInnerHandle<'_, State>, _f: Option<(Focus, Point<f64, Logical>)>, event: &MotionEvent) {
+    fn motion(
+        &mut self,
+        data: &mut State,
+        handle: &mut PointerInnerHandle<'_, State>,
+        _f: Option<(Focus, Point<f64, Logical>)>,
+        event: &MotionEvent,
+    ) {
         handle.motion(data, None, event);
         let d = event.location - self.start.location;
         if d.x.abs() > 3.0 || d.y.abs() > 3.0 {
@@ -275,7 +296,13 @@ impl PointerGrab<State> for MarkingGrab {
         }
     }
 
-    fn relative_motion(&mut self, data: &mut State, handle: &mut PointerInnerHandle<'_, State>, _f: Option<(Focus, Point<f64, Logical>)>, event: &RelativeMotionEvent) {
+    fn relative_motion(
+        &mut self,
+        data: &mut State,
+        handle: &mut PointerInnerHandle<'_, State>,
+        _f: Option<(Focus, Point<f64, Logical>)>,
+        event: &RelativeMotionEvent,
+    ) {
         handle.relative_motion(data, None, event);
     }
     fn axis(&mut self, data: &mut State, handle: &mut PointerInnerHandle<'_, State>, details: AxisFrame) {
@@ -284,28 +311,68 @@ impl PointerGrab<State> for MarkingGrab {
     fn frame(&mut self, data: &mut State, handle: &mut PointerInnerHandle<'_, State>) {
         handle.frame(data)
     }
-    fn gesture_swipe_begin(&mut self, data: &mut State, handle: &mut PointerInnerHandle<'_, State>, event: &GestureSwipeBeginEvent) {
+    fn gesture_swipe_begin(
+        &mut self,
+        data: &mut State,
+        handle: &mut PointerInnerHandle<'_, State>,
+        event: &GestureSwipeBeginEvent,
+    ) {
         handle.gesture_swipe_begin(data, event)
     }
-    fn gesture_swipe_update(&mut self, data: &mut State, handle: &mut PointerInnerHandle<'_, State>, event: &GestureSwipeUpdateEvent) {
+    fn gesture_swipe_update(
+        &mut self,
+        data: &mut State,
+        handle: &mut PointerInnerHandle<'_, State>,
+        event: &GestureSwipeUpdateEvent,
+    ) {
         handle.gesture_swipe_update(data, event)
     }
-    fn gesture_swipe_end(&mut self, data: &mut State, handle: &mut PointerInnerHandle<'_, State>, event: &GestureSwipeEndEvent) {
+    fn gesture_swipe_end(
+        &mut self,
+        data: &mut State,
+        handle: &mut PointerInnerHandle<'_, State>,
+        event: &GestureSwipeEndEvent,
+    ) {
         handle.gesture_swipe_end(data, event)
     }
-    fn gesture_pinch_begin(&mut self, data: &mut State, handle: &mut PointerInnerHandle<'_, State>, event: &GesturePinchBeginEvent) {
+    fn gesture_pinch_begin(
+        &mut self,
+        data: &mut State,
+        handle: &mut PointerInnerHandle<'_, State>,
+        event: &GesturePinchBeginEvent,
+    ) {
         handle.gesture_pinch_begin(data, event)
     }
-    fn gesture_pinch_update(&mut self, data: &mut State, handle: &mut PointerInnerHandle<'_, State>, event: &GesturePinchUpdateEvent) {
+    fn gesture_pinch_update(
+        &mut self,
+        data: &mut State,
+        handle: &mut PointerInnerHandle<'_, State>,
+        event: &GesturePinchUpdateEvent,
+    ) {
         handle.gesture_pinch_update(data, event)
     }
-    fn gesture_pinch_end(&mut self, data: &mut State, handle: &mut PointerInnerHandle<'_, State>, event: &GesturePinchEndEvent) {
+    fn gesture_pinch_end(
+        &mut self,
+        data: &mut State,
+        handle: &mut PointerInnerHandle<'_, State>,
+        event: &GesturePinchEndEvent,
+    ) {
         handle.gesture_pinch_end(data, event)
     }
-    fn gesture_hold_begin(&mut self, data: &mut State, handle: &mut PointerInnerHandle<'_, State>, event: &GestureHoldBeginEvent) {
+    fn gesture_hold_begin(
+        &mut self,
+        data: &mut State,
+        handle: &mut PointerInnerHandle<'_, State>,
+        event: &GestureHoldBeginEvent,
+    ) {
         handle.gesture_hold_begin(data, event)
     }
-    fn gesture_hold_end(&mut self, data: &mut State, handle: &mut PointerInnerHandle<'_, State>, event: &GestureHoldEndEvent) {
+    fn gesture_hold_end(
+        &mut self,
+        data: &mut State,
+        handle: &mut PointerInnerHandle<'_, State>,
+        event: &GestureHoldEndEvent,
+    ) {
         handle.gesture_hold_end(data, event)
     }
     fn start_data(&self) -> &GrabStartData<State> {
@@ -384,30 +451,31 @@ where
     // The Desk ring: a column beside "to Desk ▸".
     m.desk_boxes.clear();
     if m.sub
-        && let Some(tb) = todesk_box {
-            let desks: Vec<(DeskId, String)> = az.wm.desks().iter().map(|d| (d.id, d.name.clone())).collect();
-            let current = az.wm.get(m.win).map(|w| w.desk);
-            let n = desks.len() as f64;
-            let mut y = (tb.y + tb.h / 2.0 - n * 28.0 / 2.0).round();
-            let x = tb.right() + 24.0;
-            for (i, (d, name)) in desks.iter().enumerate() {
-                let label = format!("{} {}", i + 1, name);
-                let (tw, _) = az.labels.measure(&label, crate::text::Face::Mono, 12.0);
-                let b = Box2::new(x, y, tw.ceil() + 24.0, 24.0);
-                let hot = m.desk_hover == Some(*d);
-                let (fill, ink) = if hot {
-                    (p.selection, p.on_selection)
-                } else if current == Some(*d) {
-                    (p.sunk, p.text3)
-                } else {
-                    (p.raised, p.text)
-                };
-                pt.panel(b, fill, &p, shadows);
-                pt.text_center(az, renderer, &label, mono(12.0, ink), b);
-                m.desk_boxes.push((*d, b));
-                y += 28.0;
-            }
+        && let Some(tb) = todesk_box
+    {
+        let desks: Vec<(DeskId, String)> = az.wm.desks().iter().map(|d| (d.id, d.name.clone())).collect();
+        let current = az.wm.get(m.win).map(|w| w.desk);
+        let n = desks.len() as f64;
+        let mut y = (tb.y + tb.h / 2.0 - n * 28.0 / 2.0).round();
+        let x = tb.right() + 24.0;
+        for (i, (d, name)) in desks.iter().enumerate() {
+            let label = format!("{} {}", i + 1, name);
+            let (tw, _) = az.labels.measure(&label, crate::text::Face::Mono, 12.0);
+            let b = Box2::new(x, y, tw.ceil() + 24.0, 24.0);
+            let hot = m.desk_hover == Some(*d);
+            let (fill, ink) = if hot {
+                (p.selection, p.on_selection)
+            } else if current == Some(*d) {
+                (p.sunk, p.text3)
+            } else {
+                (p.raised, p.text)
+            };
+            pt.panel(b, fill, &p, shadows);
+            pt.text_center(az, renderer, &label, mono(12.0, ink), b);
+            m.desk_boxes.push((*d, b));
+            y += 28.0;
         }
+    }
     let out = pt.finish(&mut m.cache);
     az.overlays.marking = Some(m);
     out

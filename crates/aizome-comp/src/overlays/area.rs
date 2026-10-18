@@ -22,7 +22,8 @@ pub struct AreaPick {
 
 pub fn start(state: &mut State) {
     let pos = state.az.pointer_pos;
-    state.az.overlays.area = Some(AreaPick { start: None, pos: (pos.x, pos.y), window_mode: false, cache: DecorCache::default() });
+    state.az.overlays.area =
+        Some(AreaPick { start: None, pos: (pos.x, pos.y), window_mode: false, cache: DecorCache::default() });
     state.az.interactive.cursor_override = Some("crosshair");
     state.update_keyboard_focus();
     state.az.queue_redraw_all();
@@ -46,7 +47,9 @@ fn band(a: (f64, f64), b: (f64, f64)) -> Rect {
 /// The window under the pointer, for window mode.
 fn window_at(state: &mut State, x: f64, y: f64) -> Option<WinId> {
     match state.under(smithay::utils::Point::from((x, y))) {
-        crate::input::Under::Surface(_, _, crate::input::Owner::Window(id)) | crate::input::Under::Decor(id, _) => Some(id),
+        crate::input::Under::Surface(_, _, crate::input::Owner::Window(id)) | crate::input::Under::Decor(id, _) => {
+            Some(id)
+        }
         _ => None,
     }
 }
@@ -58,9 +61,10 @@ pub fn pointer_button(state: &mut State, pressed: bool, x: f64, y: f64) -> bool 
             let w = window_at(state, x, y);
             finish(state);
             if let Some(w) = w
-                && let Err(e) = crate::screenshot::take(state, crate::screenshot::What::Window(w), None, true) {
-                    tracing::warn!("screenshot: {e}");
-                }
+                && let Err(e) = crate::screenshot::take(state, crate::screenshot::What::Window(w), None, true)
+            {
+                tracing::warn!("screenshot: {e}");
+            }
         }
         return true;
     }
@@ -70,10 +74,12 @@ pub fn pointer_button(state: &mut State, pressed: bool, x: f64, y: f64) -> bool 
     } else if let Some(s) = a.start.take() {
         let r = band(s, (x, y));
         finish(state);
-        if r.w > 2 && r.h > 2
-            && let Err(e) = crate::screenshot::take(state, crate::screenshot::What::Area(r), None, true) {
-                tracing::warn!("screenshot: {e}");
-            }
+        if r.w > 2
+            && r.h > 2
+            && let Err(e) = crate::screenshot::take(state, crate::screenshot::What::Area(r), None, true)
+        {
+            tracing::warn!("screenshot: {e}");
+        }
     }
     true
 }
@@ -112,7 +118,10 @@ where
     let p = az.palette;
     let (rect, label) = if a.window_mode {
         let w = az.wm.shown_stacking().into_iter().rev().find(|id| {
-            az.decor_layout(*id).map(|l| l.bounds()).or_else(|| az.wm.get(*id).map(|w| w.rect)).is_some_and(|r| r.contains(a.pos.0, a.pos.1))
+            az.decor_layout(*id)
+                .map(|l| l.bounds())
+                .or_else(|| az.wm.get(*id).map(|w| w.rect))
+                .is_some_and(|r| r.contains(a.pos.0, a.pos.1))
         });
         let r = w.and_then(|id| az.decor_layout(id).map(|l| l.bounds()).or_else(|| az.wm.get(id).map(|w| w.rect)));
         (r, "click a window · Space for an area · Esc".to_string())

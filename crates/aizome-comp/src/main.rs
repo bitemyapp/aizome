@@ -17,8 +17,8 @@ mod idle;
 mod input;
 mod ipc;
 mod memory;
-mod outputs;
 mod night;
+mod outputs;
 mod overlays;
 mod popups;
 mod protocols;
@@ -48,7 +48,10 @@ fn main() -> ExitCode {
     let filter = std::env::var("AIZOME_LOG")
         .or_else(|_| std::env::var("RUST_LOG"))
         .unwrap_or_else(|_| "info,smithay=warn".into());
-    tracing_subscriber::fmt().with_env_filter(tracing_subscriber::EnvFilter::new(filter)).with_writer(std::io::stderr).init();
+    tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::new(filter))
+        .with_writer(std::io::stderr)
+        .init();
 
     let opts = match cli::parse(std::env::args().skip(1)) {
         Ok(o) => o,
@@ -91,7 +94,9 @@ fn main() -> ExitCode {
         };
     }
     let backend = match opts.backend {
-        BackendKind::Headless => Backend::Headless(backend::headless::Headless::new(opts.renderer, opts.headless_outputs.clone())),
+        BackendKind::Headless => {
+            Backend::Headless(backend::headless::Headless::new(opts.renderer, opts.headless_outputs.clone()))
+        }
         BackendKind::Winit => match backend::winit::WinitBackend::new(&event_loop) {
             Ok(w) => Backend::Winit(w),
             Err(e) => {
@@ -128,9 +133,10 @@ fn main() -> ExitCode {
     });
     let _ = event_loop.handle().insert_source(rx, |event, _, state: &mut State| {
         if let channel::Event::Msg(()) = event
-            && let Err(e) = state.reload_config() {
-                warn!("settings: {e}");
-            }
+            && let Err(e) = state.reload_config()
+        {
+            warn!("settings: {e}");
+        }
     });
 
     state.apply_output_settings();

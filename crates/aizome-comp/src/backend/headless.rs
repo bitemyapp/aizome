@@ -122,13 +122,21 @@ impl Headless {
         let size = Size::from((mode.size.w, mode.size.h));
         let target = match &mut self.renderer {
             HeadlessRenderer::Gles(r) => Target::Gles(
-                Offscreen::<GlesRenderbuffer>::create_buffer(r.as_mut(), Fourcc::Abgr8888, size).expect("an offscreen renderbuffer"),
+                Offscreen::<GlesRenderbuffer>::create_buffer(r.as_mut(), Fourcc::Abgr8888, size)
+                    .expect("an offscreen renderbuffer"),
             ),
-            HeadlessRenderer::Pixman(r) => Target::Pixman(r.create_buffer(Fourcc::Abgr8888, size).expect("an offscreen image")),
+            HeadlessRenderer::Pixman(r) => {
+                Target::Pixman(r.create_buffer(Fourcc::Abgr8888, size).expect("an offscreen image"))
+            }
         };
         self.outputs.insert(
             output.clone(),
-            HeadlessOutputState { target, tracker: OutputDamageTracker::from_output(output), rendered_once: false, timer: None },
+            HeadlessOutputState {
+                target,
+                tracker: OutputDamageTracker::from_output(output),
+                rendered_once: false,
+                timer: None,
+            },
         );
     }
 
@@ -167,9 +175,14 @@ impl Headless {
     }
 
     /// Imports a surface tree when the renderer copies wl_shm pixels (GLES).
-    pub fn import_shm_copies(&mut self, surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface) -> bool {
+    pub fn import_shm_copies(
+        &mut self,
+        surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
+    ) -> bool {
         match &mut self.renderer {
-            HeadlessRenderer::Gles(r) => smithay::backend::renderer::utils::import_surface_tree(r.as_mut(), surface).is_ok(),
+            HeadlessRenderer::Gles(r) => {
+                smithay::backend::renderer::utils::import_surface_tree(r.as_mut(), surface).is_ok()
+            }
             HeadlessRenderer::Pixman(_) => false,
         }
     }
@@ -200,9 +213,10 @@ impl Headless {
                         .lh
                         .insert_source(Timer::from_deadline(due), move |_, _, state: &mut State| {
                             if let Some(h) = state.backend.headless_mut()
-                                && let Some(hs) = h.outputs.get_mut(&o) {
-                                    hs.timer = None;
-                                }
+                                && let Some(hs) = h.outputs.get_mut(&o)
+                            {
+                                hs.timer = None;
+                            }
                             TimeoutAction::Drop
                         })
                         .ok();
@@ -221,14 +235,19 @@ impl Headless {
                 let r = r.as_mut();
                 let (elements, clear) = scene_for::<_, GlesRenderbuffer>(r, az, output);
                 match r.bind(rb) {
-                    Ok(mut fb) => render_frame(az, r, &mut fb, &mut hs.tracker, age, output, &elements, clear, started, true),
+                    Ok(mut fb) => {
+                        render_frame(az, r, &mut fb, &mut hs.tracker, age, output, &elements, clear, started, true)
+                    }
                     Err(e) => Err(format!("bind: {e:?}")),
                 }
             }
             (HeadlessRenderer::Pixman(r), Target::Pixman(img)) => {
-                let (elements, clear) = scene_for::<_, smithay::reexports::pixman::Image<'static, 'static>>(r, az, output);
+                let (elements, clear) =
+                    scene_for::<_, smithay::reexports::pixman::Image<'static, 'static>>(r, az, output);
                 match r.bind(img) {
-                    Ok(mut fb) => render_frame(az, r, &mut fb, &mut hs.tracker, age, output, &elements, clear, started, false),
+                    Ok(mut fb) => {
+                        render_frame(az, r, &mut fb, &mut hs.tracker, age, output, &elements, clear, started, false)
+                    }
                     Err(e) => Err(format!("bind: {e:?}")),
                 }
             }
@@ -246,9 +265,10 @@ impl Headless {
     pub fn capture(&mut self, az: &mut Aizome, output: &Output, cursor: bool) -> Result<Capture, String> {
         match &mut self.renderer {
             HeadlessRenderer::Gles(r) => capture_with::<GlesRenderer, GlesRenderbuffer>(r.as_mut(), az, output, cursor),
-            HeadlessRenderer::Pixman(r) => {
-                capture_with::<PixmanRenderer, smithay::reexports::pixman::Image<'static, 'static>>(r, az, output, cursor)
-            }
+            HeadlessRenderer::Pixman(r) => capture_with::<
+                PixmanRenderer,
+                smithay::reexports::pixman::Image<'static, 'static>,
+            >(r, az, output, cursor),
         }
     }
 }
@@ -280,11 +300,7 @@ fn gles_on_render_node() -> Result<(GlesRenderer, DrmNode), String> {
 
 fn open_gles(path: &std::path::Path) -> Result<(GlesRenderer, DrmNode), String> {
     use std::os::fd::OwnedFd;
-    let file = std::fs::OpenOptions::new()
-        .read(true)
-        .write(true)
-        .open(path)
-        .map_err(|e| e.to_string())?;
+    let file = std::fs::OpenOptions::new().read(true).write(true).open(path).map_err(|e| e.to_string())?;
     let node = DrmNode::from_path(path).map_err(|e| e.to_string())?;
     let node = match node.ty() {
         NodeType::Render => node,

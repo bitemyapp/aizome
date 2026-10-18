@@ -194,7 +194,11 @@ pub fn key(state: &mut State, syms: &[Keysym], mods: Mods, pressed: bool) -> Opt
         close(state, false);
         state.hide_app(&a);
         return Some(KeyDecision::Swallow);
-    } else if is(keysyms::KEY_Super_L) || is(keysyms::KEY_Super_R) || is(keysyms::KEY_Shift_L) || is(keysyms::KEY_Shift_R) {
+    } else if is(keysyms::KEY_Super_L)
+        || is(keysyms::KEY_Super_R)
+        || is(keysyms::KEY_Shift_L)
+        || is(keysyms::KEY_Shift_R)
+    {
         // Modifiers alone change nothing.
     }
     if let Some(sw) = &state.az.overlays.switcher {
@@ -292,7 +296,13 @@ where
         pt.icon(az, renderer, &app.app_id, Tint::Color, x + (TILE_W - ICON as f64) / 2.0, y + 8.0, ICON, icon_alpha);
         pt.text_center(az, renderer, &app.name, semibold(12.0, ink), Box2::new(x + 4.0, y + 62.0, TILE_W - 8.0, 16.0));
         let n = app.windows.len();
-        let count = if all_hidden { "hidden".to_string() } else if n == 1 { "1 window".into() } else { format!("{n} windows") };
+        let count = if all_hidden {
+            "hidden".to_string()
+        } else if n == 1 {
+            "1 window".into()
+        } else {
+            format!("{n} windows")
+        };
         pt.text_center(az, renderer, &count, mono(10.5, sub), Box2::new(x + 2.0, y + 80.0, TILE_W - 4.0, 14.0));
         x += TILE_W + GAP;
     }
@@ -307,7 +317,10 @@ where
     let hy = dy + 8.0;
     let nw = pt.text_mid(az, renderer, &app.name, bold(13.0, p.text), x0 + PAD, hy, 28.0, 240.0);
     let n = app.windows.len();
-    let hint = format!("{} · ↓ or keep holding to pick one", if n == 1 { "1 window".to_string() } else { format!("{n} windows") });
+    let hint = format!(
+        "{} · ↓ or keep holding to pick one",
+        if n == 1 { "1 window".to_string() } else { format!("{n} windows") }
+    );
     pt.text_mid(az, renderer, &hint, mono(11.0, p.text3), x0 + PAD + nw + 10.0, hy, 28.0, w - 2.0 * PAD - nw - 10.0);
     sw.win_boxes.clear();
     let cy = hy + 30.0;
@@ -353,7 +366,14 @@ where
     pt.fill(Box2::new(x0 + PAD, fy, w - 2.0 * PAD, 1.0), p.line);
     let mut hx = x0 + PAD;
     let hy = fy + 8.0;
-    for (cap, what) in [("❖Tab", "next app"), ("`", "windows"), ("W", "close window"), ("H", "hide app"), ("Q", "quit app"), ("Esc", "cancel")] {
+    for (cap, what) in [
+        ("❖Tab", "next app"),
+        ("`", "windows"),
+        ("W", "close window"),
+        ("H", "hide app"),
+        ("Q", "quit app"),
+        ("Esc", "cancel"),
+    ] {
         let (cw, _) = az.labels.measure(cap, crate::text::Face::Mono, 11.0);
         let capbox = Box2::new(hx, hy, cw.ceil() + 10.0, 20.0);
         if capbox.right() > x0 + w - PAD {

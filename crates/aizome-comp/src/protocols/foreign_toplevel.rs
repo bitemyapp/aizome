@@ -55,7 +55,12 @@ impl ForeignToplevelManagerState {
         F: Fn(&Client) -> bool + Send + Sync + 'static,
     {
         dh.create_global::<State, Manager, _>(3, GlobalData { filter: Box::new(filter) });
-        ForeignToplevelManagerState { managers: Vec::new(), handles: HashMap::new(), sent: HashMap::new(), ext: HashMap::new() }
+        ForeignToplevelManagerState {
+            managers: Vec::new(),
+            handles: HashMap::new(),
+            sent: HashMap::new(),
+            ext: HashMap::new(),
+        }
     }
 }
 
@@ -196,7 +201,14 @@ pub fn refresh(state: &mut State) {
 }
 
 impl GlobalDispatch<Manager, GlobalData> for State {
-    fn bind(state: &mut State, dh: &DisplayHandle, _: &Client, resource: New<Manager>, _: &GlobalData, init: &mut DataInit<'_, State>) {
+    fn bind(
+        state: &mut State,
+        dh: &DisplayHandle,
+        _: &Client,
+        resource: New<Manager>,
+        _: &GlobalData,
+        init: &mut DataInit<'_, State>,
+    ) {
         let m = init.init(resource, ());
         let ids: Vec<WinId> = state.az.wm.stacking().to_vec();
         for id in ids {
@@ -211,7 +223,15 @@ impl GlobalDispatch<Manager, GlobalData> for State {
 }
 
 impl Dispatch<Manager, ()> for State {
-    fn request(state: &mut State, _: &Client, m: &Manager, request: manager::Request, _: &(), _: &DisplayHandle, _: &mut DataInit<'_, State>) {
+    fn request(
+        state: &mut State,
+        _: &Client,
+        m: &Manager,
+        request: manager::Request,
+        _: &(),
+        _: &DisplayHandle,
+        _: &mut DataInit<'_, State>,
+    ) {
         if let manager::Request::Stop = request {
             m.finished();
             state.az.foreign_toplevel_mgmt.managers.retain(|x| x != m);
@@ -220,7 +240,15 @@ impl Dispatch<Manager, ()> for State {
 }
 
 impl Dispatch<Handle, HandleData> for State {
-    fn request(state: &mut State, _: &Client, _: &Handle, request: handle::Request, data: &HandleData, _: &DisplayHandle, _: &mut DataInit<'_, State>) {
+    fn request(
+        state: &mut State,
+        _: &Client,
+        _: &Handle,
+        request: handle::Request,
+        data: &HandleData,
+        _: &DisplayHandle,
+        _: &mut DataInit<'_, State>,
+    ) {
         let id = data.win;
         if !state.az.wm.contains(id) {
             return;

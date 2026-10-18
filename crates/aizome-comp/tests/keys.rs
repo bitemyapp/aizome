@@ -58,7 +58,10 @@ fn kit_apps_keep_super() {
 
 #[test]
 fn the_setting_turns_translation_off() {
-    let c = Compositor::start(Options { settings: "[appearance]\neffects = \"austere\"\n[keys]\ncommand_key_for_all_apps = false\n", ..Default::default() });
+    let c = Compositor::start(Options {
+        settings: "[appearance]\neffects = \"austere\"\n[keys]\ncommand_key_for_all_apps = false\n",
+        ..Default::default()
+    });
     let a = c.client(Spec::new("org.example.editor", 0x2222cc));
     c.wait_window("org.example.editor");
     a.wait_seen("keyboard focus", |s| s.keyboard_focus);
@@ -104,7 +107,11 @@ fn system_chords_stay_with_the_system_and_shell_ones_go_to_subscribers() {
     let aizome_ipc::Response::Desks { current, .. } = c.request(Request::Desks) else { panic!() };
     assert_eq!(current, 2);
     let s = a.seen();
-    assert!(!s.keys.iter().any(|(k, _)| *k == 57 || *k == 103 || *k == 3 || *k == 50 || *k == 116), "no system chord reached the app: {:?}", s.keys);
+    assert!(
+        !s.keys.iter().any(|(k, _)| *k == 57 || *k == 103 || *k == 3 || *k == 50 || *k == 116),
+        "no system chord reached the app: {:?}",
+        s.keys
+    );
     let _ = w;
 }
 
@@ -139,17 +146,35 @@ fn the_system_bell_rings_for_the_shell() {
     use wayland_protocols::xdg::system_bell::v1::client::xdg_system_bell_v1;
     struct B;
     impl Dispatch<wl_registry::WlRegistry, GlobalListContents> for B {
-        fn event(_: &mut Self, _: &wl_registry::WlRegistry, _: wl_registry::Event, _: &GlobalListContents, _: &Connection, _: &QueueHandle<Self>) {}
+        fn event(
+            _: &mut Self,
+            _: &wl_registry::WlRegistry,
+            _: wl_registry::Event,
+            _: &GlobalListContents,
+            _: &Connection,
+            _: &QueueHandle<Self>,
+        ) {
+        }
     }
     impl Dispatch<xdg_system_bell_v1::XdgSystemBellV1, ()> for B {
-        fn event(_: &mut Self, _: &xdg_system_bell_v1::XdgSystemBellV1, _: xdg_system_bell_v1::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {}
+        fn event(
+            _: &mut Self,
+            _: &xdg_system_bell_v1::XdgSystemBellV1,
+            _: xdg_system_bell_v1::Event,
+            _: &(),
+            _: &Connection,
+            _: &QueueHandle<Self>,
+        ) {
+        }
     }
     let c = Compositor::start(Options::default());
     let mut events = aizome_ipc::Client::connect_to(&c.ipc).unwrap().events().unwrap();
     events.stream().set_read_timeout(Some(Duration::from_secs(10))).unwrap();
-    let conn = Connection::from_socket(std::os::unix::net::UnixStream::connect(c.dir.join(&c.socket)).unwrap()).unwrap();
+    let conn =
+        Connection::from_socket(std::os::unix::net::UnixStream::connect(c.dir.join(&c.socket)).unwrap()).unwrap();
     let (globals, mut queue) = registry_queue_init::<B>(&conn).unwrap();
-    let bell: xdg_system_bell_v1::XdgSystemBellV1 = globals.bind(&queue.handle(), 1..=1, ()).expect("xdg_system_bell_v1");
+    let bell: xdg_system_bell_v1::XdgSystemBellV1 =
+        globals.bind(&queue.handle(), 1..=1, ()).expect("xdg_system_bell_v1");
     bell.ring(None);
     queue.roundtrip(&mut B).unwrap();
     let got = events.by_ref().find_map(|e| match e {

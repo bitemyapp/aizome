@@ -205,7 +205,9 @@ fn the_close_box_closes() {
     let a = c.client(Spec::new("test.a", 0x2222cc));
     let wa = c.wait_window("test.a");
     let close = (wa.geometry.x as f64 + 10.0, wa.geometry.y as f64 - 14.0);
-    c.ok(Request::Synthesize { events: vec![Synthetic::PointerMotion { x: close.0, y: close.1 }, Synthetic::Click { button: "left".into() }] });
+    c.ok(Request::Synthesize {
+        events: vec![Synthetic::PointerMotion { x: close.0, y: close.1 }, Synthetic::Click { button: "left".into() }],
+    });
     a.wait_seen("close", |s| s.close_requested);
     c.wait_windows("closed", |ws| ws.is_empty());
 }
@@ -345,7 +347,8 @@ fn dragging_a_tab_onto_another_stacks_them() {
 
 /// Runs a tool against the compositor if it's installed.
 fn tool(c: &Compositor, cmd: &str, args: &[&str]) -> Option<std::process::Output> {
-    let found = std::process::Command::new("sh").arg("-c").arg(format!("command -v {cmd}")).output().ok()?.status.success();
+    let found =
+        std::process::Command::new("sh").arg("-c").arg(format!("command -v {cmd}")).output().ok()?.status.success();
     if !found {
         eprintln!("{cmd} isn't installed; skipping");
         return None;
@@ -454,7 +457,11 @@ fn settings_apply_live() {
     c.settle();
     let img = c.screenshot();
     assert_px(&img, w.geometry.x + 2, w.geometry.y - 14, rgb(FOCUS), "Night's amber");
-    std::fs::write(c.dir.join("config/aizome/settings.toml"), "[appearance]\ntheme = \"day\"\nfocus = \"cyan\"\neffects = \"austere\"\n").unwrap();
+    std::fs::write(
+        c.dir.join("config/aizome/settings.toml"),
+        "[appearance]\ntheme = \"day\"\nfocus = \"cyan\"\neffects = \"austere\"\n",
+    )
+    .unwrap();
     c.ok(Request::ReloadConfig);
     c.settle();
     let img = c.screenshot();

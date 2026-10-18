@@ -37,12 +37,13 @@ impl WinitBackend {
             .insert_source(winit, |event, _, state: &mut State| match event {
                 WinitEvent::Resized { size, .. } => {
                     if let crate::backend::Backend::Winit(w) = &mut state.backend
-                        && let Some(o) = &w.output {
-                            let mode = Mode { size, refresh: 60_000 };
-                            o.change_current_state(Some(mode), None, None, None);
-                            o.set_preferred(mode);
-                            w.full_redraw = 4;
-                        }
+                        && let Some(o) = &w.output
+                    {
+                        let mode = Mode { size, refresh: 60_000 };
+                        o.change_current_state(Some(mode), None, None, None);
+                        o.set_preferred(mode);
+                        w.full_redraw = 4;
+                    }
                     smithay::desktop::layer_map_for_output(&state.az.outputs[0]).arrange();
                     crate::outputs::outputs_changed(&mut state.az);
                     state.az.queue_redraw_all();
@@ -63,11 +64,17 @@ impl WinitBackend {
         let mode = Mode { size, refresh: 60_000 };
         let output = Output::new(
             "WINIT-1".into(),
-            PhysicalProperties { size: (0, 0).into(), subpixel: Subpixel::Unknown, make: "Aizome".into(), model: "Winit".into() },
+            PhysicalProperties {
+                size: (0, 0).into(),
+                subpixel: Subpixel::Unknown,
+                make: "Aizome".into(),
+                model: "Winit".into(),
+            },
         );
         output.add_mode(mode);
         output.set_preferred(mode);
-        let node = EGLDevice::device_for_display(w.backend.renderer().egl_context().display()).and_then(|d| d.try_get_render_node());
+        let node = EGLDevice::device_for_display(w.backend.renderer().egl_context().display())
+            .and_then(|d| d.try_get_render_node());
         let formats = w.backend.renderer().dmabuf_formats();
         match node {
             Ok(Some(node)) => {
@@ -94,7 +101,10 @@ impl WinitBackend {
     }
 
     /// Imports a surface tree (GLES copies wl_shm pixels).
-    pub fn import_shm_copies(&mut self, surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface) -> bool {
+    pub fn import_shm_copies(
+        &mut self,
+        surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
+    ) -> bool {
         smithay::backend::renderer::utils::import_surface_tree(self.backend.renderer(), surface).is_ok()
     }
 
@@ -109,16 +119,28 @@ impl WinitBackend {
         let result = match self.backend.bind() {
             Ok((renderer, mut fb)) => {
                 let elements = output_elements(az, renderer, output, Purpose::Screen);
-                render_frame(az, renderer, &mut fb, tracker, age, output, &elements, crate::render::clear_color(az), started, false)
+                render_frame(
+                    az,
+                    renderer,
+                    &mut fb,
+                    tracker,
+                    age,
+                    output,
+                    &elements,
+                    crate::render::clear_color(az),
+                    started,
+                    false,
+                )
             }
             Err(e) => Err(format!("bind: {e}")),
         };
         match result {
             Ok(frame) => {
                 if frame.damaged
-                    && let Err(e) = self.backend.submit(None) {
-                        warn!("submit: {e}");
-                    }
+                    && let Err(e) = self.backend.submit(None)
+                {
+                    warn!("submit: {e}");
+                }
                 post_frame(az, output, &frame, true);
             }
             Err(e) => warn!("rendering failed: {e}"),

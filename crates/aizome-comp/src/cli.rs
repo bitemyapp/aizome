@@ -105,9 +105,10 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Options, String> 
     }
     if o.renderer.is_none()
         && let Ok(r) = std::env::var("AIZOME_RENDERER")
-            && !r.is_empty() {
-                o.renderer = Some(parse_renderer(&r)?);
-            }
+        && !r.is_empty()
+    {
+        o.renderer = Some(parse_renderer(&r)?);
+    }
     if o.headless_outputs.is_empty() {
         o.headless_outputs.push(HeadlessOutput { width: 2880, height: 1800, scale: 2.0 });
     }
@@ -152,9 +153,21 @@ mod tests {
     #[test]
     fn parses_options() {
         let o = parse(
-            ["--backend", "headless", "--headless-output", "1280x800@1", "--headless-output", "2880x1800@2", "--renderer", "pixman", "--no-shell", "--", "foot"]
-                .iter()
-                .map(|s| s.to_string()),
+            [
+                "--backend",
+                "headless",
+                "--headless-output",
+                "1280x800@1",
+                "--headless-output",
+                "2880x1800@2",
+                "--renderer",
+                "pixman",
+                "--no-shell",
+                "--",
+                "foot",
+            ]
+            .iter()
+            .map(|s| s.to_string()),
         )
         .unwrap();
         assert_eq!(o.backend, BackendKind::Headless);

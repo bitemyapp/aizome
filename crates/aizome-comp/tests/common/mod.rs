@@ -19,7 +19,9 @@ use std::time::{Duration, Instant};
 
 use aizome_ipc::{Client, Request, Response, WindowInfo};
 use wayland_client::globals::{GlobalListContents, registry_queue_init};
-use wayland_client::protocol::{wl_buffer, wl_compositor, wl_keyboard, wl_registry, wl_seat, wl_shm, wl_shm_pool, wl_surface};
+use wayland_client::protocol::{
+    wl_buffer, wl_compositor, wl_keyboard, wl_registry, wl_seat, wl_shm, wl_shm_pool, wl_surface,
+};
 use wayland_client::{Connection, Dispatch, EventQueue, QueueHandle, WEnum};
 use wayland_protocols::xdg::decoration::zv1::client::{zxdg_decoration_manager_v1, zxdg_toplevel_decoration_v1};
 use wayland_protocols::xdg::shell::client::{xdg_surface, xdg_toplevel, xdg_wm_base};
@@ -144,7 +146,13 @@ impl Compositor {
 
     pub fn screenshot(&self) -> Image {
         let path = self.dir.join(format!("shot-{}.png", COUNTER.fetch_add(1, Ordering::SeqCst)));
-        match self.request(Request::Screenshot { output: None, path: Some(path.to_string_lossy().into()), window: None, area: None, clipboard: false }) {
+        match self.request(Request::Screenshot {
+            output: None,
+            path: Some(path.to_string_lossy().into()),
+            window: None,
+            area: None,
+            clipboard: false,
+        }) {
             Response::Screenshot { .. } => {}
             r => panic!("{r:?}"),
         }
@@ -199,7 +207,12 @@ impl Image {
     }
 
     pub fn px(&self, x: i32, y: i32) -> [u8; 3] {
-        assert!(x >= 0 && y >= 0 && (x as u32) < self.width && (y as u32) < self.height, "({x}, {y}) is outside {}x{}", self.width, self.height);
+        assert!(
+            x >= 0 && y >= 0 && (x as u32) < self.width && (y as u32) < self.height,
+            "({x}, {y}) is outside {}x{}",
+            self.width,
+            self.height
+        );
         let i = ((y as u32 * self.width + x as u32) * 4) as usize;
         [self.rgba[i], self.rgba[i + 1], self.rgba[i + 2]]
     }
@@ -225,7 +238,16 @@ pub fn near(a: [u8; 3], b: [u8; 3]) -> bool {
 #[track_caller]
 pub fn assert_px(img: &Image, x: i32, y: i32, want: [u8; 3], what: &str) {
     let got = img.px(x, y);
-    assert!(near(got, want), "{what} at ({x}, {y}): got #{:02x}{:02x}{:02x}, want #{:02x}{:02x}{:02x}", got[0], got[1], got[2], want[0], want[1], want[2]);
+    assert!(
+        near(got, want),
+        "{what} at ({x}, {y}): got #{:02x}{:02x}{:02x}, want #{:02x}{:02x}{:02x}",
+        got[0],
+        got[1],
+        got[2],
+        want[0],
+        want[1],
+        want[2]
+    );
 }
 
 // ---- test clients ----------------------------------------------------------
@@ -460,7 +482,15 @@ impl App {
 }
 
 impl Dispatch<wl_registry::WlRegistry, GlobalListContents> for App {
-    fn event(_: &mut Self, _: &wl_registry::WlRegistry, _: wl_registry::Event, _: &GlobalListContents, _: &Connection, _: &QueueHandle<Self>) {}
+    fn event(
+        _: &mut Self,
+        _: &wl_registry::WlRegistry,
+        _: wl_registry::Event,
+        _: &GlobalListContents,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
 }
 
 macro_rules! ignore {
@@ -470,10 +500,24 @@ macro_rules! ignore {
         }
     )*};
 }
-ignore!(wl_compositor::WlCompositor, wl_shm::WlShm, wl_shm_pool::WlShmPool, wl_surface::WlSurface, zxdg_decoration_manager_v1::ZxdgDecorationManagerV1, wl_seat::WlSeat);
+ignore!(
+    wl_compositor::WlCompositor,
+    wl_shm::WlShm,
+    wl_shm_pool::WlShmPool,
+    wl_surface::WlSurface,
+    zxdg_decoration_manager_v1::ZxdgDecorationManagerV1,
+    wl_seat::WlSeat
+);
 
 impl Dispatch<wl_keyboard::WlKeyboard, ()> for App {
-    fn event(app: &mut Self, _: &wl_keyboard::WlKeyboard, event: wl_keyboard::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
+    fn event(
+        app: &mut Self,
+        _: &wl_keyboard::WlKeyboard,
+        event: wl_keyboard::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
         let mut seen = app.seen.lock().unwrap();
         match event {
             wl_keyboard::Event::Enter { .. } => seen.keyboard_focus = true,
@@ -489,7 +533,14 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for App {
 }
 
 impl Dispatch<wayland_client::protocol::wl_pointer::WlPointer, ()> for App {
-    fn event(app: &mut Self, _: &wayland_client::protocol::wl_pointer::WlPointer, event: wayland_client::protocol::wl_pointer::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
+    fn event(
+        app: &mut Self,
+        _: &wayland_client::protocol::wl_pointer::WlPointer,
+        event: wayland_client::protocol::wl_pointer::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
         use wayland_client::protocol::wl_pointer;
         if let wl_pointer::Event::Axis { axis: WEnum::Value(wl_pointer::Axis::VerticalScroll), value, .. } = event {
             app.seen.lock().unwrap().scrolled += value;
@@ -498,7 +549,14 @@ impl Dispatch<wayland_client::protocol::wl_pointer::WlPointer, ()> for App {
 }
 
 impl Dispatch<wl_buffer::WlBuffer, ()> for App {
-    fn event(_: &mut Self, buffer: &wl_buffer::WlBuffer, event: wl_buffer::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
+    fn event(
+        _: &mut Self,
+        buffer: &wl_buffer::WlBuffer,
+        event: wl_buffer::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
         if let wl_buffer::Event::Release = event {
             buffer.destroy();
         }
@@ -506,7 +564,14 @@ impl Dispatch<wl_buffer::WlBuffer, ()> for App {
 }
 
 impl Dispatch<xdg_wm_base::XdgWmBase, ()> for App {
-    fn event(_: &mut Self, wm: &xdg_wm_base::XdgWmBase, event: xdg_wm_base::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
+    fn event(
+        _: &mut Self,
+        wm: &xdg_wm_base::XdgWmBase,
+        event: xdg_wm_base::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
         if let xdg_wm_base::Event::Ping { serial } = event {
             wm.pong(serial);
         }
@@ -514,7 +579,14 @@ impl Dispatch<xdg_wm_base::XdgWmBase, ()> for App {
 }
 
 impl Dispatch<xdg_surface::XdgSurface, ()> for App {
-    fn event(app: &mut Self, xs: &xdg_surface::XdgSurface, event: xdg_surface::Event, _: &(), _: &Connection, qh: &QueueHandle<Self>) {
+    fn event(
+        app: &mut Self,
+        xs: &xdg_surface::XdgSurface,
+        event: xdg_surface::Event,
+        _: &(),
+        _: &Connection,
+        qh: &QueueHandle<Self>,
+    ) {
         if let xdg_surface::Event::Configure { serial } = event {
             xs.ack_configure(serial);
             if let Some(s) = app.pending_size.take() {
@@ -542,11 +614,19 @@ impl Dispatch<xdg_surface::XdgSurface, ()> for App {
 }
 
 impl Dispatch<xdg_toplevel::XdgToplevel, ()> for App {
-    fn event(app: &mut Self, _: &xdg_toplevel::XdgToplevel, event: xdg_toplevel::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
+    fn event(
+        app: &mut Self,
+        _: &xdg_toplevel::XdgToplevel,
+        event: xdg_toplevel::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
         match event {
             xdg_toplevel::Event::Configure { width, height, states } => {
                 app.pending_size = Some((width, height));
-                let states: Vec<u32> = states.chunks_exact(4).map(|c| u32::from_ne_bytes([c[0], c[1], c[2], c[3]])).collect();
+                let states: Vec<u32> =
+                    states.chunks_exact(4).map(|c| u32::from_ne_bytes([c[0], c[1], c[2], c[3]])).collect();
                 let mut seen = app.seen.lock().unwrap();
                 seen.activated = states.contains(&(xdg_toplevel::State::Activated as u32));
                 seen.maximized = states.contains(&(xdg_toplevel::State::Maximized as u32));
@@ -571,7 +651,8 @@ impl Dispatch<zxdg_toplevel_decoration_v1::ZxdgToplevelDecorationV1, ()> for App
         _: &QueueHandle<Self>,
     ) {
         if let zxdg_toplevel_decoration_v1::Event::Configure { mode } = event {
-            app.seen.lock().unwrap().decoration_server_side = Some(matches!(mode, WEnum::Value(zxdg_toplevel_decoration_v1::Mode::ServerSide)));
+            app.seen.lock().unwrap().decoration_server_side =
+                Some(matches!(mode, WEnum::Value(zxdg_toplevel_decoration_v1::Mode::ServerSide)));
         }
     }
 }
@@ -579,7 +660,9 @@ impl Dispatch<zxdg_toplevel_decoration_v1::ZxdgToplevelDecorationV1, ()> for App
 // ---- a session-lock client ---------------------------------------------------
 
 use wayland_client::protocol::wl_output;
-use wayland_protocols::ext::session_lock::v1::client::{ext_session_lock_manager_v1, ext_session_lock_surface_v1, ext_session_lock_v1};
+use wayland_protocols::ext::session_lock::v1::client::{
+    ext_session_lock_manager_v1, ext_session_lock_surface_v1, ext_session_lock_v1,
+};
 
 /// Locks the session with a solid-colour lock surface on the first output
 /// until dropped or unlocked.
@@ -668,7 +751,15 @@ fn run_lock(stream: UnixStream, color: u32, rx: Receiver<Cmd>, locked: Arc<Mutex
 }
 
 impl Dispatch<wl_registry::WlRegistry, GlobalListContents> for Locker {
-    fn event(_: &mut Self, _: &wl_registry::WlRegistry, _: wl_registry::Event, _: &GlobalListContents, _: &Connection, _: &QueueHandle<Self>) {}
+    fn event(
+        _: &mut Self,
+        _: &wl_registry::WlRegistry,
+        _: wl_registry::Event,
+        _: &GlobalListContents,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
 }
 
 macro_rules! ignore_locker {
@@ -678,10 +769,25 @@ macro_rules! ignore_locker {
         }
     )*};
 }
-ignore_locker!(wl_compositor::WlCompositor, wl_shm::WlShm, wl_shm_pool::WlShmPool, wl_surface::WlSurface, wl_output::WlOutput, wl_buffer::WlBuffer, ext_session_lock_manager_v1::ExtSessionLockManagerV1);
+ignore_locker!(
+    wl_compositor::WlCompositor,
+    wl_shm::WlShm,
+    wl_shm_pool::WlShmPool,
+    wl_surface::WlSurface,
+    wl_output::WlOutput,
+    wl_buffer::WlBuffer,
+    ext_session_lock_manager_v1::ExtSessionLockManagerV1
+);
 
 impl Dispatch<ext_session_lock_v1::ExtSessionLockV1, ()> for Locker {
-    fn event(s: &mut Self, _: &ext_session_lock_v1::ExtSessionLockV1, event: ext_session_lock_v1::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
+    fn event(
+        s: &mut Self,
+        _: &ext_session_lock_v1::ExtSessionLockV1,
+        event: ext_session_lock_v1::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
         match event {
             ext_session_lock_v1::Event::Locked => *s.locked.lock().unwrap() = Some(true),
             ext_session_lock_v1::Event::Finished => *s.locked.lock().unwrap() = Some(false),

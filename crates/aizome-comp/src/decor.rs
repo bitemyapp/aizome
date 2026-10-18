@@ -184,7 +184,12 @@ bitflags::bitflags! {
 impl Edges {
     /// The xcursor name for resizing these edges.
     pub fn cursor_name(self) -> &'static str {
-        match (self.contains(Edges::TOP), self.contains(Edges::BOTTOM), self.contains(Edges::LEFT), self.contains(Edges::RIGHT)) {
+        match (
+            self.contains(Edges::TOP),
+            self.contains(Edges::BOTTOM),
+            self.contains(Edges::LEFT),
+            self.contains(Edges::RIGHT),
+        ) {
             (true, _, true, _) => "nw-resize",
             (true, _, _, true) => "ne-resize",
             (_, true, true, _) => "sw-resize",
@@ -352,7 +357,9 @@ pub fn tab_colors(look: TabLook, p: &Palette) -> (Rgba, Rgba, Rgba) {
     match look {
         TabLook::Focused => (p.focus, p.on_focus, p.focus.mix(Rgba::hex(0xffffff), 0.35)),
         TabLook::Idle => (p.tab_idle, p.tab_idle_text, blend(p.tab_idle, p.bevel_hi)),
-        TabLook::Background => (p.tab_idle.mix(p.chrome, 0.35), p.tab_idle_text.mix(p.tab_idle, 0.3), blend(p.tab_idle, p.bevel_hi)),
+        TabLook::Background => {
+            (p.tab_idle.mix(p.chrome, 0.35), p.tab_idle_text.mix(p.tab_idle, 0.3), blend(p.tab_idle, p.bevel_hi))
+        }
     }
 }
 
@@ -383,7 +390,14 @@ pub struct DecorCache {
 impl DecorCache {
     /// One piece's element in slot `index` (overlays number their pieces
     /// in drawing order, so unchanged pieces keep their identity).
-    pub fn element(&mut self, index: usize, piece: &Piece, origin: (f64, f64), scale: f64, alpha: f32) -> Option<SolidColorRenderElement> {
+    pub fn element(
+        &mut self,
+        index: usize,
+        piece: &Piece,
+        origin: (f64, f64),
+        scale: f64,
+        alpha: f32,
+    ) -> Option<SolidColorRenderElement> {
         while self.slots.len() <= index {
             self.slots.push((Id::new(), CommitCounter::default(), Rgba::hex(0)));
         }
@@ -403,7 +417,13 @@ impl DecorCache {
 
     /// Render elements for pieces (given back to front), front first as
     /// smithay wants them.
-    pub fn elements(&mut self, pieces: &[Piece], origin: (f64, f64), scale: f64, alpha: f32) -> Vec<SolidColorRenderElement> {
+    pub fn elements(
+        &mut self,
+        pieces: &[Piece],
+        origin: (f64, f64),
+        scale: f64,
+        alpha: f32,
+    ) -> Vec<SolidColorRenderElement> {
         while self.slots.len() < pieces.len() {
             self.slots.push((Id::new(), CommitCounter::default(), Rgba::hex(0)));
         }

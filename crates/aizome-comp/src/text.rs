@@ -193,7 +193,8 @@ impl Labels {
         // Integer buffer scales: fractional outputs downscale a sharper
         // label.
         let buffer_scale = scale.ceil().max(1.0);
-        let key = Key { text: text.to_string(), style, scale_q: (buffer_scale * 4.0) as u32, max_w: max_w.floor() as i32 };
+        let key =
+            Key { text: text.to_string(), style, scale_q: (buffer_scale * 4.0) as u32, max_w: max_w.floor() as i32 };
         if !self.cache.contains_key(&key) {
             let label = self.rasterize(text, style, buffer_scale, max_w.floor())?;
             self.cache.insert(key.clone(), label);
@@ -267,7 +268,10 @@ fn install_fonts() {
         }
         let families: [(&str, &[&str]); 3] = [
             (typeface::UI, &["Archivo[wdth,wght]", "Archivo-VF"]),
-            (typeface::MONO, &["IBMPlexMono-Regular", "IBMPlexMono-Medium", "IBMPlexMono-SemiBold", "IBMPlexMono-Bold"]),
+            (
+                typeface::MONO,
+                &["IBMPlexMono-Regular", "IBMPlexMono-Medium", "IBMPlexMono-SemiBold", "IBMPlexMono-Bold"],
+            ),
             (typeface::SYMBOLS, &["NotoSansSymbols2-Regular"]),
         ];
         for (family, stems) in families {

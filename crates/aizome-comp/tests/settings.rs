@@ -35,13 +35,15 @@ fn double_click_tab(c: &Compositor, w: &aizome_ipc::WindowInfo) {
 
 #[test]
 fn double_clicking_a_tab_does_what_the_settings_say() {
-    let c = Compositor::start(Options { settings: "[windows]\ntab_double_click = \"minimise\"\n", ..Default::default() });
+    let c =
+        Compositor::start(Options { settings: "[windows]\ntab_double_click = \"minimise\"\n", ..Default::default() });
     let _a = c.client(Spec::new("org.example.editor", 0x2222cc));
     let w = c.wait_window("org.example.editor");
     double_click_tab(&c, &w);
     c.wait_windows("parked", |ws| ws[0].minimised);
 
-    let c = Compositor::start(Options { settings: "[windows]\ntab_double_click = \"nothing\"\n", ..Default::default() });
+    let c =
+        Compositor::start(Options { settings: "[windows]\ntab_double_click = \"nothing\"\n", ..Default::default() });
     let _a = c.client(Spec::new("org.example.editor", 0x2222cc));
     let w = c.wait_window("org.example.editor");
     double_click_tab(&c, &w);
@@ -63,7 +65,9 @@ fn scrolling_goes_as_far_as_the_factor_says() {
     let a = c.client(Spec::new("org.example.editor", 0x2222cc));
     let w = c.wait_window("org.example.editor");
     let (x, y) = ((w.geometry.x + w.geometry.w / 2) as f64, (w.geometry.y + w.geometry.h / 2) as f64);
-    c.ok(Request::Synthesize { events: vec![Synthetic::PointerMotion { x, y }, Synthetic::PointerScroll { dx: 0.0, dy: 10.0 }] });
+    c.ok(Request::Synthesize {
+        events: vec![Synthetic::PointerMotion { x, y }, Synthetic::PointerScroll { dx: 0.0, dy: 10.0 }],
+    });
     let s = a.wait_seen("the scroll", |s| s.scrolled != 0.0);
     assert!((s.scrolled - 25.0).abs() < 0.01, "{}", s.scrolled);
 }
@@ -92,7 +96,10 @@ fn sticky_keys_latch_a_modifier_for_the_next_key() {
 
 #[test]
 fn slow_keys_count_only_keys_held_long_enough() {
-    let c = Compositor::start(Options { settings: "[input.keyboard]\nslow_keys = true\nslow_keys_ms = 200\n", ..Default::default() });
+    let c = Compositor::start(Options {
+        settings: "[input.keyboard]\nslow_keys = true\nslow_keys_ms = 200\n",
+        ..Default::default()
+    });
     let a = c.client(Spec::new("org.example.editor", 0x2222cc));
     c.wait_window("org.example.editor");
     a.wait_seen("keyboard focus", |s| s.keyboard_focus);

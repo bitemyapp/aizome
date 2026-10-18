@@ -164,9 +164,10 @@ pub fn window_gone(az: &mut Aizome, id: WinId) {
         az.overlays.marking = None;
     }
     if let Some(ov) = &mut az.overlays.overview
-        && ov.drag.is_some_and(|d| d.0 == id) {
-            ov.drag = None;
-        }
+        && ov.drag.is_some_and(|d| d.0 == id)
+    {
+        ov.drag = None;
+    }
 }
 
 /// Feedback for a tab being dragged: drawn under the top layer.
@@ -200,7 +201,8 @@ where
         let y = slot.y as f64 - h - 18.0;
         pieces.push(Piece::new(x, y, w, h, p.menu_title));
         let loc: Point<i32, Physical> =
-            Point::<f64, Logical>::from((x + 8.0 - origin.0, y + ((h - label.h as f64) / 2.0).round() - origin.1)).to_physical_precise_round(scale);
+            Point::<f64, Logical>::from((x + 8.0 - origin.0, y + ((h - label.h as f64) / 2.0).round() - origin.1))
+                .to_physical_precise_round(scale);
         label_el = MemoryRenderBufferRenderElement::from_buffer(
             renderer,
             loc.to_f64(),
@@ -242,4 +244,3 @@ pub fn dashed(out: &mut Vec<Piece>, r: crate::wm::Rect, t: f64, dash: f64, gap: 
         out.push(Piece::new(x + w - t, y + t + s, t, *l, color));
     }
 }
-

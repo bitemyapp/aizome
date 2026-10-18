@@ -60,9 +60,11 @@ const GLES_FORMATS: &[Fourcc] = &[Fourcc::Abgr2101010, Fourcc::Argb2101010, Four
 const PIXMAN_FORMATS: &[Fourcc] = &[Fourcc::Xrgb8888, Fourcc::Argb8888];
 
 type Gpus = GpuManager<GbmGlesBackend<GlesRenderer, DrmDeviceFd>>;
-type UdevRenderer<'a> = MultiRenderer<'a, 'a, GbmGlesBackend<GlesRenderer, DrmDeviceFd>, GbmGlesBackend<GlesRenderer, DrmDeviceFd>>;
+type UdevRenderer<'a> =
+    MultiRenderer<'a, 'a, GbmGlesBackend<GlesRenderer, DrmDeviceFd>, GbmGlesBackend<GlesRenderer, DrmDeviceFd>>;
 type Feedback = Option<OutputPresentationFeedback>;
-type GlesManager = DrmOutputManager<GbmAllocator<DrmDeviceFd>, GbmFramebufferExporter<DrmDeviceFd>, Feedback, DrmDeviceFd>;
+type GlesManager =
+    DrmOutputManager<GbmAllocator<DrmDeviceFd>, GbmFramebufferExporter<DrmDeviceFd>, Feedback, DrmDeviceFd>;
 type GlesOutput = DrmOutput<GbmAllocator<DrmDeviceFd>, GbmFramebufferExporter<DrmDeviceFd>, Feedback, DrmDeviceFd>;
 type Dumb = std::sync::Arc<std::sync::Mutex<DumbAllocator>>;
 type PixmanManager = DrmOutputManager<Dumb, DrmDeviceFd, Feedback, DrmDeviceFd>;
@@ -166,15 +168,17 @@ impl Udev {
                     if let crate::backend::Backend::Udev(u) = &mut state.backend {
                         apply_device_settings(&mut d, &state.az.settings.input);
                         if d.has_capability(DeviceCapability::Keyboard)
-                            && let Some(kb) = state.az.seat.get_keyboard() {
-                                d.led_update(kb.led_state().into());
-                            }
+                            && let Some(kb) = state.az.seat.get_keyboard()
+                        {
+                            d.led_update(kb.led_state().into());
+                        }
                         u.input_devices.push(d);
                     }
                 } else if let InputEvent::DeviceRemoved { device } = &event
-                    && let crate::backend::Backend::Udev(u) = &mut state.backend {
-                        u.input_devices.retain(|d| d != device);
-                    }
+                    && let crate::backend::Backend::Udev(u) = &mut state.backend
+                {
+                    u.input_devices.retain(|d| d != device);
+                }
                 state.process_input(event);
             })
             .map_err(|e| e.to_string())?;
@@ -228,7 +232,17 @@ impl Udev {
             })
             .map_err(|e| e.to_string())?;
 
-        Ok(Udev { session, seat, primary_gpu, renderers, devices: HashMap::new(), libinput, input_devices: Vec::new(), powered: true, disabled: HashMap::new() })
+        Ok(Udev {
+            session,
+            seat,
+            primary_gpu,
+            renderers,
+            devices: HashMap::new(),
+            libinput,
+            input_devices: Vec::new(),
+            powered: true,
+            disabled: HashMap::new(),
+        })
     }
 
     /// Opens every GPU, sets up the outputs connected now, the dmabuf
@@ -279,9 +293,10 @@ impl Udev {
         let _ = state.az.lh.insert_source(udev, |event, _, state: &mut State| match event {
             UdevEvent::Added { device_id, path } => {
                 if let Ok(node) = DrmNode::from_dev_id(device_id)
-                    && let Err(e) = device_added(state, node, &path) {
-                        error!("skipping {}: {e}", path.display());
-                    }
+                    && let Err(e) = device_added(state, node, &path)
+                {
+                    error!("skipping {}: {e}", path.display());
+                }
             }
             UdevEvent::Changed { device_id } => {
                 if let Ok(node) = DrmNode::from_dev_id(device_id) {
@@ -309,9 +324,10 @@ impl Udev {
 
     pub fn early_import(&mut self, surface: &WlSurface) {
         if let Renderers::Gles(g) = &mut self.renderers
-            && let Err(e) = g.early_import(self.primary_gpu, surface) {
-                tracing::debug!("early import: {e:?}");
-            }
+            && let Err(e) = g.early_import(self.primary_gpu, surface)
+        {
+            tracing::debug!("early import: {e:?}");
+        }
     }
 
     /// With GLES on one GPU the early import copied wl_shm pixels into
@@ -394,8 +410,10 @@ impl Udev {
                             Ok(res) => {
                                 let damaged = !res.is_empty;
                                 let states = res.states;
-                                queue(az, output, damaged, &states, |fb| drm.queue_frame(fb).map_err(|e| format!("{e:?}")))
-                                    .map(|q| (q, states))
+                                queue(az, output, damaged, &states, |fb| {
+                                    drm.queue_frame(fb).map_err(|e| format!("{e:?}"))
+                                })
+                                .map(|q| (q, states))
                             }
                             Err(e) => Err(format!("{e:?}")),
                         }
@@ -404,12 +422,14 @@ impl Udev {
                 }
             }
             (Renderers::Pixman(r), SurfaceOutput::Pixman(drm)) => {
-                let (elements, clear) = scene_for::<_, smithay::reexports::pixman::Image<'static, 'static>>(r, az, output);
+                let (elements, clear) =
+                    scene_for::<_, smithay::reexports::pixman::Image<'static, 'static>>(r, az, output);
                 match drm.render_frame(r, &elements, clear, FrameFlags::DEFAULT) {
                     Ok(res) => {
                         let damaged = !res.is_empty;
                         let states = res.states;
-                        queue(az, output, damaged, &states, |fb| drm.queue_frame(fb).map_err(|e| format!("{e:?}"))).map(|q| (q, states))
+                        queue(az, output, damaged, &states, |fb| drm.queue_frame(fb).map_err(|e| format!("{e:?}")))
+                            .map(|q| (q, states))
                     }
                     Err(e) => Err(format!("{e:?}")),
                 }
@@ -435,7 +455,11 @@ impl Udev {
                 let mut r = gpus.single_renderer(&primary).map_err(|e| format!("{e:?}"))?;
                 capture_with::<UdevRenderer<'_>, GlesRenderbuffer>(&mut r, az, output, cursor)
             }
-            Renderers::Pixman(r) => capture_with::<PixmanRenderer, smithay::reexports::pixman::Image<'static, 'static>>(r, az, output, cursor),
+            Renderers::Pixman(r) => {
+                capture_with::<PixmanRenderer, smithay::reexports::pixman::Image<'static, 'static>>(
+                    r, az, output, cursor,
+                )
+            }
         }
     }
 
@@ -451,7 +475,10 @@ impl Udev {
     }
 
     pub fn gamma_size(&self, output: &Output) -> usize {
-        self.crtc_of(output).and_then(|(drm, crtc)| drm.get_crtc(crtc).ok()).map(|c| c.gamma_length() as usize).unwrap_or(0)
+        self.crtc_of(output)
+            .and_then(|(drm, crtc)| drm.get_crtc(crtc).ok())
+            .map(|c| c.gamma_length() as usize)
+            .unwrap_or(0)
     }
 
     pub fn set_gamma(&mut self, output: &Output, r: &[u16], g: &[u16], b: &[u16]) -> Result<(), String> {
@@ -551,11 +578,12 @@ impl Udev {
             let res = match (&mut self.renderers, &mut s.drm) {
                 (Renderers::Gles(gpus), SurfaceOutput::Gles(o)) => {
                     let mut r = gpus.single_renderer(&render_node).map_err(|e| format!("{e:?}"))?;
-                    o.use_mode::<_, OutputElement<UdevRenderer<'_>>>(mode, &mut r, &DrmOutputRenderElements::default()).map_err(|e| format!("{e:?}"))
+                    o.use_mode::<_, OutputElement<UdevRenderer<'_>>>(mode, &mut r, &DrmOutputRenderElements::default())
+                        .map_err(|e| format!("{e:?}"))
                 }
-                (Renderers::Pixman(r), SurfaceOutput::Pixman(o)) => {
-                    o.use_mode::<_, OutputElement<PixmanRenderer>>(mode, r, &DrmOutputRenderElements::default()).map_err(|e| format!("{e:?}"))
-                }
+                (Renderers::Pixman(r), SurfaceOutput::Pixman(o)) => o
+                    .use_mode::<_, OutputElement<PixmanRenderer>>(mode, r, &DrmOutputRenderElements::default())
+                    .map_err(|e| format!("{e:?}")),
                 _ => Err("renderer and output disagree".into()),
             };
             res?;
@@ -613,7 +641,11 @@ fn device_added(state: &mut State, node: DrmNode, path: &Path) -> Result<(), Str
             .and_then(|d| EGLDevice::device_for_display(&d).ok())
             .filter(|d| !d.is_software())
             .map(|d| d.try_get_render_node().ok().flatten().unwrap_or(node))
-            .filter(|rn| AsMut::<GbmGlesBackend<GlesRenderer, DrmDeviceFd>>::as_mut(&mut **gpus).add_node(*rn, gbm.clone()).is_ok());
+            .filter(|rn| {
+                AsMut::<GbmGlesBackend<GlesRenderer, DrmDeviceFd>>::as_mut(&mut **gpus)
+                    .add_node(*rn, gbm.clone())
+                    .is_ok()
+            });
         gles_node = Some((gbm, render_node));
     }
     if matches!(gles_node, Some((_, None))) && u.devices.is_empty() {
@@ -636,15 +668,37 @@ fn device_added(state: &mut State, node: DrmNode, path: &Path) -> Result<(), Str
                 .filter(|f| render_node.is_some() || f.modifier == Modifier::Linear)
                 .copied()
                 .collect();
-            (Manager::Gles(DrmOutputManager::new(drm, allocator, exporter, Some(gbm), GLES_FORMATS.iter().copied(), formats)), render_node)
+            (
+                Manager::Gles(DrmOutputManager::new(
+                    drm,
+                    allocator,
+                    exporter,
+                    Some(gbm),
+                    GLES_FORMATS.iter().copied(),
+                    formats,
+                )),
+                render_node,
+            )
         }
         Renderers::Pixman(_) => {
             let allocator: Dumb = std::sync::Arc::new(std::sync::Mutex::new(DumbAllocator::new(fd.clone())));
-            let formats: Vec<DrmFormat> = PIXMAN_FORMATS.iter().map(|code| DrmFormat { code: *code, modifier: Modifier::Linear }).collect();
-            (Manager::Pixman(DrmOutputManager::new(drm, allocator, fd.clone(), None::<GbmDevice<DrmDeviceFd>>, PIXMAN_FORMATS.iter().copied(), formats)), None)
+            let formats: Vec<DrmFormat> =
+                PIXMAN_FORMATS.iter().map(|code| DrmFormat { code: *code, modifier: Modifier::Linear }).collect();
+            (
+                Manager::Pixman(DrmOutputManager::new(
+                    drm,
+                    allocator,
+                    fd.clone(),
+                    None::<GbmDevice<DrmDeviceFd>>,
+                    PIXMAN_FORMATS.iter().copied(),
+                    formats,
+                )),
+                None,
+            )
         }
     };
-    u.devices.insert(node, Device { token, render_node, manager, connectors: HashMap::new(), surfaces: HashMap::new() });
+    u.devices
+        .insert(node, Device { token, render_node, manager, connectors: HashMap::new(), surfaces: HashMap::new() });
     device_changed(state, node);
     Ok(())
 }
@@ -694,7 +748,9 @@ fn device_changed(state: &mut State, node: DrmNode) {
 
 fn device_removed(state: &mut State, node: DrmNode) {
     let crtcs: Vec<crtc::Handle> = match &state.backend {
-        crate::backend::Backend::Udev(u) => u.devices.get(&node).map(|d| d.surfaces.keys().copied().collect()).unwrap_or_default(),
+        crate::backend::Backend::Udev(u) => {
+            u.devices.get(&node).map(|d| d.surfaces.keys().copied().collect()).unwrap_or_default()
+        }
         _ => return,
     };
     for crtc in crtcs {
@@ -737,7 +793,8 @@ pub fn parse_edid(e: &[u8]) -> Option<(String, String, String)> {
     for d in 0..4 {
         let b = &e[54 + d * 18..72 + d * 18];
         if b[0] == 0 && b[1] == 0 {
-            let text: String = b[5..18].iter().take_while(|c| **c != b'\n').map(|c| *c as char).collect::<String>().trim().to_string();
+            let text: String =
+                b[5..18].iter().take_while(|c| **c != b'\n').map(|c| *c as char).collect::<String>().trim().to_string();
             match b[3] {
                 0xfc if !text.is_empty() => model = text,
                 0xff if !text.is_empty() => serial = text,
@@ -781,7 +838,14 @@ pub fn enable_output(state: &mut State, name: &str, position: Option<(i32, i32)>
     Ok(())
 }
 
-fn connector_connected_as(state: &mut State, node: DrmNode, info: connector::Info, crtc: crtc::Handle, force_on: bool, position: Option<(i32, i32)>) {
+fn connector_connected_as(
+    state: &mut State,
+    node: DrmNode,
+    info: connector::Info,
+    crtc: crtc::Handle,
+    force_on: bool,
+    position: Option<(i32, i32)>,
+) {
     let name = format!("{}-{}", info.interface().as_str(), info.interface_id());
     let crate::backend::Backend::Udev(u) = &mut state.backend else { return };
     let primary = u.primary_gpu;
@@ -797,7 +861,8 @@ fn connector_connected_as(state: &mut State, node: DrmNode, info: connector::Inf
     }
     let cfg = state.az.settings.output(&name, &make, &model, &serial).cloned();
     let off = !force_on && cfg.as_ref().and_then(|c| c.enabled) == Some(false);
-    let preferred = modes.iter().find(|m| m.mode_type().contains(ModeTypeFlags::PREFERRED)).copied().unwrap_or(modes[0]);
+    let preferred =
+        modes.iter().find(|m| m.mode_type().contains(ModeTypeFlags::PREFERRED)).copied().unwrap_or(modes[0]);
     let drm_mode = cfg
         .as_ref()
         .and_then(|c| c.parsed_mode())
@@ -812,7 +877,12 @@ fn connector_connected_as(state: &mut State, node: DrmNode, info: connector::Inf
     let (mm_w, mm_h) = info.size().unwrap_or((0, 0));
     let output = Output::new(
         name.clone(),
-        PhysicalProperties { size: (mm_w as i32, mm_h as i32).into(), subpixel: Subpixel::Unknown, make: make.clone(), model: model.clone() },
+        PhysicalProperties {
+            size: (mm_w as i32, mm_h as i32).into(),
+            subpixel: Subpixel::Unknown,
+            make: make.clone(),
+            model: model.clone(),
+        },
     );
     for m in &modes {
         output.add_mode(WlMode::from(*m));
@@ -835,12 +905,28 @@ fn connector_connected_as(state: &mut State, node: DrmNode, info: connector::Inf
     let drm_output = match (&mut u.renderers, &mut device.manager) {
         (Renderers::Gles(gpus), Manager::Gles(m)) => {
             let Ok(mut r) = gpus.single_renderer(&render_node) else { return };
-            m.initialize_output::<_, OutputElement<UdevRenderer<'_>>>(crtc, drm_mode, &[info.handle()], &output, None, &mut r, &DrmOutputRenderElements::default())
-                .map(|o| SurfaceOutput::Gles(Box::new(o)))
-                .map_err(|e| format!("{e:?}"))
+            m.initialize_output::<_, OutputElement<UdevRenderer<'_>>>(
+                crtc,
+                drm_mode,
+                &[info.handle()],
+                &output,
+                None,
+                &mut r,
+                &DrmOutputRenderElements::default(),
+            )
+            .map(|o| SurfaceOutput::Gles(Box::new(o)))
+            .map_err(|e| format!("{e:?}"))
         }
         (Renderers::Pixman(r), Manager::Pixman(m)) => m
-            .initialize_output::<_, OutputElement<PixmanRenderer>>(crtc, drm_mode, &[info.handle()], &output, None, r, &DrmOutputRenderElements::default())
+            .initialize_output::<_, OutputElement<PixmanRenderer>>(
+                crtc,
+                drm_mode,
+                &[info.handle()],
+                &output,
+                None,
+                r,
+                &DrmOutputRenderElements::default(),
+            )
             .map(|o| SurfaceOutput::Pixman(Box::new(o)))
             .map_err(|e| format!("{e:?}")),
         _ => Err("renderer and device disagree".into()),
@@ -852,7 +938,10 @@ fn connector_connected_as(state: &mut State, node: DrmNode, info: connector::Inf
             return;
         }
     };
-    device.surfaces.insert(crtc, Surface { output: output.clone(), connector: info.handle(), drm: drm_output, redraw: Redraw::Idle, modes });
+    device.surfaces.insert(
+        crtc,
+        Surface { output: output.clone(), connector: info.handle(), drm: drm_output, redraw: Redraw::Idle, modes },
+    );
     let scale = cfg.as_ref().and_then(|c| c.scale).unwrap_or_else(|| auto_scale(wl_mode.size.w, mm_w as i32));
     let x = state.az.outputs.iter().map(|o| state.az.output_rect(o).right()).max().unwrap_or(0);
     let pos = position.or(cfg.as_ref().and_then(|c| c.position).map(|p| (p[0], p[1]))).unwrap_or((x, 0));
@@ -868,7 +957,8 @@ fn connector_connected_as(state: &mut State, node: DrmNode, info: connector::Inf
 fn connector_disconnected(state: &mut State, node: DrmNode, crtc: crtc::Handle) {
     let crate::backend::Backend::Udev(u) = &mut state.backend else { return };
     // One that was turned off goes for good.
-    let gone: Vec<String> = u.disabled.iter().filter(|(_, (n, _, c))| *n == node && *c == crtc).map(|(k, _)| k.clone()).collect();
+    let gone: Vec<String> =
+        u.disabled.iter().filter(|(_, (n, _, c))| *n == node && *c == crtc).map(|(k, _)| k.clone()).collect();
     for name in gone {
         u.disabled.remove(&name);
         state.az.disabled_outputs.retain(|o| o.name() != name);
@@ -894,11 +984,16 @@ fn vblank(state: &mut State, node: DrmNode, crtc: crtc::Handle, metadata: &mut O
         SurfaceOutput::Pixman(o) => o.frame_submitted().map_err(|e| format!("{e:?}")),
     };
     let output = surface.output.clone();
-    let refresh = output.current_mode().map(|m| Duration::from_nanos(1_000_000_000_000 / m.refresh.max(1) as u64)).unwrap_or(Duration::from_millis(16));
+    let refresh = output
+        .current_mode()
+        .map(|m| Duration::from_nanos(1_000_000_000_000 / m.refresh.max(1) as u64))
+        .unwrap_or(Duration::from_millis(16));
     let (time, flags) = match metadata.as_ref().map(|m| m.time) {
         Some(DrmEventTime::Monotonic(t)) if !t.is_zero() => (
             t.into(),
-            wp_presentation_feedback::Kind::Vsync | wp_presentation_feedback::Kind::HwClock | wp_presentation_feedback::Kind::HwCompletion,
+            wp_presentation_feedback::Kind::Vsync
+                | wp_presentation_feedback::Kind::HwClock
+                | wp_presentation_feedback::Kind::HwCompletion,
         ),
         _ => (state.az.clock.now(), wp_presentation_feedback::Kind::Vsync),
     };

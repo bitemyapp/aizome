@@ -369,8 +369,10 @@ impl State {
         let mut seat_state = SeatState::new();
         let data_device = DataDeviceState::new::<State>(&dh);
         let primary_selection = PrimarySelectionState::new::<State>(&dh);
-        let wlr_data_control = WlrDataControlState::new::<State, _>(&dh, Some(&primary_selection), client_is_privileged);
-        let ext_data_control = ExtDataControlState::new::<State, _>(&dh, Some(&primary_selection), client_is_privileged);
+        let wlr_data_control =
+            WlrDataControlState::new::<State, _>(&dh, Some(&primary_selection), client_is_privileged);
+        let ext_data_control =
+            ExtDataControlState::new::<State, _>(&dh, Some(&primary_selection), client_is_privileged);
         let output_manager = OutputManagerState::new_with_xdg_output::<State>(&dh);
         let viewporter = ViewporterState::new::<State>(&dh);
         let presentation = PresentationState::new::<State>(&dh, clock.id() as u32);
@@ -566,7 +568,6 @@ impl State {
         self.az.unmapped.retain(|u| u.window.toplevel().is_some_and(|t| t.alive()));
     }
 }
-
 
 impl Aizome {
     // ---- outputs ---------------------------------------------------------

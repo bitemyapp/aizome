@@ -23,7 +23,13 @@ pub struct IdleState {
 
 impl Default for IdleState {
     fn default() -> Self {
-        IdleState { last_activity: Instant::now(), lock_after: None, off_after: None, lock_sent: false, off_sent: false }
+        IdleState {
+            last_activity: Instant::now(),
+            lock_after: None,
+            off_after: None,
+            lock_sent: false,
+            off_sent: false,
+        }
     }
 }
 
@@ -70,15 +76,19 @@ impl State {
         }
         let idle_for = self.az.idle.last_activity.elapsed();
         if let Some(d) = self.az.idle.lock_after
-            && idle_for >= d && !self.az.idle.lock_sent {
-                self.az.idle.lock_sent = true;
-                self.az.ipc.emit(&Event::Idle { kind: "lock".into() });
-            }
+            && idle_for >= d
+            && !self.az.idle.lock_sent
+        {
+            self.az.idle.lock_sent = true;
+            self.az.ipc.emit(&Event::Idle { kind: "lock".into() });
+        }
         if let Some(d) = self.az.idle.off_after
-            && idle_for >= d && !self.az.idle.off_sent {
-                self.az.idle.off_sent = true;
-                self.az.ipc.emit(&Event::Idle { kind: "monitors-off".into() });
-                self.backend.set_power(&mut self.az, false);
-            }
+            && idle_for >= d
+            && !self.az.idle.off_sent
+        {
+            self.az.idle.off_sent = true;
+            self.az.ipc.emit(&Event::Idle { kind: "monitors-off".into() });
+            self.backend.set_power(&mut self.az, false);
+        }
     }
 }

@@ -160,10 +160,8 @@ impl Model {
     pub fn insert(&mut self, app_id: &str, title: &str, pid: Option<i32>, rect: Rect, parent: Option<WinId>) -> WinId {
         let id = self.next_win;
         self.next_win += 1;
-        let (desk, sticky) = parent
-            .and_then(|p| self.wins.get(&p))
-            .map(|p| (p.desk, p.sticky))
-            .unwrap_or((self.current, false));
+        let (desk, sticky) =
+            parent.and_then(|p| self.wins.get(&p)).map(|p| (p.desk, p.sticky)).unwrap_or((self.current, false));
         self.wins.insert(
             id,
             Win {
@@ -313,9 +311,10 @@ impl Model {
             return;
         }
         if let Some(g) = self.wins[&id].group
-            && let Some(g) = self.groups.get_mut(&g) {
-                g.active = id;
-            }
+            && let Some(g) = self.groups.get_mut(&g)
+        {
+            g.active = id;
+        }
         self.focused = Some(id);
         self.mru.retain(|w| *w != id);
         self.mru.insert(0, id);
@@ -337,9 +336,10 @@ impl Model {
             self.show_app(&app);
         }
         if let Some(g) = self.wins[&id].group
-            && let Some(g) = self.groups.get_mut(&g) {
-                g.active = id;
-            }
+            && let Some(g) = self.groups.get_mut(&g)
+        {
+            g.active = id;
+        }
         if !sticky && desk != self.current {
             self.current = desk;
             true
@@ -527,11 +527,7 @@ impl Model {
         if w.placement == placement && placement != Placement::Free {
             return Some(w.rect);
         }
-        let new_rect = if placement == Placement::Free {
-            w.restore.unwrap_or(w.rect)
-        } else {
-            rect
-        };
+        let new_rect = if placement == Placement::Free { w.restore.unwrap_or(w.rect) } else { rect };
         let restore = if w.placement == Placement::Free { Some(w.rect) } else { w.restore };
         for m in members {
             if let Some(w) = self.wins.get_mut(&m) {
@@ -577,11 +573,8 @@ impl Model {
         let mut y = area.y + (area.h - fh) / 2 + insets.top;
         x = x.max(area.x + insets.left);
         y = y.max(area.y + insets.top);
-        let taken: Vec<(i32, i32)> = self
-            .shown_stacking()
-            .iter()
-            .map(|id| (self.wins[id].rect.x, self.wins[id].rect.y))
-            .collect();
+        let taken: Vec<(i32, i32)> =
+            self.shown_stacking().iter().map(|id| (self.wins[id].rect.x, self.wins[id].rect.y)).collect();
         let near = |x: i32, y: i32| taken.iter().any(|(tx, ty)| (tx - x).abs() < 8 && (ty - y).abs() < 8);
         let mut tries = 0;
         while near(x, y) && tries < 64 {
@@ -707,9 +700,10 @@ impl Model {
     /// Shows a member of a group.
     pub fn set_group_active(&mut self, id: WinId) {
         if let Some(g) = self.wins.get(&id).and_then(|w| w.group)
-            && let Some(g) = self.groups.get_mut(&g) {
-                g.active = id;
-            }
+            && let Some(g) = self.groups.get_mut(&g)
+        {
+            g.active = id;
+        }
     }
 
     /// Moves a tab within its group to position `index`.

@@ -12,7 +12,9 @@ use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 use wayland_client::globals::{GlobalListContents, registry_queue_init};
-use wayland_client::protocol::{wl_buffer, wl_compositor, wl_keyboard, wl_pointer, wl_registry, wl_seat, wl_shm, wl_shm_pool, wl_surface};
+use wayland_client::protocol::{
+    wl_buffer, wl_compositor, wl_keyboard, wl_pointer, wl_registry, wl_seat, wl_shm, wl_shm_pool, wl_surface,
+};
 use wayland_client::{Connection, Dispatch, EventQueue, Proxy, QueueHandle, WEnum};
 use wayland_protocols::xdg::shell::client::{xdg_popup, xdg_positioner, xdg_surface, xdg_wm_base};
 use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_layer_surface_v1};
@@ -55,7 +57,14 @@ pub enum ShellCmd {
     /// A menu on a layer surface, at a place relative to it; `grab` asks
     /// for an explicit grab with the latest input serial (0 without one,
     /// as after a shortcut that came over IPC).
-    Popup { name: &'static str, parent: &'static str, at: (i32, i32), size: (i32, i32), color: u32, grab: bool },
+    Popup {
+        name: &'static str,
+        parent: &'static str,
+        at: (i32, i32),
+        size: (i32, i32),
+        color: u32,
+        grab: bool,
+    },
     Destroy(&'static str),
     Quit,
 }
@@ -201,7 +210,8 @@ fn run(stream: UnixStream, rx: Receiver<ShellCmd>, seen: Arc<Mutex<ShellSeen>>) 
     let compositor: wl_compositor::WlCompositor = globals.bind(&qh, 4..=6, ()).expect("wl_compositor");
     let shm: wl_shm::WlShm = globals.bind(&qh, 1..=1, ()).expect("wl_shm");
     let wm: xdg_wm_base::XdgWmBase = globals.bind(&qh, 1..=6, ()).expect("xdg_wm_base");
-    let layer_shell: zwlr_layer_shell_v1::ZwlrLayerShellV1 = globals.bind(&qh, 4..=5, ()).expect("zwlr_layer_shell_v1 4");
+    let layer_shell: zwlr_layer_shell_v1::ZwlrLayerShellV1 =
+        globals.bind(&qh, 4..=5, ()).expect("zwlr_layer_shell_v1 4");
     let seat: wl_seat::WlSeat = globals.bind(&qh, 5..=9, ()).expect("wl_seat");
     let _keyboard = seat.get_keyboard(&qh, ());
     let _pointer = seat.get_pointer(&qh, ());
@@ -212,14 +222,27 @@ fn run(stream: UnixStream, rx: Receiver<ShellCmd>, seen: Arc<Mutex<ShellSeen>>) 
             match cmd {
                 ShellCmd::Layer(spec) => {
                     let surface = compositor.create_surface(&qh, ());
-                    let l = layer_shell.get_layer_surface(&surface, None, spec.layer, spec.name.to_string(), &qh, spec.name.to_string());
+                    let l = layer_shell.get_layer_surface(
+                        &surface,
+                        None,
+                        spec.layer,
+                        spec.name.to_string(),
+                        &qh,
+                        spec.name.to_string(),
+                    );
                     l.set_anchor(spec.anchor);
                     l.set_size(spec.size.0, spec.size.1);
                     l.set_keyboard_interactivity(spec.keyboard);
                     surface.commit();
                     shell.surfaces.insert(
                         spec.name.to_string(),
-                        Surf { surface, layer: Some(l), popup: None, size: (spec.size.0 as i32, spec.size.1 as i32), color: spec.color },
+                        Surf {
+                            surface,
+                            layer: Some(l),
+                            popup: None,
+                            size: (spec.size.0 as i32, spec.size.1 as i32),
+                            color: spec.color,
+                        },
                     );
                 }
                 ShellCmd::Popup { name, parent, at, size, color, grab } => {
@@ -240,7 +263,9 @@ fn run(stream: UnixStream, rx: Receiver<ShellCmd>, seen: Arc<Mutex<ShellSeen>>) 
                     }
                     positioner.destroy();
                     surface.commit();
-                    shell.surfaces.insert(name.to_string(), Surf { surface, layer: None, popup: Some((xs, popup)), size, color });
+                    shell
+                        .surfaces
+                        .insert(name.to_string(), Surf { surface, layer: None, popup: Some((xs, popup)), size, color });
                 }
                 ShellCmd::Destroy(name) => shell.destroy(name),
                 ShellCmd::Quit => quit = true,
@@ -271,7 +296,15 @@ fn run(stream: UnixStream, rx: Receiver<ShellCmd>, seen: Arc<Mutex<ShellSeen>>) 
 }
 
 impl Dispatch<wl_registry::WlRegistry, GlobalListContents> for Shell {
-    fn event(_: &mut Self, _: &wl_registry::WlRegistry, _: wl_registry::Event, _: &GlobalListContents, _: &Connection, _: &QueueHandle<Self>) {}
+    fn event(
+        _: &mut Self,
+        _: &wl_registry::WlRegistry,
+        _: wl_registry::Event,
+        _: &GlobalListContents,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
 }
 
 macro_rules! ignore {
@@ -292,7 +325,14 @@ ignore!(
 );
 
 impl Dispatch<wl_buffer::WlBuffer, ()> for Shell {
-    fn event(_: &mut Self, buffer: &wl_buffer::WlBuffer, event: wl_buffer::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
+    fn event(
+        _: &mut Self,
+        buffer: &wl_buffer::WlBuffer,
+        event: wl_buffer::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
         if let wl_buffer::Event::Release = event {
             buffer.destroy();
         }
@@ -300,7 +340,14 @@ impl Dispatch<wl_buffer::WlBuffer, ()> for Shell {
 }
 
 impl Dispatch<xdg_wm_base::XdgWmBase, ()> for Shell {
-    fn event(_: &mut Self, wm: &xdg_wm_base::XdgWmBase, event: xdg_wm_base::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
+    fn event(
+        _: &mut Self,
+        wm: &xdg_wm_base::XdgWmBase,
+        event: xdg_wm_base::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
         if let xdg_wm_base::Event::Ping { serial } = event {
             wm.pong(serial);
         }
@@ -308,7 +355,14 @@ impl Dispatch<xdg_wm_base::XdgWmBase, ()> for Shell {
 }
 
 impl Dispatch<wl_keyboard::WlKeyboard, ()> for Shell {
-    fn event(shell: &mut Self, _: &wl_keyboard::WlKeyboard, event: wl_keyboard::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
+    fn event(
+        shell: &mut Self,
+        _: &wl_keyboard::WlKeyboard,
+        event: wl_keyboard::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
         match event {
             wl_keyboard::Event::Enter { surface, .. } => {
                 let name = shell.name_of(&surface);
@@ -327,9 +381,18 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for Shell {
 }
 
 impl Dispatch<wl_pointer::WlPointer, ()> for Shell {
-    fn event(shell: &mut Self, _: &wl_pointer::WlPointer, event: wl_pointer::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
+    fn event(
+        shell: &mut Self,
+        _: &wl_pointer::WlPointer,
+        event: wl_pointer::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
         match event {
-            wl_pointer::Event::Button { serial, state: WEnum::Value(wl_pointer::ButtonState::Pressed), .. } => shell.serial = Some(serial),
+            wl_pointer::Event::Button { serial, state: WEnum::Value(wl_pointer::ButtonState::Pressed), .. } => {
+                shell.serial = Some(serial)
+            }
             wl_pointer::Event::Enter { surface, .. } => {
                 let name = shell.name_of(&surface);
                 shell.seen.lock().unwrap().pointer = name;
@@ -369,7 +432,14 @@ impl Dispatch<zwlr_layer_surface_v1::ZwlrLayerSurfaceV1, String> for Shell {
 }
 
 impl Dispatch<xdg_surface::XdgSurface, String> for Shell {
-    fn event(shell: &mut Self, xs: &xdg_surface::XdgSurface, event: xdg_surface::Event, name: &String, _: &Connection, qh: &QueueHandle<Self>) {
+    fn event(
+        shell: &mut Self,
+        xs: &xdg_surface::XdgSurface,
+        event: xdg_surface::Event,
+        name: &String,
+        _: &Connection,
+        qh: &QueueHandle<Self>,
+    ) {
         if let xdg_surface::Event::Configure { serial } = event {
             xs.ack_configure(serial);
             shell.draw(name, qh);
@@ -378,7 +448,14 @@ impl Dispatch<xdg_surface::XdgSurface, String> for Shell {
 }
 
 impl Dispatch<xdg_popup::XdgPopup, String> for Shell {
-    fn event(shell: &mut Self, _: &xdg_popup::XdgPopup, event: xdg_popup::Event, name: &String, _: &Connection, _: &QueueHandle<Self>) {
+    fn event(
+        shell: &mut Self,
+        _: &xdg_popup::XdgPopup,
+        event: xdg_popup::Event,
+        name: &String,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
         match event {
             xdg_popup::Event::Configure { width, height, .. } => {
                 if let Some(s) = shell.surfaces.get_mut(name)

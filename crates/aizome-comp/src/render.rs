@@ -10,11 +10,11 @@
 //! window composites and asks nothing of its client.
 
 use aizome_theme::typeface;
+use smithay::backend::renderer::element::Kind;
 use smithay::backend::renderer::element::memory::MemoryRenderBufferRenderElement;
 use smithay::backend::renderer::element::solid::SolidColorRenderElement;
 use smithay::backend::renderer::element::surface::{WaylandSurfaceRenderElement, render_elements_from_surface_tree};
 use smithay::backend::renderer::element::utils::{CropRenderElement, RelocateRenderElement, RescaleRenderElement};
-use smithay::backend::renderer::element::Kind;
 use smithay::backend::renderer::{ImportAll, ImportMem, Renderer};
 use smithay::desktop::layer_map_for_output;
 use smithay::desktop::utils::bbox_from_surface_tree;
@@ -281,7 +281,9 @@ pub fn decoration_elements<R>(
             let app_id = az.wm.get(t.win).map(|w| w.app_id.clone()).unwrap_or_default();
             let glyph_x = t.close.x as f64 - 1.0;
             let glyph_y = t.rect.y as f64 + 1.0 + (TAB_INNER - decor::GLYPH) / 2.0;
-            if let Some(e) = crate::icons::glyph_element(az, renderer, &app_id, ink, (glyph_x, glyph_y), origin, scale, alpha) {
+            if let Some(e) =
+                crate::icons::glyph_element(az, renderer, &app_id, ink, (glyph_x, glyph_y), origin, scale, alpha)
+            {
                 out.push(e);
             }
         }
@@ -289,7 +291,8 @@ pub fn decoration_elements<R>(
         if let Some(label) = az.labels.get(&title, style, scale, t.title_max_w + 1.0) {
             let x = t.title_x;
             let y = t.rect.y as f64 + 1.0 + ((TAB_INNER - label.h as f64) / 2.0).round();
-            let loc: Point<i32, Physical> = Point::<f64, Logical>::from((x - origin.0, y - origin.1)).to_physical_precise_round(scale);
+            let loc: Point<i32, Physical> =
+                Point::<f64, Logical>::from((x - origin.0, y - origin.1)).to_physical_precise_round(scale);
             if let Ok(e) = MemoryRenderBufferRenderElement::from_buffer(
                 renderer,
                 loc.to_f64(),
@@ -332,7 +335,8 @@ where
     match named {
         Some(name) => {
             let img = az.cursor_theme.get(name, scale.ceil().max(1.0) as u32);
-            let loc: Point<i32, Physical> = Point::<f64, Logical>::from((rel.x - img.hot.0, rel.y - img.hot.1)).to_physical_precise_round(scale);
+            let loc: Point<i32, Physical> =
+                Point::<f64, Logical>::from((rel.x - img.hot.0, rel.y - img.hot.1)).to_physical_precise_round(scale);
             let size = Size::from((img.size.0.round() as i32, img.size.1.round() as i32));
             if let Ok(e) = MemoryRenderBufferRenderElement::from_buffer(
                 renderer,
@@ -349,11 +353,7 @@ where
         None => {
             let CursorImageStatus::Surface(surface) = &az.cursor_status else { return };
             let hotspot = with_states(surface, |states| {
-                states
-                    .data_map
-                    .get::<CursorImageSurfaceData>()
-                    .map(|d| d.lock().unwrap().hotspot)
-                    .unwrap_or_default()
+                states.data_map.get::<CursorImageSurfaceData>().map(|d| d.lock().unwrap().hotspot).unwrap_or_default()
             });
             let loc: Point<i32, Physical> = (rel - hotspot.to_f64()).to_physical_precise_round(scale);
             out.extend(
@@ -389,20 +389,27 @@ where
     let k = (dst.2 / geo.size.w as f64).min(dst.3 / geo.size.h as f64);
     // Render the surface at its origin, rescale about the origin, then move
     // to the box (centred), cropped to it.
-    let surface_loc: Point<i32, Physical> = Point::<f64, Logical>::from((-geo.loc.x as f64, -geo.loc.y as f64)).to_physical_precise_round(scale);
+    let surface_loc: Point<i32, Physical> =
+        Point::<f64, Logical>::from((-geo.loc.x as f64, -geo.loc.y as f64)).to_physical_precise_round(scale);
     let elems: Vec<WaylandSurfaceRenderElement<R>> =
         render_elements_from_surface_tree(renderer, m.surface(), surface_loc, scale, alpha, Kind::Unspecified);
     let w = geo.size.w as f64 * k;
     let h = geo.size.h as f64 * k;
     let x = dst.0 + (dst.2 - w) / 2.0;
     let y = dst.1 + (dst.3 - h) / 2.0;
-    let target: Point<i32, Physical> = Point::<f64, Logical>::from((x - origin.0, y - origin.1)).to_physical_precise_round(scale);
-    let crop: Rectangle<i32, Physical> = Rectangle::new(target, Size::<f64, Logical>::from((w, h)).to_physical_precise_round(scale));
+    let target: Point<i32, Physical> =
+        Point::<f64, Logical>::from((x - origin.0, y - origin.1)).to_physical_precise_round(scale);
+    let crop: Rectangle<i32, Physical> =
+        Rectangle::new(target, Size::<f64, Logical>::from((w, h)).to_physical_precise_round(scale));
     elems
         .into_iter()
         .filter_map(|e| {
             let e = RescaleRenderElement::from_element(e, Point::from((0, 0)), k);
-            let e = RelocateRenderElement::from_element(e, target, smithay::backend::renderer::element::utils::Relocate::Relative);
+            let e = RelocateRenderElement::from_element(
+                e,
+                target,
+                smithay::backend::renderer::element::utils::Relocate::Relative,
+            );
             CropRenderElement::from_element(e, scale, crop).map(OutputElement::Thumb)
         })
         .collect()

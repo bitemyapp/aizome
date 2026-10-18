@@ -42,11 +42,16 @@ impl State {
 
         // Theme, focus colour and effects: tabs and frames redraw.
         self.az.set_palette(palette_for(&s));
-        if old.appearance.effects != s.appearance.effects || old.appearance.reduced_motion != s.appearance.reduced_motion {
+        if old.appearance.effects != s.appearance.effects
+            || old.appearance.reduced_motion != s.appearance.reduced_motion
+        {
             self.az.queue_redraw_all();
         }
-        if old.appearance.cursor_theme != s.appearance.cursor_theme || old.appearance.cursor_size != s.appearance.cursor_size {
-            self.az.cursor_theme = crate::cursor::CursorTheme::load(&s.appearance.cursor_theme, s.appearance.cursor_size);
+        if old.appearance.cursor_theme != s.appearance.cursor_theme
+            || old.appearance.cursor_size != s.appearance.cursor_size
+        {
+            self.az.cursor_theme =
+                crate::cursor::CursorTheme::load(&s.appearance.cursor_theme, s.appearance.cursor_size);
             self.az.queue_redraw_all();
         }
 
@@ -57,7 +62,8 @@ impl State {
         // Keyboard.
         let (ok, nk) = (&old.input.keyboard, &s.input.keyboard);
         if let Some(kb) = self.az.seat.get_keyboard() {
-            if ok.layouts != nk.layouts || ok.variant != nk.variant || ok.options != nk.options || ok.model != nk.model {
+            if ok.layouts != nk.layouts || ok.variant != nk.variant || ok.options != nk.options || ok.model != nk.model
+            {
                 let layouts = nk.layouts.join(",");
                 let cfg = XkbConfig {
                     rules: "",
@@ -77,12 +83,14 @@ impl State {
 
         // Pointer and touchpad (libinput devices on udev).
         if (old.input.pointer != s.input.pointer || old.input.touchpad != s.input.touchpad)
-            && let crate::backend::Backend::Udev(u) = &mut self.backend {
-                u.apply_input_settings(&s.input);
-            }
+            && let crate::backend::Backend::Udev(u) = &mut self.backend
+        {
+            u.apply_input_settings(&s.input);
+        }
 
         // Desks.
-        let wanted: Vec<(String, Option<String>)> = s.desks_or_default().into_iter().map(|d| (d.name, d.folder)).collect();
+        let wanted: Vec<(String, Option<String>)> =
+            s.desks_or_default().into_iter().map(|d| (d.name, d.folder)).collect();
         if old.desks_or_default() != s.desks_or_default() && self.az.wm.sync_desks(&wanted) {
             self.az.window_outputs_dirty = true;
             self.az.queue_redraw_all();

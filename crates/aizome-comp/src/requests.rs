@@ -49,7 +49,9 @@ impl State {
 
     fn request(&mut self, req: Request) -> Result<Response, String> {
         Ok(match req {
-            Request::Version => Response::Version { version: env!("CARGO_PKG_VERSION").into(), protocol: aizome_ipc::PROTOCOL_VERSION },
+            Request::Version => {
+                Response::Version { version: env!("CARGO_PKG_VERSION").into(), protocol: aizome_ipc::PROTOCOL_VERSION }
+            }
             Request::Outputs => Response::Outputs { outputs: crate::outputs::all_info(&self.az) },
             Request::Windows => {
                 let windows = self.az.wm.stacking().iter().filter_map(|id| self.az.window_info(*id)).collect();
@@ -60,7 +62,9 @@ impl State {
                 let current = self.az.wm.desk_index(self.az.wm.current_desk()).unwrap_or(1);
                 Response::Desks { desks, current }
             }
-            Request::FocusedWindow => Response::Window { window: self.az.wm.focused().and_then(|id| self.az.window_info(id)) },
+            Request::FocusedWindow => {
+                Response::Window { window: self.az.wm.focused().and_then(|id| self.az.window_info(id)) }
+            }
             Request::Focus { id } => {
                 let id = self.window_arg(Some(id))?;
                 self.activate_window(id);
@@ -215,7 +219,9 @@ impl State {
                 Response::Ok
             }
             Request::Spawn { argv, cwd, in_desk_folder } => {
-                let cwd = cwd.map(|c| aizome_config::expand_home(&c)).or_else(|| if in_desk_folder { self.desk_folder() } else { None });
+                let cwd = cwd
+                    .map(|c| aizome_config::expand_home(&c))
+                    .or_else(|| if in_desk_folder { self.desk_folder() } else { None });
                 let pid = self.spawn(&argv, cwd)?;
                 Response::Spawned { pid }
             }
@@ -226,7 +232,12 @@ impl State {
                 } else if let Some(a) = area {
                     What::Area(Rect::new(a.x, a.y, a.w, a.h))
                 } else if let Some(name) = output {
-                    What::Output(self.az.known_output(&name).filter(|o| !self.az.disabled_outputs.contains(o)).ok_or_else(|| format!("no output {name}"))?)
+                    What::Output(
+                        self.az
+                            .known_output(&name)
+                            .filter(|o| !self.az.disabled_outputs.contains(o))
+                            .ok_or_else(|| format!("no output {name}"))?,
+                    )
                 } else {
                     What::Screen
                 };
@@ -297,7 +308,13 @@ impl State {
                     aizome_config::RendererChoice::Gpu => "gpu",
                     aizome_config::RendererChoice::Software => "software",
                 };
-                let stats = Stats { renderer, backend: self.backend.name().into(), outputs, renderer_setting: renderer_setting.into(), renderer_after_restart };
+                let stats = Stats {
+                    renderer,
+                    backend: self.backend.name().into(),
+                    outputs,
+                    renderer_setting: renderer_setting.into(),
+                    renderer_after_restart,
+                };
                 if reset {
                     for o in self.az.out.values_mut() {
                         o.stats.reset();
@@ -374,9 +391,10 @@ fn button_code(name: &str) -> Result<u32, String> {
 /// evdev key codes by name.
 pub fn key_code(name: &str) -> Result<u32, String> {
     if let Ok(n) = name.parse::<u32>()
-        && name.len() > 1 {
-            return Ok(n);
-        }
+        && name.len() > 1
+    {
+        return Ok(n);
+    }
     let lower = name.to_lowercase();
     let code = match lower.as_str() {
         "esc" | "escape" => 1,

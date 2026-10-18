@@ -256,7 +256,12 @@ pub fn info(az: &Aizome, output: &Output) -> OutputInfo {
         model: props.model,
         serial,
         enabled,
-        current_mode: mode.map(|m| IpcMode { width: m.size.w, height: m.size.h, refresh: m.refresh, preferred: Some(m) == preferred }),
+        current_mode: mode.map(|m| IpcMode {
+            width: m.size.w,
+            height: m.size.h,
+            refresh: m.refresh,
+            preferred: Some(m) == preferred,
+        }),
         modes,
         scale: output.current_scale().fractional_scale(),
         transform: transform_to_ipc(output.current_transform()),

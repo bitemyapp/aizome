@@ -113,5 +113,15 @@ impl Handler for Client {
 fn main() {
     let mode = std::env::args().nth(1).unwrap_or_else(|| "toplevel".into());
     let app = App::new().app_id("org.aizome.test-client").quit_when_last_window_closes(mode != "lock");
-    app.run(Client { mode, flipped: false, windows: Vec::new(), flip: None, unlock: None, quit: None, tick: None, frame: 0 }).expect("run");
+    app.run(Client {
+        mode,
+        flipped: false,
+        windows: Vec::new(),
+        flip: None,
+        unlock: None,
+        quit: None,
+        tick: None,
+        frame: 0,
+    })
+    .expect("run");
 }

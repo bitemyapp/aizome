@@ -28,7 +28,12 @@ pub struct CursorTheme {
 
 impl CursorTheme {
     pub fn load(name: &str, size: u32) -> CursorTheme {
-        CursorTheme { name: name.to_string(), size: size.clamp(8, 256), theme: xcursor::CursorTheme::load(name), cache: HashMap::new() }
+        CursorTheme {
+            name: name.to_string(),
+            size: size.clamp(8, 256),
+            theme: xcursor::CursorTheme::load(name),
+            cache: HashMap::new(),
+        }
     }
 
     /// The image for a cursor name at an integer scale (the first frame of
@@ -126,7 +131,8 @@ fn arrow(size: u32, scale: u32) -> CursorImage {
             let (fx, fy) = (x as f64 + 0.5, y as f64 + 0.5);
             // A triangle from the tip down and to the right.
             let inside = fy < h && fx < fy * 0.62 + 0.5;
-            let edge = inside && (fx < 1.5 * scale as f64 || fx > fy * 0.62 - 1.0 * scale as f64 || fy > h - 1.5 * scale as f64);
+            let edge = inside
+                && (fx < 1.5 * scale as f64 || fx > fy * 0.62 - 1.0 * scale as f64 || fy > h - 1.5 * scale as f64);
             if inside {
                 let (r, g, b) = if edge { (0x0b, 0x0c, 0x12) } else { (0xc0, 0xca, 0xf5) };
                 let i = (y * px + x) * 4;
@@ -134,6 +140,13 @@ fn arrow(size: u32, scale: u32) -> CursorImage {
             }
         }
     }
-    let buffer = MemoryRenderBuffer::from_slice(&buf, Fourcc::Argb8888, (px as i32, px as i32), scale as i32, Transform::Normal, None);
+    let buffer = MemoryRenderBuffer::from_slice(
+        &buf,
+        Fourcc::Argb8888,
+        (px as i32, px as i32),
+        scale as i32,
+        Transform::Normal,
+        None,
+    );
     CursorImage { buffer, hot: (0.0, 0.0), size: (size as f64, size as f64) }
 }

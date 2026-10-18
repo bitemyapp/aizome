@@ -2,12 +2,13 @@
 //! request), dragging tabs into and out of groups, resizing by the frame,
 //! sliding a tab along the top edge (⇧-drag), and the close and zoom boxes.
 
-use smithay::input::pointer::{
-    AxisFrame, ButtonEvent, Focus as PointerFocusMode, GestureHoldBeginEvent, GestureHoldEndEvent, GesturePinchBeginEvent,
-    GesturePinchEndEvent, GesturePinchUpdateEvent, GestureSwipeBeginEvent, GestureSwipeEndEvent, GestureSwipeUpdateEvent,
-    GrabStartData, MotionEvent, PointerGrab, PointerInnerHandle, RelativeMotionEvent,
-};
 use smithay::input::Seat;
+use smithay::input::pointer::{
+    AxisFrame, ButtonEvent, Focus as PointerFocusMode, GestureHoldBeginEvent, GestureHoldEndEvent,
+    GesturePinchBeginEvent, GesturePinchEndEvent, GesturePinchUpdateEvent, GestureSwipeBeginEvent,
+    GestureSwipeEndEvent, GestureSwipeUpdateEvent, GrabStartData, MotionEvent, PointerGrab, PointerInnerHandle,
+    RelativeMotionEvent,
+};
 use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel;
 use smithay::utils::{Logical, Point, Serial};
 
@@ -22,28 +23,68 @@ const TEAR: f64 = 8.0;
 
 macro_rules! forward_gestures {
     () => {
-        fn gesture_swipe_begin(&mut self, data: &mut State, handle: &mut PointerInnerHandle<'_, State>, event: &GestureSwipeBeginEvent) {
+        fn gesture_swipe_begin(
+            &mut self,
+            data: &mut State,
+            handle: &mut PointerInnerHandle<'_, State>,
+            event: &GestureSwipeBeginEvent,
+        ) {
             handle.gesture_swipe_begin(data, event)
         }
-        fn gesture_swipe_update(&mut self, data: &mut State, handle: &mut PointerInnerHandle<'_, State>, event: &GestureSwipeUpdateEvent) {
+        fn gesture_swipe_update(
+            &mut self,
+            data: &mut State,
+            handle: &mut PointerInnerHandle<'_, State>,
+            event: &GestureSwipeUpdateEvent,
+        ) {
             handle.gesture_swipe_update(data, event)
         }
-        fn gesture_swipe_end(&mut self, data: &mut State, handle: &mut PointerInnerHandle<'_, State>, event: &GestureSwipeEndEvent) {
+        fn gesture_swipe_end(
+            &mut self,
+            data: &mut State,
+            handle: &mut PointerInnerHandle<'_, State>,
+            event: &GestureSwipeEndEvent,
+        ) {
             handle.gesture_swipe_end(data, event)
         }
-        fn gesture_pinch_begin(&mut self, data: &mut State, handle: &mut PointerInnerHandle<'_, State>, event: &GesturePinchBeginEvent) {
+        fn gesture_pinch_begin(
+            &mut self,
+            data: &mut State,
+            handle: &mut PointerInnerHandle<'_, State>,
+            event: &GesturePinchBeginEvent,
+        ) {
             handle.gesture_pinch_begin(data, event)
         }
-        fn gesture_pinch_update(&mut self, data: &mut State, handle: &mut PointerInnerHandle<'_, State>, event: &GesturePinchUpdateEvent) {
+        fn gesture_pinch_update(
+            &mut self,
+            data: &mut State,
+            handle: &mut PointerInnerHandle<'_, State>,
+            event: &GesturePinchUpdateEvent,
+        ) {
             handle.gesture_pinch_update(data, event)
         }
-        fn gesture_pinch_end(&mut self, data: &mut State, handle: &mut PointerInnerHandle<'_, State>, event: &GesturePinchEndEvent) {
+        fn gesture_pinch_end(
+            &mut self,
+            data: &mut State,
+            handle: &mut PointerInnerHandle<'_, State>,
+            event: &GesturePinchEndEvent,
+        ) {
             handle.gesture_pinch_end(data, event)
         }
-        fn gesture_hold_begin(&mut self, data: &mut State, handle: &mut PointerInnerHandle<'_, State>, event: &GestureHoldBeginEvent) {
+        fn gesture_hold_begin(
+            &mut self,
+            data: &mut State,
+            handle: &mut PointerInnerHandle<'_, State>,
+            event: &GestureHoldBeginEvent,
+        ) {
             handle.gesture_hold_begin(data, event)
         }
-        fn gesture_hold_end(&mut self, data: &mut State, handle: &mut PointerInnerHandle<'_, State>, event: &GestureHoldEndEvent) {
+        fn gesture_hold_end(
+            &mut self,
+            data: &mut State,
+            handle: &mut PointerInnerHandle<'_, State>,
+            event: &GestureHoldEndEvent,
+        ) {
             handle.gesture_hold_end(data, event)
         }
         fn relative_motion(
@@ -108,7 +149,13 @@ pub fn start_move(state: &mut State, win: WinId, pos: Point<f64, Logical>, seria
 }
 
 impl PointerGrab<State> for MoveGrab {
-    fn motion(&mut self, data: &mut State, handle: &mut PointerInnerHandle<'_, State>, _focus: Option<(Focus, Point<f64, Logical>)>, event: &MotionEvent) {
+    fn motion(
+        &mut self,
+        data: &mut State,
+        handle: &mut PointerInnerHandle<'_, State>,
+        _focus: Option<(Focus, Point<f64, Logical>)>,
+        event: &MotionEvent,
+    ) {
         handle.motion(data, None, event);
         let d = event.location - self.start.location;
         if !self.moved && d.x.abs() < 2.0 && d.y.abs() < 2.0 {
@@ -225,14 +272,19 @@ pub fn start_resize(state: &mut State, win: WinId, edges: Edges, pos: Point<f64,
     let start_rect = w.rect;
     for m in state.az.wm.group_members(win) {
         if let Some(mm) = state.az.windows.get_mut(&m) {
-            mm.resize_anchor = Some(ResizeAnchor { left: edges.contains(Edges::LEFT), top: edges.contains(Edges::TOP), start: start_rect });
+            mm.resize_anchor = Some(ResizeAnchor {
+                left: edges.contains(Edges::LEFT),
+                top: edges.contains(Edges::TOP),
+                start: start_rect,
+            });
             mm.toplevel().with_pending_state(|s| s.states.set(xdg_toplevel::State::Resizing));
         }
         if let Some(w) = state.az.wm.get_mut(m)
-            && w.placement != crate::wm::Placement::Free {
-                w.placement = crate::wm::Placement::Free;
-                w.restore = None;
-            }
+            && w.placement != crate::wm::Placement::Free
+        {
+            w.placement = crate::wm::Placement::Free;
+            w.restore = None;
+        }
     }
     let grab = ResizeGrab { start: start_data(pos, crate::input::BTN_LEFT), win, edges, start_rect };
     state.az.interactive.cursor_override = Some(edges.cursor_name());
@@ -253,7 +305,13 @@ fn size_limits(state: &State, win: WinId) -> ((i32, i32), (i32, i32)) {
 }
 
 impl PointerGrab<State> for ResizeGrab {
-    fn motion(&mut self, data: &mut State, handle: &mut PointerInnerHandle<'_, State>, _focus: Option<(Focus, Point<f64, Logical>)>, event: &MotionEvent) {
+    fn motion(
+        &mut self,
+        data: &mut State,
+        handle: &mut PointerInnerHandle<'_, State>,
+        _focus: Option<(Focus, Point<f64, Logical>)>,
+        event: &MotionEvent,
+    ) {
         handle.motion(data, None, event);
         let d = event.location - self.start.location;
         let (dx, dy) = (d.x.round() as i32, d.y.round() as i32);
@@ -309,11 +367,8 @@ pub struct TabSlideGrab {
 
 pub fn start_tab_slide(state: &mut State, win: WinId, pos: Point<f64, Logical>, serial: Serial, _time: u32) {
     // The offset the tab shows at (the layout clamps the stored one).
-    let start_offset = state
-        .az
-        .decor_layout(win)
-        .map(|l| l.tabs.first().map(|t| t.rect.x - l.frame.x).unwrap_or(0))
-        .unwrap_or(0);
+    let start_offset =
+        state.az.decor_layout(win).map(|l| l.tabs.first().map(|t| t.rect.x - l.frame.x).unwrap_or(0)).unwrap_or(0);
     let grab = TabSlideGrab { start: start_data(pos, crate::input::BTN_LEFT), win, start_offset };
     state.az.interactive.cursor_override = Some("ew-resize");
     let Some(pointer) = state.az.seat.get_pointer() else { return };
@@ -321,7 +376,13 @@ pub fn start_tab_slide(state: &mut State, win: WinId, pos: Point<f64, Logical>, 
 }
 
 impl PointerGrab<State> for TabSlideGrab {
-    fn motion(&mut self, data: &mut State, handle: &mut PointerInnerHandle<'_, State>, _focus: Option<(Focus, Point<f64, Logical>)>, event: &MotionEvent) {
+    fn motion(
+        &mut self,
+        data: &mut State,
+        handle: &mut PointerInnerHandle<'_, State>,
+        _focus: Option<(Focus, Point<f64, Logical>)>,
+        event: &MotionEvent,
+    ) {
         handle.motion(data, None, event);
         let dx = (event.location.x - self.start.location.x).round() as i32;
         let offset = (self.start_offset + dx).max(0);
@@ -371,7 +432,13 @@ pub fn start_box_click(state: &mut State, hit: Hit, pos: Point<f64, Logical>, se
 }
 
 impl PointerGrab<State> for BoxGrab {
-    fn motion(&mut self, data: &mut State, handle: &mut PointerInnerHandle<'_, State>, _focus: Option<(Focus, Point<f64, Logical>)>, event: &MotionEvent) {
+    fn motion(
+        &mut self,
+        data: &mut State,
+        handle: &mut PointerInnerHandle<'_, State>,
+        _focus: Option<(Focus, Point<f64, Logical>)>,
+        event: &MotionEvent,
+    ) {
         handle.motion(data, None, event);
     }
 

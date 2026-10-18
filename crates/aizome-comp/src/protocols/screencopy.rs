@@ -10,7 +10,9 @@ use std::sync::Mutex;
 use std::time::Duration;
 
 use smithay::output::Output;
-use smithay::reexports::wayland_protocols_wlr::screencopy::v1::server::{zwlr_screencopy_frame_v1, zwlr_screencopy_manager_v1};
+use smithay::reexports::wayland_protocols_wlr::screencopy::v1::server::{
+    zwlr_screencopy_frame_v1, zwlr_screencopy_manager_v1,
+};
 use smithay::reexports::wayland_server::protocol::{wl_buffer::WlBuffer, wl_shm};
 use smithay::reexports::wayland_server::{Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource};
 use smithay::wayland::shm::with_buffer_contents_mut;
@@ -61,7 +63,14 @@ impl ScreencopyManagerState {
 }
 
 impl GlobalDispatch<Manager, GlobalData> for State {
-    fn bind(_: &mut State, _: &DisplayHandle, _: &Client, resource: New<Manager>, _: &GlobalData, init: &mut DataInit<'_, State>) {
+    fn bind(
+        _: &mut State,
+        _: &DisplayHandle,
+        _: &Client,
+        resource: New<Manager>,
+        _: &GlobalData,
+        init: &mut DataInit<'_, State>,
+    ) {
         init.init(resource, ());
     }
 
@@ -89,7 +98,10 @@ impl Dispatch<Manager, ()> for State {
             _ => return,
         };
         let output = Output::from_resource(&output).filter(|o| state.az.outputs.contains(o));
-        let frame = init.init(frame, FrameData { inner: Mutex::new(FrameInner { output: None, region: (0, 0, 0, 0), cursor, used: true }) });
+        let frame = init.init(
+            frame,
+            FrameData { inner: Mutex::new(FrameInner { output: None, region: (0, 0, 0, 0), cursor, used: true }) },
+        );
         let Some(output) = output else {
             frame.failed();
             return;
@@ -115,7 +127,8 @@ impl Dispatch<Manager, ()> for State {
             frame.failed();
             return;
         }
-        *frame.data::<FrameData>().unwrap().inner.lock().unwrap() = FrameInner { output: Some(output), region, cursor, used: false };
+        *frame.data::<FrameData>().unwrap().inner.lock().unwrap() =
+            FrameInner { output: Some(output), region, cursor, used: false };
         frame.buffer(wl_shm::Format::Xrgb8888, w as u32, h as u32, (w * 4) as u32);
         if frame.version() >= 3 {
             frame.buffer_done();

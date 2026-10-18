@@ -291,7 +291,10 @@ pub fn send_frames(az: &Aizome, output: &Output) {
     let geo = az.output_geometry(output);
     for m in az.windows.values() {
         let visible = az.wm.is_shown(m.id)
-            && az.wm.get(m.id).is_some_and(|w| crate::state::from_rect(w.rect.grow(crate::decor::OUTSET)).overlaps(geo));
+            && az
+                .wm
+                .get(m.id)
+                .is_some_and(|w| crate::state::from_rect(w.rect.grow(crate::decor::OUTSET)).overlaps(geo));
         if visible {
             m.window.send_frame(output, time, throttle, |_, _| Some(output.clone()));
         } else {
@@ -304,7 +307,9 @@ pub fn send_frames(az: &Aizome, output: &Output) {
     }
     drop(map);
     if let Some(lock) = az.out.get(output).and_then(|o| o.lock_surface.as_ref()) {
-        smithay::desktop::utils::send_frames_surface_tree(lock.wl_surface(), output, time, throttle, |_, _| Some(output.clone()));
+        smithay::desktop::utils::send_frames_surface_tree(lock.wl_surface(), output, time, throttle, |_, _| {
+            Some(output.clone())
+        });
     }
     if let CursorImageStatus::Surface(s) = &az.cursor_status {
         smithay::desktop::utils::send_frames_surface_tree(s, output, time, throttle, |_, _| Some(output.clone()));
@@ -314,7 +319,9 @@ pub fn send_frames(az: &Aizome, output: &Output) {
     }
     for u in &az.unmapped {
         if let Some(t) = u.window.toplevel() {
-            smithay::desktop::utils::send_frames_surface_tree(t.wl_surface(), output, time, throttle, |_, _| Some(output.clone()));
+            smithay::desktop::utils::send_frames_surface_tree(t.wl_surface(), output, time, throttle, |_, _| {
+                Some(output.clone())
+            });
         }
     }
 }
@@ -323,20 +330,16 @@ pub fn take_feedback(az: &Aizome, output: &Output, states: &RenderElementStates)
     let mut feedback = OutputPresentationFeedback::new(output);
     for m in az.windows.values() {
         if az.wm.is_shown(m.id) {
-            m.window.take_presentation_feedback(
-                &mut feedback,
-                surface_primary_scanout_output,
-                |surface, _| surface_presentation_feedback_flags_from_states(surface, states),
-            );
+            m.window.take_presentation_feedback(&mut feedback, surface_primary_scanout_output, |surface, _| {
+                surface_presentation_feedback_flags_from_states(surface, states)
+            });
         }
     }
     let map = layer_map_for_output(output);
     for layer in map.layers() {
-        layer.take_presentation_feedback(
-            &mut feedback,
-            surface_primary_scanout_output,
-            |surface, _| surface_presentation_feedback_flags_from_states(surface, states),
-        );
+        layer.take_presentation_feedback(&mut feedback, surface_primary_scanout_output, |surface, _| {
+            surface_presentation_feedback_flags_from_states(surface, states)
+        });
     }
     feedback
 }
@@ -358,11 +361,13 @@ where
         (output_elements(az, renderer, output, Purpose::Capture { cursor }), clear_color(az))
     };
     let buffer_size: Size<i32, BufferCoords> = Size::from((size.w, size.h));
-    let mut target: T = renderer.create_buffer(Fourcc::Abgr8888, buffer_size).map_err(|e| format!("offscreen buffer: {e:?}"))?;
+    let mut target: T =
+        renderer.create_buffer(Fourcc::Abgr8888, buffer_size).map_err(|e| format!("offscreen buffer: {e:?}"))?;
     let mut tracker = OutputDamageTracker::new(size, scale, Transform::Normal);
     let rgba = {
         let mut fb = renderer.bind(&mut target).map_err(|e| format!("bind: {e:?}"))?;
-        let res = tracker.render_output(renderer, &mut fb, 0, &elements, clear).map_err(|e| format!("render: {e:?}"))?;
+        let res =
+            tracker.render_output(renderer, &mut fb, 0, &elements, clear).map_err(|e| format!("render: {e:?}"))?;
         let _ = res.sync.wait();
         let mapping = renderer
             .copy_framebuffer(&fb, Rectangle::from_size(buffer_size), Fourcc::Abgr8888)
@@ -376,14 +381,17 @@ where
 /// current (call before `on_commit_buffer_handler`, which takes them).
 pub fn fresh_shm_buffers(surface: &WlSurface) -> Vec<WlBuffer> {
     use smithay::backend::renderer::{BufferType, buffer_type};
-    use smithay::wayland::compositor::{BufferAssignment, SurfaceAttributes, TraversalAction, with_surface_tree_upward};
+    use smithay::wayland::compositor::{
+        BufferAssignment, SurfaceAttributes, TraversalAction, with_surface_tree_upward,
+    };
     let mut out = Vec::new();
     with_surface_tree_upward(
         surface,
         (),
         |_, _, _| TraversalAction::DoChildren(()),
         |_, states, _| {
-            if let Some(BufferAssignment::NewBuffer(b)) = states.cached_state.get::<SurfaceAttributes>().current().buffer.as_ref()
+            if let Some(BufferAssignment::NewBuffer(b)) =
+                states.cached_state.get::<SurfaceAttributes>().current().buffer.as_ref()
                 && matches!(buffer_type(b), Some(BufferType::Shm))
             {
                 out.push(b.clone());
@@ -416,7 +424,12 @@ where
     }
 }
 
-fn mirror_elements<R, T>(renderer: &mut R, az: &mut Aizome, mirror: &Output, source: &Output) -> Result<Vec<OutputElement<R>>, String>
+fn mirror_elements<R, T>(
+    renderer: &mut R,
+    az: &mut Aizome,
+    mirror: &Output,
+    source: &Output,
+) -> Result<Vec<OutputElement<R>>, String>
 where
     R: Renderer + ImportAll + ImportMem + Offscreen<T> + Bind<T> + ExportMem,
     R::TextureId: Clone + Send + 'static,
@@ -428,12 +441,30 @@ where
     let size = mirror.current_transform().transform_size(mode.size);
     let (fit, at) = letterbox((cap.width as i32, cap.height as i32), (size.w, size.h));
     let scale = mirror.current_scale().fractional_scale();
-    let buffer = MemoryRenderBuffer::from_slice(&cap.rgba, Fourcc::Abgr8888, (cap.width as i32, cap.height as i32), 1, Transform::Normal, None);
-    let logical = Size::<f64, smithay::utils::Logical>::from((fit.0 as f64 / scale, fit.1 as f64 / scale)).to_i32_round();
+    let buffer = MemoryRenderBuffer::from_slice(
+        &cap.rgba,
+        Fourcc::Abgr8888,
+        (cap.width as i32, cap.height as i32),
+        1,
+        Transform::Normal,
+        None,
+    );
+    let logical =
+        Size::<f64, smithay::utils::Logical>::from((fit.0 as f64 / scale, fit.1 as f64 / scale)).to_i32_round();
     // All of the picture (src), into the fitted size.
-    let src = smithay::utils::Rectangle::<f64, smithay::utils::Logical>::from_size((cap.width as f64, cap.height as f64).into());
-    let e = MemoryRenderBufferRenderElement::from_buffer(renderer, (at.0 as f64, at.1 as f64), &buffer, None, Some(src), Some(logical), Kind::Unspecified)
-        .map_err(|e| format!("{e:?}"))?;
+    let src = smithay::utils::Rectangle::<f64, smithay::utils::Logical>::from_size(
+        (cap.width as f64, cap.height as f64).into(),
+    );
+    let e = MemoryRenderBufferRenderElement::from_buffer(
+        renderer,
+        (at.0 as f64, at.1 as f64),
+        &buffer,
+        None,
+        Some(src),
+        Some(logical),
+        Kind::Unspecified,
+    )
+    .map_err(|e| format!("{e:?}"))?;
     Ok(vec![OutputElement::Memory(e)])
 }
 

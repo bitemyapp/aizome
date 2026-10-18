@@ -98,7 +98,11 @@ pub fn key(state: &mut State, syms: &[Keysym], mods: Mods, pressed: bool, utf8: 
             state.activate_window(id);
         }
         return Some(KeyDecision::Swallow);
-    } else if !filtering && !mods.ctrl && !mods.logo && (keysyms::KEY_1..=keysyms::KEY_9).contains(&syms.first().map(|s| s.raw()).unwrap_or(0)) {
+    } else if !filtering
+        && !mods.ctrl
+        && !mods.logo
+        && (keysyms::KEY_1..=keysyms::KEY_9).contains(&syms.first().map(|s| s.raw()).unwrap_or(0))
+    {
         let n = syms[0].raw() - keysyms::KEY_1 + 1;
         close(state);
         if let Some(d) = state.az.wm.desk_at(n) {
@@ -196,7 +200,8 @@ where
     pt.fill(g, p.sunk);
     pt.alpha = alpha;
 
-    let desks: Vec<(DeskId, String, Option<String>)> = az.wm.desks().iter().map(|d| (d.id, d.name.clone(), d.folder.clone())).collect();
+    let desks: Vec<(DeskId, String, Option<String>)> =
+        az.wm.desks().iter().map(|d| (d.id, d.name.clone(), d.folder.clone())).collect();
     let total: usize = desks.iter().map(|(d, ..)| az.wm.desk_window_count(*d)).sum();
 
     // Heading and filter.
@@ -209,13 +214,24 @@ where
     let field = Box2::new(g.right() - margin - fw, top, fw, 28.0);
     pt.fill(field, p.line2);
     pt.fill(field.inset(1.0), p.surface);
-    let (ftext, fcol) = if ov.filter.is_empty() { ("type to filter windows".to_string(), p.text3) } else { (ov.filter.clone(), p.text) };
+    let (ftext, fcol) = if ov.filter.is_empty() {
+        ("type to filter windows".to_string(), p.text3)
+    } else {
+        (ov.filter.clone(), p.text)
+    };
     let sw = pt.text_mid(az, renderer, "/", mono_bold(12.0, p.focus), field.x + 10.0, field.y, field.h, 20.0);
     pt.text_mid(az, renderer, &ftext, mono(12.0, fcol), field.x + 16.0 + sw, field.y, field.h, field.w - 30.0);
 
     // The grid: Desks plus the "+" card, at the output's aspect.
     let n = desks.len() + 1;
-    let cols = if n <= 2 { n } else if n <= 4 { 2 } else { 3 }.max(1);
+    let cols = if n <= 2 {
+        n
+    } else if n <= 4 {
+        2
+    } else {
+        3
+    }
+    .max(1);
     let rows = n.div_ceil(cols);
     let head_h = 26.0;
     let gap = 32.0;
@@ -245,8 +261,20 @@ where
             // "+": a new Desk.
             ov.cards.push((None, card));
             pt.dashed(card, 1.0, p.line2);
-            pt.text_center(az, renderer, "+", bold(22.0, p.text2), Box2::new(card.x, card.y + card.h / 2.0 - 30.0, card.w, 30.0));
-            pt.text_center(az, renderer, "new Desk", mono(11.0, p.text3), Box2::new(card.x, card.y + card.h / 2.0 + 2.0, card.w, 18.0));
+            pt.text_center(
+                az,
+                renderer,
+                "+",
+                bold(22.0, p.text2),
+                Box2::new(card.x, card.y + card.h / 2.0 - 30.0, card.w, 30.0),
+            );
+            pt.text_center(
+                az,
+                renderer,
+                "new Desk",
+                mono(11.0, p.text3),
+                Box2::new(card.x, card.y + card.h / 2.0 + 2.0, card.w, 18.0),
+            );
             continue;
         };
         ov.cards.push((Some(desk), card));
@@ -254,7 +282,8 @@ where
         let count = az.wm.desk_window_count(desk);
         let hy = card.y - head_h;
         let mut hx = card.x;
-        hx += pt.text_mid(az, renderer, &(i + 1).to_string(), mono_bold(12.0, p.focus), hx, hy, head_h - 6.0, 30.0) + 8.0;
+        hx +=
+            pt.text_mid(az, renderer, &(i + 1).to_string(), mono_bold(12.0, p.focus), hx, hy, head_h - 6.0, 30.0) + 8.0;
         // Desks named by their number show it once.
         if name != (i + 1).to_string() {
             hx += pt.text_mid(az, renderer, &name, bold(13.0, p.text), hx, hy, head_h - 6.0, card.w * 0.5) + 8.0;
@@ -280,14 +309,30 @@ where
         for id in az.wm.shown_stacking_on(desk) {
             let Some(w) = az.wm.get(id) else { continue };
             let r = w.rect;
-            let wb = Box2::new(card.x + (r.x as f64 - g.x) * k, card.y + (r.y as f64 - g.y) * k, r.w as f64 * k, r.h as f64 * k);
+            let wb = Box2::new(
+                card.x + (r.x as f64 - g.x) * k,
+                card.y + (r.y as f64 - g.y) * k,
+                r.w as f64 * k,
+                r.h as f64 * k,
+            );
             if wb.right() < card.x || wb.x > card.right() || wb.bottom() < card.y || wb.y > card.bottom() {
                 continue;
             }
             let dim = !matches(az, id, &ov.filter);
-            let a = if dragging == Some(id) { 0.35 } else if dim { 0.25 } else { 1.0 };
+            let a = if dragging == Some(id) {
+                0.35
+            } else if dim {
+                0.25
+            } else {
+                1.0
+            };
             // A small tab and frame.
-            let tab = Box2::new(wb.x - 1.0, wb.y - (TAB_H as f64 * k).max(3.0), (wb.w * 0.4).clamp(6.0, 140.0), (TAB_H as f64 * k).max(3.0));
+            let tab = Box2::new(
+                wb.x - 1.0,
+                wb.y - (TAB_H as f64 * k).max(3.0),
+                (wb.w * 0.4).clamp(6.0, 140.0),
+                (TAB_H as f64 * k).max(3.0),
+            );
             let focused = az.wm.focused() == Some(id) && desk == current;
             let tab_color = if focused { p.focus } else { p.tab_idle };
             pt.fill(tab, tab_color.with_alpha(a));
@@ -304,23 +349,32 @@ where
         }
         // A thumbnail dragged over this card.
         if let Some((_, _, (px, py))) = ov.drag
-            && card.contains(px, py) && dragging.and_then(|d| az.wm.get(d)).is_some_and(|w| w.desk != desk) {
-                pt.dashed(Box2::new(card.x - 3.0, card.y - 3.0, card.w + 6.0, card.h + 6.0), 2.0, p.focus);
-            }
+            && card.contains(px, py)
+            && dragging.and_then(|d| az.wm.get(d)).is_some_and(|w| w.desk != desk)
+        {
+            pt.dashed(Box2::new(card.x - 3.0, card.y - 3.0, card.w + 6.0, card.h + 6.0), 2.0, p.focus);
+        }
     }
     // The dragged thumbnail follows the pointer.
     if let Some((id, from, at)) = ov.drag
-        && let Some((_, _, b)) = ov.thumbs.iter().find(|(w, ..)| *w == id).cloned() {
-            let moved = Box2::new(b.x + at.0 - from.0, b.y + at.1 - from.1, b.w, b.h);
-            pt.fill(Box2::new(moved.x + 3.0, moved.y + 3.0, moved.w, moved.h), p.slab);
-            pt.fill(moved, p.bevel_lo);
-            pt.thumbnail(az, renderer, id, moved.inset(1.0), 1.0);
-        }
+        && let Some((_, _, b)) = ov.thumbs.iter().find(|(w, ..)| *w == id).cloned()
+    {
+        let moved = Box2::new(b.x + at.0 - from.0, b.y + at.1 - from.1, b.w, b.h);
+        pt.fill(Box2::new(moved.x + 3.0, moved.y + 3.0, moved.w, moved.h), p.slab);
+        pt.fill(moved, p.bevel_lo);
+        pt.thumbnail(az, renderer, id, moved.inset(1.0), 1.0);
+    }
 
     // Hints.
     let hy = g.bottom() - 40.0;
     let mut hx = g.x + margin;
-    for (k, what) in [("1…9", "go to a Desk"), ("click", "go"), ("drag", "move a window to another Desk"), ("type", "filter"), ("Esc", "close")] {
+    for (k, what) in [
+        ("1…9", "go to a Desk"),
+        ("click", "go"),
+        ("drag", "move a window to another Desk"),
+        ("type", "filter"),
+        ("Esc", "close"),
+    ] {
         hx += pt.text_mid(az, renderer, k, mono_bold(11.0, p.text2), hx, hy, 20.0, 80.0) + 6.0;
         hx += pt.text_mid(az, renderer, what, mono(11.0, p.text3), hx, hy, 20.0, 300.0) + 22.0;
     }

@@ -130,11 +130,14 @@ impl State {
         let id = self.az.ipc.next;
         self.az.ipc.next += 1;
         self.az.ipc.conns.insert(id, Conn { stream, inbuf: Vec::new(), outbuf: Vec::new(), subscribed: false });
-        let res = self.az.lh.insert_source(Generic::new(reader, Interest::READ, Mode::Level), move |_, stream, state: &mut State| {
-            // Safety: we only read through this handle.
-            let stream = unsafe { stream.get_mut() };
-            Ok(state.ipc_readable(id, stream))
-        });
+        let res = self.az.lh.insert_source(
+            Generic::new(reader, Interest::READ, Mode::Level),
+            move |_, stream, state: &mut State| {
+                // Safety: we only read through this handle.
+                let stream = unsafe { stream.get_mut() };
+                Ok(state.ipc_readable(id, stream))
+            },
+        );
         if let Err(e) = res {
             warn!("IPC connection: {e}");
             self.az.ipc.conns.remove(&id);
@@ -186,7 +189,8 @@ impl State {
                 }
                 Err(e) => Response::error(format!("bad request: {e}")),
             };
-            let mut out = serde_json::to_string(&response).unwrap_or_else(|e| format!("{{\"response\":\"error\",\"message\":\"{e}\"}}"));
+            let mut out = serde_json::to_string(&response)
+                .unwrap_or_else(|e| format!("{{\"response\":\"error\",\"message\":\"{e}\"}}"));
             out.push('\n');
             if let Some(c) = self.az.ipc.conns.get_mut(&id) {
                 c.outbuf.extend_from_slice(out.as_bytes());

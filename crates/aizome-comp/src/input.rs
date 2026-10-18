@@ -111,25 +111,40 @@ impl State {
                 let Some(pointer) = self.az.seat.get_pointer() else { return };
                 pointer.gesture_swipe_begin(
                     self,
-                    &smithay::input::pointer::GestureSwipeBeginEvent { serial: SERIAL_COUNTER.next_serial(), time: event.time_msec(), fingers: event.fingers() },
+                    &smithay::input::pointer::GestureSwipeBeginEvent {
+                        serial: SERIAL_COUNTER.next_serial(),
+                        time: event.time_msec(),
+                        fingers: event.fingers(),
+                    },
                 );
             }
             InputEvent::GestureSwipeUpdate { event } => {
                 let Some(pointer) = self.az.seat.get_pointer() else { return };
-                pointer.gesture_swipe_update(self, &smithay::input::pointer::GestureSwipeUpdateEvent { time: event.time_msec(), delta: event.delta() });
+                pointer.gesture_swipe_update(
+                    self,
+                    &smithay::input::pointer::GestureSwipeUpdateEvent { time: event.time_msec(), delta: event.delta() },
+                );
             }
             InputEvent::GestureSwipeEnd { event } => {
                 let Some(pointer) = self.az.seat.get_pointer() else { return };
                 pointer.gesture_swipe_end(
                     self,
-                    &smithay::input::pointer::GestureSwipeEndEvent { serial: SERIAL_COUNTER.next_serial(), time: event.time_msec(), cancelled: event.cancelled() },
+                    &smithay::input::pointer::GestureSwipeEndEvent {
+                        serial: SERIAL_COUNTER.next_serial(),
+                        time: event.time_msec(),
+                        cancelled: event.cancelled(),
+                    },
                 );
             }
             InputEvent::GesturePinchBegin { event } => {
                 let Some(pointer) = self.az.seat.get_pointer() else { return };
                 pointer.gesture_pinch_begin(
                     self,
-                    &smithay::input::pointer::GesturePinchBeginEvent { serial: SERIAL_COUNTER.next_serial(), time: event.time_msec(), fingers: event.fingers() },
+                    &smithay::input::pointer::GesturePinchBeginEvent {
+                        serial: SERIAL_COUNTER.next_serial(),
+                        time: event.time_msec(),
+                        fingers: event.fingers(),
+                    },
                 );
             }
             InputEvent::GesturePinchUpdate { event } => {
@@ -148,27 +163,42 @@ impl State {
                 let Some(pointer) = self.az.seat.get_pointer() else { return };
                 pointer.gesture_pinch_end(
                     self,
-                    &smithay::input::pointer::GesturePinchEndEvent { serial: SERIAL_COUNTER.next_serial(), time: event.time_msec(), cancelled: event.cancelled() },
+                    &smithay::input::pointer::GesturePinchEndEvent {
+                        serial: SERIAL_COUNTER.next_serial(),
+                        time: event.time_msec(),
+                        cancelled: event.cancelled(),
+                    },
                 );
             }
             InputEvent::GestureHoldBegin { event } => {
                 let Some(pointer) = self.az.seat.get_pointer() else { return };
                 pointer.gesture_hold_begin(
                     self,
-                    &smithay::input::pointer::GestureHoldBeginEvent { serial: SERIAL_COUNTER.next_serial(), time: event.time_msec(), fingers: event.fingers() },
+                    &smithay::input::pointer::GestureHoldBeginEvent {
+                        serial: SERIAL_COUNTER.next_serial(),
+                        time: event.time_msec(),
+                        fingers: event.fingers(),
+                    },
                 );
             }
             InputEvent::GestureHoldEnd { event } => {
                 let Some(pointer) = self.az.seat.get_pointer() else { return };
                 pointer.gesture_hold_end(
                     self,
-                    &smithay::input::pointer::GestureHoldEndEvent { serial: SERIAL_COUNTER.next_serial(), time: event.time_msec(), cancelled: event.cancelled() },
+                    &smithay::input::pointer::GestureHoldEndEvent {
+                        serial: SERIAL_COUNTER.next_serial(),
+                        time: event.time_msec(),
+                        cancelled: event.cancelled(),
+                    },
                 );
             }
             InputEvent::TouchDown { event } => self.touch_down::<B>(&event),
             InputEvent::TouchUp { event } => {
                 let Some(touch) = self.az.seat.get_touch() else { return };
-                touch.up(self, &UpEvent { slot: event.slot(), serial: SERIAL_COUNTER.next_serial(), time: event.time_msec() });
+                touch.up(
+                    self,
+                    &UpEvent { slot: event.slot(), serial: SERIAL_COUNTER.next_serial(), time: event.time_msec() },
+                );
             }
             InputEvent::TouchMotion { event } => {
                 let Some(touch) = self.az.seat.get_touch() else { return };
@@ -204,14 +234,20 @@ impl State {
         let geo = self.az.output_geometry(&output);
         let pos = event.position_transformed(geo.size) + geo.loc.to_f64();
         if let Under::Surface(_, _, Owner::Window(id)) = self.under(pos)
-            && self.az.wm.focused() != Some(id) {
-                self.focus_window(Some(id));
-            }
+            && self.az.wm.focused() != Some(id)
+        {
+            self.focus_window(Some(id));
+        }
         let under = self.surface_focus_at(pos);
         touch.down(
             self,
             under,
-            &DownEvent { slot: event.slot(), location: pos, serial: SERIAL_COUNTER.next_serial(), time: event.time_msec() },
+            &DownEvent {
+                slot: event.slot(),
+                location: pos,
+                serial: SERIAL_COUNTER.next_serial(),
+                time: event.time_msec(),
+            },
         );
     }
 
@@ -228,8 +264,12 @@ impl State {
             _ => self.az.settings.input.pointer.scroll_factor(),
         };
         let sign = if natural { -factor } else { factor };
-        let h = event.amount(Axis::Horizontal).unwrap_or_else(|| event.amount_v120(Axis::Horizontal).unwrap_or(0.0) * 15.0 / 120.0);
-        let v = event.amount(Axis::Vertical).unwrap_or_else(|| event.amount_v120(Axis::Vertical).unwrap_or(0.0) * 15.0 / 120.0);
+        let h = event
+            .amount(Axis::Horizontal)
+            .unwrap_or_else(|| event.amount_v120(Axis::Horizontal).unwrap_or(0.0) * 15.0 / 120.0);
+        let v = event
+            .amount(Axis::Vertical)
+            .unwrap_or_else(|| event.amount_v120(Axis::Vertical).unwrap_or(0.0) * 15.0 / 120.0);
         let mut frame = AxisFrame::new(event.time_msec()).source(source);
         if h != 0.0 {
             frame = frame.value(Axis::Horizontal, h * sign);
@@ -278,7 +318,13 @@ impl State {
 
     // ---- pointer -------------------------------------------------------
 
-    pub fn pointer_motion_relative(&mut self, delta: Point<f64, Logical>, delta_unaccel: Point<f64, Logical>, utime: u64, time: u32) {
+    pub fn pointer_motion_relative(
+        &mut self,
+        delta: Point<f64, Logical>,
+        delta_unaccel: Point<f64, Logical>,
+        utime: u64,
+        time: u32,
+    ) {
         let Some(pointer) = self.az.seat.get_pointer() else { return };
         let pos = pointer.current_location();
         // A locked pointer stays put; relative motion still goes out.
@@ -288,17 +334,14 @@ impl State {
             with_pointer_constraint(&f.0, &pointer, |c| {
                 if let Some(c) = c
                     && c.is_active()
-                        && let PointerConstraint::Locked(_) = &*c {
-                            locked = true;
-                        }
+                    && let PointerConstraint::Locked(_) = &*c
+                {
+                    locked = true;
+                }
             });
         }
         let surface_loc = pointer.current_focus().and_then(|f| self.az.surface_origin(&f.0));
-        pointer.relative_motion(
-            self,
-            focus.zip(surface_loc),
-            &RelativeMotionEvent { delta, delta_unaccel, utime },
-        );
+        pointer.relative_motion(self, focus.zip(surface_loc), &RelativeMotionEvent { delta, delta_unaccel, utime });
         if locked {
             pointer.frame(self);
             return;
@@ -331,25 +374,28 @@ impl State {
             _ => None,
         };
         // Focus follows the mouse, when asked.
-        if self.az.settings.windows.focus_follows == aizome_config::FocusFollows::Mouse && !pointer.is_grabbed()
+        if self.az.settings.windows.focus_follows == aizome_config::FocusFollows::Mouse
+            && !pointer.is_grabbed()
             && let Some((f, _)) = &focus
-                && let Some(id) = self.az.window_for_root(&f.0)
-                    && self.az.wm.focused() != Some(id) {
-                        let r = self.az.wm.get(id).map(|w| w.rect);
-                        self.focus_window_no_raise(id);
-                        if let Some(r) = r {
-                            self.az.queue_redraw_rect(r);
-                        }
-                    }
+            && let Some(id) = self.az.window_for_root(&f.0)
+            && self.az.wm.focused() != Some(id)
+        {
+            let r = self.az.wm.get(id).map(|w| w.rect);
+            self.focus_window_no_raise(id);
+            if let Some(r) = r {
+                self.az.queue_redraw_rect(r);
+            }
+        }
         pointer.motion(self, focus, &MotionEvent { location: pos, serial: SERIAL_COUNTER.next_serial(), time });
         pointer.frame(self);
         // Activate a pointer constraint the client asked for.
         if let Some(f) = pointer.current_focus() {
             with_pointer_constraint(&f.0, &pointer, |c| {
                 if let Some(c) = c
-                    && !c.is_active() {
-                        c.activate();
-                    }
+                    && !c.is_active()
+                {
+                    c.activate();
+                }
             });
         }
         for p in [old, pos] {
@@ -435,20 +481,24 @@ impl State {
     /// A press outside the client whose menus are open (a grabbing popup)
     /// closes them and then does what a press there does (focusing a
     /// window, say), rather than only closing them.
-    fn press_outside_menus(&mut self, pointer: &smithay::input::pointer::PointerHandle<State>, serial: Serial, time: u32) {
+    fn press_outside_menus(
+        &mut self,
+        pointer: &smithay::input::pointer::PointerHandle<State>,
+        serial: Serial,
+        time: u32,
+    ) {
         let Some(root) = self.az.popup_grab.as_ref().filter(|g| g.live()).map(|g| g.root.clone()) else { return };
         let pos = pointer.current_location();
         let same_client = match self.under(pos) {
-            Under::Surface(f, _, _) => smithay::reexports::wayland_server::Resource::id(&f.0).same_client_as(&smithay::reexports::wayland_server::Resource::id(&root)),
+            Under::Surface(f, _, _) => smithay::reexports::wayland_server::Resource::id(&f.0)
+                .same_client_as(&smithay::reexports::wayland_server::Resource::id(&root)),
             _ => false,
         };
         if same_client {
             return;
         }
         self.dismiss_popup_grab();
-        if pointer.is_grabbed()
-            && self.az.popup_grab.as_ref().is_some_and(|g| g.owns_serial(|s| pointer.has_grab(s)))
-        {
+        if pointer.is_grabbed() && self.az.popup_grab.as_ref().is_some_and(|g| g.owns_serial(|s| pointer.has_grab(s))) {
             pointer.unset_grab(self, serial, time);
         }
     }
@@ -471,7 +521,8 @@ impl State {
             match button {
                 BTN_LEFT => crate::grabs::start_move(self, id, pos, serial, time, false),
                 BTN_RIGHT => {
-                    let edges = self.az.wm.get(id).map(|w| nearest_corner(w.rect, pos)).unwrap_or(Edges::BOTTOM | Edges::RIGHT);
+                    let edges =
+                        self.az.wm.get(id).map(|w| nearest_corner(w.rect, pos)).unwrap_or(Edges::BOTTOM | Edges::RIGHT);
                     crate::grabs::start_resize(self, id, edges, pos, serial, time);
                 }
                 _ => return false,
@@ -480,7 +531,11 @@ impl State {
         }
         if !mods.ctrl && !mods.alt && !mods.shift && button == BTN_RIGHT {
             let output = self.az.output_at(pos).map(|o| o.name());
-            self.az.ipc.emit(&aizome_ipc::Event::Binding { action: "app-menu".into(), pointer: Some((pos.x, pos.y)), output });
+            self.az.ipc.emit(&aizome_ipc::Event::Binding {
+                action: "app-menu".into(),
+                pointer: Some((pos.x, pos.y)),
+                output,
+            });
             return true;
         }
         false
@@ -498,7 +553,10 @@ impl State {
                 // as `[windows] tab_double_click` says.
                 let now = Instant::now();
                 let double = self.az.interactive.last_tab_click.is_some_and(|(t, last, p)| {
-                    last == w && now.duration_since(t) < Duration::from_millis(400) && (p.0 - pos.x).abs() < 4.0 && (p.1 - pos.y).abs() < 4.0
+                    last == w
+                        && now.duration_since(t) < Duration::from_millis(400)
+                        && (p.0 - pos.x).abs() < 4.0
+                        && (p.1 - pos.y).abs() < 4.0
                 });
                 if double {
                     self.az.interactive.last_tab_click = None;
@@ -544,9 +602,15 @@ impl State {
         let out_loc = self.az.output_geometry(&output).loc.to_f64();
         if self.az.lock.is_locked() {
             if let Some(lock) = self.az.out.get(&output).and_then(|o| o.lock_surface.clone())
-                && let Some((s, loc)) = smithay::desktop::utils::under_from_surface_tree(lock.wl_surface(), pos - out_loc, (0, 0), WindowSurfaceType::ALL) {
-                    return Under::Surface(Focus(s), loc.to_f64() + out_loc, Owner::Lock);
-                }
+                && let Some((s, loc)) = smithay::desktop::utils::under_from_surface_tree(
+                    lock.wl_surface(),
+                    pos - out_loc,
+                    (0, 0),
+                    WindowSurfaceType::ALL,
+                )
+            {
+                return Under::Surface(Focus(s), loc.to_f64() + out_loc, Owner::Lock);
+            }
             return Under::Nothing;
         }
         // Popups (menus) are above everything.
@@ -557,11 +621,15 @@ impl State {
             return u;
         }
         let shown = self.az.wm.shown_stacking();
-        let top_fullscreen = shown.last().copied().filter(|id| self.az.wm.get(*id).is_some_and(|w| w.fullscreen()) && self.az.wm.focused() == Some(*id));
+        let top_fullscreen = shown
+            .last()
+            .copied()
+            .filter(|id| self.az.wm.get(*id).is_some_and(|w| w.fullscreen()) && self.az.wm.focused() == Some(*id));
         if let Some(id) = top_fullscreen
-            && let Some(u) = self.window_under(id, pos) {
-                return u;
-            }
+            && let Some(u) = self.window_under(id, pos)
+        {
+            return u;
+        }
         if let Some(u) = layer_under(&output, &[Layer::Top], pos, out_loc) {
             return u;
         }
@@ -586,11 +654,14 @@ impl State {
         let origin = Point::<f64, Logical>::from(((rect.x - geo.loc.x) as f64, (rect.y - geo.loc.y) as f64));
         if !fullscreen
             && let Some(layout) = self.az.decor_layout(id)
-                && let Some(hit) = crate::decor::hit(&layout, pos.x, pos.y) {
-                    return Some(Under::Decor(id, hit));
-                }
+            && let Some(hit) = crate::decor::hit(&layout, pos.x, pos.y)
+        {
+            return Some(Under::Decor(id, hit));
+        }
         let m = self.az.windows.get(&id)?;
-        if let Some((s, loc)) = m.window.surface_under(pos - origin, WindowSurfaceType::TOPLEVEL | WindowSurfaceType::SUBSURFACE) {
+        if let Some((s, loc)) =
+            m.window.surface_under(pos - origin, WindowSurfaceType::TOPLEVEL | WindowSurfaceType::SUBSURFACE)
+        {
             return Some(Under::Surface(Focus(s), loc.to_f64() + origin, Owner::Window(id)));
         }
         None
@@ -626,14 +697,17 @@ impl State {
                 let token = self
                     .az
                     .lh
-                    .insert_source(Timer::from_duration(Duration::from_millis(ms as u64)), move |_, _, state: &mut State| {
-                        if let Some(k) = state.az.access.slow.get_mut(&code) {
-                            k.0 = None;
-                            let time = state.az.start.elapsed().as_millis() as u32;
-                            state.sticky_key(code, true, time);
-                        }
-                        TimeoutAction::Drop
-                    })
+                    .insert_source(
+                        Timer::from_duration(Duration::from_millis(ms as u64)),
+                        move |_, _, state: &mut State| {
+                            if let Some(k) = state.az.access.slow.get_mut(&code) {
+                                k.0 = None;
+                                let time = state.az.start.elapsed().as_millis() as u32;
+                                state.sticky_key(code, true, time);
+                            }
+                            TimeoutAction::Drop
+                        },
+                    )
                     .ok();
                 self.az.access.slow.insert(code, (token,));
                 return;
@@ -688,9 +762,7 @@ impl State {
             self.az.access.applied.push((code, mods));
             return;
         }
-        if !pressed
-            && let Some(i) = self.az.access.applied.iter().position(|(k, _)| *k == code)
-        {
+        if !pressed && let Some(i) = self.az.access.applied.iter().position(|(k, _)| *k == code) {
             let (_, mods) = self.az.access.applied.remove(i);
             self.key_through(code, false, time);
             for m in mods.iter().rev() {
@@ -722,12 +794,17 @@ impl State {
         }
     }
 
-    fn decide_key(&mut self, keycode: Keycode, pressed: bool, mods: &ModifiersState, handle: &KeysymHandle<'_>) -> KeyDecision {
+    fn decide_key(
+        &mut self,
+        keycode: Keycode,
+        pressed: bool,
+        mods: &ModifiersState,
+        handle: &KeysymHandle<'_>,
+    ) -> KeyDecision {
         // A swallowed press swallows its release.
-        if !pressed
-            && self.az.suppressed_keys.remove(&keycode) {
-                return KeyDecision::Swallow;
-            }
+        if !pressed && self.az.suppressed_keys.remove(&keycode) {
+            return KeyDecision::Swallow;
+        }
         let mut syms: Vec<Keysym> = Vec::new();
         if let Some(s) = handle.raw_latin_sym_or_raw_current_sym() {
             syms.push(s);
@@ -739,23 +816,25 @@ impl State {
         // Overlays (switcher, overview, marking menu, area picker) take
         // keys first, releases of ❖ included.
         if let Some(d) = crate::overlays::key(self, &syms, m, pressed, handle.modified_sym().key_char()) {
-            if pressed
-                && let KeyDecision::Swallow | KeyDecision::Act(_) = d {
-                    self.az.suppressed_keys.insert(keycode);
-                }
+            if pressed && let KeyDecision::Swallow | KeyDecision::Act(_) = d {
+                self.az.suppressed_keys.insert(keycode);
+            }
             return d;
         }
         if !pressed {
             if self.az.translated_keys.remove(&keycode)
-                && let Some(fake) = self.translation(mods) {
-                    return KeyDecision::Translate(fake);
-                }
+                && let Some(fake) = self.translation(mods)
+            {
+                return KeyDecision::Translate(fake);
+            }
             return KeyDecision::Forward;
         }
         // VT switching works even when locked.
         let vt = syms.iter().find_map(|s| {
             let r = s.raw();
-            (keysyms::KEY_XF86Switch_VT_1..=keysyms::KEY_XF86Switch_VT_12).contains(&r).then(|| (r - keysyms::KEY_XF86Switch_VT_1 + 1) as i32)
+            (keysyms::KEY_XF86Switch_VT_1..=keysyms::KEY_XF86Switch_VT_12)
+                .contains(&r)
+                .then(|| (r - keysyms::KEY_XF86Switch_VT_1 + 1) as i32)
         });
         if let Some(vt) = vt {
             self.az.suppressed_keys.insert(keycode);
@@ -775,7 +854,13 @@ impl State {
             // A bare F10 opens the menu bar only over Aizome's apps and the
             // desktop; other apps (mc, htop) keep it.
             let f10 = m == Mods::default() && syms.iter().any(|s| s.raw() == keysyms::KEY_F10);
-            let other_app = self.az.wm.focused().filter(|w| self.az.wm.is_shown(*w)).and_then(|w| self.az.wm.get(w)).is_some_and(|w| !crate::cmdkey::is_kit_app(&w.app_id));
+            let other_app = self
+                .az
+                .wm
+                .focused()
+                .filter(|w| self.az.wm.is_shown(*w))
+                .and_then(|w| self.az.wm.get(w))
+                .is_some_and(|w| !crate::cmdkey::is_kit_app(&w.app_id));
             let keep_for_app = f10 && other_app && matches!(&action, Action::Shell(a) if a == "menu-bar");
             // Inhibitors (VMs, remote desktops) take everything but VT keys.
             if !inhibited && !keep_for_app {
@@ -783,11 +868,10 @@ impl State {
                 return KeyDecision::Act(action);
             }
         }
-        if !inhibited
-            && let Some(fake) = self.translation(mods) {
-                self.az.translated_keys.insert(keycode);
-                return KeyDecision::Translate(fake);
-            }
+        if !inhibited && let Some(fake) = self.translation(mods) {
+            self.az.translated_keys.insert(keycode);
+            return KeyDecision::Translate(fake);
+        }
         KeyDecision::Forward
     }
 
@@ -799,7 +883,8 @@ impl State {
         }
         let id = self.az.wm.focused()?;
         let w = self.az.wm.get(id)?;
-        let focused_is_window = self.az.seat.get_keyboard()?.current_focus().is_some_and(|f| self.az.window_for_root(&f.0) == Some(id));
+        let focused_is_window =
+            self.az.seat.get_keyboard()?.current_focus().is_some_and(|f| self.az.window_for_root(&f.0) == Some(id));
         if !focused_is_window || crate::cmdkey::is_kit_app(&w.app_id) {
             return None;
         }
@@ -850,7 +935,9 @@ impl State {
                         .stacking()
                         .iter()
                         .copied()
-                        .filter(|w| self.az.wm.get(*w).is_some_and(|w| w.app_id == app) && self.az.wm.on_current_desk(*w))
+                        .filter(|w| {
+                            self.az.wm.get(*w).is_some_and(|w| w.app_id == app) && self.az.wm.on_current_desk(*w)
+                        })
                         .collect();
                     same.sort();
                     if let Some(i) = same.iter().position(|w| *w == id) {
@@ -922,9 +1009,10 @@ impl State {
             Action::ScreenshotArea => crate::overlays::start_area_pick(self),
             Action::ScreenshotWindow => {
                 if let Some(id) = focused
-                    && let Err(e) = crate::screenshot::take(self, crate::screenshot::What::Window(id), None, true) {
-                        tracing::warn!("screenshot: {e}");
-                    }
+                    && let Err(e) = crate::screenshot::take(self, crate::screenshot::What::Window(id), None, true)
+                {
+                    tracing::warn!("screenshot: {e}");
+                }
             }
             Action::ChangeVt(vt) => self.backend.change_vt(vt),
             Action::Quit => self.quit(),
@@ -945,7 +1033,10 @@ impl State {
 
 impl crate::state::Aizome {
     /// The window a surface (or one of its subsurfaces or popups) belongs to.
-    pub fn window_for_root(&self, surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface) -> Option<WinId> {
+    pub fn window_for_root(
+        &self,
+        surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
+    ) -> Option<WinId> {
         let mut root = surface.clone();
         while let Some(p) = smithay::wayland::compositor::get_parent(&root) {
             root = p;
@@ -962,13 +1053,19 @@ impl crate::state::Aizome {
 
 /// The layer surface (or a subsurface of one) under a point; their popups
 /// are in the popup layer.
-fn layer_under(output: &Output, layers: &[Layer], pos: Point<f64, Logical>, out_loc: Point<f64, Logical>) -> Option<Under> {
+fn layer_under(
+    output: &Output,
+    layers: &[Layer],
+    pos: Point<f64, Logical>,
+    out_loc: Point<f64, Logical>,
+) -> Option<Under> {
     let map = layer_map_for_output(output);
     for layer in layers {
         for l in map.layers_on(*layer).rev() {
             let Some(geo) = map.layer_geometry(l) else { continue };
             let local = pos - out_loc - geo.loc.to_f64();
-            if let Some((s, loc)) = l.surface_under(local, WindowSurfaceType::TOPLEVEL | WindowSurfaceType::SUBSURFACE) {
+            if let Some((s, loc)) = l.surface_under(local, WindowSurfaceType::TOPLEVEL | WindowSurfaceType::SUBSURFACE)
+            {
                 return Some(Under::Surface(Focus(s), loc.to_f64() + geo.loc.to_f64() + out_loc, Owner::Layer));
             }
         }

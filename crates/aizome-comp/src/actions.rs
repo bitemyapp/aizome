@@ -2,8 +2,8 @@
 //! it hear about it (configures, focus, redraws, IPC events).
 
 use aizome_ipc::{DeskInfo, Event, Rect as IpcRect, WindowInfo};
-use smithay::desktop::{LayerSurface, PopupUngrabStrategy, WindowSurfaceType, layer_map_for_output};
 use smithay::backend::renderer::utils::with_renderer_surface_state;
+use smithay::desktop::{LayerSurface, PopupUngrabStrategy, WindowSurfaceType, layer_map_for_output};
 use smithay::reexports::wayland_protocols::xdg::decoration::zv1::server::zxdg_toplevel_decoration_v1::Mode as DecorationMode;
 use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel;
 use smithay::reexports::wayland_server::Resource;
@@ -107,7 +107,8 @@ impl State {
         let _ = g.grab.ungrab(PopupUngrabStrategy::All);
         tracing::debug!(target: "aizome::focus", "popup grab dismissed");
         let Some(keyboard) = self.az.seat.get_keyboard() else { return };
-        if keyboard.is_grabbed() && self.az.popup_grab.as_ref().is_some_and(|g| g.owns_serial(|s| keyboard.has_grab(s))) {
+        if keyboard.is_grabbed() && self.az.popup_grab.as_ref().is_some_and(|g| g.owns_serial(|s| keyboard.has_grab(s)))
+        {
             keyboard.unset_grab(self);
         }
     }
@@ -177,7 +178,13 @@ impl State {
         self.az.wm.show_app(app_id);
         self.after_app_change(app_id);
         // Focus the app's most recent window.
-        let next = self.az.wm.mru().iter().copied().find(|w| self.az.wm.get(*w).is_some_and(|w| w.app_id == app_id) && self.az.wm.is_shown(*w));
+        let next = self
+            .az
+            .wm
+            .mru()
+            .iter()
+            .copied()
+            .find(|w| self.az.wm.get(*w).is_some_and(|w| w.app_id == app_id) && self.az.wm.is_shown(*w));
         if let Some(w) = next {
             self.focus_window(Some(w));
         }
@@ -251,10 +258,11 @@ impl State {
         }
         for m in self.az.wm.set_rect(id, rect) {
             if let Some(w) = self.az.wm.get_mut(m)
-                && w.placement != Placement::Free {
-                    w.placement = Placement::Free;
-                    w.restore = None;
-                }
+                && w.placement != Placement::Free
+            {
+                w.placement = Placement::Free;
+                w.restore = None;
+            }
             self.az.window_changed(m);
         }
         self.az.queue_redraw_rect(old);
@@ -353,7 +361,8 @@ impl State {
 
     /// Stacks `b` into `a`'s group, sliding its tab into place.
     pub fn stack(&mut self, a: WinId, b: WinId) -> bool {
-        let before: Vec<(WinId, Rect)> = self.az.wm.group_members(b).iter().filter_map(|m| self.az.decor_tab_rect(*m).map(|r| (*m, r))).collect();
+        let before: Vec<(WinId, Rect)> =
+            self.az.wm.group_members(b).iter().filter_map(|m| self.az.decor_tab_rect(*m).map(|r| (*m, r))).collect();
         let old_b = self.az.wm.get(b).map(|w| w.rect);
         let Some(changed) = self.az.wm.stack(a, b) else { return false };
         let rect = self.az.wm.get(a).map(|w| w.rect).unwrap_or_default();

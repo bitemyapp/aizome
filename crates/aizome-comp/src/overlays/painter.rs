@@ -105,10 +105,20 @@ where
 
     /// Text with its top left at (x, y), shortened to `max_w`; returns its
     /// width.
-    pub fn text(&mut self, az: &mut Aizome, renderer: &mut R, text: &str, style: Style, x: f64, y: f64, max_w: f64) -> f64 {
+    pub fn text(
+        &mut self,
+        az: &mut Aizome,
+        renderer: &mut R,
+        text: &str,
+        style: Style,
+        x: f64,
+        y: f64,
+        max_w: f64,
+    ) -> f64 {
         let fitted = az.labels.fit(text, style.face, style.size(), max_w);
         let Some(label) = az.labels.get(&fitted, style, self.scale, max_w + 1.0) else { return 0.0 };
-        let loc: Point<i32, Physical> = Point::<f64, Logical>::from((x - self.origin.0, y - self.origin.1)).to_physical_precise_round(self.scale);
+        let loc: Point<i32, Physical> =
+            Point::<f64, Logical>::from((x - self.origin.0, y - self.origin.1)).to_physical_precise_round(self.scale);
         if let Ok(e) = MemoryRenderBufferRenderElement::from_buffer(
             renderer,
             loc.to_f64(),
@@ -125,7 +135,17 @@ where
 
     /// Text centred vertically in a box of height `h` from `y`.
     #[allow(clippy::too_many_arguments)]
-    pub fn text_mid(&mut self, az: &mut Aizome, renderer: &mut R, text: &str, style: Style, x: f64, y: f64, h: f64, max_w: f64) -> f64 {
+    pub fn text_mid(
+        &mut self,
+        az: &mut Aizome,
+        renderer: &mut R,
+        text: &str,
+        style: Style,
+        x: f64,
+        y: f64,
+        h: f64,
+        max_w: f64,
+    ) -> f64 {
         let (_, th) = az.labels.measure(text, style.face, style.size());
         self.text(az, renderer, text, style, x, y + ((h - th.ceil()) / 2.0).round(), max_w)
     }
@@ -135,21 +155,48 @@ where
     pub fn text_center(&mut self, az: &mut Aizome, renderer: &mut R, text: &str, style: Style, b: Box2) -> f64 {
         let (tw, th) = az.labels.measure(text, style.face, style.size());
         let w = tw.min(b.w);
-        self.text(az, renderer, text, style, (b.x + (b.w - w) / 2.0).round(), (b.y + (b.h - th.ceil()) / 2.0).round(), b.w)
+        self.text(
+            az,
+            renderer,
+            text,
+            style,
+            (b.x + (b.w - w) / 2.0).round(),
+            (b.y + (b.h - th.ceil()) / 2.0).round(),
+            b.w,
+        )
     }
 
-    pub fn icon(&mut self, az: &mut Aizome, renderer: &mut R, app_id: &str, tint: crate::icons::Tint, x: f64, y: f64, size: i32, alpha: f32) {
+    pub fn icon(
+        &mut self,
+        az: &mut Aizome,
+        renderer: &mut R,
+        app_id: &str,
+        tint: crate::icons::Tint,
+        x: f64,
+        y: f64,
+        size: i32,
+        alpha: f32,
+    ) {
         let scale = self.scale;
         let origin = self.origin;
         if let Some(tex) = az.icons.texture(app_id, size, scale.ceil().max(1.0) as u32, tint)
-            && let Some(e) = crate::icons::icon_element(renderer, tex, (x, y), origin, scale, alpha * self.alpha) {
-                self.items.push(Item::Elems(vec![e]));
-            }
+            && let Some(e) = crate::icons::icon_element(renderer, tex, (x, y), origin, scale, alpha * self.alpha)
+        {
+            self.items.push(Item::Elems(vec![e]));
+        }
     }
 
     /// A window's live content scaled into a box.
     pub fn thumbnail(&mut self, az: &Aizome, renderer: &mut R, id: WinId, b: Box2, alpha: f32) {
-        let e = crate::render::thumbnail_elements(az, renderer, id, (b.x, b.y, b.w, b.h), self.origin, self.scale, alpha * self.alpha);
+        let e = crate::render::thumbnail_elements(
+            az,
+            renderer,
+            id,
+            (b.x, b.y, b.w, b.h),
+            self.origin,
+            self.scale,
+            alpha * self.alpha,
+        );
         if !e.is_empty() {
             self.items.push(Item::Elems(e));
         }

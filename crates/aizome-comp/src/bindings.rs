@@ -32,7 +32,9 @@ pub enum Action {
     TakeToPrevDesk,
     TakeToNextDesk,
     Overview,
-    Switcher { reverse: bool },
+    Switcher {
+        reverse: bool,
+    },
     NextWindowOfApp,
     HideApp,
     HideOthers,
@@ -164,7 +166,10 @@ fn keysym_named(name: &str) -> Option<Keysym> {
         "Escape" | "Esc" => keysyms::KEY_Escape,
         "Print" => keysyms::KEY_Print,
         _ => {
-            let k = smithay::input::keyboard::xkb::keysym_from_name(name, smithay::input::keyboard::xkb::KEYSYM_CASE_INSENSITIVE);
+            let k = smithay::input::keyboard::xkb::keysym_from_name(
+                name,
+                smithay::input::keyboard::xkb::KEYSYM_CASE_INSENSITIVE,
+            );
             if k.raw() == keysyms::KEY_NoSymbol {
                 return None;
             }
@@ -231,12 +236,26 @@ pub fn defaults() -> Vec<(&'static str, String)> {
     ];
     const DIGITS: [&str; 9] = ["1", "2", "3", "4", "5", "6", "7", "8", "9"];
     const GO: [&str; 9] = [
-        "Ctrl+Super+1", "Ctrl+Super+2", "Ctrl+Super+3", "Ctrl+Super+4", "Ctrl+Super+5", "Ctrl+Super+6", "Ctrl+Super+7",
-        "Ctrl+Super+8", "Ctrl+Super+9",
+        "Ctrl+Super+1",
+        "Ctrl+Super+2",
+        "Ctrl+Super+3",
+        "Ctrl+Super+4",
+        "Ctrl+Super+5",
+        "Ctrl+Super+6",
+        "Ctrl+Super+7",
+        "Ctrl+Super+8",
+        "Ctrl+Super+9",
     ];
     const TAKE: [&str; 9] = [
-        "Ctrl+Shift+Super+1", "Ctrl+Shift+Super+2", "Ctrl+Shift+Super+3", "Ctrl+Shift+Super+4", "Ctrl+Shift+Super+5",
-        "Ctrl+Shift+Super+6", "Ctrl+Shift+Super+7", "Ctrl+Shift+Super+8", "Ctrl+Shift+Super+9",
+        "Ctrl+Shift+Super+1",
+        "Ctrl+Shift+Super+2",
+        "Ctrl+Shift+Super+3",
+        "Ctrl+Shift+Super+4",
+        "Ctrl+Shift+Super+5",
+        "Ctrl+Shift+Super+6",
+        "Ctrl+Shift+Super+7",
+        "Ctrl+Shift+Super+8",
+        "Ctrl+Shift+Super+9",
     ];
     for i in 0..9 {
         v.push((GO[i], format!("go-to-desk-{}", DIGITS[i])));
@@ -249,8 +268,18 @@ pub fn defaults() -> Vec<(&'static str, String)> {
 }
 
 const VT_CHORDS: [&str; 12] = [
-    "XF86Switch_VT_1", "XF86Switch_VT_2", "XF86Switch_VT_3", "XF86Switch_VT_4", "XF86Switch_VT_5", "XF86Switch_VT_6",
-    "XF86Switch_VT_7", "XF86Switch_VT_8", "XF86Switch_VT_9", "XF86Switch_VT_10", "XF86Switch_VT_11", "XF86Switch_VT_12",
+    "XF86Switch_VT_1",
+    "XF86Switch_VT_2",
+    "XF86Switch_VT_3",
+    "XF86Switch_VT_4",
+    "XF86Switch_VT_5",
+    "XF86Switch_VT_6",
+    "XF86Switch_VT_7",
+    "XF86Switch_VT_8",
+    "XF86Switch_VT_9",
+    "XF86Switch_VT_10",
+    "XF86Switch_VT_11",
+    "XF86Switch_VT_12",
 ];
 
 /// The binding table: defaults with the settings' overrides on top.

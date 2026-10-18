@@ -16,8 +16,8 @@ use aizome_ipc::{Request, Response, Synthetic};
 use common::*;
 use wayland_client::globals::{GlobalList, GlobalListContents, registry_queue_init};
 use wayland_client::protocol::{
-    wl_buffer, wl_compositor, wl_data_device, wl_data_device_manager, wl_data_offer, wl_data_source, wl_pointer, wl_registry, wl_seat,
-    wl_shm, wl_shm_pool, wl_surface,
+    wl_buffer, wl_compositor, wl_data_device, wl_data_device_manager, wl_data_offer, wl_data_source, wl_pointer,
+    wl_registry, wl_seat, wl_shm, wl_shm_pool, wl_surface,
 };
 use wayland_client::{Connection, Dispatch, EventQueue, Proxy, QueueHandle, WEnum};
 use wayland_protocols::xdg::shell::client::{xdg_surface, xdg_toplevel, xdg_wm_base};
@@ -79,7 +79,8 @@ impl Client {
             queue.roundtrip(&mut state).unwrap();
             assert!(Instant::now() < deadline, "no configure");
         }
-        let mut client = Client { conn, queue, qh, globals, state, compositor, shm, seat, surface, _toplevel: (xs, tl) };
+        let mut client =
+            Client { conn, queue, qh, globals, state, compositor, shm, seat, surface, _toplevel: (xs, tl) };
         let b = client.buffer(300, 200, 0x2266cc, None);
         client.surface.attach(Some(&b), 0, 0);
         client.surface.commit();
@@ -219,7 +220,13 @@ fn drag_and_drop_with_an_icon_and_actions() {
     b.roundtrip();
 
     // Press on the source window.
-    synth(&c, vec![Synthetic::PointerMotion { x: 250.0, y: 300.0 }, Synthetic::PointerButton { button: "left".into(), pressed: true }]);
+    synth(
+        &c,
+        vec![
+            Synthetic::PointerMotion { x: 250.0, y: 300.0 },
+            Synthetic::PointerButton { button: "left".into(), pressed: true },
+        ],
+    );
     a.wait("the press", |s| s.button_serial.is_some());
     let serial = a.state.button_serial.unwrap();
     let source = ddm_a.create_data_source(&a.qh, ());
@@ -277,7 +284,15 @@ fn drag_and_drop_with_an_icon_and_actions() {
 // ---- dispatch ---------------------------------------------------------------
 
 impl Dispatch<wl_registry::WlRegistry, GlobalListContents> for Probe {
-    fn event(_: &mut Self, _: &wl_registry::WlRegistry, _: wl_registry::Event, _: &GlobalListContents, _: &Connection, _: &QueueHandle<Self>) {}
+    fn event(
+        _: &mut Self,
+        _: &wl_registry::WlRegistry,
+        _: wl_registry::Event,
+        _: &GlobalListContents,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
 }
 
 macro_rules! ignore {
@@ -306,7 +321,14 @@ impl Dispatch<wl_shm::WlShm, ()> for Probe {
 }
 
 impl Dispatch<wl_buffer::WlBuffer, Arc<AtomicBool>> for Probe {
-    fn event(_: &mut Self, _: &wl_buffer::WlBuffer, event: wl_buffer::Event, released: &Arc<AtomicBool>, _: &Connection, _: &QueueHandle<Self>) {
+    fn event(
+        _: &mut Self,
+        _: &wl_buffer::WlBuffer,
+        event: wl_buffer::Event,
+        released: &Arc<AtomicBool>,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
         if let wl_buffer::Event::Release = event {
             released.store(true, Ordering::SeqCst);
         }
@@ -314,7 +336,14 @@ impl Dispatch<wl_buffer::WlBuffer, Arc<AtomicBool>> for Probe {
 }
 
 impl Dispatch<xdg_wm_base::XdgWmBase, ()> for Probe {
-    fn event(_: &mut Self, wm: &xdg_wm_base::XdgWmBase, event: xdg_wm_base::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
+    fn event(
+        _: &mut Self,
+        wm: &xdg_wm_base::XdgWmBase,
+        event: xdg_wm_base::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
         if let xdg_wm_base::Event::Ping { serial } = event {
             wm.pong(serial);
         }
@@ -322,7 +351,14 @@ impl Dispatch<xdg_wm_base::XdgWmBase, ()> for Probe {
 }
 
 impl Dispatch<xdg_surface::XdgSurface, ()> for Probe {
-    fn event(p: &mut Self, xs: &xdg_surface::XdgSurface, event: xdg_surface::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
+    fn event(
+        p: &mut Self,
+        xs: &xdg_surface::XdgSurface,
+        event: xdg_surface::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
         if let xdg_surface::Event::Configure { serial } = event {
             xs.ack_configure(serial);
             p.configured = true;
@@ -331,7 +367,14 @@ impl Dispatch<xdg_surface::XdgSurface, ()> for Probe {
 }
 
 impl Dispatch<wl_pointer::WlPointer, ()> for Probe {
-    fn event(p: &mut Self, _: &wl_pointer::WlPointer, event: wl_pointer::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
+    fn event(
+        p: &mut Self,
+        _: &wl_pointer::WlPointer,
+        event: wl_pointer::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
         if let wl_pointer::Event::Button { serial, state: WEnum::Value(wl_pointer::ButtonState::Pressed), .. } = event {
             p.button_serial = Some(serial);
         }
@@ -339,7 +382,14 @@ impl Dispatch<wl_pointer::WlPointer, ()> for Probe {
 }
 
 impl Dispatch<wl_data_device::WlDataDevice, ()> for Probe {
-    fn event(p: &mut Self, _: &wl_data_device::WlDataDevice, event: wl_data_device::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
+    fn event(
+        p: &mut Self,
+        _: &wl_data_device::WlDataDevice,
+        event: wl_data_device::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
         match event {
             wl_data_device::Event::DataOffer { id } => {
                 p.offer_mimes.clear();
@@ -362,7 +412,14 @@ impl Dispatch<wl_data_device::WlDataDevice, ()> for Probe {
 }
 
 impl Dispatch<wl_data_offer::WlDataOffer, ()> for Probe {
-    fn event(p: &mut Self, _: &wl_data_offer::WlDataOffer, event: wl_data_offer::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
+    fn event(
+        p: &mut Self,
+        _: &wl_data_offer::WlDataOffer,
+        event: wl_data_offer::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
         match event {
             wl_data_offer::Event::Offer { mime_type } => p.offer_mimes.push(mime_type),
             wl_data_offer::Event::SourceActions { source_actions: WEnum::Value(a) } => p.source_actions = Some(a),
@@ -372,7 +429,14 @@ impl Dispatch<wl_data_offer::WlDataOffer, ()> for Probe {
 }
 
 impl Dispatch<wl_data_source::WlDataSource, ()> for Probe {
-    fn event(p: &mut Self, _: &wl_data_source::WlDataSource, event: wl_data_source::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
+    fn event(
+        p: &mut Self,
+        _: &wl_data_source::WlDataSource,
+        event: wl_data_source::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
         match event {
             wl_data_source::Event::Target { mime_type } => p.target_mime = Some(mime_type),
             wl_data_source::Event::Action { dnd_action: WEnum::Value(a) } => p.chosen_action = Some(a),
@@ -396,19 +460,50 @@ struct Gamma {
 }
 
 impl Dispatch<wl_registry::WlRegistry, GlobalListContents> for Gamma {
-    fn event(_: &mut Self, _: &wl_registry::WlRegistry, _: wl_registry::Event, _: &GlobalListContents, _: &Connection, _: &QueueHandle<Self>) {}
+    fn event(
+        _: &mut Self,
+        _: &wl_registry::WlRegistry,
+        _: wl_registry::Event,
+        _: &GlobalListContents,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
 }
 
 impl Dispatch<wl_output::WlOutput, ()> for Gamma {
-    fn event(_: &mut Self, _: &wl_output::WlOutput, _: wl_output::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {}
+    fn event(
+        _: &mut Self,
+        _: &wl_output::WlOutput,
+        _: wl_output::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
 }
 
 impl Dispatch<zwlr_gamma_control_manager_v1::ZwlrGammaControlManagerV1, ()> for Gamma {
-    fn event(_: &mut Self, _: &zwlr_gamma_control_manager_v1::ZwlrGammaControlManagerV1, _: zwlr_gamma_control_manager_v1::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {}
+    fn event(
+        _: &mut Self,
+        _: &zwlr_gamma_control_manager_v1::ZwlrGammaControlManagerV1,
+        _: zwlr_gamma_control_manager_v1::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
 }
 
 impl Dispatch<zwlr_gamma_control_v1::ZwlrGammaControlV1, ()> for Gamma {
-    fn event(g: &mut Self, _: &zwlr_gamma_control_v1::ZwlrGammaControlV1, event: zwlr_gamma_control_v1::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
+    fn event(
+        g: &mut Self,
+        _: &zwlr_gamma_control_v1::ZwlrGammaControlV1,
+        event: zwlr_gamma_control_v1::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
         match event {
             zwlr_gamma_control_v1::Event::GammaSize { size } => g.size = Some(size),
             zwlr_gamma_control_v1::Event::Failed => g.failed = true,
@@ -423,7 +518,8 @@ fn gamma_control_is_offered_and_refused_where_there_is_no_gamma() {
     let conn = Connection::from_socket(UnixStream::connect(c.dir.join(&c.socket)).unwrap()).unwrap();
     let (globals, mut queue) = registry_queue_init::<Gamma>(&conn).unwrap();
     let qh = queue.handle();
-    let manager: zwlr_gamma_control_manager_v1::ZwlrGammaControlManagerV1 = globals.bind(&qh, 1..=1, ()).expect("the gamma control global");
+    let manager: zwlr_gamma_control_manager_v1::ZwlrGammaControlManagerV1 =
+        globals.bind(&qh, 1..=1, ()).expect("the gamma control global");
     let output: wl_output::WlOutput = globals.bind(&qh, 1..=4, ()).unwrap();
     let _control = manager.get_gamma_control(&output, &qh, ());
     let mut g = Gamma::default();
@@ -498,7 +594,13 @@ fn frames_keep_their_colours(renderer_name: &str) {
                 Some((x, y, w, h)) => (x + w / 2, y + h / 2),
                 None => (270, 180),
             };
-            assert_px(&img, x0 + px, y0 + py, rgb(*color), &format!("{color:06x} after a {format:?} frame ({renderer_name})"));
+            assert_px(
+                &img,
+                x0 + px,
+                y0 + py,
+                rgb(*color),
+                &format!("{color:06x} after a {format:?} frame ({renderer_name})"),
+            );
         }
     }
 }

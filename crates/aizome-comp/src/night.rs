@@ -77,7 +77,13 @@ impl State {
             schedule: schedule.into(),
             active: current != aizome_config::compositor::NEUTRAL_K,
             current,
-            outputs: self.az.outputs.iter().filter(|o| self.az.out.get(*o).is_some_and(|s| s.gamma)).map(|o| o.name()).collect(),
+            outputs: self
+                .az
+                .outputs
+                .iter()
+                .filter(|o| self.az.out.get(*o).is_some_and(|s| s.gamma))
+                .map(|o| o.name())
+                .collect(),
         }
     }
 
@@ -87,10 +93,11 @@ impl State {
         if !self.az.night.started {
             self.az.night.started = true;
             // Every minute, for the schedule.
-            let _ = self.az.lh.insert_source(Timer::from_duration(Duration::from_secs(60)), |_, _, state: &mut State| {
-                state.update_night_light(false);
-                TimeoutAction::ToDuration(Duration::from_secs(60))
-            });
+            let _ =
+                self.az.lh.insert_source(Timer::from_duration(Duration::from_secs(60)), |_, _, state: &mut State| {
+                    state.update_night_light(false);
+                    TimeoutAction::ToDuration(Duration::from_secs(60))
+                });
         }
         let state = self.night_state();
         if state.current == self.az.night.current && !force {

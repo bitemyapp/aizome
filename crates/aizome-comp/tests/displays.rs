@@ -79,7 +79,13 @@ fn a_mirror_shows_its_source_scaled_to_fit() {
     assert_eq!(c.screenshot().width, 1280, "a mirror has no place of its own");
     c.settle();
     let path = c.dir.join("mirror.png");
-    c.ok(Request::Screenshot { output: Some("HEADLESS-2".into()), path: Some(path.to_string_lossy().into()), window: None, area: None, clipboard: false });
+    c.ok(Request::Screenshot {
+        output: Some("HEADLESS-2".into()),
+        path: Some(path.to_string_lossy().into()),
+        window: None,
+        area: None,
+        clipboard: false,
+    });
     let img = Image::load(&path);
     keep(&img, "displays-mirror");
     assert_eq!((img.width, img.height), (960, 720));
@@ -164,7 +170,10 @@ fn night_light_over_ipc() {
 
 #[test]
 fn night_light_follows_its_schedule() {
-    let c = Compositor::start(Options { settings: "[night_light]\nenabled = true\nschedule = \"always\"\ntemperature = 3000\n", ..Default::default() });
+    let c = Compositor::start(Options {
+        settings: "[night_light]\nenabled = true\nschedule = \"always\"\ntemperature = 3000\n",
+        ..Default::default()
+    });
     let state = match c.request(Request::NightLight { enabled: None, temperature: None }) {
         Response::NightLight { state } => state,
         r => panic!("{r:?}"),
@@ -176,7 +185,11 @@ fn night_light_follows_its_schedule() {
 
 #[test]
 fn the_renderer_setting_applies_at_the_next_start() {
-    let c = Compositor::start(Options { renderer: Some("gles"), settings: "[performance]\nrenderer = \"software\"\n", ..Default::default() });
+    let c = Compositor::start(Options {
+        renderer: Some("gles"),
+        settings: "[performance]\nrenderer = \"software\"\n",
+        ..Default::default()
+    });
     let Response::Stats { stats } = c.request(Request::Stats { reset: false }) else { panic!() };
     assert_eq!(stats.renderer_setting, "software");
     assert_eq!(stats.renderer_after_restart, stats.renderer != "pixman");

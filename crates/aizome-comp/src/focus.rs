@@ -5,17 +5,19 @@ use std::borrow::Cow;
 
 use smithay::backend::input::KeyState;
 use smithay::desktop::PopupKind;
+use smithay::input::Seat;
 use smithay::input::keyboard::{KeyboardTarget, KeysymHandle, ModifiersState};
 use smithay::input::pointer::{
     AxisFrame, ButtonEvent, GestureHoldBeginEvent, GestureHoldEndEvent, GesturePinchBeginEvent, GesturePinchEndEvent,
     GesturePinchUpdateEvent, GestureSwipeBeginEvent, GestureSwipeEndEvent, GestureSwipeUpdateEvent, MotionEvent,
     PointerTarget, RelativeMotionEvent,
 };
-use smithay::input::touch::{DownEvent, MotionEvent as TouchMotionEvent, OrientationEvent, ShapeEvent, TouchTarget, UpEvent};
-use smithay::input::Seat;
+use smithay::input::touch::{
+    DownEvent, MotionEvent as TouchMotionEvent, OrientationEvent, ShapeEvent, TouchTarget, UpEvent,
+};
+use smithay::reexports::wayland_server::Resource;
 use smithay::reexports::wayland_server::backend::ObjectId;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
-use smithay::reexports::wayland_server::Resource;
 use smithay::utils::{IsAlive, Serial};
 use smithay::wayland::seat::WaylandFocus;
 
@@ -64,7 +66,15 @@ impl KeyboardTarget<State> for Focus {
     fn leave(&self, seat: &Seat<State>, data: &mut State, serial: Serial) {
         KeyboardTarget::leave(&self.0, seat, data, serial)
     }
-    fn key(&self, seat: &Seat<State>, data: &mut State, key: KeysymHandle<'_>, state: KeyState, serial: Serial, time: u32) {
+    fn key(
+        &self,
+        seat: &Seat<State>,
+        data: &mut State,
+        key: KeysymHandle<'_>,
+        state: KeyState,
+        serial: Serial,
+        time: u32,
+    ) {
         KeyboardTarget::key(&self.0, seat, data, key, state, serial, time)
     }
     fn modifiers(&self, seat: &Seat<State>, data: &mut State, modifiers: ModifiersState, serial: Serial) {

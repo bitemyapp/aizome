@@ -34,7 +34,12 @@ fn the_window_manager_survives_churn() {
         let req = match rng.below(16) {
             0 | 1 if clients.len() < 12 => {
                 let n = i % 5;
-                clients.push(c.client(Spec::new(&format!("churn.app{n}"), 0x203040 + (i as u32 * 7919) % 0xbfbfbf).size(200 + (i as i32 % 7) * 40, 150 + (i as i32 % 5) * 30)));
+                clients.push(
+                    c.client(
+                        Spec::new(&format!("churn.app{n}"), 0x203040 + (i as u32 * 7919) % 0xbfbfbf)
+                            .size(200 + (i as i32 % 7) * 40, 150 + (i as i32 % 5) * 30),
+                    ),
+                );
                 continue;
             }
             2 if !clients.is_empty() => {
@@ -49,7 +54,11 @@ fn the_window_manager_survives_churn() {
             4 => Request::Unstack { id: pick(&mut rng) },
             5 => Request::SetDesk { desk: DeskSel::Index(1 + rng.below(4) as u32) },
             6 => match pick(&mut rng) {
-                Some(id) => Request::MoveToDesk { id: Some(id), desk: DeskSel::Index(1 + rng.below(4) as u32), follow: rng.below(2) == 0 },
+                Some(id) => Request::MoveToDesk {
+                    id: Some(id),
+                    desk: DeskSel::Index(1 + rng.below(4) as u32),
+                    follow: rng.below(2) == 0,
+                },
                 None => continue,
             },
             7 => Request::Fill { id: pick(&mut rng), state: None },
@@ -68,7 +77,10 @@ fn the_window_manager_survives_churn() {
                 ],
             },
             12 => Request::Synthesize { events: vec![Synthetic::Chord { keys: "super+tab".into() }] },
-            13 => Request::Split { id: pick(&mut rng), side: if rng.below(2) == 0 { aizome_ipc::Side::Left } else { aizome_ipc::Side::Right } },
+            13 => Request::Split {
+                id: pick(&mut rng),
+                side: if rng.below(2) == 0 { aizome_ipc::Side::Left } else { aizome_ipc::Side::Right },
+            },
             14 => Request::Synthesize {
                 events: vec![
                     Synthetic::PointerMotion { x: rng.below(1280) as f64, y: rng.below(800) as f64 },
@@ -76,7 +88,9 @@ fn the_window_manager_survives_churn() {
                     Synthetic::Chord { keys: "escape".into() },
                 ],
             },
-            _ => Request::HideApp { app: aizome_ipc::AppSel { app_id: Some(format!("churn.app{}", rng.below(5))), pid: None } },
+            _ => Request::HideApp {
+                app: aizome_ipc::AppSel { app_id: Some(format!("churn.app{}", rng.below(5))), pid: None },
+            },
         };
         // Errors (a stale id, an unstacked window) are fine; the compositor
         // going away isn't.

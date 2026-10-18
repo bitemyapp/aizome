@@ -146,7 +146,12 @@ fn the_session_locks_and_unlocks() {
     wait_px(&c, g.x + 10, g.y + 10, LOCK, "the lock surface");
     assert_eq!(*lock.locked.lock().unwrap(), Some(true), "locked was sent");
     // Clicks and keys go to the lock surface, not the window.
-    c.ok(Request::Synthesize { events: vec![aizome_ipc::Synthetic::PointerMotion { x: g.x as f64 + 10.0, y: g.y as f64 + 10.0 }, aizome_ipc::Synthetic::Click { button: "left".into() }] });
+    c.ok(Request::Synthesize {
+        events: vec![
+            aizome_ipc::Synthetic::PointerMotion { x: g.x as f64 + 10.0, y: g.y as f64 + 10.0 },
+            aizome_ipc::Synthetic::Click { button: "left".into() },
+        ],
+    });
     lock.unlock();
     wait_px(&c, g.x + 10, g.y + 10, 0xcc2222, "the window shows again");
 }

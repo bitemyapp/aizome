@@ -38,14 +38,25 @@ fn the_switcher_goes_down_to_windows_and_escape_cancels() {
     let _b = c.client(Spec::new("org.example.beta", 0x22cc22));
     c.wait_windows("b focused", |ws| ws.iter().any(|w| w.app_id == "org.example.beta" && w.focused));
     // ❖Tab to Alpha, ` into its windows (the second, A1), release.
-    c.ok(Request::Synthesize { events: vec![key("super", true), key("tab", true), key("tab", false), key("grave", true), key("grave", false)] });
+    c.ok(Request::Synthesize {
+        events: vec![key("super", true), key("tab", true), key("tab", false), key("grave", true), key("grave", false)],
+    });
     c.settle();
     keep(&c.screenshot(), "switcher-windows");
     c.ok(Request::Synthesize { events: vec![key("super", false)] });
     c.wait_windows("alpha one focused", |ws| ws.iter().any(|w| w.id == a1.id && w.focused));
     // Esc cancels.
     let before = c.windows().into_iter().find(|w| w.focused).unwrap().id;
-    c.ok(Request::Synthesize { events: vec![key("super", true), key("tab", true), key("tab", false), key("escape", true), key("escape", false), key("super", false)] });
+    c.ok(Request::Synthesize {
+        events: vec![
+            key("super", true),
+            key("tab", true),
+            key("tab", false),
+            key("escape", true),
+            key("escape", false),
+            key("super", false),
+        ],
+    });
     c.settle();
     assert_eq!(c.windows().into_iter().find(|w| w.focused).unwrap().id, before);
 }
@@ -99,7 +110,10 @@ fn a_marking_menu_shows_after_a_pause_and_picks() {
     let w = c.wait_window("test.a");
     let tab = (w.geometry.x as f64 + 60.0, w.geometry.y as f64 - 12.0);
     c.ok(Request::Synthesize {
-        events: vec![Synthetic::PointerMotion { x: tab.0, y: tab.1 }, Synthetic::PointerButton { button: "right".into(), pressed: true }],
+        events: vec![
+            Synthetic::PointerMotion { x: tab.0, y: tab.1 },
+            Synthetic::PointerButton { button: "right".into(), pressed: true },
+        ],
     });
     std::thread::sleep(std::time::Duration::from_millis(400));
     // Toward "park" (down).

@@ -95,7 +95,9 @@ fn is_executable(p: &Path) -> bool {
 
 /// A free X display number.
 fn free_x_display() -> Option<u32> {
-    (1..64).find(|n| !Path::new(&format!("/tmp/.X11-unix/X{n}")).exists() && !Path::new(&format!("/tmp/.X{n}-lock")).exists())
+    (1..64).find(|n| {
+        !Path::new(&format!("/tmp/.X11-unix/X{n}")).exists() && !Path::new(&format!("/tmp/.X{n}-lock")).exists()
+    })
 }
 
 /// Starts the session's helpers and talks to systemd.
@@ -107,7 +109,11 @@ pub fn start(state: &mut State) {
             if let Some(n) = free_x_display() {
                 let display = format!(":{n}");
                 state.az.children.env.push(("DISPLAY".into(), display.clone()));
-                state.az.children.supervised.push(Supervised::new("xwayland-satellite", vec![bin.to_string_lossy().into_owned(), display]));
+                state
+                    .az
+                    .children
+                    .supervised
+                    .push(Supervised::new("xwayland-satellite", vec![bin.to_string_lossy().into_owned(), display]));
             }
         } else {
             info!("xwayland-satellite isn't installed; X11 apps won't run");
@@ -115,7 +121,11 @@ pub fn start(state: &mut State) {
     }
     if !opts.no_shell {
         if let Some(bin) = which("aizome-shell") {
-            state.az.children.supervised.push(Supervised::new("aizome-shell", vec![bin.to_string_lossy().into_owned()]));
+            state
+                .az
+                .children
+                .supervised
+                .push(Supervised::new("aizome-shell", vec![bin.to_string_lossy().into_owned()]));
         } else {
             info!("aizome-shell isn't installed; running without a shell");
         }
@@ -135,7 +145,9 @@ pub fn start(state: &mut State) {
         let names: Vec<String> = env.iter().map(|(k, _)| k.clone()).collect();
         let under_systemd = std::env::var_os("NOTIFY_SOCKET").is_some() || std::env::var_os("INVOCATION_ID").is_some();
         if under_systemd {
-            run_quietly(Command::new("systemctl").arg("--user").arg("import-environment").args(&names).envs(env.clone()));
+            run_quietly(
+                Command::new("systemctl").arg("--user").arg("import-environment").args(&names).envs(env.clone()),
+            );
         }
         let mut dbus = Command::new("dbus-update-activation-environment");
         if under_systemd {
@@ -191,7 +203,14 @@ fn sd_notify(msg: &str) {
 
 impl Supervised {
     fn new(name: &str, argv: Vec<String>) -> Supervised {
-        Supervised { name: name.into(), argv, child: None, started: Instant::now(), backoff: Duration::from_secs(1), restart_at: None }
+        Supervised {
+            name: name.into(),
+            argv,
+            child: None,
+            started: Instant::now(),
+            backoff: Duration::from_secs(1),
+            restart_at: None,
+        }
     }
 }
 

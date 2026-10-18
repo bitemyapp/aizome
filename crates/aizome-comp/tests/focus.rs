@@ -17,7 +17,10 @@ const KEY_O: u32 = 24;
 
 fn tap(c: &Compositor, key: &str) {
     c.ok(Request::Synthesize {
-        events: vec![Synthetic::Key { key: key.into(), pressed: true }, Synthetic::Key { key: key.into(), pressed: false }],
+        events: vec![
+            Synthetic::Key { key: key.into(), pressed: true },
+            Synthetic::Key { key: key.into(), pressed: false },
+        ],
     });
 }
 
@@ -26,7 +29,9 @@ fn motion(c: &Compositor, x: f64, y: f64) {
 }
 
 fn click(c: &Compositor, x: f64, y: f64) {
-    c.ok(Request::Synthesize { events: vec![Synthetic::PointerMotion { x, y }, Synthetic::Click { button: "left".into() }] });
+    c.ok(Request::Synthesize {
+        events: vec![Synthetic::PointerMotion { x, y }, Synthetic::Click { button: "left".into() }],
+    });
 }
 
 fn centre(w: &WindowInfo) -> (f64, f64) {
@@ -44,7 +49,9 @@ fn setup() -> (Compositor, TestClient, ShellClient) {
 }
 
 fn bar() -> LayerSpec {
-    LayerSpec::new("bar", Layer::Top, KeyboardInteractivity::OnDemand).anchor(Anchor::Top | Anchor::Left | Anchor::Right, (0, 30)).color(0x999999)
+    LayerSpec::new("bar", Layer::Top, KeyboardInteractivity::OnDemand)
+        .anchor(Anchor::Top | Anchor::Left | Anchor::Right, (0, 30))
+        .color(0x999999)
 }
 
 fn menu(name: &'static str, parent: &'static str, grab: bool) -> ShellCmd {
@@ -158,12 +165,34 @@ fn menus_show_above_every_window_and_layer_surface() {
     );
     shell.layer(bar());
     // A Deskbar opened after the bar, on the same layer, and an overlay.
-    shell.layer(LayerSpec::new("deskbar", Layer::Top, KeyboardInteractivity::None).anchor(Anchor::Left, (200, 400)).color(0x777777));
-    shell.layer(LayerSpec::new("overlay", Layer::Overlay, KeyboardInteractivity::None).anchor(Anchor::Top | Anchor::Left, (120, 120)).color(0x3333cc));
+    shell.layer(
+        LayerSpec::new("deskbar", Layer::Top, KeyboardInteractivity::None)
+            .anchor(Anchor::Left, (200, 400))
+            .color(0x777777),
+    );
+    shell.layer(
+        LayerSpec::new("overlay", Layer::Overlay, KeyboardInteractivity::None)
+            .anchor(Anchor::Top | Anchor::Left, (120, 120))
+            .color(0x3333cc),
+    );
     // The bar's menu reaches over the Deskbar (x 0–200, y 200–600) and
     // under the overlay (0–120 square); the desktop's goes over the window.
-    shell.send(ShellCmd::Popup { name: "menu", parent: "bar", at: (50, 30), size: (150, 300), color: 0xcc3333, grab: false });
-    shell.send(ShellCmd::Popup { name: "dmenu", parent: "desktop", at: (350, 350), size: (150, 100), color: 0x33cc33, grab: false });
+    shell.send(ShellCmd::Popup {
+        name: "menu",
+        parent: "bar",
+        at: (50, 30),
+        size: (150, 300),
+        color: 0xcc3333,
+        grab: false,
+    });
+    shell.send(ShellCmd::Popup {
+        name: "dmenu",
+        parent: "desktop",
+        at: (350, 350),
+        size: (150, 100),
+        color: 0x33cc33,
+        grab: false,
+    });
     shell.wait("both menus drawn", |s| s.shown.iter().any(|n| n == "menu") && s.shown.iter().any(|n| n == "dmenu"));
     c.settle();
     let img = c.screenshot();

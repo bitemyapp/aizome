@@ -56,7 +56,12 @@ impl Rect {
 
     /// Shrinks by insets.
     pub fn inset(&self, i: Insets) -> Rect {
-        Rect::new(self.x + i.left, self.y + i.top, (self.w - i.left - i.right).max(1), (self.h - i.top - i.bottom).max(1))
+        Rect::new(
+            self.x + i.left,
+            self.y + i.top,
+            (self.w - i.left - i.right).max(1),
+            (self.h - i.top - i.bottom).max(1),
+        )
     }
 
     /// Grows by insets.

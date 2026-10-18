@@ -9,11 +9,11 @@ use std::time::Instant;
 use aizome_ipc::Event;
 use smithay::backend::renderer::utils::{on_commit_buffer_handler, with_renderer_surface_state};
 use smithay::desktop::{
-    LayerSurface, PopupKeyboardGrab, PopupKind, PopupPointerGrab, PopupUngrabStrategy, Window,
-    WindowSurfaceType, find_popup_root_surface, get_popup_toplevel_coords, layer_map_for_output,
+    LayerSurface, PopupKeyboardGrab, PopupKind, PopupPointerGrab, PopupUngrabStrategy, Window, WindowSurfaceType,
+    find_popup_root_surface, get_popup_toplevel_coords, layer_map_for_output,
 };
-use smithay::input::pointer::Focus as PointerFocusMode;
 use smithay::input::Seat;
+use smithay::input::pointer::Focus as PointerFocusMode;
 use smithay::output::Output;
 use smithay::reexports::calloop::Interest;
 use smithay::reexports::wayland_protocols::xdg::decoration::zv1::server::zxdg_toplevel_decoration_v1::Mode as DecorationMode;
@@ -38,7 +38,9 @@ use smithay::wayland::shell::xdg::decoration::XdgDecorationHandler;
 use smithay::wayland::shell::xdg::{
     PopupSurface, PositionerState, ToplevelSurface, XdgShellHandler, XdgShellState, XdgToplevelSurfaceData,
 };
-use smithay::{delegate_compositor, delegate_layer_shell, delegate_session_lock, delegate_xdg_decoration, delegate_xdg_shell};
+use smithay::{
+    delegate_compositor, delegate_layer_shell, delegate_session_lock, delegate_xdg_decoration, delegate_xdg_shell,
+};
 use tracing::{debug, info, warn};
 
 use crate::decor::DecorCache;
@@ -71,16 +73,17 @@ impl CompositorHandler for State {
             });
             if let Some(dmabuf) = dmabuf
                 && let Ok((blocker, source)) = dmabuf.generate_blocker(Interest::READ)
-                    && let Some(client) = surface.client() {
-                        let res = state.az.lh.insert_source(source, move |_, _, state| {
-                            let dh = state.az.dh.clone();
-                            state.client_compositor_state(&client).blocker_cleared(state, &dh);
-                            Ok(())
-                        });
-                        if res.is_ok() {
-                            add_blocker(surface, blocker);
-                        }
-                    }
+                && let Some(client) = surface.client()
+            {
+                let res = state.az.lh.insert_source(source, move |_, _, state| {
+                    let dh = state.az.dh.clone();
+                    state.client_compositor_state(&client).blocker_cleared(state, &dh);
+                    Ok(())
+                });
+                if res.is_ok() {
+                    add_blocker(surface, blocker);
+                }
+            }
         });
     }
 
@@ -97,7 +100,9 @@ impl CompositorHandler for State {
             while let Some(parent) = get_parent(&root) {
                 root = parent;
             }
-            if let Some(i) = self.az.unmapped.iter().position(|u| u.window.toplevel().is_some_and(|t| t.wl_surface() == &root)) {
+            if let Some(i) =
+                self.az.unmapped.iter().position(|u| u.window.toplevel().is_some_and(|t| t.wl_surface() == &root))
+            {
                 if &root == surface {
                     self.commit_unmapped(i);
                 }
@@ -109,9 +114,10 @@ impl CompositorHandler for State {
         self.az.popups.commit(surface);
         if let Some(popup) = self.az.popups.find_popup(surface) {
             if let PopupKind::Xdg(ref p) = popup
-                && !p.is_initial_configure_sent() {
-                    let _ = p.send_configure();
-                }
+                && !p.is_initial_configure_sent()
+            {
+                let _ = p.send_configure();
+            }
             if let Some(r) = self.az.popup_bbox(&popup) {
                 self.az.queue_redraw_rect(crate::state::to_rect(r));
             }
@@ -136,7 +142,8 @@ impl State {
             let app_id = toplevel_app_id(&toplevel);
             let out = self.az.active_output();
             let usable = out.as_ref().map(|o| self.az.usable_area(o));
-            let remembered = self.az.settings.windows.remember_geometry.then(|| self.az.remembered.get(&app_id)).flatten();
+            let remembered =
+                self.az.settings.windows.remember_geometry.then(|| self.az.remembered.get(&app_id)).flatten();
             toplevel.with_pending_state(|s| {
                 if let Some(u) = usable {
                     let i = crate::decor::insets(true);
@@ -164,7 +171,8 @@ impl State {
         let surface = toplevel.wl_surface().clone();
         let (app_id, title) = toplevel_ids(&toplevel);
         let parent = toplevel.parent().and_then(|p| self.az.window_for_surface(&p));
-        let pid = self.az.dh.get_client(surface.id()).ok().and_then(|c| c.get_credentials(&self.az.dh).ok()).map(|c| c.pid);
+        let pid =
+            self.az.dh.get_client(surface.id()).ok().and_then(|c| c.get_credentials(&self.az.dh).ok()).map(|c| c.pid);
         let ssd = toplevel.current_state().decoration_mode == Some(DecorationMode::ServerSide);
         let geo = window.geometry();
         let size = (geo.size.w.max(1), geo.size.h.max(1));
@@ -175,7 +183,13 @@ impl State {
         crate::actions::place_new_window(self, id, size, parent);
         self.az.windows.insert(
             id,
-            Mapped { id, window: window.clone(), decor: DecorCache::default(), resize_anchor: None, requested_size: None },
+            Mapped {
+                id,
+                window: window.clone(),
+                decor: DecorCache::default(),
+                resize_anchor: None,
+                requested_size: None,
+            },
         );
         self.az.by_surface.insert(surface.clone(), id);
         info!(id, app_id, title, ssd, "window opened");
@@ -183,10 +197,12 @@ impl State {
         // A new window of the focused app joins its group, when asked for.
         let focused = self.az.wm.focused();
         let same_app = focused.filter(|f| self.az.wm.get(*f).is_some_and(|w| w.app_id == app_id && w.id != id));
-        if self.az.settings.windows.stack_new_windows_of_same_app && parent.is_none()
-            && let Some(f) = same_app {
-                self.stack(f, id);
-            }
+        if self.az.settings.windows.stack_new_windows_of_same_app
+            && parent.is_none()
+            && let Some(f) = same_app
+        {
+            self.stack(f, id);
+        }
         self.az.window_outputs_dirty = true;
         self.focus_window(Some(id));
         self.az.configure(id);
@@ -253,9 +269,10 @@ impl State {
             self.az.window_changed(id);
             self.az.window_outputs_dirty = true;
         } else if let Some(m) = self.az.windows.get_mut(&id)
-            && m.requested_size == Some(size) {
-                m.requested_size = None;
-            }
+            && m.requested_size == Some(size)
+        {
+            m.requested_size = None;
+        }
         self.az.redraw_window(id);
     }
 
@@ -264,7 +281,10 @@ impl State {
         let Some(m) = self.az.windows.remove(&id) else { return };
         self.az.by_surface.retain(|_, w| *w != id);
         if let Some(w) = self.az.wm.get(id) {
-            if w.placement == crate::wm::Placement::Free && w.parent.is_none() && self.az.settings.windows.remember_geometry {
+            if w.placement == crate::wm::Placement::Free
+                && w.parent.is_none()
+                && self.az.settings.windows.remember_geometry
+            {
                 let (app, rect) = (w.app_id.clone(), w.rect);
                 self.az.remembered.set(&app, rect);
             }
@@ -322,10 +342,9 @@ impl State {
         let before = map.non_exclusive_zone();
         map.arrange();
         let after = map.non_exclusive_zone();
-        if !initial_sent
-            && let Some(layer) = map.layer_for_surface(surface, WindowSurfaceType::TOPLEVEL) {
-                layer.layer_surface().send_configure();
-            }
+        if !initial_sent && let Some(layer) = map.layer_for_surface(surface, WindowSurfaceType::TOPLEVEL) {
+            layer.layer_surface().send_configure();
+        }
         drop(map);
         if before != after {
             // The usable area changed: windows filling it follow.
@@ -345,7 +364,12 @@ impl State {
             .az
             .wm
             .windows()
-            .filter(|w| matches!(w.placement, crate::wm::Placement::Fill | crate::wm::Placement::SplitLeft | crate::wm::Placement::SplitRight))
+            .filter(|w| {
+                matches!(
+                    w.placement,
+                    crate::wm::Placement::Fill | crate::wm::Placement::SplitLeft | crate::wm::Placement::SplitRight
+                )
+            })
             .filter(|w| out_rect.intersects(w.rect))
             .map(|w| w.id)
             .collect();
@@ -355,7 +379,9 @@ impl State {
             let placement = w.placement;
             let area = match placement {
                 crate::wm::Placement::SplitLeft => Rect::new(usable.x, usable.y, usable.w / 2, usable.h),
-                crate::wm::Placement::SplitRight => Rect::new(usable.x + usable.w / 2, usable.y, usable.w - usable.w / 2, usable.h),
+                crate::wm::Placement::SplitRight => {
+                    Rect::new(usable.x + usable.w / 2, usable.y, usable.w - usable.w / 2, usable.h)
+                }
                 _ => usable,
             };
             let r = area.inset(insets);
@@ -376,23 +402,26 @@ impl State {
         // The pointer's own surface, a drag icon or a lock surface.
         use smithay::input::pointer::{CursorImageStatus, CursorImageSurfaceData};
         if let CursorImageStatus::Surface(s) = &self.az.cursor_status
-            && s == surface {
-                with_states(surface, |states| {
-                    if let Some(attrs) = states.data_map.get::<CursorImageSurfaceData>() {
-                        let delta = states.cached_state.get::<SurfaceAttributes>().current().buffer_delta.take();
-                        if let Some(d) = delta {
-                            attrs.lock().unwrap().hotspot -= d;
-                        }
+            && s == surface
+        {
+            with_states(surface, |states| {
+                if let Some(attrs) = states.data_map.get::<CursorImageSurfaceData>() {
+                    let delta = states.cached_state.get::<SurfaceAttributes>().current().buffer_delta.take();
+                    if let Some(d) = delta {
+                        attrs.lock().unwrap().hotspot -= d;
                     }
-                });
-                if let Some(o) = self.az.active_output() {
-                    self.az.queue_redraw(&o);
                 }
+            });
+            if let Some(o) = self.az.active_output() {
+                self.az.queue_redraw(&o);
             }
+        }
         if self.az.dnd_icon.as_ref() == Some(surface) {
             // The icon moves by its offsets (wl_surface.offset, or attach's x
             // and y before version 5) relative to the pointer.
-            let delta = with_states(surface, |states| states.cached_state.get::<SurfaceAttributes>().current().buffer_delta.take());
+            let delta = with_states(surface, |states| {
+                states.cached_state.get::<SurfaceAttributes>().current().buffer_delta.take()
+            });
             if let Some(d) = delta {
                 self.az.dnd_offset += d;
             }
@@ -471,7 +500,13 @@ impl XdgShellHandler for State {
         crate::grabs::start_client_move(self, &seat, id, serial);
     }
 
-    fn resize_request(&mut self, surface: ToplevelSurface, seat: WlSeat, serial: Serial, edges: xdg_toplevel::ResizeEdge) {
+    fn resize_request(
+        &mut self,
+        surface: ToplevelSurface,
+        seat: WlSeat,
+        serial: Serial,
+        edges: xdg_toplevel::ResizeEdge,
+    ) {
         let Some(id) = self.az.window_for_surface(surface.wl_surface()) else { return };
         let Some(seat) = Seat::<State>::from_resource(&seat) else { return };
         crate::grabs::start_client_resize(self, &seat, id, serial, crate::grabs::edges_from_xdg(edges));
@@ -510,7 +545,9 @@ impl XdgShellHandler for State {
         };
         debug!(target: "aizome::focus", root = ?root.id(), "popup grab");
         if let Some(keyboard) = seat.get_keyboard() {
-            if keyboard.is_grabbed() && !(keyboard.has_grab(serial) || keyboard.has_grab(grab.previous_serial().unwrap_or(serial))) {
+            if keyboard.is_grabbed()
+                && !(keyboard.has_grab(serial) || keyboard.has_grab(grab.previous_serial().unwrap_or(serial)))
+            {
                 grab.ungrab(PopupUngrabStrategy::All);
                 return;
             }
@@ -519,7 +556,8 @@ impl XdgShellHandler for State {
         }
         if let Some(pointer) = seat.get_pointer() {
             if pointer.is_grabbed()
-                && !(pointer.has_grab(serial) || pointer.has_grab(grab.previous_serial().unwrap_or_else(|| grab.serial())))
+                && !(pointer.has_grab(serial)
+                    || pointer.has_grab(grab.previous_serial().unwrap_or_else(|| grab.serial())))
             {
                 grab.ungrab(PopupUngrabStrategy::All);
                 return;
@@ -569,7 +607,13 @@ impl XdgShellHandler for State {
         }
     }
 
-    fn show_window_menu(&mut self, surface: ToplevelSurface, _seat: WlSeat, _serial: Serial, location: Point<i32, Logical>) {
+    fn show_window_menu(
+        &mut self,
+        surface: ToplevelSurface,
+        _seat: WlSeat,
+        _serial: Serial,
+        location: Point<i32, Logical>,
+    ) {
         if let Some(id) = self.az.window_for_surface(surface.wl_surface()) {
             let (Some(w), Some(m)) = (self.az.wm.get(id), self.az.windows.get(&id)) else { return };
             let geo = m.window.geometry();
@@ -658,7 +702,13 @@ impl WlrLayerShellHandler for State {
         &mut self.az.layer_shell
     }
 
-    fn new_layer_surface(&mut self, surface: WlrLayerSurface, output: Option<WlOutput>, _layer: Layer, namespace: String) {
+    fn new_layer_surface(
+        &mut self,
+        surface: WlrLayerSurface,
+        output: Option<WlOutput>,
+        _layer: Layer,
+        namespace: String,
+    ) {
         let output = output.as_ref().and_then(Output::from_resource).or_else(|| self.az.active_output());
         let Some(output) = output else {
             surface.send_close();

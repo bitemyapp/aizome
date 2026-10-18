@@ -69,9 +69,7 @@ impl Icons {
         }
         let idx = self.desktop.as_ref()?;
         let lower = app_id.to_lowercase();
-        idx.get(&lower)
-            .or_else(|| idx.get(lower.rsplit('.').next().unwrap_or(&lower)))
-            .cloned()
+        idx.get(&lower).or_else(|| idx.get(lower.rsplit('.').next().unwrap_or(&lower))).cloned()
     }
 
     /// The icon file for an app, if one is installed.
@@ -79,11 +77,10 @@ impl Icons {
         if let Some(f) = self.files.get(app_id) {
             return f.clone();
         }
-        let icon = self
-            .desktop_file(app_id)
-            .and_then(|d| desktop_key(&d, "Icon"))
-            .unwrap_or_else(|| app_id.to_string());
-        let found = find_icon(&icon, 64, self.theme.as_deref()).or_else(|| find_icon(&app_id.to_lowercase(), 64, self.theme.as_deref()));
+        let icon =
+            self.desktop_file(app_id).and_then(|d| desktop_key(&d, "Icon")).unwrap_or_else(|| app_id.to_string());
+        let found = find_icon(&icon, 64, self.theme.as_deref())
+            .or_else(|| find_icon(&app_id.to_lowercase(), 64, self.theme.as_deref()));
         self.files.insert(app_id.to_string(), found.clone());
         found
     }
@@ -153,7 +150,14 @@ where
 fn to_buffer(image: Image, size: i32, scale: u32) -> Option<IconTexture> {
     let (pw, ph) = image.pixel_size();
     let px = image.to_premultiplied_rgba8()?;
-    let buffer = MemoryRenderBuffer::from_slice(&px, Fourcc::Abgr8888, (pw as i32, ph as i32), scale as i32, Transform::Normal, None);
+    let buffer = MemoryRenderBuffer::from_slice(
+        &px,
+        Fourcc::Abgr8888,
+        (pw as i32, ph as i32),
+        scale as i32,
+        Transform::Normal,
+        None,
+    );
     Some(IconTexture { buffer, size })
 }
 
@@ -192,7 +196,9 @@ fn load_rgba(path: &Path, px: u32) -> Option<(u32, u32, Vec<u8>)> {
     let rgba: Vec<u8> = match info.color_type {
         png::ColorType::Rgba => data.to_vec(),
         png::ColorType::Rgb => data.as_chunks::<3>().0.iter().flat_map(|p| [p[0], p[1], p[2], 255]).collect(),
-        png::ColorType::GrayscaleAlpha => data.as_chunks::<2>().0.iter().flat_map(|p| [p[0], p[0], p[0], p[1]]).collect(),
+        png::ColorType::GrayscaleAlpha => {
+            data.as_chunks::<2>().0.iter().flat_map(|p| [p[0], p[0], p[0], p[1]]).collect()
+        }
         png::ColorType::Grayscale => data.iter().flat_map(|g| [*g, *g, *g, 255]).collect(),
         png::ColorType::Indexed => return None,
     };
@@ -217,7 +223,8 @@ fn generic_tile(app_id: &str, size: i32, scale: u32) -> IconTexture {
     let hue = app_id.bytes().fold(0u32, |h, b| h.wrapping_mul(31).wrapping_add(b as u32));
     let palette = [0x7aa2f7, 0x7dcfff, 0x9ece6a, 0xbb9af7, 0xe0af68, 0xf7768e];
     let bg = Rgba::hex(palette[(hue as usize) % palette.len()]);
-    let initial: String = app_id.rsplit('.').next().unwrap_or(app_id).chars().take(1).collect::<String>().to_uppercase();
+    let initial: String =
+        app_id.rsplit('.').next().unwrap_or(app_id).chars().take(1).collect::<String>().to_uppercase();
     let img = sidestep_ui::offscreen::render(Size::new(s, s), scale as f64, Appearance::DARK, |c| {
         c.fill_rect(KRect::new(0.0, 0.0, s, s), Color::rgba8(bg.r, bg.g, bg.b, 255));
         let font = sidestep_ui::Font::named(aizome_theme::typeface::UI, s * 0.55)
@@ -283,9 +290,10 @@ pub fn desktop_key(path: &Path, key: &str) -> Option<String> {
             continue;
         }
         if let Some((k, v)) = line.split_once('=')
-            && k.trim() == key {
-                return Some(v.trim().to_string());
-            }
+            && k.trim() == key
+        {
+            return Some(v.trim().to_string());
+        }
     }
     None
 }

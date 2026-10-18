@@ -103,7 +103,8 @@ impl Animations {
             self.overlays.remove(name);
             return;
         }
-        self.overlays.insert(name, Slide { dx: 1.0, dy: 0.0, start: Instant::now(), dur: Duration::from_millis(ms as u64) });
+        self.overlays
+            .insert(name, Slide { dx: 1.0, dy: 0.0, start: Instant::now(), dur: Duration::from_millis(ms as u64) });
     }
 
     /// An overlay's entrance, 0.0 → 1.0 (1.0 when not animating).

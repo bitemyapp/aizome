@@ -51,7 +51,19 @@ fn main() {
     std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700)).unwrap();
     let socket = format!("azbench-{}", std::process::id());
     let comp = Command::new(&aizome)
-        .args(["--backend", "headless", "--socket", &socket, "--no-session", "--no-shell", "--no-xwayland", "--renderer", &renderer, "--headless-output", &output])
+        .args([
+            "--backend",
+            "headless",
+            "--socket",
+            &socket,
+            "--no-session",
+            "--no-shell",
+            "--no-xwayland",
+            "--renderer",
+            &renderer,
+            "--headless-output",
+            &output,
+        ])
         .env_remove("WAYLAND_DISPLAY")
         .env_remove("DISPLAY")
         .env("XDG_RUNTIME_DIR", &dir)
