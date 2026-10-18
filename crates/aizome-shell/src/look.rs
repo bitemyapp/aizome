@@ -125,10 +125,10 @@ pub fn close_box(canvas: &mut Canvas, r: Rect, c: Color) {
     draw::border(canvas, r, c, 1.5);
 }
 
-/// The pin of a menu's title strip (tear off / keep).
-pub fn pin(canvas: &mut Canvas, at: Point, size: f64, c: Color, pinned: bool) {
-    let icon = if pinned { aizome_kit::Icon::Pin } else { aizome_kit::Icon::PinOff };
-    icon.draw(canvas, at, size, c);
+/// The pin of a menu's title strip (tear off / keep): the same glyph
+/// either way, in `focus` when kept (the caller's colour).
+pub fn pin(canvas: &mut Canvas, at: Point, size: f64, c: Color) {
+    aizome_kit::Icon::Pin.draw(canvas, at, size, c);
 }
 
 /// A keycap: the label in mono on `surface`, edged in `line2` with a 3pt

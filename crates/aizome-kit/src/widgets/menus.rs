@@ -521,7 +521,11 @@ impl Widget for MenuView {
         let caption = TextSpec::new(FontSpec::mono(m.caption), theme.text3());
         let filtered = !self.query.is_empty();
         let rows = self.rows_for(&self.query.clone());
-        self.gutter = if rows.iter().any(|(p, ..)| matches!(self.item(p), Some(ItemSpec::Action(a)) if a.checked || a.icon.is_some())) {
+        self.gutter = if rows.iter().any(|(p, ..)| match self.item(p) {
+            Some(ItemSpec::Action(a)) => a.checked || a.icon.is_some(),
+            Some(ItemSpec::Submenu(m)) => m.icon.is_some(),
+            _ => false,
+        }) {
             GUTTER
         } else {
             0.0
@@ -602,8 +606,9 @@ impl Widget for MenuView {
                 let pinned = self.look.pin.as_ref().is_some_and(|(p, _)| *p);
                 let pb = self.pin_box();
                 let c = if pinned { t.focus() } else { t.text3() };
-                let icon = if pinned { Icon::Pin } else { Icon::PinOff };
-                icon.draw(cx.canvas, Point::new(pb.x0 + 4.0, pb.y0 + (pb.height() - 12.0) / 2.0), 12.0, c);
+                // The boards draw the same pin either way; its colour says
+                // whether the palette is kept.
+                Icon::Pin.draw(cx.canvas, Point::new(pb.x0 + 4.0, pb.y0 + (pb.height() - 12.0) / 2.0), 12.0, c);
             }
         }
         let query = state.map(|s| s.query.as_str()).unwrap_or("");
@@ -660,6 +665,12 @@ impl Widget for MenuView {
                         Icon::ChevronRight.draw(cx.canvas, Point::new(right - 12.0, r.y0 + (r.height() - 12.0) / 2.0), 12.0, c);
                         right -= ARROW;
                     }
+                    if let Some(ItemSpec::Submenu(m)) = item
+                        && let Some(icon) = m.icon
+                    {
+                        let gy = r.y0 + (r.height() - 14.0) / 2.0;
+                        icon.draw(cx.canvas, Point::new(r.x0 + PAD - 3.0, gy), 14.0, if hot { fg } else { t.text3() });
+                    }
                     if let Some(ItemSpec::Action(a)) = item {
                         let gy = r.y0 + (r.height() - 14.0) / 2.0;
                         if a.checked {
@@ -698,7 +709,7 @@ impl Widget for MenuView {
                     h.str(&a.label).add(&(a.enabled, a.checked, a.shortcut, a.icon));
                 }
                 ItemSpec::Submenu(m) => {
-                    h.str(&m.title).add(&m.items.len());
+                    h.str(&m.title).add(&(m.items.len(), m.icon));
                 }
                 ItemSpec::Header(t) => {
                     h.str(t);

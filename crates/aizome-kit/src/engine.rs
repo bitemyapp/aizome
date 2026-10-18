@@ -1559,7 +1559,7 @@ impl Core {
             if let Some(a) = found {
                 let mut a = a;
                 // Settle Edit items against the focused widget.
-                let mut probe = MenuSpec { title: String::new(), items: vec![ItemSpec::Action(a.clone())] };
+                let mut probe = MenuSpec { title: String::new(), items: vec![ItemSpec::Action(a.clone())], icon: None };
                 self.settle_menu(&mut probe);
                 if let Some(ItemSpec::Action(s)) = probe.items.first() {
                     a.enabled = s.enabled;

@@ -264,6 +264,8 @@ impl MenuRole {
 pub struct MenuSpec {
     pub title: String,
     pub items: Vec<ItemSpec>,
+    /// Its glyph where it's a submenu's row (the Toolchest's).
+    pub icon: Option<Icon>,
 }
 
 #[derive(Clone, Debug)]
@@ -341,7 +343,7 @@ impl<Msg> Clone for Menu<Msg> {
 
 impl<Msg> Menu<Msg> {
     pub fn new(title: impl Into<String>) -> Menu<Msg> {
-        Menu { spec: MenuSpec { title: title.into(), items: Vec::new() }, _m: PhantomData }
+        Menu { spec: MenuSpec { title: title.into(), items: Vec::new(), icon: None }, _m: PhantomData }
     }
 
     pub fn item(mut self, item: MenuItem<Msg>) -> Self {
@@ -478,9 +480,12 @@ impl<Msg> MenuItem<Msg> {
         self
     }
 
+    /// A glyph before its label: an action's, or a submenu's.
     pub fn icon(mut self, icon: Icon) -> Self {
-        if let Some(a) = self.action() {
-            a.icon = Some(icon);
+        match &mut self.spec {
+            ItemSpec::Action(a) => a.icon = Some(icon),
+            ItemSpec::Submenu(m) => m.icon = Some(icon),
+            _ => {}
         }
         self
     }

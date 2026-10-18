@@ -1576,7 +1576,7 @@ impl DropdownWidget {
             .collect();
         let face = self.face(cx.theme(), cx.size());
         let w = face.width();
-        cx.open_menu(MenuSpec { title: String::new(), items }, face, w);
+        cx.open_menu(MenuSpec { title: String::new(), items, icon: None }, face, w);
     }
 }
 
