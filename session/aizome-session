@@ -31,7 +31,12 @@ for file in /etc/xdg/aizome/environment "${XDG_CONFIG_HOME:-$HOME/.config}/aizom
       *=*)
         key=${line%%=*}
         export "$key=${line#*=}"
-        vars="$vars $key"
+        # Each name once: systemctl import-environment refuses the whole
+        # list when a name repeats.
+        case " $vars " in
+          *" $key "*) ;;
+          *) vars="$vars $key" ;;
+        esac
         ;;
     esac
   done < "$file"

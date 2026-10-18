@@ -87,6 +87,12 @@ pkgs.testers.runNixOSTest {
             timeout=60,
         )
         machine.wait_until_succeeds("pgrep -u alice -x aizome-shell", timeout=60)
+        # The session's environment file reaches the session (it must be
+        # imported whole into the user manager, which the compositor and the
+        # shell start from).
+        shell_env = machine.succeed("tr '\\0' '\\n' < /proc/$(pgrep -u alice -x aizome-shell)/environ")
+        for name in ["DCONF_PROFILE=aizome", "XDG_CONFIG_DIRS=/etc/xdg/aizome", "NIXOS_OZONE_WL=1"]:
+            assert name in shell_env, f"{name} isn't in the shell's environment:\n{shell_env}"
         outputs = ipc("outputs")
         print(outputs)
         assert len(outputs) >= 1, outputs
