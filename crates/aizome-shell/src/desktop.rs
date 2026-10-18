@@ -31,9 +31,21 @@ pub enum IconKind {
     Home(PathBuf),
     /// A disk or image. `system`: the disk the system runs from, which is
     /// opened but never unmounted or ejected.
-    Volume { block: String, mount: Option<String>, ejectable: bool, drive: Option<String>, image: bool, system: bool },
-    Trash { full: bool },
-    Item { path: PathBuf, dir: bool },
+    Volume {
+        block: String,
+        mount: Option<String>,
+        ejectable: bool,
+        drive: Option<String>,
+        image: bool,
+        system: bool,
+    },
+    Trash {
+        full: bool,
+    },
+    Item {
+        path: PathBuf,
+        dir: bool,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq)]

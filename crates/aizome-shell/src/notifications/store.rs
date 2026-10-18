@@ -5,8 +5,10 @@
 
 use std::path::PathBuf;
 
+use serde::{Deserialize, Serialize};
+
 /// How urgent a notification is (the spec's `urgency` hint).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum Urgency {
     Low,
     #[default]
@@ -25,7 +27,7 @@ impl Urgency {
 }
 
 /// An image a notification carries.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum NoteImage {
     File(PathBuf),
     /// Straight RGBA pixels (from `image-data`).
@@ -71,8 +73,9 @@ pub struct Incoming {
     pub sound: Option<NoteSound>,
 }
 
-/// A notification the shell holds.
-#[derive(Clone, Debug, PartialEq)]
+/// A notification the shell holds (carried across a restart, `carry.rs`).
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct Notification {
     pub id: u32,
     pub app_name: String,
@@ -147,6 +150,32 @@ impl Store {
             self.fresh_id()
         };
         self.post_as(id, n, filed_under, quiet, now)
+    }
+
+    /// The last id given.
+    pub fn next_id(&self) -> u32 {
+        self.next_id
+    }
+
+    /// Starts from notifications a previous shell held.
+    pub fn restore(&mut self, list: Vec<Notification>, next_id: u32) {
+        self.next_id = list.iter().map(|n| n.id).max().unwrap_or(0).max(next_id);
+        self.list = list;
+    }
+
+    /// Takes in notifications a previous shell got while this one started
+    /// (those it doesn't have), keeping the order they came in.
+    pub fn merge(&mut self, more: Vec<Notification>) -> usize {
+        let mut added = 0;
+        for n in more {
+            if !self.list.iter().any(|x| x.id == n.id) {
+                self.next_id = self.next_id.max(n.id);
+                self.list.push(n);
+                added += 1;
+            }
+        }
+        self.list.sort_by_key(|n| (n.at, n.id));
+        added
     }
 
     /// An id no notification has.

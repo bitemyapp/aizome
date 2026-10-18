@@ -75,6 +75,9 @@ pub enum Action {
         day: bool,
     },
     ToggleDoNotDisturb,
+    /// Reload Aizome without touching the apps: the compositor's logic,
+    /// the shell and the settings, whatever changed (as ⌃❖R).
+    ReloadAizome,
     Screenshot,
     NewDesk,
     /// Ask for a new Desk name in place (double-click in the strip).

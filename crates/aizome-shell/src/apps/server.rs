@@ -27,12 +27,17 @@ pub struct Server {
     path: Option<PathBuf>,
     /// Held by the handles alone: the last one removes the socket.
     handles: Arc<()>,
+    /// The socket file this server made.
+    inode: Option<u64>,
 }
+
+/// Where a server hands what connections say.
+pub type Sink = Box<dyn Fn(ServerEvent) + Send + Sync + 'static>;
 
 impl Server {
     /// Listen at `path` (removing a stale socket there), handing what
     /// connections say to `sink` on their threads.
-    pub fn listen(path: &Path, sink: impl Fn(ServerEvent) + Send + Sync + 'static) -> std::io::Result<Server> {
+    pub fn listen(path: &Path, sink: Sink) -> std::io::Result<Server> {
         if path.exists() {
             // A live shell answers; a dead one's socket is only a file.
             if UnixStream::connect(path).is_ok() {
@@ -41,13 +46,21 @@ impl Server {
                     format!("a shell already listens at {}", path.display()),
                 ));
             }
-            let _ = std::fs::remove_file(path);
         }
+        Server::listen_replacing(path, sink)
+    }
+
+    /// Listens at `path` even while another shell does (a restart): new
+    /// connections come here, and the old shell's apps reconnect here as
+    /// it goes.
+    pub fn listen_replacing(path: &Path, sink: Sink) -> std::io::Result<Server> {
+        let _ = std::fs::remove_file(path);
         if let Some(dir) = path.parent() {
             let _ = std::fs::create_dir_all(dir);
         }
         let listener = UnixListener::bind(path)?;
-        let server = Server { writers: Arc::default(), path: Some(path.to_owned()), handles: Arc::default() };
+        let inode = std::fs::metadata(path).map(|m| std::os::unix::fs::MetadataExt::ino(&m)).ok();
+        let server = Server { writers: Arc::default(), path: Some(path.to_owned()), handles: Arc::default(), inode };
         let writers = server.writers.clone();
         let sink = Arc::new(sink);
         std::thread::Builder::new().name("shell-socket".into()).spawn(move || {
@@ -77,11 +90,15 @@ impl Server {
 
 impl Drop for Server {
     fn drop(&mut self) {
-        // The last handle removes the socket.
+        // The last handle removes the socket, if it's still this shell's
+        // (a restarted shell may listen there now).
         if Arc::strong_count(&self.handles) == 1
             && let Some(p) = &self.path
         {
-            let _ = std::fs::remove_file(p);
+            let ino = std::fs::metadata(p).map(|m| std::os::unix::fs::MetadataExt::ino(&m)).ok();
+            if ino.is_some() && ino == self.inode {
+                let _ = std::fs::remove_file(p);
+            }
         }
     }
 }
@@ -138,9 +155,12 @@ mod tests {
         let path = dir.join("shell.sock");
         let (tx, rx) = channel();
         let tx = Mutex::new(tx);
-        let server = Server::listen(&path, move |e| {
-            let _ = tx.lock().unwrap().send(e);
-        })
+        let server = Server::listen(
+            &path,
+            Box::new(move |e| {
+                let _ = tx.lock().unwrap().send(e);
+            }),
+        )
         .unwrap();
         let mut app = proto::Client::hello(&path, "org.aizome.Test", "Test").unwrap();
         let hello = rx.recv().unwrap();
@@ -149,7 +169,7 @@ mod tests {
         server.send(conn, &proto::ShellMessage::Activate { id: 4 });
         assert_eq!(app.recv().unwrap(), Some(proto::ShellMessage::Activate { id: 4 }));
         // A second shell can't take the socket while this one listens.
-        assert!(Server::listen(&path, |_| {}).is_err());
+        assert!(Server::listen(&path, Box::new(|_| {})).is_err());
         drop(app);
         // (The probe above was a connection too, gone at once.)
         while rx.recv().unwrap() != ServerEvent::Gone(conn) {}

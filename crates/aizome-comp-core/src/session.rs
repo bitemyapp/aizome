@@ -271,6 +271,11 @@ impl State {
         if self.az.children.handover.is_some() {
             return Err("a shell restart is already under way".into());
         }
+        // The shell is the lock screen: a new one couldn't take over the
+        // lock its predecessor holds.
+        if self.az.lock.is_locked() {
+            return Err("the screen is locked; unlock first".into());
+        }
         let env = session_env(&self.az);
         let i =
             self.az.children.supervised.iter().position(|s| s.name == "aizome-shell").ok_or("no shell is running")?;

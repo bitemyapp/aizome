@@ -91,6 +91,8 @@ impl Shell {
                     self.banner_done(id, cx);
                 }
             }
+            // The shell's update loop handles these.
+            NoteEvent::NameAcquired | NoteEvent::NameLost => {}
         }
     }
 

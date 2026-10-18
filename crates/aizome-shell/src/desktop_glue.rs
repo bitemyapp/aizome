@@ -17,12 +17,8 @@ use crate::widgets::drawn::DragPhase;
 impl Shell {
     pub fn desktop_icons(&self) -> Vec<DeskIcon> {
         let home = aizome_config::home_dir();
-        let mut volumes = self
-            .sys
-            .disks
-            .as_ref()
-            .map(|d| d.snapshot().desktop_volumes(&home.to_string_lossy()))
-            .unwrap_or_default();
+        let mut volumes =
+            self.sys.disks.as_ref().map(|d| d.snapshot().desktop_volumes(&home.to_string_lossy())).unwrap_or_default();
         // The system's disk from the mounts, where UDisks didn't say.
         if !volumes.iter().any(|v| v.system)
             && let Some(v) = &self.system_disk_fallback

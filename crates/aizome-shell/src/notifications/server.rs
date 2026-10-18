@@ -22,6 +22,10 @@ pub enum NoteEvent {
     Notify(u32, Box<Incoming>),
     /// An app closed one of its notifications.
     Close(u32),
+    /// The bus name is this shell's.
+    NameAcquired,
+    /// Another shell took the bus name (a restart): notifications go to it.
+    NameLost,
 }
 
 struct Notifications {
@@ -164,13 +168,22 @@ enum Signal {
 }
 
 impl NoteServer {
-    /// Take the name on the session bus and serve; `sink` hears what apps
-    /// ask (on the bus's thread).
-    pub fn start(sink: impl Fn(NoteEvent) + Send + Sync + 'static) -> zbus::Result<NoteServer> {
-        let iface = Notifications { next: Arc::new(AtomicU32::new(1)), sink: Arc::new(sink) };
-        let conn = zbus::block_on(async {
-            zbus::connection::Builder::session()?.name(NAME)?.serve_at(PATH, iface)?.build().await
-        })?;
+    /// Take the name on the session bus and serve, giving ids from `first`
+    /// on; `sink` hears what apps ask (on the bus's thread). The name is
+    /// held allowing replacement and taken replacing whoever has it, so a
+    /// restarted shell takes it over from the old one without a gap.
+    pub fn start(first: u32, sink: impl Fn(NoteEvent) + Send + Sync + 'static) -> zbus::Result<NoteServer> {
+        let sink: Arc<dyn Fn(NoteEvent) + Send + Sync> = Arc::new(sink);
+        let iface = Notifications { next: Arc::new(AtomicU32::new(first.max(1))), sink: sink.clone() };
+        let conn =
+            zbus::block_on(async { zbus::connection::Builder::session()?.serve_at(PATH, iface)?.build().await })?;
+        {
+            let (conn, sink) = (conn.clone(), sink.clone());
+            std::thread::Builder::new()
+                .name("notifications-name".into())
+                .spawn(move || watch_name(conn, sink))
+                .map_err(|e| zbus::Error::Failure(e.to_string()))?;
+        }
         let (tx, rx) = std::sync::mpsc::channel::<Signal>();
         std::thread::Builder::new()
             .name("notifications".into())
@@ -200,6 +213,36 @@ impl NoteServer {
 
     pub fn action_invoked(&self, id: u32, key: &str) {
         let _ = self.tx.send(Signal::Action(id, key.to_owned()));
+    }
+}
+
+/// Asks for the name, then says when it's ours and when it's lost.
+fn watch_name(conn: zbus::Connection, sink: Arc<dyn Fn(NoteEvent) + Send + Sync>) {
+    use zbus::fdo::{RequestNameFlags, RequestNameReply};
+    let conn = zbus::blocking::Connection::from(conn);
+    let Ok(proxy) = zbus::blocking::fdo::DBusProxy::new(&conn) else { return };
+    let (Ok(lost), Ok(acquired)) = (proxy.receive_name_lost(), proxy.receive_name_acquired()) else { return };
+    let name = zbus::names::WellKnownName::from_static_str_unchecked(NAME);
+    let flags = RequestNameFlags::AllowReplacement | RequestNameFlags::ReplaceExisting | RequestNameFlags::DoNotQueue;
+    match proxy.request_name(name.clone(), flags) {
+        Ok(RequestNameReply::PrimaryOwner) | Ok(RequestNameReply::AlreadyOwner) => {}
+        Ok(r) => log::warn!("{NAME}: another server keeps it ({r:?})"),
+        Err(e) => log::warn!("{NAME}: {e}"),
+    }
+    {
+        let sink = sink.clone();
+        std::thread::spawn(move || {
+            for s in acquired {
+                if s.args().is_ok_and(|a| a.name() == NAME) {
+                    sink(NoteEvent::NameAcquired);
+                }
+            }
+        });
+    }
+    for s in lost {
+        if s.args().is_ok_and(|a| a.name() == NAME) {
+            sink(NoteEvent::NameLost);
+        }
     }
 }
 
