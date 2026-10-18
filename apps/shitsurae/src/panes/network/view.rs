@@ -208,10 +208,9 @@ fn main(n: &Network, vcx: &ViewCx, state: &NetworkState) -> Element<Msg> {
     let count = state.saved_wifi().count();
     if has_wifi && count > 0 {
         let words = if count == 1 { "1 network".to_owned() } else { format!("{count} networks") };
-        sections.push(
-            vcx.section(
-                "",
-                vec![
+        sections.push(vcx.section(
+            "",
+            vec![
                     line(
                         row![
                             lead(icon(Icon::Bookmark).size(16.0).role(Role::Text2)),
@@ -226,8 +225,7 @@ fn main(n: &Network, vcx: &ViewCx, state: &NetworkState) -> Element<Msg> {
                     )
                     .entry("saved"),
                 ],
-            ),
-        );
+        ));
     }
     form::page(sections)
 }
@@ -524,16 +522,14 @@ fn details(n: &Network, vcx: &ViewCx, state: &NetworkState, uuid: &str) -> Eleme
             Some(url) => format!("Automatic, from {url}"),
             None => "Automatic (WPAD)".to_owned(),
         };
-        sections.push(
-            vcx.section(
-                "Proxy",
-                vec![
+        sections.push(vcx.section(
+            "Proxy",
+            vec![
                     form::value("Proxy", words)
                         .help_maybe(profile.proxy.browser_only.then(|| "For web browsers only".to_owned()))
                         .entry("proxy"),
                 ],
-            ),
-        );
+        ));
     }
 
     if wifi || vpn {

@@ -582,10 +582,9 @@ impl Pane for Bluetooth {
             format!("On, as “{}”", adapter.alias)
         };
         let name = self.name.clone().unwrap_or_else(|| adapter.alias.clone());
-        sections.push(
-            vcx.section(
-                "",
-                vec![
+        sections.push(vcx.section(
+            "",
+            vec![
                     form::row("Bluetooth", toggle(on).on_toggle(Msg::Power))
                         .leading(tile(Icon::Bluetooth, Tile::Ai, 24.0))
                         .detail(detail)
@@ -601,8 +600,7 @@ impl Pane for Bluetooth {
                     .help("What other devices see when they look for this computer")
                     .entry("name"),
                 ],
-            ),
-        );
+        ));
         if !on {
             return form::page(sections);
         }

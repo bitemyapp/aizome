@@ -500,10 +500,9 @@ impl Pane for Users {
             } else {
                 groups_of(&me.name)
             };
-            sections.push(
-                vcx.section(
-                    "You",
-                    vec![
+            sections.push(vcx.section(
+                "You",
+                vec![
                         form::row(
                             "Name",
                             text_field(&name)
@@ -530,8 +529,7 @@ impl Pane for Users {
                         .entry("groups")
                         .help("wheel can act as administrator; the others reach devices."),
                     ],
-                ),
-            );
+            ));
         }
 
         // Other people.
@@ -577,10 +575,9 @@ impl Pane for Users {
         let mut names = vec!["Off".to_owned()];
         names.extend(snap.users.iter().map(|u| u.display_name().to_owned()));
         let auto = snap.users.iter().position(|u| u.automatic_login).map_or(0, |i| i + 1);
-        sections.push(
-            vcx.section(
-                "Login",
-                vec![
+        sections.push(vcx.section(
+            "Login",
+            vec![
                     form::row(
                         "Log in automatically as",
                         dropdown(names, auto).on_select(Msg::AutoLogin).enabled(!fixed).min_width(200.0),
@@ -588,8 +585,7 @@ impl Pane for Users {
                     .entry("auto-login")
                     .help("The computer starts straight into this account, without asking for a password."),
                 ],
-            ),
-        );
+        ));
         form::page(sections)
     }
 

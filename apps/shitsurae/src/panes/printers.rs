@@ -626,16 +626,14 @@ impl Pane for Printers {
                 (Some(_), Some(s)) => format!("Yours; everyone's is {}", shown(s)),
                 _ => "Where documents print unless you choose another".to_owned(),
             };
-            sections.push(
-                vcx.section(
-                    "",
-                    vec![
+            sections.push(vcx.section(
+                "",
+                vec![
                         form::row("Default printer", form::choice(&labels, at, Msg::Default))
                             .help(help)
                             .entry("default-printer"),
                     ],
-                ),
-            );
+            ));
         }
         // The printers.
         let mut rows: Vec<Row<Msg>> = Vec::new();

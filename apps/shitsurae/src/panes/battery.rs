@@ -409,10 +409,9 @@ impl Pane for Battery {
                 .padding([8.0, 0.0])
                 .into(),
             };
-            sections.push(
-                vcx.section(
-                    "Battery",
-                    vec![
+            sections.push(vcx.section(
+                "Battery",
+                vec![
                         form::whole(container(hero).padding([14.0, form::INSET]).width(Fill)).entry("charge"),
                         form::whole(
                             container(column![form::caption::<Msg>("Last 24 hours"), history].spacing(6.0))
@@ -421,8 +420,7 @@ impl Pane for Battery {
                         )
                         .entry("history"),
                     ],
-                ),
-            );
+            ));
             let mut health = vec![
                 form::value("Maximum capacity", format!("{:.0}%", b.capacity))
                     .entry("health")
@@ -466,10 +464,9 @@ impl Pane for Battery {
 
         let (off, off_i) = minutes_choice(s.idle.monitors_off_after_minutes);
         let (lock, lock_i) = minutes_choice(s.idle.lock_after_minutes);
-        sections.push(
-            vcx.section(
-                "Screen",
-                vec![
+        sections.push(vcx.section(
+            "Screen",
+            vec![
                     form::row(
                         "Turn the screen off after",
                         dropdown(off, off_i).on_select(Msg::ScreenOff).min_width(150.0),
@@ -478,8 +475,7 @@ impl Pane for Battery {
                     form::row("Lock after", dropdown(lock, lock_i).on_select(Msg::LockAfter).min_width(150.0))
                         .entry("lock-after"),
                 ],
-            ),
-        );
+        ));
 
         if let Some(l) = &self.logind {
             let mut rows = Vec::new();
