@@ -1,7 +1,9 @@
-//! A recorder's life, on a thread of its own: start the first recorder
-//! that keeps running (one that exits at once makes way for the next),
-//! stop it cleanly when asked (SIGINT, so the file gets its index; then
-//! SIGTERM and SIGKILL if it won't), and say how it ended.
+//! A recorder's life, on a thread of its own: once it's known what can
+//! record here (`probe`), start the first recorder that keeps running
+//! (one that fails, exiting at once or without writing a frame, makes way
+//! for the next), stop it cleanly when asked (SIGINT, so the file gets
+//! its index; then SIGTERM and SIGKILL if it won't), and say how it
+//! ended.
 //!
 //! Each recorder is watched through a pidfd: nothing polls, and a signal
 //! can never reach another process that took a dead recorder's pid. A
@@ -49,6 +51,10 @@ pub enum Event {
     Started {
         recorder: String,
         pid: i32,
+    },
+    /// A recorder couldn't record (the next is tried).
+    GaveUp {
+        recorder: String,
     },
     Ended(Ending),
 }
@@ -111,10 +117,11 @@ pub fn log_path() -> PathBuf {
     aizome_ipc::runtime_dir().join("aizome").join("recorder.log")
 }
 
-/// Starts recording into `path`, trying `attempts` in turn; `sink` hears
-/// what happens (from the recording's thread).
+/// Starts recording into `path`, trying in turn what `attempts` gives
+/// (asked until it knows: `None` while the recorders are being probed);
+/// `sink` hears what happens (from the recording's thread).
 pub fn start(
-    attempts: Vec<Attempt>,
+    mut attempts: impl FnMut() -> Option<Vec<Attempt>> + Send + 'static,
     path: PathBuf,
     note: Option<PathBuf>,
     log: PathBuf,
@@ -126,7 +133,14 @@ pub fn start(
     std::thread::Builder::new()
         .name("recording".into())
         .spawn(move || {
-            let ending = supervise(&attempts, &path, note.as_deref(), &log, timing, &tx, &rx, &sink);
+            let ending = loop {
+                if let Some(attempts) = attempts() {
+                    break supervise(&attempts, &path, note.as_deref(), &log, timing, &tx, &rx, &sink);
+                }
+                if matches!(rx.recv_timeout(Duration::from_millis(50)), Ok(Cmd::Stop)) {
+                    break Ending::Cancelled;
+                }
+            };
             if let Some(n) = &note {
                 let _ = std::fs::remove_file(n);
             }
@@ -172,6 +186,7 @@ fn supervise(
                 let status = child.wait().ok();
                 last_error = format!("{} exited ({}): {}", attempt.recorder, describe(status), log_tail(log));
                 log::info!("recording: {last_error}");
+                sink(Event::GaveUp { recorder: attempt.recorder.to_owned() });
                 continue;
             }
             Ok(Cmd::Stop) => return stop(&mut child, &proc, path, log, timing, rx),
@@ -189,6 +204,7 @@ fn supervise(
                 if !recorded(path) {
                     log::info!("recording: {error}");
                     last_error = error;
+                    sink(Event::GaveUp { recorder: attempt.recorder.to_owned() });
                     continue;
                 }
                 log::warn!("recording: {error}");
@@ -476,9 +492,16 @@ mod tests {
 
     fn run(attempts: Vec<Attempt>, d: &Path, path: &Path) -> (Handle, Receiver<Event>) {
         let (tx, rx) = channel();
-        let h = start(attempts, path.to_owned(), Some(d.join("note.json")), d.join("log"), FAST, move |e| {
-            let _ = tx.send(e);
-        });
+        let h = start(
+            move || Some(attempts.clone()),
+            path.to_owned(),
+            Some(d.join("note.json")),
+            d.join("log"),
+            FAST,
+            move |e| {
+                let _ = tx.send(e);
+            },
+        );
         (h, rx)
     }
 
@@ -492,6 +515,7 @@ mod tests {
         let path = d.join("a.mp4");
         let (h, rx) = run(vec![failing(), recorder(&path)], &d, &path);
         assert!(matches!(next(&rx), Event::Started { recorder, .. } if recorder == "failing"));
+        assert_eq!(next(&rx), Event::GaveUp { recorder: "failing".into() });
         assert!(matches!(next(&rx), Event::Started { recorder, .. } if recorder == "pretend"));
         std::thread::sleep(Duration::from_millis(500));
         // The next shell would find it.
@@ -509,6 +533,7 @@ mod tests {
         let path = d.join("a.mp4");
         let (_h, rx) = run(vec![failing()], &d, &path);
         next(&rx);
+        assert_eq!(next(&rx), Event::GaveUp { recorder: "failing".into() });
         match next(&rx) {
             Event::Ended(Ending::Failed(e)) => assert!(e.contains("no GPU here"), "{e}"),
             e => panic!("{e:?}"),
@@ -552,10 +577,47 @@ mod tests {
         };
         let (h, rx) = run(vec![slow, recorder(&path)], &d, &path);
         assert!(matches!(next(&rx), Event::Started { recorder, .. } if recorder == "slow"));
+        assert_eq!(next(&rx), Event::GaveUp { recorder: "slow".into() });
         assert!(matches!(next(&rx), Event::Started { recorder, .. } if recorder == "pretend"));
         std::thread::sleep(Duration::from_millis(400));
         h.stop();
         assert_eq!(next(&rx), Event::Ended(Ending::Saved(path)));
+    }
+
+    /// Nothing starts until the probe has said what can record, and a
+    /// stop while it hasn't yet cancels.
+    #[test]
+    fn a_recording_waits_for_the_probe() {
+        let d = dir("probe");
+        let path = d.join("a.mp4");
+        let known = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let attempts = {
+            let (known, path) = (known.clone(), path.clone());
+            move || known.load(std::sync::atomic::Ordering::SeqCst).then(|| vec![recorder(&path)])
+        };
+        let (tx, rx) = channel();
+        let h = start(attempts, path.clone(), None, d.join("log"), FAST, move |e| {
+            let _ = tx.send(e);
+        });
+        assert!(rx.recv_timeout(Duration::from_millis(300)).is_err(), "started before the probe");
+        known.store(true, std::sync::atomic::Ordering::SeqCst);
+        assert!(matches!(next(&rx), Event::Started { recorder, .. } if recorder == "pretend"));
+        std::thread::sleep(Duration::from_millis(400));
+        h.stop();
+        assert_eq!(next(&rx), Event::Ended(Ending::Saved(path.clone())));
+        let (tx, rx) = channel();
+        let h = start(
+            || None,
+            path,
+            None,
+            d.join("log"),
+            FAST,
+            move |e| {
+                let _ = tx.send(e);
+            },
+        );
+        h.stop();
+        assert_eq!(next(&rx), Event::Ended(Ending::Cancelled));
     }
 
     #[test]

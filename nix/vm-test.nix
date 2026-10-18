@@ -215,28 +215,31 @@ pkgs.testers.runNixOSTest {
         machine.succeed(alice("aizomectl spawn -- foot sh -c 'while :; do date +%T.%N; sleep 0.05; done'"))
         # What the palette's Record Screen does.
         machine.succeed(record_screen)
-        machine.wait_until_succeeds(alice("aizome-shell msg state | grep -q '\"phase\":\"recording\"'"), timeout=30)
+        # (Until the shell's probe of the recorders is done, which can
+        # take gpu-screen-recorder seconds here, a recording waits for it.)
+        machine.wait_until_succeeds(alice("aizome-shell msg state | grep -q '\"phase\":\"recording\"'"), timeout=60)
         # One at a time.
         machine.fail(record_screen)
-        # gpu-screen-recorder takes seconds to give up on software OpenGL
-        # (eight at a heavy load), and wf-recorder with VA-API has no
-        # device here; the clock restarts with each recorder that takes
-        # over. Five seconds of the one that sticks in a VM, wf-recorder
-        # with x264:
-        def stuck():
+        # The shell found which recorder works here as it started:
+        # gpu-screen-recorder refuses virtio-gpu's software OpenGL and
+        # VA-API has no device, so wf-recorder with x264, at once, rather
+        # than seconds into the others while the indicator counts.
+        first = recording()
+        print(first)
+        assert first["recorder"] == "wf-recorder", first
+
+        def five_seconds():
             r = recording()
             return r is not None and r.get("recorder") == "wf-recorder" and r.get("seconds", 0) >= 5
 
-        for _ in range(90):
-            if stuck():
+        for _ in range(30):
+            if five_seconds():
                 break
             machine.sleep(1)
-        assert stuck(), recording()
+        assert five_seconds(), recording()
         going = recording()
-        print(going)
-        # gpu-screen-recorder refuses software OpenGL, so wf-recorder.
         print("recording with", going["recorder"])
-        assert going["recorder"] in ["gpu-screen-recorder", "wf-recorder (VA-API)", "wf-recorder"], going
+        assert going["path"] == first["path"], (first, going)
         capture("06-recording")
         machine.sleep(2)
         machine.succeed(alice("aizome-shell msg stop-recording"))

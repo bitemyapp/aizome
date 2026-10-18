@@ -135,6 +135,9 @@ in
       # OpenGL, as in a VM): through the compositor's wlr-screencopy. Ahead
       # of another desktop's (Tatami installs it too).
       (lib.hiPrio wf-recorder)
+      # vainfo: whether wf-recorder can encode on the GPU (VA-API), which
+      # the shell asks once a session rather than finding out mid-recording.
+      pkgs.libva-utils
     ];
     # Screen recording (the palette's Record Screen and Record Area, ⌥Print):
     # gpu-screen-recorder, with the capability wrapper its KMS capture needs
