@@ -418,11 +418,8 @@ pub fn eval(src: &str, opts: &Options) -> Result<u64, Error> {
 /// thousands in decimal, fours in hexadecimal and binary, threes in octal.
 pub fn format(v: u64, radix: u32, word: Word, group: bool) -> String {
     let v = word.wrap(v);
-    let (negative, magnitude) = if radix == 10 && word.is_negative(v) {
-        (true, word.to_i64(v).unsigned_abs())
-    } else {
-        (false, v)
-    };
+    let (negative, magnitude) =
+        if radix == 10 && word.is_negative(v) { (true, word.to_i64(v).unsigned_abs()) } else { (false, v) };
     let digits = match radix {
         2 => format!("{magnitude:b}"),
         8 => format!("{magnitude:o}"),

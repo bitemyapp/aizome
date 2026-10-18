@@ -342,8 +342,8 @@ impl Parser<'_> {
 }
 
 const FUNCTIONS: &[&str] = &[
-    "sqrt", "cbrt", "sin", "cos", "tan", "asin", "acos", "atan", "sinh", "cosh", "tanh", "asinh", "acosh", "atanh", "ln",
-    "log", "log2", "log10", "exp", "abs", "floor", "ceil", "round", "min", "max", "hypot", "atan2", "root",
+    "sqrt", "cbrt", "sin", "cos", "tan", "asin", "acos", "atan", "sinh", "cosh", "tanh", "asinh", "acosh", "atanh",
+    "ln", "log", "log2", "log10", "exp", "abs", "floor", "ceil", "round", "min", "max", "hypot", "atan2", "root",
 ];
 
 fn is_function(name: &str) -> bool {

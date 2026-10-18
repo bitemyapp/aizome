@@ -11,7 +11,8 @@ fn main() {
     let root = args.next().map(PathBuf::from).unwrap_or_else(|| PathBuf::from(std::env::var("HOME").unwrap()));
     let mut queries: Vec<String> = args.collect();
     if queries.is_empty() {
-        queries = ["c", "ca", "car", "carg", "cargo", "cargo.toml", "readme", "日本", "arch md"].map(String::from).to_vec();
+        queries =
+            ["c", "ca", "car", "carg", "cargo", "cargo.toml", "readme", "日本", "arch md"].map(String::from).to_vec();
     }
     let t = Instant::now();
     let index = FileIndex::build(&[root], &Limits::default());
@@ -20,6 +21,10 @@ fn main() {
     for q in &queries {
         let t = Instant::now();
         let hits = index.search(q, 8, &none);
-        println!("{q:>12}: {:>8.2?}  {}", t.elapsed(), hits.first().map_or(String::new(), |h| h.path.display().to_string()));
+        println!(
+            "{q:>12}: {:>8.2?}  {}",
+            t.elapsed(),
+            hits.first().map_or(String::new(), |h| h.path.display().to_string())
+        );
     }
 }

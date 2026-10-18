@@ -128,7 +128,8 @@ impl FileIndex {
                 .max_depth(Some(limits.max_depth))
                 .filter_entry(move |e| {
                     !(e.file_type().is_some_and(|t| t.is_dir())
-                        && (e.file_name().to_str().is_some_and(|n| SKIPPED_DIRS.contains(&n)) || skip.iter().any(|s| e.path() == s)))
+                        && (e.file_name().to_str().is_some_and(|n| SKIPPED_DIRS.contains(&n))
+                            || skip.iter().any(|s| e.path() == s)))
                 });
             builder.build_parallel().run(|| {
                 let found = &found;

@@ -55,10 +55,8 @@ impl Frecency {
     /// Loads the store, or starts an empty one if it's missing or unreadable.
     pub fn load(path: impl AsRef<Path>) -> Frecency {
         let path = path.as_ref();
-        let mut store: Frecency = std::fs::read(path)
-            .ok()
-            .and_then(|bytes| serde_json::from_slice(&bytes).ok())
-            .unwrap_or_default();
+        let mut store: Frecency =
+            std::fs::read(path).ok().and_then(|bytes| serde_json::from_slice(&bytes).ok()).unwrap_or_default();
         store.path = Some(path.to_owned());
         store
     }
