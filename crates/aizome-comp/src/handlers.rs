@@ -196,7 +196,10 @@ impl XdgActivationHandler for State {
     fn request_activation(&mut self, token: XdgActivationToken, data: XdgActivationTokenData, surface: WlSurface) {
         let Some(id) = self.az.window_for_surface(&surface) else { return };
         let valid = self.az.valid_tokens.remove(&token.to_string()) && data.timestamp.elapsed().as_secs() < 30;
-        if valid {
+        if self.az.wm.focused() == Some(id) {
+            // Already focused (Chromium asks for its new window with a
+            // token of its own): nothing to grant, nothing to flag.
+        } else if valid {
             info!(id, "activation granted");
             self.activate_window(id);
         } else {
