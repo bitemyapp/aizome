@@ -284,7 +284,7 @@ pub fn outline(out: &mut Vec<Piece>, r: Rect, s: f64, color: Rgba) {
     out.push(Piece::new(x + w - s, y + s, s, h - 2.0 * s, color));
 }
 
-/// The pieces of a window's decorations, back to front: shadow, frame,
+/// The pieces of a window's decorations, back to front: shadow, ground, frame,
 /// rail, then each tab (border, fill, highlight, boxes). Titles and
 /// glyphs are separate textures placed by the caller.
 pub fn pieces(l: &Layout, p: &Palette, shadows: bool, scale: f64) -> Vec<Piece> {
@@ -307,6 +307,12 @@ pub fn pieces(l: &Layout, p: &Palette, shadows: bool, scale: f64) -> Vec<Piece> 
     }
     if l.ssd {
         let c = l.content;
+        // The window's ground, under the client: a client smaller than its
+        // frame (a fixed-size one stacked with a larger window, or one
+        // still drawing at its old size) shows it rather than a hole onto
+        // the windows behind. Where the client is opaque it covers this,
+        // and the damage tracker skips it.
+        out.push(Piece::rect(c, p.surface));
         // The frame's edge.
         out.push(Piece::rect(Rect::new(f.x, f.y, f.w, BORDER), p.bevel_lo));
         out.push(Piece::rect(Rect::new(f.x, f.bottom() - BORDER, f.w, BORDER), p.bevel_lo));
