@@ -43,10 +43,10 @@ const FOOTER_H: f64 = 30.0;
 /// Right edges of the CPU and memory columns, from the panel's right.
 const CPU_RIGHT: f64 = 118.0;
 const MEM_RIGHT: f64 = 24.0;
-const STATUS_RIGHT: f64 = 190.0;
+const STATUS_RIGHT: f64 = 170.0;
 /// Widths labels are fitted to (fixed, so warmed labels are the ones
 /// drawn).
-const NAME_MAX_W: f64 = 300.0;
+const NAME_MAX_W: f64 = 220.0;
 const CAPTION_MAX_W: f64 = 360.0;
 const BUTTON_LABEL_MAX_W: f64 = 140.0;
 const RIGHT_MAX_W: f64 = 160.0;
@@ -448,7 +448,7 @@ where
         name_x,
         b.y,
         b.h,
-        (status_x - name_x - 90.0).clamp(60.0, NAME_MAX_W),
+        (status_x - 180.0 - name_x).clamp(60.0, NAME_MAX_W),
     );
     let n = row.windows.len();
     let count = if n == 1 { "1 window".to_string() } else { format!("{n} windows") };
@@ -464,7 +464,7 @@ where
     };
     if let Some((text, c)) = status {
         let c = if selected { p.on_selection } else { c };
-        right_text(az, pt, renderer, text, mono(10.5, c), status_x + 50.0, b.y, b.h);
+        right_text(az, pt, renderer, text, mono(10.5, c), status_x, b.y, b.h);
     }
     let sample = az.recovery.samples.get(&row.app_id).cloned();
     let cpu = sample.as_ref().and_then(|s| s.cpu_percent).map(fmt_cpu).unwrap_or_else(|| "–".into());
