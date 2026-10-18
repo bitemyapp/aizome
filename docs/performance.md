@@ -586,3 +586,45 @@ frame stats over two five-second spans while scenes played: 154–156
 frames each, total p50 0.33–0.53 ms, p95 2.1 ms, max 3.1 ms, damage 48%.
 
 No exceptions.
+
+## Hako (Files)
+
+Hako's typical interactions are the keyboard walking a column (↓: the
+selection moves, and with it the path bar's last crumb, the status line
+and the preview column), the wheel scrolling a column, and ↓ in the list
+view. `apps/hako/tests/perf.rs` measures each frame in a folder of
+10,000 files: the event, update, view, layout and diff, and rasterising
+the damage at 2× through the offscreen renderer. The views build nothing
+per row (one widget paints the rows that show, and only those damaged),
+so a column of 10,000 costs what one of twenty does.
+
+| Interaction | build | p50 | p95 | max |
+|---|---|---|---|---|
+| ↓ in a column of 10,000 | release | 1.9 ms | 3.3 ms | 3.5 ms |
+| scrolling it, 40 pt a notch | release | 0.76 ms | 0.92 ms | 1.8 ms |
+| ↓ in a list of 10,000 | release | 1.8 ms | 3.3 ms | 6.1 ms |
+| ↓ in a column of 10,000 | debug | 3.1 ms | 5.6 ms | 8.9 ms |
+| scrolling it | debug | 0.93 ms | 1.1 ms | 1.5 ms |
+| ↓ in a list of 10,000 | debug | 2.1 ms | 2.7 ms | 5.2 ms |
+
+(115 frames each; the machine's load average was 17–19 from other
+builds, which moves the tails.) Of a ↓ frame the program's part is small:
+update p50 1 µs, view and layout p50 39 µs (p99 214 µs), recording the
+paint p50 92 µs; the rest is rasterising.
+
+Live, the debug build under headless sway (pixman) at 2×, `wtype` pressing
+↓ 60 times and Page Down 30 in the same folder, Sidestep's frame stats:
+176 frames, total p50 1.5 ms, p95 4.8 ms, max 6.2 ms, damage 25%.
+
+### Exceptions
+
+1. **The preview column** is redrawn whole when the selection moves to
+   another file (its picture, name, facts and the start of its text all
+   change): about a quarter of a 980 × 600 window at 2×. That is most of a
+   ↓ frame's rasterising, and puts the tail (p95 4.8 ms live, debug, under
+   load) at the budget. In the list and icon views, which have no
+   preview, ↓ redraws two rows and the status line.
+2. **Listings and thumbnails** are read and made in the background (a
+   folder of 10,000 lists in about 40 ms; a 2880 × 1800 PNG's thumbnails
+   in about 150 ms), never in a frame; their arrival is one frame of the
+   rows that show.
