@@ -89,20 +89,31 @@ pub fn menu_face(canvas: &mut Canvas, theme: &Theme, r: Rect) {
     top(canvas, r.inset(-1.0), theme.bevel_hi(), 1.0);
 }
 
-/// How opaque a frosted face is: what's under it tints through.
-pub const FROST_ALPHA: f32 = 0.86;
+/// How opaque a frosted face is in Night: what's under it tints through.
+/// There's no blur, so what shows through shows sharp: this keeps text
+/// under a menu (a desktop label, a window's) to a faint ghost, and the
+/// faintest text on the face (`text3`) at 3:1 or better over a white
+/// light.
+pub const FROST_ALPHA: f32 = 0.90;
+
+/// How opaque a frosted face is in Day: lighter faces show the darker
+/// things under them more, so more of the face.
+pub const FROST_ALPHA_DAY: f32 = 0.94;
 
 /// `r` filled with `face`: where the effects are Full, frosted (the colour
-/// at [`FROST_ALPHA`] with a fine static grain over it, no blur), else
-/// solid. The grain is one small tile made once, drawn a pixel to a point.
+/// at [`FROST_ALPHA`] (Night) or [`FROST_ALPHA_DAY`] with a fine static
+/// grain over it, no blur), else solid. The grain is one small tile made
+/// once, drawn a pixel to a device pixel, so it's as fine as the screen.
 pub fn frost(canvas: &mut Canvas, theme: &Theme, r: Rect, face: Color) {
     if !theme.frosted() {
         canvas.fill_rect(r, face);
         return;
     }
-    canvas.fill_rect(r, face.with_alpha(FROST_ALPHA));
+    let alpha = if theme.is_dark() { FROST_ALPHA } else { FROST_ALPHA_DAY };
+    canvas.fill_rect(r, face.with_alpha(alpha));
     let tile = grain();
-    let n = GRAIN as f64;
+    // A tile pixel to a device pixel: at 2× the tile is 32 points.
+    let n = GRAIN as f64 / canvas.scale().max(1.0);
     let opts = sidestep_ui::ImageOptions { smooth: false, ..Default::default() };
     canvas.save();
     canvas.clip_rect(r);
@@ -118,10 +129,10 @@ pub fn frost(canvas: &mut Canvas, theme: &Theme, r: Rect, face: Color) {
     canvas.restore();
 }
 
-/// The grain tile's side, in pixels (and points).
+/// The grain tile's side, in pixels.
 const GRAIN: u32 = 64;
 
-/// Fine noise at about 3% contrast: specks a little lighter or darker,
+/// Fine noise at about 4% contrast: specks a little lighter or darker,
 /// the same everywhere and every time.
 fn grain() -> &'static sidestep_ui::Image {
     static TILE: std::sync::OnceLock<sidestep_ui::Image> = std::sync::OnceLock::new();
@@ -134,7 +145,7 @@ fn grain() -> &'static sidestep_ui::Image {
             state ^= state >> 17;
             state ^= state << 5;
             let v = (state >> 24) as i32 - 128;
-            let a = (v.unsigned_abs() * 16 / 128) as u8;
+            let a = (v.unsigned_abs() * 20 / 128) as u8;
             let c = if v >= 0 { 255 } else { 0 };
             px.extend([c, c, c, a]);
         }
