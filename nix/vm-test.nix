@@ -58,6 +58,18 @@ pkgs.testers.runNixOSTest {
         pkgs.wtype
         # ffprobe, for the screen recording.
         pkgs.ffmpeg
+        # Screen sharing as a browser does it: the ScreenCast portal and
+        # its PipeWire stream, read with GStreamer.
+        (pkgs.writeShellScriptBin "aizome-screencast-check" ''
+          export GST_PLUGIN_SYSTEM_PATH_1_0=${pkgs.gst_all_1.gstreamer.out}/lib/gstreamer-1.0:${pkgs.pipewire}/lib/gstreamer-1.0
+          export PATH=${pkgs.gst_all_1.gstreamer.bin}/bin:$PATH
+          exec ${
+            pkgs.python3.withPackages (ps: [
+              ps.dbus-python
+              ps.pygobject3
+            ])
+          }/bin/python3 ${./screencast-check.py} "$@"
+        '')
       ];
     };
 
@@ -260,6 +272,23 @@ pkgs.testers.runNixOSTest {
         assert float(probe["format"]["duration"]) >= 4, probe
         assert int(stream["nb_read_frames"]) >= 100, stream
         capture("07-recording-saved")
+
+    with subtest("sharing the screen streams through the portal"):
+        # As a browser shares the screen: xdg-desktop-portal-wlr over the
+        # compositor's ext-image-copy-capture (wl_shm here, under pixman),
+        # and its PipeWire stream. Through wlr-screencopy it froze after
+        # one frame. The terminal above keeps the screen changing; no
+        # picker in the VM, so the portal takes the first display.
+        machine.succeed(alice(
+            "mkdir -p ~/.config/xdg-desktop-portal-wlr && "
+            "printf '[screencast]\\nchooser_type=none\\n' > ~/.config/xdg-desktop-portal-wlr/config && "
+            "(systemctl --user stop xdg-desktop-portal-wlr.service || true)"
+        ))
+        shared = machine.succeed(alice(
+            "export DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus; aizome-screencast-check 6 20"
+        ))
+        print(shared)
+        assert "frames:" in shared, shared
 
     with subtest("frame times stay inside the budget"):
         print(as_alice("aizomectl stats"))
