@@ -191,8 +191,14 @@ fn typing_in_a_menu_filters_it_through_its_submenus() {
     let mut h = Harness::new(Shell::default());
     let bar = h.window();
     h.send(Msg::OpenMenu);
+    let (_, whole) = h.popups(bar)[0];
     h.type_text(bar, "plain");
-    let (menu, _) = h.popups(bar)[0];
+    let (menu, filtered) = h.popups(bar)[0];
+    // It shortens to what's left (widening for the submenus' paths shown),
+    // where it was.
+    assert!(filtered.height() < whole.height() - 40.0, "{filtered:?} from {whole:?}");
+    assert!(filtered.origin() == whole.origin() && filtered.width() >= whole.width());
+    assert_eq!(h.platform.requested_sizes.get(&menu), Some(&filtered.size()), "the popup asked for its new size");
     let png = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("menu-filtered.png");
     let img = h.render_popup(menu, 2.0);
     let (w, hh) = img.pixel_size();
@@ -204,6 +210,7 @@ fn typing_in_a_menu_filters_it_through_its_submenus() {
     h.type_text(bar, "zz");
     h.named(bar, NamedKey::Escape, Modifiers::NONE);
     assert_eq!(h.popups(bar).len(), 1);
+    assert_eq!(h.popups(bar)[0].1.height(), whole.height(), "cleared, it grows back");
     h.named(bar, NamedKey::Escape, Modifiers::NONE);
     assert!(h.popups(bar).is_empty());
 }

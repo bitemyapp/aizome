@@ -520,6 +520,12 @@ impl Platform for SidestepPlatform<'_> {
         }
     }
 
+    fn set_popup_anchor(&mut self, id: WinId, anchor: Rect) {
+        if let Some(mut w) = self.maps.to_side.get(&id).and_then(|s| self.sx.window(*s)) {
+            w.set_popup_anchor(anchor);
+        }
+    }
+
     fn set_opaque_region(&mut self, id: WinId, region: Option<Vec<Rect>>) {
         if let Some(mut w) = self.maps.to_side.get(&id).and_then(|s| self.sx.window(*s)) {
             w.set_opaque_region(region.as_deref());

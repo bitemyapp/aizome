@@ -197,6 +197,14 @@ impl Platform for TestPlatform {
         self.opaque_regions.insert(id, region);
     }
 
+    fn set_popup_anchor(&mut self, id: WinId, to: Rect) {
+        if let Some(w) = self.windows.get_mut(&id)
+            && let OpenKind::Popup { anchor, .. } = &mut w.spec.kind
+        {
+            *anchor = to;
+        }
+    }
+
     fn outputs(&self) -> Vec<Output> {
         self.outputs.clone()
     }

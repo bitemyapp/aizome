@@ -81,8 +81,9 @@ pub(crate) enum WinKind {
 pub(crate) enum PopupKind {
     /// A menu (a pop-up button's, a context menu, a bar menu, a submenu).
     Menu { spec: MenuSpec, look: MenuLook, bar: Option<usize> },
-    /// A popover element's content, from the owner's tree.
-    Popover { node: NodeId, on_dismiss: Option<MsgFn> },
+    /// A popover element's content, from the owner's tree, shown against
+    /// `anchor` (the node's rectangle when last placed).
+    Popover { node: NodeId, on_dismiss: Option<MsgFn>, anchor: Rect },
     Tooltip,
 }
 
@@ -559,6 +560,7 @@ impl Core {
         if let Some(p) = self.wins.get(&win).and_then(|w| w.pointer) {
             self.update_hot(win, p, platform);
         }
+        self.follow_anchors(win, platform);
         self.stats.view_layout(started.elapsed());
     }
 
@@ -608,19 +610,49 @@ impl Core {
             PopupKind::Menu { spec, look, .. } => MenuView::element(spec.clone(), look.clone()),
             _ => return,
         };
-        // Popups keep their size: what's filtered out leaves room.
+        // A menu fits what's left as typing filters it: it shortens and
+        // grows back, and only ever widens (it doesn't jump about).
         let Some(w) = self.wins.get_mut(&win) else { return };
         let mut tree = Tree::new(root, NodeId::ROOT.child("popup"));
         let mut env = Env { focus: w.active_focus(), theme: &self.theme, text: &mut self.text, states: &mut w.states, now: Instant::now(), on_selection: false };
-        tree.layout_window(w.size, &mut env);
-        let mut damage = tree.diff(&w.snapshot);
-        damage.extend(tree.take_local_damage());
-        for r in damage {
-            platform.invalidate(win, r);
+        let natural = tree.layout_free(Size::new(1200.0, 900.0), &mut env);
+        let size = Size::new(natural.width.ceil().max(w.size.width), natural.height.ceil());
+        tree.layout_window(size, &mut env);
+        if size == w.size {
+            let mut damage = tree.diff(&w.snapshot);
+            damage.extend(tree.take_local_damage());
+            for r in damage {
+                platform.invalidate(win, r);
+            }
+        } else {
+            w.size = size;
+            platform.request_size(win, size);
+            platform.invalidate_all(win);
         }
         w.snapshot = tree.snapshot();
         w.tree = tree;
         w.dirty = false;
+    }
+
+    /// Move the popovers of `win` whose anchors moved (a list scrolled, a
+    /// pane resized) to follow them.
+    fn follow_anchors(&mut self, win: WinId, platform: &mut dyn Platform) {
+        let Some(w) = self.wins.get(&win) else { return };
+        let mut moved = Vec::new();
+        for &p in &w.popups {
+            if let Some(WinKind::Popup { kind: PopupKind::Popover { node, anchor, .. }, .. }) = self.wins.get(&p).map(|pw| &pw.kind)
+                && let Some(i) = w.tree.get(*node)
+                && w.tree.nodes[i].rect != *anchor
+            {
+                moved.push((p, w.tree.nodes[i].rect));
+            }
+        }
+        for (p, rect) in moved {
+            if let Some(WinKind::Popup { kind: PopupKind::Popover { anchor, .. }, .. }) = self.wins.get_mut(&p).map(|pw| &mut pw.kind) {
+                *anchor = rect;
+            }
+            platform.set_popup_anchor(p, rect);
+        }
     }
 
     // Popups.
@@ -966,10 +998,11 @@ impl Core {
                     }
                 }
                 None => {
-                    self.open_popup(win, anchor, Placement::Below, true, PopupKind::Popover { node, on_dismiss }, root, mapper, platform);
+                    self.open_popup(win, anchor, Placement::Below, true, PopupKind::Popover { node, on_dismiss, anchor }, root, mapper, platform);
                 }
             }
         }
+        self.follow_anchors(win, platform);
     }
 
     /// The mappers from node `idx` up to the root, and the window's own.

@@ -91,6 +91,8 @@ pub trait Platform {
     fn set_input_region(&mut self, id: WinId, region: Option<Vec<Rect>>);
     /// Where the window is opaque (none: nowhere).
     fn set_opaque_region(&mut self, id: WinId, region: Option<Vec<Rect>>);
+    /// Place popup `id` against another rectangle of its parent (points).
+    fn set_popup_anchor(&mut self, id: WinId, anchor: Rect);
     fn outputs(&self) -> Vec<Output>;
     fn lock_session(&mut self);
     fn unlock_session(&mut self);
