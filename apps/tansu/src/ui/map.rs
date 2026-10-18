@@ -9,7 +9,7 @@ use std::rc::Rc;
 use aizome_kit::element::{MsgFn, MsgMap};
 use aizome_kit::hash::PaintHasher;
 use aizome_kit::layout::{Align, Constraints, Point, Rect, Size};
-use aizome_kit::sidestep_ui::kurbo::{Line, Shape};
+use aizome_kit::sidestep_ui::kurbo::{BezPath, Line, Shape};
 use aizome_kit::sidestep_ui::{Key, NamedKey, PointerButton, StrokeStyle};
 use aizome_kit::text::TextSpec;
 use aizome_kit::theme::{FontSpec, Theme};
@@ -116,12 +116,16 @@ impl Map {
 fn hatch(canvas: &mut aizome_kit::sidestep_ui::Canvas, r: Rect, color: Color) {
     canvas.save();
     canvas.clip_rect(r);
-    let style = StrokeStyle::new(1.0);
+    // One path of every line, stroked once: they never touch, so it draws
+    // what a stroke for each did, for one stroke's work rather than a
+    // hundred across a large disk's free space.
+    let mut lines = BezPath::new();
     let mut x = r.x0 - r.height();
     while x < r.x1 {
-        canvas.stroke(&Line::new((x, r.y1), (x + r.height(), r.y0)), &style, color);
+        lines.extend(Line::new((x, r.y1), (x + r.height(), r.y0)).path_elements(0.1));
         x += 6.0;
     }
+    canvas.stroke(&lines, &StrokeStyle::new(1.0), color);
     canvas.restore();
 }
 
