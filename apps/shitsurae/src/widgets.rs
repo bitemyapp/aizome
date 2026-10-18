@@ -847,10 +847,11 @@ pub fn app_glyph(id: &str) -> Icon {
 /// AccountsService keeps every new picture of a user at the same path
 /// (`/var/lib/AccountsService/icons/<user>`), so a path alone would show
 /// the old one.
+/// A picture as read, and when its file was last changed then.
+type Read = (Option<std::time::SystemTime>, Option<Image>);
+
 #[derive(Default)]
-pub struct Pictures(
-    std::cell::RefCell<std::collections::HashMap<String, (Option<std::time::SystemTime>, Option<Image>)>>,
-);
+pub struct Pictures(std::cell::RefCell<std::collections::HashMap<String, Read>>);
 
 impl Pictures {
     /// The picture at `path`, read again when the file has changed.

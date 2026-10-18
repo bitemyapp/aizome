@@ -670,7 +670,21 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("settings.toml");
-        (Harness::new(Shitsurae::sample(path.clone(), Start::parse("displays"))), path)
+        let mut h = Harness::new(Shitsurae::sample(path.clone(), Start::parse("displays")));
+        loaded(&mut h);
+        (h, path)
+    }
+
+    /// The sample's displays read (on a thread of their own).
+    pub(super) fn loaded(h: &mut Harness<Shitsurae>) {
+        let w = h.window();
+        for _ in 0..200 {
+            if h.texts(w).iter().any(|t| t == "Use as") {
+                return;
+            }
+            h.advance(std::time::Duration::from_millis(10));
+        }
+        panic!("the sample's displays never showed: {:?}", h.texts(w));
     }
 
     fn night(outputs: &[&str]) -> AppMsg {
@@ -722,7 +736,7 @@ mod scroll_tests {
         std::fs::create_dir_all(&dir).unwrap();
         let mut h = Harness::new(Shitsurae::sample(dir.join("settings.toml"), Start::parse("displays")));
         let w = h.window();
-        h.advance(std::time::Duration::from_millis(200));
+        super::tests::loaded(&mut h);
         let state = aizome_ipc::NightLightState::default();
         h.send(AppMsg::Pane("displays", std::sync::Arc::new(super::Msg::Night(Some(state)))));
         let size = h.size(w);
