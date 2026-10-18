@@ -115,6 +115,17 @@ impl Index {
         }
         ix
     }
+
+    /// Calendar `ci` changed: index it again (the others stay).
+    pub fn refresh(&mut self, ci: usize, cal: &Calendar, local: &TimeZone) {
+        let one = Index::new(std::slice::from_ref(cal), local);
+        if ci < self.bounds.len() {
+            let Index { bounds, overrides, masters } = one;
+            self.bounds[ci] = bounds.into_iter().next().unwrap_or_default();
+            self.overrides[ci] = overrides.into_iter().next().unwrap_or_default();
+            self.masters[ci] = masters.into_iter().next().unwrap_or_default();
+        }
+    }
 }
 
 fn bounds(e: &Event, local: &TimeZone) -> Bounds {

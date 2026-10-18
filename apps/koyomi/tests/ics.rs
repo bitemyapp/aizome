@@ -167,7 +167,7 @@ fn quirks_are_read_as_meant() {
     let rd: Vec<&str> = o.iter().filter(|(_, t)| t == "With RDATEs").map(|(s, _)| s.as_str()).collect();
     assert_eq!(rd, ["2026-10-19T02:00:00", "2026-10-26T01:00:00"]);
     // An end before the start is no length at all.
-    assert_eq!(at(&o, datetime(2026, 10, 19, 12, 0, 0, 0)).is_some(), true);
+    assert!(at(&o, datetime(2026, 10, 19, 12, 0, 0, 0)).is_some());
     let neg = cal.events.iter().find(|e| e.uid == "q6").unwrap();
     assert_eq!(neg.duration(&TimeZone::UTC).total_seconds(), 0);
     round_trips(&cal);

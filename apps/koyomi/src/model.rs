@@ -81,10 +81,10 @@ impl When {
 
     fn from_value(v: &str, kind: Option<&str>, tzid: Option<&str>, zones: &mut Zones) -> Option<When> {
         let is_date = kind.is_some_and(|k| k.eq_ignore_ascii_case("DATE"));
-        if is_date || (v.len() == 8 && !v.contains('T')) {
-            if let Some(d) = value::parse_date(v) {
-                return Some(When::Date(d));
-            }
+        if (is_date || (v.len() == 8 && !v.contains('T')))
+            && let Some(d) = value::parse_date(v)
+        {
+            return Some(When::Date(d));
         }
         let (dt, utc) = value::parse_datetime(v).or_else(|| value::parse_date(v).map(|d| (d.to_datetime(Time::midnight()), false)))?;
         if utc {
@@ -772,7 +772,7 @@ fn parse_hex(s: &str) -> Option<u32> {
         3 => {
             let v = u32::from_str_radix(s, 16).ok()?;
             let (r, g, b) = ((v >> 8) & 15, (v >> 4) & 15, v & 15);
-            Some((r * 17) << 16 | (g * 17) << 8 | b * 17)
+            Some(((r * 17) << 16) | ((g * 17) << 8) | (b * 17))
         }
         _ => None,
     }

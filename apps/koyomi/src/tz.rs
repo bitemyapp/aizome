@@ -207,10 +207,10 @@ pub fn iana_in(tzid: &str) -> Option<(String, TimeZone)> {
     // The longest tail that names a zone (`America/Argentina/Buenos_Aires`).
     for start in 0..parts.len() {
         let cand = parts[start..].join("/");
-        if cand.contains('/') || parts.len() - start == 1 {
-            if let Ok(z) = TimeZone::get(&cand) {
-                return Some((cand, z));
-            }
+        if (cand.contains('/') || parts.len() - start == 1)
+            && let Ok(z) = TimeZone::get(&cand)
+        {
+            return Some((cand, z));
         }
     }
     match t.to_ascii_uppercase().as_str() {

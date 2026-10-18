@@ -160,7 +160,7 @@ impl Duration {
         self.days * 86_400 + self.seconds
     }
 
-    pub fn neg(self) -> Duration {
+    pub fn negated(self) -> Duration {
         Duration { days: -self.days, seconds: -self.seconds }
     }
 }
@@ -211,7 +211,7 @@ pub fn parse_duration(s: &str) -> Option<Duration> {
         return None;
     }
     let d = Duration { days, seconds: secs };
-    Some(if neg { d.neg() } else { d })
+    Some(if neg { d.negated() } else { d })
 }
 
 /// A DURATION as RFC 5545 writes it: `-PT15M`, `P1D`, `PT1H30M`, `P1W`.

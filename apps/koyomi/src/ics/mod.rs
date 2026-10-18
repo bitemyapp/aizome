@@ -97,11 +97,11 @@ pub fn unfold(text: &str) -> Vec<String> {
     let mut lines: Vec<String> = Vec::new();
     let normalized = text.replace("\r\n", "\n").replace('\r', "\n");
     for raw in normalized.split('\n') {
-        if let Some(rest) = raw.strip_prefix([' ', '\t']) {
-            if let Some(last) = lines.last_mut() {
-                last.push_str(rest);
-                continue;
-            }
+        if let Some(rest) = raw.strip_prefix([' ', '\t'])
+            && let Some(last) = lines.last_mut()
+        {
+            last.push_str(rest);
+            continue;
         }
         if raw.trim().is_empty() {
             continue;
