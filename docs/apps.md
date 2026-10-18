@@ -136,6 +136,37 @@ palette. Search filters the sidebar and highlights options.
 - **Accessibility**: reduced motion, High Contrast, larger text (Size),
   cursor size, sticky and slow keys (xkb options), visual alert flash.
 
+As built, beyond the above:
+
+- Changes reach the system as soon as they're made; a name typed in a
+  field (a Desk's, the computer's, yours, the Bluetooth name) is kept when
+  the field loses the focus as well as on Return. The host name still
+  waits for Return, since it asks first.
+- **Displays** shows Night Light where the compositor says a display takes
+  a gamma table (the switch is `[night_light] enabled`, applied at once);
+  where none does, it says why there's no switch.
+- **Date & Time** shows automatic time as set by the system configuration
+  where NixOS keeps systemd's units in the store (timedated can't switch
+  it there): change `services.timesyncd.enable`.
+- **Default Apps**: the terminal chosen is also `[keys] terminal`, what
+  ❖Return starts.
+- **Printers & Scanners**: Add Printer leaves out printers already set
+  up, cups-browsed's queues among them.
+- **Trackpad** says when no trackpad is connected; its settings are kept
+  for one.
+- **Users & Groups** reads a picture again when AccountsService replaces
+  it at the same path.
+- GTK and libadwaita apps follow the theme and the focus colour through
+  dconf (`color-scheme`, `gtk-theme`, `accent-color`, high contrast),
+  which the shell writes.
+- The NixOS module lets a local, active administrator (wheel) change the
+  time zone, the computer's name, the language and keyboard, and
+  networks without a password prompt, as GNOME does.
+- `nix build .#checks.x86_64-linux.settings` boots a VM and changes
+  something in every pane by clicking and typing through the compositor
+  (`nix/vm-settings-test.nix`, `nix/vm-settings-test.py`), then checks
+  the system took it and that Settings shows it when opened again.
+
 ### Yukimi (Software)
 
 Yukimi, Sekka's Nix software manager, made native: the same Overview,
