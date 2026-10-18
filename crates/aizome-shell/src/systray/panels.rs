@@ -613,7 +613,8 @@ pub fn view(p: &Panel) -> Element<PanelMsg> {
     let keyed = crate::widgets::keys::focus_keys(body, |k| {
         matches!(k.key, aizome_kit::sidestep_ui::Key::Named(aizome_kit::sidestep_ui::NamedKey::Escape)).then_some(PanelMsg::Close)
     });
-    aizome_kit::container(keyed).padding([0.0, SHADOW, SHADOW, 0.0]).id("panel").into()
+    // The keys widget itself takes the focus (and so Escape).
+    aizome_kit::container(Element::from(keyed).id("panel")).padding([0.0, SHADOW, SHADOW, 0.0]).into()
 }
 
 /// The panel's height, for its popup: the rows', its edges and shadow.

@@ -171,3 +171,17 @@ fn pictures_of_the_panels() {
         }
     }
 }
+
+#[test]
+fn escape_closes_a_panel() {
+    use aizome_kit::sidestep_ui::{Modifiers, NamedKey};
+    let mut h = scene(false);
+    h.program_mut().panels_fixture = Some(fixture());
+    for w in [TrayWidget::Sound, TrayWidget::Network, TrayWidget::Clock] {
+        let p = open(&mut h, w);
+        // The compositor gives the popup the keyboard as it maps it.
+        h.focus_window(p, true);
+        h.named(p, NamedKey::Escape, Modifiers::NONE);
+        assert!(h.program().panel.is_none(), "Escape closes the {} panel", w.name());
+    }
+}
