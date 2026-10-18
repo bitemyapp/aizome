@@ -215,8 +215,11 @@ fn sidebar(h: &Hako, w: WindowKey, b: &Browser) -> Element<Msg> {
     if let Some(d) = &h.desk
         && let Some(f) = &d.folder
     {
-        items.push(caption(&format!("Desk {}", d.index)));
-        let label = if d.name.trim().is_empty() { PathBuf::from(f).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default() } else { d.name.clone() };
+        // The Desk by its name when it has one ("Desk: Build"), its folder
+        // by its own.
+        let named = !d.name.trim().is_empty() && d.name.trim() != d.index.to_string();
+        items.push(caption(&if named { format!("Desk: {}", d.name.trim()) } else { format!("Desk {}", d.index) }));
+        let label = PathBuf::from(f).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| f.clone());
         place(&mut items, PlaceKind::Desk, label, None, Loc::Folder(PathBuf::from(f)), None, false);
     }
     items.push(caption("Disks"));

@@ -474,3 +474,32 @@ fn a_drag_that_waits_over_a_folder_opens_it() {
     assert!(s.home().join("work/sidestep/notes.txt").exists());
     assert!(!s.home().join("work/notes.txt").exists());
 }
+
+#[test]
+fn compress_and_extract_from_the_window() {
+    if hako::fsops::archive::bsdtar().is_none() {
+        eprintln!("no bsdtar here: skipped");
+        return;
+    }
+    let s = Sandbox::new("archive-ui");
+    populate(&s);
+    let (mut h, w) = open(&s, "Documents/architecture.md", Layout::List);
+    h.key(w, Key::Named(NamedKey::End), Modifiers::SHIFT);
+    assert_eq!(selected(&h, w).len(), 3);
+    h.send(Msg::Compress(WindowKey::NONE, hako::fsops::archive::Format::Zip));
+    settle(&mut h);
+    let zip = s.home().join("Documents/Archive.zip");
+    assert!(zip.is_file());
+    assert_eq!(selected(&h, w), ["Archive.zip"], "the archive is selected");
+    // Undo takes it to the Trash.
+    h.command(w, 'z');
+    settle(&mut h);
+    assert!(!zip.exists());
+    h.key(w, Key::Character("z".into()), Modifiers::SUPER | Modifiers::SHIFT);
+    settle(&mut h);
+    assert!(zip.is_file());
+    // Opening an archive extracts it beside itself.
+    h.send(Msg::OpenSelection(WindowKey::NONE));
+    settle(&mut h);
+    assert!(s.home().join("Documents/Archive/roadmap.md").is_file());
+}
