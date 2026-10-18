@@ -159,6 +159,9 @@ in
         ExecStart = "${cfg.package}/bin/aizome-tokei --sync";
       };
     };
+    # Koyomi's alerts, as notifications, whether or not Koyomi is open
+    # (the unit comes with the package).
+    systemd.user.services.aizome-koyomi-agent.wantedBy = [ "graphical-session.target" ];
     # An alarm can wake the computer (Tokei's "Wake the computer"), which
     # needs CAP_WAKE_ALARM for the user's timers.
     systemd.services."user@".serviceConfig.AmbientCapabilities = lib.mkIf cfg.alarmsWakeSystem [

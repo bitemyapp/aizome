@@ -90,6 +90,7 @@ rustPlatform.buildRustPackage {
     shopt -s nullglob
     for unit in session/*.service session/*.target apps/*/data/*.service; do
       install -Dm644 "$unit" "$out/lib/systemd/user/$(basename "$unit")"
+      substituteInPlace "$out/lib/systemd/user/$(basename "$unit")" --replace-quiet @bindir@ "$out/bin"
     done
     install -Dm644 session/aizome-portals.conf $out/share/xdg-desktop-portal/aizome-portals.conf
 
