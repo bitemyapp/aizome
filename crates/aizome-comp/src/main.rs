@@ -22,6 +22,8 @@ mod outputs;
 mod overlays;
 mod popups;
 mod protocols;
+mod recovery;
+mod reload;
 mod render;
 mod requests;
 mod screenshot;
@@ -143,6 +145,7 @@ fn main() -> ExitCode {
     state.place_pointer_on_primary();
     state.update_night_light(true);
     idle::start(&mut state);
+    recovery::start(&mut state);
     session::start(&mut state);
 
     if let Err(e) = event_loop.run(None, &mut state, |state| state.on_loop_iteration()) {

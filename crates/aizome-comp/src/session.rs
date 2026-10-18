@@ -25,6 +25,8 @@ pub struct Supervised {
     started: Instant,
     backoff: Duration,
     restart_at: Option<Instant>,
+    /// Asked to restart: start again at once once it has gone.
+    restart_now: bool,
 }
 
 #[derive(Default)]
@@ -210,6 +212,7 @@ impl Supervised {
             started: Instant::now(),
             backoff: Duration::from_secs(1),
             restart_at: None,
+            restart_now: false,
         }
     }
 }
@@ -234,8 +237,14 @@ fn supervise(state: &mut State) {
     for (i, s) in state.az.children.supervised.iter_mut().enumerate() {
         if let Some(child) = &mut s.child {
             if let Ok(Some(status)) = child.try_wait() {
-                warn!("{} exited ({status}); restarting in {:?}", s.name, s.backoff);
                 s.child = None;
+                if std::mem::take(&mut s.restart_now) {
+                    info!("{} stopped ({status}); starting it again", s.name);
+                    s.restart_at = Some(now);
+                    restart.push(i);
+                    continue;
+                }
+                warn!("{} exited ({status}); restarting in {:?}", s.name, s.backoff);
                 // A long run resets the backoff.
                 if s.started.elapsed() > Duration::from_secs(60) {
                     s.backoff = Duration::from_secs(1);
@@ -244,6 +253,7 @@ fn supervise(state: &mut State) {
                 s.backoff = (s.backoff * 2).min(Duration::from_secs(30));
             }
         } else if s.restart_at.is_some_and(|t| now >= t) {
+            s.restart_now = false;
             restart.push(i);
         }
     }
@@ -251,6 +261,45 @@ fn supervise(state: &mut State) {
     for i in restart {
         start_child(&mut state.az.children.supervised[i], &env);
     }
+}
+
+/// Restarts a supervised helper now (the recovery overlay's Restart
+/// Shell): SIGKILL, since it may be hung, and a start as soon as it has
+/// gone, without the usual backoff. Apps are untouched.
+pub fn restart_supervised(state: &mut State, name: &str) -> Result<String, String> {
+    let s = state
+        .az
+        .children
+        .supervised
+        .iter_mut()
+        .find(|s| s.name == name)
+        .ok_or_else(|| format!("{name} isn't running under Aizome"))?;
+    s.backoff = Duration::from_secs(1);
+    s.restart_now = true;
+    match &mut s.child {
+        Some(child) => {
+            let pid = child.id();
+            // Safety: kill with a valid signal, to a child of ours.
+            unsafe {
+                libc::kill(pid as i32, libc::SIGKILL);
+            }
+            info!(pid, "restarting {name}");
+        }
+        None => s.restart_at = Some(Instant::now()),
+    }
+    // Come back for it shortly rather than at the next second (the usual
+    // supervision carries on if it takes longer to go).
+    let until = Instant::now() + Duration::from_secs(5);
+    let _ =
+        state.az.lh.insert_source(Timer::from_duration(Duration::from_millis(50)), move |_, _, state: &mut State| {
+            supervise(state);
+            if Instant::now() < until && state.az.children.supervised.iter().any(|s| s.restart_now) {
+                TimeoutAction::ToDuration(Duration::from_millis(50))
+            } else {
+                TimeoutAction::Drop
+            }
+        });
+    Ok(format!("Restarting {name}"))
 }
 
 /// Stops the helpers when the compositor quits.

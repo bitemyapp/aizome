@@ -294,6 +294,8 @@ pub struct Aizome {
     pub icons: crate::icons::Icons,
     pub anims: Animations,
     pub overlays: Overlays,
+    /// Ctrl+Alt+Del's overlay.
+    pub recovery: crate::recovery::Recovery,
     pub ipc: IpcServer,
 
     pub cursor_status: CursorImageStatus,
@@ -513,6 +515,7 @@ impl State {
             icons: crate::icons::Icons::new(),
             anims: Animations::default(),
             overlays: Overlays::default(),
+            recovery: Default::default(),
             ipc,
             palette,
             bindings: crate::bindings::Bindings::new(&settings.keys.bindings),

@@ -9,6 +9,9 @@ use crate::wm::{DeskId, Rect, Side, WinId};
 
 impl State {
     pub fn handle_request(&mut self, req: Request) -> Response {
+        if let Some(r) = crate::recovery::handle_request(self, &req) {
+            return r;
+        }
         match self.request(req) {
             Ok(r) => r,
             Err(e) => Response::Error { message: e },
@@ -349,6 +352,12 @@ impl State {
                     self.synthesize(e)?;
                 }
                 Response::Ok
+            }
+            Request::Recovery { .. }
+            | Request::RecoveryState
+            | Request::RecoveryAction { .. }
+            | Request::InputState => {
+                return Err("the recovery overlay answers this".into());
             }
         })
     }

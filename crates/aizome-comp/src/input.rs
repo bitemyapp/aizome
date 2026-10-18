@@ -297,7 +297,7 @@ impl State {
                 frame = frame.stop(Axis::Vertical);
             }
         }
-        if crate::overlays::scroll(self, h, v) {
+        if crate::recovery::scroll(self, v) || crate::overlays::scroll(self, h, v) {
             return;
         }
         let Some(pointer) = self.az.seat.get_pointer() else { return };
@@ -310,6 +310,9 @@ impl State {
         self.note_activity();
         let f = self.az.settings.input.pointer.scroll_factor();
         let (dx, dy) = (dx * f, dy * f);
+        if crate::recovery::scroll(self, dy) {
+            return;
+        }
         let Some(pointer) = self.az.seat.get_pointer() else { return };
         let mut frame = AxisFrame::new(time).source(AxisSource::Wheel);
         if dx != 0.0 {
@@ -360,6 +363,9 @@ impl State {
         let pos = self.clamp_to_outputs(pos);
         let old = self.az.pointer_pos;
         self.az.pointer_pos = pos;
+        if crate::recovery::pointer_moved(self, old, pos, time) {
+            return;
+        }
         let Some(pointer) = self.az.seat.get_pointer() else { return };
         let under = self.under(pos);
         // The compositor's cursor over decorations; the client's over
@@ -395,7 +401,9 @@ impl State {
         pointer.motion(self, focus, &MotionEvent { location: pos, serial: SERIAL_COUNTER.next_serial(), time });
         pointer.frame(self);
         // Activate a pointer constraint the client asked for.
-        if let Some(f) = pointer.current_focus() {
+        if let Some(f) = pointer.current_focus()
+            && crate::recovery::may_constrain(&self.az, &f.0)
+        {
             with_pointer_constraint(&f.0, &pointer, |c| {
                 if let Some(c) = c
                     && !c.is_active()
@@ -433,6 +441,9 @@ impl State {
 
     pub fn pointer_button(&mut self, button: u32, pressed: bool, time: u32) {
         self.note_activity();
+        if crate::recovery::pointer_button(self, button, pressed) {
+            return;
+        }
         let Some(pointer) = self.az.seat.get_pointer() else { return };
         let serial = SERIAL_COUNTER.next_serial();
         let state = if pressed { ButtonState::Pressed } else { ButtonState::Released };
@@ -816,6 +827,11 @@ impl State {
         mods: &ModifiersState,
         handle: &KeysymHandle<'_>,
     ) -> KeyDecision {
+        // Ctrl+Alt+Del, before anything else: bindings, inhibitors, the
+        // lock, overlays and grabs.
+        if let Some(d) = crate::recovery::key(self, keycode, pressed, Mods::from_state(mods), &syms_of(handle)) {
+            return d;
+        }
         // A swallowed press swallows its release.
         if !pressed && self.az.suppressed_keys.remove(&keycode) {
             return KeyDecision::Swallow;
@@ -1107,6 +1123,18 @@ pub fn window_gone(state: &mut State, id: WinId) {
         i.drag = None;
     }
     let _ = HashSet::<u32>::new();
+}
+
+/// A key's symbols: the Latin one, the one with modifiers, and the raw
+/// ones.
+fn syms_of(handle: &KeysymHandle<'_>) -> Vec<Keysym> {
+    let mut syms: Vec<Keysym> = Vec::new();
+    if let Some(s) = handle.raw_latin_sym_or_raw_current_sym() {
+        syms.push(s);
+    }
+    syms.push(handle.modified_sym());
+    syms.extend(handle.raw_syms());
+    syms
 }
 
 /// Shift, Ctrl, Alt and Super, left and right (evdev codes).
