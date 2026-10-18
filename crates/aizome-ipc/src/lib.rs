@@ -342,6 +342,25 @@ pub enum Request {
         #[serde(default)]
         temperature: Option<u32>,
     },
+    /// Reloads what changed without touching the apps: the compositor's
+    /// logic (a new library, swapped between frames), the shell (restarted,
+    /// its notifications kept) and the settings. With neither `logic` nor
+    /// `shell`, whatever changed; with `check`, says what would happen and
+    /// does nothing. → [`Response::Reload`].
+    Reload {
+        /// Reload the logic (even if it's the same build).
+        #[serde(default)]
+        logic: bool,
+        /// Restart the shell.
+        #[serde(default)]
+        shell: bool,
+        /// The logic library to load; default: the installed one (the
+        /// system's, after an update).
+        #[serde(default)]
+        from: Option<String>,
+        #[serde(default)]
+        check: bool,
+    },
 }
 
 /// An input event for [`Request::Synthesize`].
@@ -384,6 +403,53 @@ pub enum Response {
     Screenshot { path: String },
     Spawned { pid: u32 },
     NightLight { state: NightLightState },
+    Reload { report: ReloadReport },
+}
+
+/// What a reload did (or, checking, would do), part by part.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct ReloadReport {
+    pub logic: ReloadPart,
+    pub shell: ReloadPart,
+    pub settings: ReloadPart,
+    /// The compositor's core, which a reload can't replace: `same`, or
+    /// `needs-restart` when the installed one differs (log out and in).
+    pub core: ReloadPart,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct ReloadPart {
+    /// `reloaded`, `restarted`, `unchanged`, `would-reload`, `refused`,
+    /// `failed`, `skipped`, `same` or `needs-restart`.
+    pub action: String,
+    /// What and why, in a sentence.
+    #[serde(default)]
+    pub detail: String,
+}
+
+impl ReloadPart {
+    pub fn new(action: &str, detail: impl Into<String>) -> ReloadPart {
+        ReloadPart { action: action.into(), detail: detail.into() }
+    }
+}
+
+/// The compositor's logic: what's loaded and how it has fared.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct LogicStats {
+    /// Its build (version and source hash), or empty when none is running.
+    pub build: String,
+    pub path: String,
+    /// When it was loaded, seconds since the epoch.
+    pub loaded_at: u64,
+    /// Loaded and not failing.
+    pub healthy: bool,
+    pub reloads: u32,
+    /// Rolled back or restarted after a panic.
+    pub rollbacks: u32,
+    #[serde(default)]
+    pub last_error: Option<String>,
+    /// The core's ABI fingerprint, which a logic must be built against.
+    pub core_abi: String,
 }
 
 impl Response {
@@ -509,6 +575,9 @@ pub struct Stats {
     /// applies after logging out and in.
     #[serde(default)]
     pub renderer_after_restart: bool,
+    /// The compositor's logic.
+    #[serde(default)]
+    pub logic: LogicStats,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -593,6 +662,17 @@ pub enum Event {
     /// Night Light turned on or off, warmed or cooled.
     NightLightChanged {
         state: NightLightState,
+    },
+    /// Something was reloaded (the compositor's logic, the shell, the
+    /// settings).
+    Reloaded {
+        report: ReloadReport,
+    },
+    /// The compositor's logic panicked; `action` says what the core did
+    /// (rolled back, restarted it, set it aside).
+    LogicFailed {
+        message: String,
+        action: String,
     },
 }
 

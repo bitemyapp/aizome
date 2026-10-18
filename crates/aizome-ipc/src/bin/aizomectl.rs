@@ -63,6 +63,15 @@ session
   lock                          ask the shell to lock
   action NAME                   run a key-binding action by name
   quit                          end the session
+  reload [--logic] [--shell] [--from PATH] [--check]
+                                reload Aizome without touching the apps:
+                                the compositor's logic (a new build, swapped
+                                between frames), the shell (restarted, its
+                                notifications kept) and the settings. With no
+                                flag, whatever changed; --from loads that
+                                logic library; --check says what would
+                                happen. Also ⌃❖R, and Reload Aizome in the
+                                palette
 
 input (through the compositor's own paths, for tests and scripts)
   input motion X Y | click [BUTTON] | button BUTTON [down|up]
@@ -205,6 +214,17 @@ fn parse(command: &str, mut args: Vec<String>) -> Result<Request, String> {
         "focused-window" | "focused" => Request::FocusedWindow,
         "desks" => Request::Desks,
         "stats" => Request::Stats { reset: flag(&mut args, "--reset") },
+        "reload" => {
+            let logic = flag(&mut args, "--logic");
+            let shell = flag(&mut args, "--shell");
+            let check = flag(&mut args, "--check");
+            let from = opt(&mut args, "--from")?
+                .map(|p| std::fs::canonicalize(&p).map(|p| p.to_string_lossy().into_owned()).unwrap_or(p));
+            if let Some(a) = args.first() {
+                return Err(format!("reload: unknown argument {a}"));
+            }
+            Request::Reload { logic, shell, from, check }
+        }
         "events" | "subscribe" => Request::Subscribe,
         "focus" => {
             need(&args, 1, "a window ID")?;
@@ -330,7 +350,7 @@ fn parse(command: &str, mut args: Vec<String>) -> Result<Request, String> {
             });
             Request::Screenshot { output, path, window, area, clipboard }
         }
-        "reload-config" | "reload" => Request::ReloadConfig,
+        "reload-config" => Request::ReloadConfig,
         "output" => {
             let mode = opt(&mut args, "--mode")?;
             let scale = opt(&mut args, "--scale")?
@@ -521,6 +541,24 @@ fn print_response(r: &Response) -> ExitCode {
         }
         Response::Stats { stats } => {
             println!("{} on {}", stats.renderer, stats.backend);
+            let l = &stats.logic;
+            if l.build.is_empty() {
+                println!("logic: none loaded (the recovery path runs: windows without decorations)");
+            } else {
+                println!(
+                    "logic: {} {} ({} reload{}, {} rollback{}) from {}",
+                    l.build,
+                    if l.healthy { "running" } else { "failed" },
+                    l.reloads,
+                    if l.reloads == 1 { "" } else { "s" },
+                    l.rollbacks,
+                    if l.rollbacks == 1 { "" } else { "s" },
+                    l.path
+                );
+            }
+            if let Some(e) = &l.last_error {
+                println!("logic: last failure: {e}");
+            }
             if stats.renderer_after_restart {
                 println!("renderer setting: {} (after the next login)", stats.renderer_setting);
             }
@@ -537,6 +575,7 @@ fn print_response(r: &Response) -> ExitCode {
         }
         Response::Screenshot { path } => println!("{path}"),
         Response::Spawned { pid } => println!("{pid}"),
+        Response::Reload { report } => return print_reload(report),
         Response::NightLight { state } => {
             let on = if state.enabled { "on" } else { "off" };
             let now = if state.active { "warm now" } else { "neutral now" };
@@ -552,6 +591,35 @@ fn print_response(r: &Response) -> ExitCode {
         }
     }
     ExitCode::SUCCESS
+}
+
+/// What a reload did, part by part; fails if a part failed or was
+/// refused.
+fn print_reload(r: &aizome_ipc::ReloadReport) -> ExitCode {
+    let mut failed = false;
+    for (what, part) in [("logic", &r.logic), ("shell", &r.shell), ("settings", &r.settings)] {
+        let line = match part.action.as_str() {
+            "skipped" if part.detail.is_empty() => continue,
+            "reloaded" | "restarted" => format!("{what}: {}", part.action),
+            "unchanged" => format!("{what}: unchanged"),
+            "would-reload" => format!("{what}: would reload"),
+            "refused" | "failed" => {
+                failed = true;
+                format!("{what}: {}", part.action)
+            }
+            other => format!("{what}: {other}"),
+        };
+        if part.detail.is_empty() {
+            println!("{line}");
+        } else {
+            println!("{line} — {}", part.detail);
+        }
+    }
+    match r.core.action.as_str() {
+        "needs-restart" => println!("core: needs a restart — {}", r.core.detail),
+        _ => println!("core: unchanged (nothing needs a restart)"),
+    }
+    if failed { ExitCode::FAILURE } else { ExitCode::SUCCESS }
 }
 
 fn fmt_pct(p: &Percentiles) -> String {
@@ -687,6 +755,11 @@ fn describe_event(e: &Event) -> String {
         Event::NightLightChanged { state } => {
             format!("night-light {} {} K now", if state.enabled { "on" } else { "off" }, state.current)
         }
+        Event::Reloaded { report } => format!(
+            "reloaded logic {}, shell {}, settings {}, core {}",
+            report.logic.action, report.shell.action, report.settings.action, report.core.action
+        ),
+        Event::LogicFailed { message, action } => format!("logic failed: {message} ({action})"),
     }
 }
 
