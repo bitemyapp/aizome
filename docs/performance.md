@@ -10,6 +10,24 @@ are from this laptop, debug builds unless said (dependencies at
 `opt-level = 2`, the workspace's own crates unoptimised), so they're upper
 bounds. Exceptions to the budget are written up with their reasons.
 
+## The kit
+
+`aizome-kit`'s own measures (the full tables, and how they're made, are
+at the end of `docs/kit.md`), release builds at 2880 × 1800 (scale 2).
+Sidestep repaints a whole window at 2× in about a millisecond now (5–7 ms
+before), and the kit scrolls by moving pixels (Sidestep's
+`Window::scroll`), drawing only the strips scrolled into view.
+
+| Interaction | p50 | p95 | Where |
+|---|---|---|---|
+| Toggle a switch | 0.05 ms | 0.06 ms | harness |
+| Type a character in a 2,000-line editor | 0.36 ms | 0.54 ms | harness |
+| Scroll a 10,000-row list filling the window one notch | 0.15 ms | 0.21 ms | harness (pixels moved live, below) |
+| A switch, live | 50–58 µs | 111–121 µs | headless sway |
+| A list's and a table's selection, live | 205–253 µs | 394–466 µs | headless sway |
+| The gallery's list and 10,000-row table scrolling two rows a frame, live | 1.5–2.1 ms | 1.8–3.0 ms | headless sway (drawn again: 2.5–3.6 and 2.9–4.8 ms) |
+| The editor scrolling a line a frame, live | 1.0–2.0 ms | 2.0–3.6 ms | headless sway (drawn again: 4.4–5.2 and 8.5–13.6 ms) |
+
 ## Soroban (Calculator)
 
 A key press, typed or clicked: the calculator's update, the view (up to 66

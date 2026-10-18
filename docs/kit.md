@@ -98,13 +98,16 @@ What `launched` and `update` act with:
 | `alert(window, Alert)` | Title, message, buttons; Return and Escape press the default and cancel ones. |
 | `open_panel(window, FileDialog, \|paths\| msg)`, `save_panel(…)` | File panels. |
 | `outputs()`, `set_layer_size/margins/anchors/exclusive_zone/keyboard`, `set_input_region`, `set_opaque_region`, `lock_session()`, `unlock_session()`, `request_activation_token(app_id)` | The desktop's surfaces, for the shell. |
+| `start_drag(window, DragSource) -> Option<DragId>` | Drag out of a window, to other programs, the desktop, the Shelf or another window: `DragSource::new().urls(files).actions(true, false).icon(image, hotspot)` (also `.text(t)`, `.data(mime, bytes)`, `.promise(mime)`). Call it while the button that began the drag is down (from a message its press or moves sent). |
 
 `Program` also has `menus()` (see Menus), `close_requested(window) -> bool`,
 `open(paths)` (files from the command line), `window_state(window, state)`
 (the window went full screen or back, by `set_fullscreen` or the desktop's
-⌃❖F; maximised; told once per change, then viewed again), and, for the shell,
-`outputs_changed`, `session_locked`, `session_lock_finished` and
-`activation_token`.
+⌃❖F; maximised; told once per change, then viewed again),
+`provide_drag_data(drag, mime)` (a destination asks for data a drag
+promised) and `drag_ended(drag, DropAction)` (copied, moved: the program
+removes what moved, or `None`), and, for the shell, `outputs_changed`,
+`session_locked`, `session_lock_finished` and `activation_token`.
 
 ## Elements
 
@@ -215,6 +218,10 @@ ordinary text colours otherwise. Arrows, Home/End, Page Up/Down and
 type-select move it; the list scrolls to show it. `.reveal(row)` scrolls to
 a row the program names (a search's match, a file just made) whenever the
 row named changes, and leaves the user's scrolling alone otherwise.
+`.drag_out(|rows| DragSource::new().urls(..))` lets rows be dragged out of
+the window: pressed on a row and moved four points, the selection goes (or
+the row pressed, selected, if it wasn't); a press on a selection of several
+that doesn't drag selects its row alone on release. Tables take the same.
 
 `table(columns, rows, |r, c| cell(r, c))` is a list in columns:
 
@@ -268,10 +275,10 @@ a `bevel_lo` bottom): compact pop-ups, `button(..).toolbar()`,
 
 | | |
 |---|---|
-| `popover(anchor, content, open).on_dismiss(msg)` | Content in a floating popup under the anchor (raised, the hard shadow) while `open`; a click elsewhere or Escape sends `on_dismiss`. It takes the keyboard (Tab moves within it). |
+| `popover(anchor, content, open).on_dismiss(msg)` | Content in a floating popup under the anchor (raised, the hard shadow) while `open`; a click elsewhere or Escape sends `on_dismiss`. It takes the keyboard (Tab moves within it), resizes with its content, and follows its anchor when that moves. |
 | `context_menu(el, Menu)` | The menu on a right click (or ⌃-click). |
 | `tooltip(el, "text")` (or `.tooltip(..)`) | After the pointer rests 650 ms. |
-| `mouse_area(el)` | `.on_press`, `.on_release`, `.on_double_click`, `.on_right_click(\|at\| ..)`, `.on_hover(\|in\| ..)`, `.on_move`, `.on_drag(\|DragEvent\| ..)`, `.on_drop(\|Dropped { urls, text, .. }\| ..)` (files and text from other programs), `.cursor(c)`. |
+| `mouse_area(el)` | `.on_press`, `.on_release`, `.on_double_click`, `.on_right_click(\|at\| ..)`, `.on_hover(\|in\| ..)`, `.on_move`, `.on_drag(\|DragEvent\| ..)`, `.on_drop(\|Dropped { urls, text, .. }\| ..)` (files and text from other programs, and this program's own drags out), `.drag_out(\|\| DragSource)` (pressed and moved four points, it goes out as the desktop's drag; `on_drag` hears no more of that press), `.cursor(c)`. |
 | `canvas(state, \|canvas, bounds, &state, theme\| …)` | Drawing of one's own (charts, calendars, disk maps) with Sidestep's `Canvas`; it's drawn again when `state`'s hash changes. `.on_event(\|event, size, &state\| Option<Msg>)` (pointer, scroll, `Event::Pinch { scale, .. }` from a touchpad, keys), `.focusable()` (`.focus_ring(FocusRing::Never)` for a canvas that is the whole content), `.parts(\|&state, size\| vec![(rect, hash)])`: parts that change by themselves (a hovered bar, a cursor), left out of `state`'s `Hash`, so that only the rectangles of parts that came, went or changed are drawn again. |
 
 ### Sheets, alerts and panels
@@ -312,6 +319,13 @@ answers input (`cx.emit(..)`, `cx.invalidate()`, `cx.relayout()`,
 persistent state is `cx.state::<T>()`. `aizome_kit::draw` has the look's
 pieces: `raised`, `sunken`, `floating`, `border`, `separator`,
 `focus_ring`.
+
+A widget that scrolls its content says how far it moved, from `layout`:
+`cx.scrolled(region, delta, &fixed)` (its coordinates; `fixed` is what
+stays put over the content, such as bars or a header, drawn again). The
+kit then has Sidestep move those pixels and draws only the strips they
+uncover and what changed; such a widget leaves its scroll offset out of its
+`hash`. The kit's scroll views, lists, tables, outlines and editor do this.
 
 ## Keyboard
 
@@ -380,7 +394,8 @@ on the app's commands; Help ▸ Aizome Tour starts `aizome-annai`.
 Menus behave the same everywhere (in-window, the shell's, pop-up buttons,
 context menus): ↑↓ move, → opens a submenu, ← closes it, Return or Space
 chooses, typing filters the rows and their submenus' (flattened, with their
-paths), Escape clears what's typed and then closes, and the pointer may
+paths; the menu shortens to what's left and grows back, widening but never
+narrowing), Escape clears what's typed and then closes, and the pointer may
 cross other rows on its way into an open submenu. `MenuStyle::at_point()
 .titled("Edit").on_tear_off(msg)` gives NeXT's menus at the pointer their
 `menu_title` strip, close box and pin; `menu_view(menu).title(..).pin(..)
@@ -422,6 +437,16 @@ The budget is 4 ms from an event to its frame drawn, at 2880 × 1800 (scale 2).
 - Scrolling, splits and lists re-lay-out without a view: the widget asks
   (`cx.relayout()`), the kit lays out it and its ancestors again (siblings
   keep their cached layout) and diffs.
+- Scrolling moves pixels (Sidestep's `Window::scroll`): what was drawn
+  moves, and only the strips scrolled into view are drawn, with what
+  changed and what stays put over the content (bars, a table's header). A
+  region isn't moved, and is drawn again, when its widget moved or
+  resized, when something else draws over it (an overlay in a `stack!`, a
+  sheet), or inside another region moving in the same frame.
+  `AIZOME_NO_PIXEL_SCROLL=1` draws everything again, to compare.
+- A picture drawn at another size than its own is scaled once (the second
+  time it's drawn at that size) and copied one to one after; smooth
+  scaling is slow.
 - Text layouts are cached by text, style and width (an LRU of 4096), so
   views rebuilt every frame shape nothing new.
 - Virtual lists build the rows that show; a 10,000-row list costs ~15
@@ -465,6 +490,12 @@ in-window menu bar. Input: `click`, `click_text`, `press`/`release`,
 answer; `fullscreen_asked` says what was asked). Looking: `find(text)`,
 `find_id(name)`, `texts()`, `semantics()`, `selection()`,
 `focused_name()`, `popups()`, `take_damage()`, `title()`, `stats()`.
+`check_frame(window)` makes the window's next frame as a compositor's
+buffer gets it (the last frame's pixels moved as scrolls asked, then the
+damage drawn) and compares it with the window drawn whole: `differs` is 0
+when the damage was right; `damaged` is the area drawn and `moves` the
+regions moved. Drags out: `drags()` (each with what it carries),
+`drag_data(drag, mime)`, `end_drag(drag, action)`.
 Pictures: `render(window, scale)`, `render_rect`, `render_popup`,
 `render_rgba` (the window with its popups where they'd show), `save_png`,
 and `assert_golden` (`AIZOME_UPDATE_GOLDENS=1` rewrites them). Popups:
@@ -478,8 +509,8 @@ stand-in shell over a real socket.
 (Controls, Text & Fields, Lists & Tables, a Settings pane, the Editor) with
 the theme switchable; the kit's goldens in `tests/snapshots` are its pages.
 `GALLERY_DEMO=menu|popover|alert` opens one at start, and
-`GALLERY_DEMO=bench-toggle|bench-select|bench-type` keeps changing
-something (for `SIDESTEP_FRAME_STATS=1`).
+`GALLERY_DEMO=bench-toggle|bench-select|bench-type|bench-scroll|bench-scroll-editor`
+keeps changing something every 20 ms (for `SIDESTEP_FRAME_STATS=1`).
 
 Set `AIZOME_FONT_DIR` to the fonts (`~/work/.aizome-fonts` here) so
 pictures use Aizome's type.
@@ -497,40 +528,44 @@ AccessKit (and AT-SPI) is to come.
 
 ## Measured
 
-On this laptop (release build, the machine shared with a dozen busy
-builds: load average 10–15, so the maxima are the scheduler's), at 1440 ×
-900 points rendered at scale 2 (2880 × 1800 pixels).
+On this laptop (release builds, the machine shared with other busy builds:
+load averages 2–20, so maxima are the scheduler's), at 1440 × 900 points
+rendered at scale 2 (2880 × 1800 pixels). Sidestep repaints a whole window
+at 2× in about a millisecond now (it took 5–7 ms).
 
 From the input to the frame drawn, in the headless harness
-(`cargo test --release -p aizome-kit --test perf -- --ignored --nocapture`;
-the time includes handling, `update`, `view`, layout, the diff, and
-rasterizing the damage into an offscreen buffer):
+(`cargo test --release -p aizome-kit --test perf -- --ignored --nocapture`:
+handling, `update`, `view`, layout and the diff, then each rectangle of
+damage drawn offscreen; pixels a scroll moves are the render thread's,
+measured live below):
 
 | Interaction | p50 ms | p95 ms |
 |---|---|---|
-| Hover a button (a settings pane, ~200 widgets) | 0.01 | 0.01 |
-| Toggle a switch (update, view, layout, diff) | 0.04 | 0.14 |
-| Type a character in a text field | 0.08 | 0.12 |
-| Type a character in a 2,000-line editor | 0.35 | 0.71 |
-| Move a 10,000-row list's selection by a row | 0.12 | 0.16 |
-| Scroll a 10,000-row list one notch, the list filling the window | 3.8 | 28 |
-| (The offscreen buffer for a whole 2880 × 1800 frame alone) | 1.2 | 2.2 |
+| Hover a button (a settings pane, ~200 widgets) | 0.01 | 0.02 |
+| Toggle a switch (update, view, layout, diff) | 0.05 | 0.06 |
+| Type a character in a text field | 0.11 | 0.34 |
+| Type a character in a 2,000-line editor | 0.36 | 0.54 |
+| Move a 10,000-row list's selection by a row | 0.11 | 0.14 |
+| Scroll a 10,000-row list filling the window one notch (rows moved, the strip drawn) | 0.15 | 0.21 |
 
-The live render thread, under headless sway at scale 2
-(`SIDESTEP_FRAME_STATS=1`, the gallery's `GALLERY_DEMO=bench-…` modes,
-one change every 20 ms; record, rasterize and present, from Sidestep's
-frame statistics):
+The live render thread under headless sway at scale 2
+(`SIDESTEP_FRAME_STATS=1` and the gallery's `GALLERY_DEMO=bench-…` modes,
+a change every 20 ms; record, rasterize and present, as Sidestep's frame
+statistics give them). Damage is the share of the window a frame touches,
+pixels moved included.
 
 | Change | Damage | p50 µs | p95 µs |
 |---|---|---|---|
-| A switch | 1% | 47 | 64 |
-| A 10,000-row table's and a list's selection | 4–5% | 220–350 | 370–440 |
-| Typing in the editor | 2–3% | 130–200 | 220–240 |
+| A switch | 0–1% | 50–58 | 111–121 |
+| A 10,000-row table's and a list's selection | 4–5% | 205–253 | 394–466 |
+| Typing in the editor | 2–3% | 139–143 | 235–257 |
+| The list and the table scrolling two rows a frame | 60–67% | 1,530–2,100 | 1,830–3,030 |
+| The same, drawn again (`AIZOME_NO_PIXEL_SCROLL=1`) | 56–63% | 2,530–3,610 | 2,860–4,810 |
+| The editor scrolling a line a frame | 68–88% | 1,030–1,980 | 2,040–3,620 |
+| The same, drawn again | 65–83% | 4,400–5,180 | 8,490–13,570 |
 
-Everything but scrolling is far inside 4 ms because only what changed is
-drawn. A notch of scrolling redraws the whole list, so its cost is the
-area's: a list filling a 2880 × 1800 window misses 4 ms at the 95th
-percentile while the machine is busy. Sidestep is making full-window
-repaints at 2× faster; moving the drawn rows (a blit) and drawing only the
-newly shown strip would make scrolling proportional to the rows that come
-into view.
+Everything is inside 4 ms at the median and the 95th percentile, scrolling
+included now that it moves pixels (under the heaviest load seen, load
+average 25, the list and table scrolling took 2.7 ms at the median and
+5.8 ms at the 95th percentile): moving a region costs about a millisecond
+at 2× (copying it), against 2.5–5 ms to draw rows and lines again.
