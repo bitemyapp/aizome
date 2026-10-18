@@ -261,6 +261,9 @@ struct Laid {
     key: u64,
 }
 
+/// How far a press on the selection moves before it drags the text out.
+const DRAG_SLOP: f64 = 4.0;
+
 /// What an editor remembers between views.
 #[derive(Default)]
 pub(crate) struct EditorState {
@@ -275,6 +278,10 @@ pub(crate) struct EditorState {
     /// Dragging out a selection by character (1), word (2) or line (3),
     /// from this range.
     drag: Option<(u32, Range<usize>)>,
+    /// A press inside the selection, where and at which character: moved
+    /// far enough, the selected text is dragged out; released, the caret
+    /// goes there.
+    drag_text: Option<(Point, usize)>,
     /// Show the caret at the next layout (it moved by the keyboard).
     reveal: bool,
     /// The lines drawn last: line, y, height, key.
@@ -548,6 +555,22 @@ impl EditorWidget {
 
     fn select(&self, cx: &mut EventCx, anchor: usize, head: usize) {
         self.emit(cx, EditorAction::Select(Selection { anchor, head }));
+    }
+
+    /// Whether `p` falls on the selection's text: between its two ends,
+    /// and not on the near side of either end's caret.
+    fn on_selection(&self, p: Point) -> bool {
+        let r = self.snap.selection.range();
+        if r.is_empty() {
+            return false;
+        }
+        let at = self.hit(p);
+        if at < r.start || at > r.end {
+            return false;
+        }
+        let before_start = at == r.start && self.caret_rect(r.start, None).is_some_and(|c| p.x < c.x0);
+        let after_end = at == r.end && self.caret_rect(r.end, None).is_some_and(|c| p.x > c.x0);
+        !before_start && !after_end
     }
 
     /// Move the caret to `to`, extending the selection with `extend`.
@@ -1124,6 +1147,14 @@ impl Widget for EditorWidget {
                     }
                     _ => at..at,
                 };
+                // On the selection: maybe the start of a drag out of it.
+                if *clicks == 1 && !mods.shift() && self.on_selection(*pos) {
+                    let st = cx.state::<EditorState>();
+                    st.drag = None;
+                    st.drag_text = Some((*pos, at));
+                    return Status::Handled;
+                }
+                cx.state::<EditorState>().drag_text = None;
                 cx.state::<EditorState>().drag = Some(((*clicks).clamp(1, 3), r.clone()));
                 if mods.shift() && *clicks == 1 {
                     self.select(cx, self.snap.selection.anchor, at);
@@ -1133,6 +1164,14 @@ impl Widget for EditorWidget {
                 Status::Handled
             }
             Event::PointerMove { pos, .. } if cx.is_pressed() => {
+                if let Some((from, _)) = cx.state::<EditorState>().drag_text {
+                    if (*pos - from).hypot() >= DRAG_SLOP {
+                        cx.state::<EditorState>().drag_text = None;
+                        let text = self.snap.rope.slice(self.snap.selection.range()).to_string();
+                        cx.start_drag(sidestep_ui::DragSource::new().text(&text).actions(true, false));
+                    }
+                    return Status::Handled;
+                }
                 let Some((kind, from)) = cx.state::<EditorState>().drag.clone() else { return Status::Handled };
                 let at = self.hit(*pos);
                 let (anchor, head) = match kind {
@@ -1165,6 +1204,11 @@ impl Widget for EditorWidget {
             }
             Event::PointerUp { .. } => {
                 cx.state::<EditorState>().drag = None;
+                // A press on the selection that didn't drag: the caret
+                // goes where it was.
+                if let Some((_, at)) = cx.state::<EditorState>().drag_text.take() {
+                    self.select(cx, at, at);
+                }
                 Status::Handled
             }
             Event::Key(k) if k.pressed => self.key(cx, k),

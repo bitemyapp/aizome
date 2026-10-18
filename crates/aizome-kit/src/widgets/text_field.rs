@@ -164,6 +164,9 @@ enum EditKind {
     Other,
 }
 
+/// How far a press on the selection moves before it drags the text out.
+const DRAG_SLOP: f64 = 4.0;
+
 /// What a field remembers between views.
 #[derive(Default)]
 pub(crate) struct FieldState {
@@ -174,6 +177,10 @@ pub(crate) struct FieldState {
     preedit_caret: Option<usize>,
     blink_off: bool,
     selecting: bool,
+    /// A press inside the selection, where and at which offset: moved far
+    /// enough, the selected text is dragged out; released, the caret goes
+    /// there.
+    drag_text: Option<(Point, usize)>,
     focused: bool,
     history: Vec<(String, usize, usize)>,
     future: Vec<(String, usize, usize)>,
@@ -259,6 +266,18 @@ impl FieldWidget {
 
     fn selection(st: &FieldState) -> Range<usize> {
         st.caret.min(st.anchor)..st.caret.max(st.anchor)
+    }
+
+    /// Whether `p` falls on the selected text (never a password's).
+    fn on_selection(&self, st: &FieldState, p: Point) -> bool {
+        let r = Self::selection(st);
+        let r = r.start.min(self.value.len())..r.end.min(self.value.len());
+        if self.password || r.is_empty() {
+            return false;
+        }
+        let Some(l) = &self.laid else { return false };
+        let x = |o: usize| self.left() + l.caret(self.shown_offset(o, "", st.caret), false).x - st.scroll;
+        p.x >= x(r.start) && p.x <= x(r.end)
     }
 
     /// Replace the selection with `with`: the new value goes to the
@@ -609,7 +628,15 @@ impl Widget for FieldWidget {
                 }
                 let at = self.hit(*pos, &t);
                 let value = self.value.clone();
+                // On the selection: maybe the start of a drag out of it.
+                if *clicks == 1 && !mods.shift() && self.on_selection(cx.state::<FieldState>(), *pos) {
+                    let st = cx.state::<FieldState>();
+                    st.selecting = false;
+                    st.drag_text = Some((*pos, at));
+                    return Status::Handled;
+                }
                 let st = cx.state::<FieldState>();
+                st.drag_text = None;
                 match clicks {
                     2 => {
                         let w = word_at(&value, at);
@@ -634,6 +661,16 @@ impl Widget for FieldWidget {
                 Status::Handled
             }
             Event::PointerMove { pos, .. } if cx.is_pressed() => {
+                if let Some((from, _)) = cx.state::<FieldState>().drag_text {
+                    if (*pos - from).hypot() >= DRAG_SLOP {
+                        let st = cx.state::<FieldState>();
+                        st.drag_text = None;
+                        let r = Self::selection(st);
+                        let text = self.value.get(r).unwrap_or_default().to_owned();
+                        cx.start_drag(sidestep_ui::DragSource::new().text(&text).actions(true, false));
+                    }
+                    return Status::Handled;
+                }
                 if cx.state::<FieldState>().selecting {
                     let at = self.hit(*pos, &t);
                     if cx.state::<FieldState>().caret != at {
@@ -643,7 +680,17 @@ impl Widget for FieldWidget {
                 Status::Handled
             }
             Event::PointerUp { .. } => {
-                cx.state::<FieldState>().selecting = false;
+                let st = cx.state::<FieldState>();
+                st.selecting = false;
+                // A press on the selection that didn't drag: the caret
+                // goes where it was.
+                if let Some((_, at)) = st.drag_text.take() {
+                    st.caret = at;
+                    st.anchor = at;
+                    st.blink_off = false;
+                    cx.relayout();
+                    cx.invalidate();
+                }
                 Status::Handled
             }
             Event::Key(k) if k.pressed => self.key(cx, k),
