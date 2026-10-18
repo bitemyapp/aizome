@@ -14,7 +14,7 @@ use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
-use aizome_ipc::{Client, DeskSel, Request, Response, Stats};
+use aizome_ipc::{Client, DeskSel, Request, Response, Stats, Synthetic};
 
 struct Kill(Vec<Child>);
 
@@ -127,6 +127,19 @@ fn main() {
         );
     };
     println!("renderer {renderer}, output {output}");
+    let keys = |k: &str| {
+        let r = req(Request::Synthesize { events: vec![Synthetic::Chord { keys: k.into() }] });
+        assert!(matches!(r, Response::Ok), "{r:?}");
+    };
+
+    // Ctrl+Alt+Del straight after start, before the overlay's labels are
+    // warmed: its first frame from cold.
+    stats(true);
+    keys("ctrl+alt+delete");
+    std::thread::sleep(Duration::from_millis(300));
+    report("recovery: open, cold", &stats(true));
+    keys("escape");
+    std::thread::sleep(Duration::from_millis(300));
 
     // Three ordinary windows.
     for _ in 0..3 {
@@ -198,6 +211,31 @@ fn main() {
     }
     report("10 windows, one moving", &stats(true));
 
+    // The recovery overlay over ten windows: opening and closing, the
+    // list updating (CPU and memory each second, pings), and moving
+    // through it with the keys.
+    std::thread::sleep(Duration::from_millis(2500));
+    stats(true);
+    for _ in 0..8 {
+        keys("ctrl+alt+delete");
+        std::thread::sleep(Duration::from_millis(150));
+        keys("escape");
+        std::thread::sleep(Duration::from_millis(150));
+    }
+    report("recovery: open/close (8)", &stats(true));
+    keys("ctrl+alt+delete");
+    std::thread::sleep(Duration::from_millis(1500));
+    stats(true);
+    std::thread::sleep(Duration::from_secs(5));
+    report("recovery: list updating (5s)", &stats(true));
+    for _ in 0..20 {
+        keys("down");
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    report("recovery: keys moving (20)", &stats(true));
+    keys("escape");
+    std::thread::sleep(Duration::from_millis(300));
+
     // A full-screen client drawing every frame: the whole output damaged.
     kill.0.push(spawn("animate"));
     let ws = windows(11);
@@ -207,6 +245,14 @@ fn main() {
     stats(true);
     std::thread::sleep(Duration::from_secs(3));
     report("full-screen client (3s)", &stats(true));
+
+    // Ctrl+Alt+Del over it: the overlay composited over every frame.
+    keys("ctrl+alt+delete");
+    std::thread::sleep(Duration::from_millis(500));
+    stats(true);
+    std::thread::sleep(Duration::from_secs(3));
+    report("recovery over it (3s)", &stats(true));
+    keys("escape");
 
     drop(kill);
     let _ = std::fs::remove_dir_all(&dir);

@@ -66,6 +66,11 @@ impl IpcServer {
         Ok(path)
     }
 
+    /// Connections listening for events (the shell's, among them).
+    pub fn subscribers(&self) -> usize {
+        self.conns.values().filter(|c| c.subscribed).count()
+    }
+
     /// Sends an event to every subscriber.
     pub fn emit(&mut self, event: &Event) {
         if !self.conns.values().any(|c| c.subscribed) {

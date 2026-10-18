@@ -69,6 +69,8 @@ where
     if cursor {
         cursor_elements(az, renderer, output, scale, &mut out);
     }
+    // Ctrl+Alt+Del's overlay, above everything (the lock screen too).
+    out.extend(crate::recovery::elements(az, renderer, output, scale));
     drag_icon_elements(az, renderer, output, scale, &mut out);
 
     if az.lock.is_locked() {

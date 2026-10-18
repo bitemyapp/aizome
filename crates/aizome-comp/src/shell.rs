@@ -472,6 +472,10 @@ impl XdgShellHandler for State {
         &mut self.az.xdg_shell
     }
 
+    fn client_pong(&mut self, client: smithay::wayland::shell::xdg::ShellClient) {
+        crate::recovery::ping::pong(&client);
+    }
+
     fn new_toplevel(&mut self, surface: ToplevelSurface) {
         let window = Window::new_wayland_window(surface);
         self.az.unmapped.push(Unmapped { window, wants_csd: true });

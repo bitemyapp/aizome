@@ -57,8 +57,22 @@ case "$state" in
     # shellcheck disable=SC2086
     systemctl --user import-environment $vars
     dbus-update-activation-environment --systemd $vars 2>/dev/null
-    systemctl --user --wait start aizome.service
-    status=$?
+    # A compositor its watchdog stopped (its main loop stalled) starts
+    # again, up to three times in a row; one that ran for five minutes
+    # since resets the count. Anything else ends the session.
+    restarts=0
+    while :; do
+      started=$(date +%s)
+      systemctl --user --wait start aizome.service
+      status=$?
+      result=$(systemctl --user show -p Result --value aizome.service 2>/dev/null)
+      [ "$result" = watchdog ] || break
+      [ $(($(date +%s) - started)) -ge 300 ] && restarts=0
+      [ "$restarts" -lt 3 ] || break
+      restarts=$((restarts + 1))
+      echo "aizome-session: Aizome stopped responding; starting it again" >&2
+      systemctl --user reset-failed aizome.service
+    done
     systemctl --user start --job-mode=replace-irreversibly aizome-shutdown.target
     systemctl --user unset-environment WAYLAND_DISPLAY DISPLAY AIZOME_SOCKET AIZOME_SHELL_SOCKET $vars
     exit $status

@@ -316,7 +316,7 @@ pub struct Bluetooth {
     bus: Option<Bus>,
     model: Arc<Model<BluetoothState>>,
     stop: Stop,
-    agent: std::sync::Mutex<Option<agent::Registration>>,
+    agent: agent::Worker,
     rfkill: std::path::PathBuf,
 }
 
@@ -333,7 +333,7 @@ impl Bluetooth {
                     bus: None,
                     model: Arc::new(Model::new(BluetoothState::default(), wake)),
                     stop: Stop::default(),
-                    agent: std::sync::Mutex::new(None),
+                    agent: agent::Worker::default(),
                     rfkill: crate::network::rfkill::DEVICE.into(),
                 }
             }
@@ -387,7 +387,7 @@ impl Bluetooth {
             bus: Some(bus),
             model,
             stop,
-            agent: std::sync::Mutex::new(None),
+            agent: agent::Worker::default(),
             rfkill: crate::network::rfkill::DEVICE.into(),
         }
     }
@@ -539,17 +539,16 @@ impl Bluetooth {
     /// for a PIN, a passkey or a confirmation goes to `prompt`, which shows
     /// it and answers through the prompt's [`Responder`] when the person
     /// does. Replaces an agent registered before. Fails when BlueZ isn't
-    /// running.
-    pub fn register_agent(&self, prompt: impl Fn(PairingPrompt) + Send + Sync + 'static) -> Result<()> {
-        let bus = self.bus.as_ref().ok_or_else(|| Error::Unavailable("BlueZ".into()))?;
-        let registration = agent::register(bus, Arc::new(prompt))?;
-        *crate::service::lock(&self.agent) = Some(registration);
-        Ok(())
+    /// running. It takes a few round trips to BlueZ, made on the agent's
+    /// own thread: this returns at once.
+    pub fn register_agent(&self, prompt: impl Fn(PairingPrompt) + Send + Sync + 'static) -> Task<()> {
+        let Some(bus) = self.bus.as_ref() else { return Task::ready(Err(Error::Unavailable("BlueZ".into()))) };
+        self.agent.register(bus, Arc::new(prompt), self.model.wake())
     }
 
-    /// Stop serving the agent.
-    pub fn unregister_agent(&self) {
-        crate::service::lock(&self.agent).take();
+    /// Stop serving the agent (after any registration asked for before).
+    pub fn unregister_agent(&self) -> Task<()> {
+        self.agent.unregister(self.model.wake())
     }
 }
 

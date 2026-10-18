@@ -9,6 +9,9 @@ use crate::wm::{DeskId, Rect, Side, WinId};
 
 impl State {
     pub fn handle_request(&mut self, req: Request) -> Response {
+        if let Some(r) = crate::recovery::handle_request(self, &req) {
+            return r;
+        }
         match self.request(req) {
             Ok(r) => r,
             Err(e) => Response::Error { message: e },
@@ -349,6 +352,17 @@ impl State {
                     self.synthesize(e)?;
                 }
                 Response::Ok
+            }
+            Request::DebugStall { seconds } => {
+                tracing::warn!(seconds, "stalling the main loop, as asked");
+                std::thread::sleep(std::time::Duration::from_secs(seconds.min(60) as u64));
+                Response::Ok
+            }
+            Request::Recovery { .. }
+            | Request::RecoveryState
+            | Request::RecoveryAction { .. }
+            | Request::InputState => {
+                return Err("the recovery overlay answers this".into());
             }
         })
     }

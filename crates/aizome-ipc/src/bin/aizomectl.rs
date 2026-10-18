@@ -64,6 +64,17 @@ session
   action NAME                   run a key-binding action by name
   quit                          end the session
 
+recovery (what Ctrl+Alt+Del opens)
+  recovery [on|off]             open or close the recovery overlay (toggles)
+  recovery status               its apps (CPU, memory, not responding)
+  recovery force-quit APP_ID    kill an app's scope (or its processes)
+  recovery close APP_ID         ask an app's windows to close
+  recovery reset-input | restart-shell | reload-compositor | lock | log-out
+           | text-console      the overlay's other actions
+  input-state                   grabs, pressed buttons and keys, constraint
+  debug-stall SECONDS           block the compositor's main loop (at most
+                                60 s) to try the watchdog
+
 input (through the compositor's own paths, for tests and scripts)
   input motion X Y | click [BUTTON] | button BUTTON [down|up]
   input scroll DX DY | key NAME [down|up] | chord super+shift+3 | type TEXT
@@ -383,6 +394,22 @@ fn parse(command: &str, mut args: Vec<String>) -> Result<Request, String> {
         "power-on-monitors" => Request::PowerOnMonitors,
         "lock" => Request::Lock,
         "quit" => Request::Quit,
+        "input-state" => Request::InputState,
+        "debug-stall" => {
+            need(&args, 1, "how many seconds")?;
+            Request::DebugStall { seconds: args[0].parse().map_err(|_| format!("not a number: {}", args[0]))? }
+        }
+        "recovery" => match args.first().map(String::as_str) {
+            None => Request::Recovery { state: None },
+            Some("on") => Request::Recovery { state: Some(true) },
+            Some("off") => Request::Recovery { state: Some(false) },
+            Some("status") => Request::RecoveryState,
+            Some(a @ ("force-quit" | "close")) => {
+                need(&args, 2, "an app ID")?;
+                Request::RecoveryAction { action: a.to_string(), app_id: Some(args[1].clone()) }
+            }
+            Some(a) => Request::RecoveryAction { action: a.to_string(), app_id: None },
+        },
         "action" => {
             need(&args, 1, "an action name")?;
             Request::Action { action: args[0].clone() }
@@ -536,6 +563,47 @@ fn print_response(r: &Response) -> ExitCode {
             }
         }
         Response::Screenshot { path } => println!("{path}"),
+        Response::Message { message } => println!("{message}"),
+        Response::Recovery { state } => {
+            println!(
+                "recovery overlay {}{}",
+                if state.open { "open" } else { "closed" },
+                if state.locked { " (locked: safe actions only)" } else { "" }
+            );
+            for a in &state.apps {
+                let cpu = a.cpu_percent.map(|c| format!("{c:.0}%")).unwrap_or_else(|| "-".into());
+                let mem = a.memory_bytes.map(fmt_bytes).unwrap_or_else(|| "-".into());
+                let flag = if a.crashed {
+                    "  crashed"
+                } else if a.not_responding {
+                    "  not responding"
+                } else {
+                    ""
+                };
+                let sel = if state.selected.as_deref() == Some(a.app_id.as_str()) { "▸" } else { " " };
+                println!(
+                    "{sel} {:<28} {:<20} {:>2} win  cpu {:>5}  mem {:>8}  pid {:?}{flag}",
+                    a.app_id, a.name, a.windows, cpu, mem, a.pids
+                );
+                for u in &a.units {
+                    println!("    {u}");
+                }
+            }
+            println!("actions: {}", state.actions.join(", "));
+            if let Some(m) = &state.message {
+                println!("{m}");
+            }
+        }
+        Response::InputState { state } => {
+            println!("pointer grab: {}", state.pointer_grab.as_deref().unwrap_or("none"));
+            println!("pressed buttons: {:?}", state.pressed_buttons);
+            println!("keyboard grab: {}", state.keyboard_grab);
+            println!("pressed keys: {:?}", state.pressed_keys);
+            println!("pointer constraint: {}", state.pointer_constraint.as_deref().unwrap_or("none"));
+            println!("cursor hidden: {}", state.cursor_hidden);
+            println!("pointer focus: {}", state.pointer_focus.as_deref().unwrap_or("none"));
+            println!("keyboard focus: {}", state.keyboard_focus.as_deref().unwrap_or("none"));
+        }
         Response::Spawned { pid } => println!("{pid}"),
         Response::NightLight { state } => {
             let on = if state.enabled { "on" } else { "off" };
@@ -552,6 +620,17 @@ fn print_response(r: &Response) -> ExitCode {
         }
     }
     ExitCode::SUCCESS
+}
+
+fn fmt_bytes(b: u64) -> String {
+    let b = b as f64;
+    if b >= 1024.0 * 1024.0 * 1024.0 {
+        format!("{:.1} GB", b / (1024.0 * 1024.0 * 1024.0))
+    } else if b >= 1024.0 * 1024.0 {
+        format!("{:.0} MB", b / (1024.0 * 1024.0))
+    } else {
+        format!("{:.0} KB", b / 1024.0)
+    }
 }
 
 fn fmt_pct(p: &Percentiles) -> String {

@@ -56,7 +56,8 @@ impl Handler for Client {
                 let opts = LayerOptions::new(Layer::Top, "aizome-test-glass")
                     .anchors(Anchors::TOP | Anchors::LEFT)
                     .margins(Margins { top: 100, right: 0, bottom: 0, left: 100 });
-                let w = cx.open_window(WindowOptions::layer(opts).size(200.0, 100.0).background(Background::Transparent));
+                let w =
+                    cx.open_window(WindowOptions::layer(opts).size(200.0, 100.0).background(Background::Transparent));
                 self.windows.push(w);
             }
             "lock" => cx.lock_session(),
