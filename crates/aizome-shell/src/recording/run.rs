@@ -178,19 +178,34 @@ fn supervise(
             Err(_) => {}
         }
         // Recording.
-        return match rx.recv() {
-            Ok(Cmd::Stop) | Err(_) => stop(&mut child, &proc, path, log, timing, rx),
+        match rx.recv() {
+            Ok(Cmd::Stop) | Err(_) => return stop(&mut child, &proc, path, log, timing, rx),
             Ok(Cmd::Exited) => {
                 let status = child.wait().ok();
-                log::warn!("recording: {} exited ({}): {}", attempt.recorder, describe(status), log_tail(log));
-                Ending::Crashed {
+                let error = format!("{} exited ({}): {}", attempt.recorder, describe(status), log_tail(log));
+                // One that wrote nothing never got going, however long it
+                // took to give up (gpu-screen-recorder finding only
+                // software OpenGL takes seconds in a VM): the next one.
+                if !recorded(path) {
+                    log::info!("recording: {error}");
+                    last_error = error;
+                    continue;
+                }
+                log::warn!("recording: {error}");
+                return Ending::Crashed {
                     path: path.to_owned(),
                     error: format!("{} quit unexpectedly ({}).", attempt.recorder, describe(status)),
-                }
+                };
             }
-        };
+        }
     }
     Ending::Failed(last_error)
+}
+
+/// Whether a recorder wrote frames, not just a container's header (its
+/// muxer writes in 32 KiB blocks).
+fn recorded(path: &Path) -> bool {
+    std::fs::metadata(path).is_ok_and(|m| m.len() >= 16 * 1024)
 }
 
 /// SIGINT, so the recorder finishes the file; SIGTERM, then SIGKILL, if it
@@ -508,7 +523,11 @@ mod tests {
         let path = d.join("a.mp4");
         let dies = Attempt {
             recorder: "dies",
-            argv: vec!["sh".into(), "-c".into(), format!("echo x > {}; sleep 0.6; exit 9", path.display())],
+            argv: vec![
+                "sh".into(),
+                "-c".into(),
+                format!("head -c 20000 /dev/zero > {}; sleep 0.6; exit 9", path.display()),
+            ],
         };
         let (_h, rx) = run(vec![dies], &d, &path);
         next(&rx);
@@ -519,6 +538,24 @@ mod tests {
             }
             e => panic!("{e:?}"),
         }
+    }
+
+    /// gpu-screen-recorder in a VM takes seconds to find it has only
+    /// software OpenGL: past the settle time, but it wrote nothing.
+    #[test]
+    fn one_that_gives_up_slowly_without_writing_makes_way_too() {
+        let d = dir("slow");
+        let path = d.join("a.mp4");
+        let slow = Attempt {
+            recorder: "slow",
+            argv: vec!["sh".into(), "-c".into(), format!("echo hdr > {}; sleep 0.6; exit 1", path.display())],
+        };
+        let (h, rx) = run(vec![slow, recorder(&path)], &d, &path);
+        assert!(matches!(next(&rx), Event::Started { recorder, .. } if recorder == "slow"));
+        assert!(matches!(next(&rx), Event::Started { recorder, .. } if recorder == "pretend"));
+        std::thread::sleep(Duration::from_millis(400));
+        h.stop();
+        assert_eq!(next(&rx), Event::Ended(Ending::Saved(path)));
     }
 
     #[test]

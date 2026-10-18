@@ -173,7 +173,12 @@ pkgs.testers.runNixOSTest {
         machine.wait_until_succeeds(alice("aizome-shell msg state | grep -q '\"phase\":\"recording\"'"), timeout=30)
         # One at a time.
         machine.fail(record_screen)
-        machine.sleep(4)
+        # gpu-screen-recorder takes seconds to give up on software OpenGL;
+        # the clock restarts with each recorder that takes over. Five
+        # seconds of the one that stuck:
+        machine.wait_until_succeeds(
+            alice("aizome-shell msg state | grep -Eq '\"seconds\":([5-9]|[1-9][0-9])'"), timeout=60
+        )
         going = recording()
         print(going)
         # gpu-screen-recorder refuses software OpenGL, so wf-recorder.

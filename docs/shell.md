@@ -256,12 +256,13 @@ time.
   through KMS (its `gsr-kms-server`, which the NixOS module gives
   CAP_SYS_ADMIN) and encoding H.264 on the GPU (VA-API, NVENC; x264 only
   where the GPU has no encoder), the pointer included: nothing per frame
-  for the compositor or the CPU. One that exits within 1.5 s couldn't
-  record here (no hardware OpenGL, no capture rights), and wf-recorder
-  takes over through the compositor's wlr-screencopy: first with VA-API
-  (dmabuf frames, still on the GPU), then with x264 (wl_shm, read back;
-  the `superfast` preset). wf-recorder records one audio source (what the
-  computer plays before the microphone) and always the pointer.
+  for the compositor or the CPU. One that exits within 1.5 s, or later
+  without having written a frame, couldn't record here (no hardware
+  OpenGL, no capture rights), and wf-recorder takes over through the
+  compositor's wlr-screencopy: first with VA-API (dmabuf frames, still on
+  the GPU), then with x264 (wl_shm, read back; the `superfast` preset).
+  wf-recorder records one audio source (what the computer plays before the
+  microphone) and always the pointer.
 - **Audio**: through PipeWire's PulseAudio server: the default output's
   monitor for what the computer plays, the default input for the
   microphone; gpu-screen-recorder mixes both into one track (AAC in MP4,
