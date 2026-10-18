@@ -29,7 +29,8 @@ fn main() {
             let mut notifier = ring::Dbus::connect();
             let mut player = sound::System::default();
             let mut s = scheduler();
-            let code = ring::ring_with(&alarms::alarms_path(), id, &mut notifier, &mut player, s.as_mut(), ring::RING_FOR);
+            let code =
+                ring::ring_with(&alarms::alarms_path(), id, &mut notifier, &mut player, s.as_mut(), ring::RING_FOR);
             std::process::exit(code);
         }
         Some("--sync") => {
@@ -47,7 +48,8 @@ fn main() {
         }
         _ => {}
     }
-    let mut app = Tokei::new(Some(state_path()), Some(alarms::alarms_path()), scheduler(), Box::new(sound::System::default()));
+    let mut app =
+        Tokei::new(Some(state_path()), Some(alarms::alarms_path()), scheduler(), Box::new(sound::System::default()));
     match instance::claim("tokei", &args) {
         Claim::Handed => return,
         Claim::First(listener) => app.instance = Some(listener),

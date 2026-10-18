@@ -42,7 +42,14 @@ pub fn words(a: &Alarm) -> (String, String) {
 }
 
 /// Ring alarm `id` from the file at `path`: the exit status.
-pub fn ring_with(path: &Path, id: &str, notifier: &mut dyn Notifier, player: &mut dyn Player, scheduler: &mut dyn Scheduler, ring_for: Duration) -> i32 {
+pub fn ring_with(
+    path: &Path,
+    id: &str,
+    notifier: &mut dyn Notifier,
+    player: &mut dyn Player,
+    scheduler: &mut dyn Scheduler,
+    ring_for: Duration,
+) -> i32 {
     let mut alarms = alarms::load(path);
     let Some(alarm) = alarms.iter().find(|a| a.id == id).cloned() else {
         log::info!("alarm {id} is gone");
@@ -114,7 +121,13 @@ impl Dbus {
 
     fn proxy(&self) -> Option<zbus::blocking::Proxy<'static>> {
         let conn = self.conn.as_ref()?;
-        zbus::blocking::Proxy::new(conn, "org.freedesktop.Notifications", "/org/freedesktop/Notifications", "org.freedesktop.Notifications").ok()
+        zbus::blocking::Proxy::new(
+            conn,
+            "org.freedesktop.Notifications",
+            "/org/freedesktop/Notifications",
+            "org.freedesktop.Notifications",
+        )
+        .ok()
     }
 }
 
@@ -153,7 +166,8 @@ impl Notifier for Dbus {
         hints.insert("resident", zbus::zvariant::Value::Bool(true));
         hints.insert("desktop-entry", zbus::zvariant::Value::from("org.aizome.Tokei"));
         hints.insert("category", zbus::zvariant::Value::from("x-aizome.alarm"));
-        let reply: zbus::Result<u32> = proxy.call("Notify", &("Tokei", 0u32, "org.aizome.Tokei", summary, body, list, hints, 0i32));
+        let reply: zbus::Result<u32> =
+            proxy.call("Notify", &("Tokei", 0u32, "org.aizome.Tokei", summary, body, list, hints, 0i32));
         match reply {
             Ok(id) => {
                 self.id = id;
@@ -232,7 +246,14 @@ mod tests {
     }
 
     fn alarm(days: &[u8]) -> Alarm {
-        Alarm { id: "0000beef".into(), label: "Tea".into(), hour: 16, minute: 5, days: days.to_vec(), ..Alarm::default() }
+        Alarm {
+            id: "0000beef".into(),
+            label: "Tea".into(),
+            hour: 16,
+            minute: 5,
+            days: days.to_vec(),
+            ..Alarm::default()
+        }
     }
 
     #[test]
@@ -242,7 +263,10 @@ mod tests {
         let mut p = Silent::default();
         let mut s = Recorder::new();
         assert_eq!(ring_with(&path, "0000beef", &mut n, &mut p, &mut s, RING_FOR), 0);
-        assert_eq!(n.posted, [("Tea".to_owned(), "16:05 · Once".to_owned(), vec!["Snooze 9 min".to_owned(), "Stop".to_owned()])]);
+        assert_eq!(
+            n.posted,
+            [("Tea".to_owned(), "16:05 · Once".to_owned(), vec!["Snooze 9 min".to_owned(), "Stop".to_owned()])]
+        );
         assert_eq!(p.started, ["alarm-clock-elapsed"]);
         assert!(p.stopped > 0 && n.closed);
         assert!(!alarms::load(&path)[0].enabled);

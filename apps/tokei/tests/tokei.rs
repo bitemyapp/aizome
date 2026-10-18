@@ -70,7 +70,12 @@ fn alarm(id: &str, h: u8, m: u8, days: &[u8], label: &str) -> Alarm {
     Alarm { id: id.into(), hour: h, minute: m, days: days.to_vec(), label: label.into(), ..Alarm::default() }
 }
 
-const CITIES: [(&str, &str); 4] = [("Tokyo", "Asia/Tokyo"), ("New York", "America/New_York"), ("Kolkata", "Asia/Kolkata"), ("Reykjavík", "Atlantic/Reykjavik")];
+const CITIES: [(&str, &str); 4] = [
+    ("Tokyo", "Asia/Tokyo"),
+    ("New York", "America/New_York"),
+    ("Kolkata", "Asia/Kolkata"),
+    ("Reykjavík", "Atlantic/Reykjavik"),
+];
 
 #[test]
 fn world_clocks_show_time_day_and_offset() {
@@ -135,7 +140,13 @@ fn a_tick_fits_the_frame_budget() {
     }
     frames.sort();
     let p = |q: f64| frames[((frames.len() - 1) as f64 * q) as usize];
-    eprintln!("tokei world clock tick: p50 {:?} p95 {:?} max {:?} (n={}, at 2x)", p(0.5), p(0.95), frames.last().unwrap(), frames.len());
+    eprintln!(
+        "tokei world clock tick: p50 {:?} p95 {:?} max {:?} (n={}, at 2x)",
+        p(0.5),
+        p(0.95),
+        frames.last().unwrap(),
+        frames.len()
+    );
     if !cfg!(debug_assertions) {
         assert!(p(0.95) < Duration::from_millis(4));
     }
@@ -157,7 +168,13 @@ fn a_tick_fits_the_frame_budget() {
     }
     frames.sort();
     let p = |q: f64| frames[((frames.len() - 1) as f64 * q) as usize];
-    eprintln!("tokei stopwatch frame: p50 {:?} p95 {:?} max {:?} (n={}, at 2x)", p(0.5), p(0.95), frames.last().unwrap(), frames.len());
+    eprintln!(
+        "tokei stopwatch frame: p50 {:?} p95 {:?} max {:?} (n={}, at 2x)",
+        p(0.5),
+        p(0.95),
+        frames.last().unwrap(),
+        frames.len()
+    );
 }
 
 #[test]
@@ -226,7 +243,9 @@ fn alarms_are_made_scheduled_and_turned_off() {
     // A bad time can't be saved.
     r.h.command(w, 'n');
     r.h.send(Msg::DraftTime("25:00".into()));
-    assert!(matches!(&r.h.program().sheet, Some(Sheet::Alarm { error: Some(e), .. }) if e == "A time such as 7:30 or 19:30"));
+    assert!(
+        matches!(&r.h.program().sheet, Some(Sheet::Alarm { error: Some(e), .. }) if e == "A time such as 7:30 or 19:30")
+    );
     r.h.click_text(w, "Save");
     assert!(r.h.program().sheet.is_some(), "not saved");
     r.h.named(w, NamedKey::Escape, Modifiers::NONE);
@@ -299,7 +318,11 @@ fn the_stopwatch_runs_and_takes_laps() {
 #[test]
 fn ringing_a_once_alarm_turns_it_off() {
     let r = rig("ring", ThemeChoice::Night, &[], &[alarm("0000abcd", 9, 0, &[], "")]);
-    let mut n = aizome_tokei::ring::Scripted { posted: Vec::new(), answer: Some(aizome_tokei::ring::Answer::Stop), closed: false };
+    let mut n = aizome_tokei::ring::Scripted {
+        posted: Vec::new(),
+        answer: Some(aizome_tokei::ring::Answer::Stop),
+        closed: false,
+    };
     let mut p = Silent::default();
     let mut s = Recorder::new();
     aizome_tokei::ring::ring_with(&r.alarms_path, "0000abcd", &mut n, &mut p, &mut s, aizome_tokei::ring::RING_FOR);

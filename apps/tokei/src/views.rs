@@ -24,15 +24,29 @@ pub fn window(app: &Tokei) -> Element<Msg> {
         Page::Timer => timer(app),
         Page::Stopwatch => stopwatch(app),
     };
-    keys(column![toolbar(app), body].width(Length::Fill).height(Length::Fill), move |k, here| key_message(page, k, here))
+    keys(column![toolbar(app), body].width(Length::Fill).height(Length::Fill), move |k, here| {
+        key_message(page, k, here)
+    })
 }
 
 fn toolbar(app: &Tokei) -> Element<Msg> {
     let names: Vec<&str> = Page::ALL.iter().map(|p| p.name()).collect();
     let switch = segmented(names, app.page.index()).on_select(|i| Msg::Page(Page::ALL[i.min(3)])).label("Page");
     let add: Element<Msg> = match app.page {
-        Page::World => icon_button(Icon::Plus).toolbar().on_press(Msg::AddCity).tooltip("Add a city (❖N)").label("Add a city").width(SLOT).into(),
-        Page::Alarms => icon_button(Icon::Plus).toolbar().on_press(Msg::NewAlarm).tooltip("New alarm (❖N)").label("New alarm").width(SLOT).into(),
+        Page::World => icon_button(Icon::Plus)
+            .toolbar()
+            .on_press(Msg::AddCity)
+            .tooltip("Add a city (❖N)")
+            .label("Add a city")
+            .width(SLOT)
+            .into(),
+        Page::Alarms => icon_button(Icon::Plus)
+            .toolbar()
+            .on_press(Msg::NewAlarm)
+            .tooltip("New alarm (❖N)")
+            .label("New alarm")
+            .width(SLOT)
+            .into(),
         _ => space(SLOT),
     };
     aizome_kit::toolbar(vec![space(SLOT), spacer().into(), switch.into(), spacer().into(), add])
@@ -40,7 +54,12 @@ fn toolbar(app: &Tokei) -> Element<Msg> {
 
 /// A big clock's line under it, or a page's quiet hint.
 fn hint(s: impl Into<String>) -> Element<Msg> {
-    container(text(s.into()).role(Role::Text3).center().wrap()).padding(24.0).center().width(Length::Fill).height(Length::Fill).into()
+    container(text(s.into()).role(Role::Text3).center().wrap())
+        .padding(24.0)
+        .center()
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .into()
 }
 
 // World clocks.
@@ -54,14 +73,11 @@ fn world(app: &Tokei) -> Element<Msg> {
         clock_row.push(text(s).font(mono(20.0, 500.0)).role(Role::Text2).into());
     }
     let date = format!("{} · {}", here.strftime("%A %-d %B %Y"), app.local_name());
-    let hero = column![
-        aizome_kit::row(clock_row).spacing(8.0).align(Align::End),
-        text(date).role(Role::Text2),
-    ]
-    .spacing(4.0)
-    .align(Align::Center)
-    .padding([22.0, 16.0, 18.0, 16.0])
-    .width(Length::Fill);
+    let hero = column![aizome_kit::row(clock_row).spacing(8.0).align(Align::End), text(date).role(Role::Text2),]
+        .spacing(4.0)
+        .align(Align::Center)
+        .padding([22.0, 16.0, 18.0, 16.0])
+        .width(Length::Fill);
     let body: Element<Msg> = if app.places.is_empty() {
         hint("No cities yet. Add one with + or ❖N.")
     } else {
@@ -113,10 +129,10 @@ fn place_row(app: &Tokei, p: &crate::app::Place) -> Element<Msg> {
     .width(Length::Fill)
     .height(Length::Fill);
     rule(inner)
-    .key(format!("{}|{}", p.name, p.zone))
-    .label(format!("{}, {} {}", p.name, t.time, t.day.word()))
-    .tooltip(format!("{} · {}", p.country(), p.zone))
-    .into()
+        .key(format!("{}|{}", p.name, p.zone))
+        .label(format!("{}, {} {}", p.name, t.time, t.day.word()))
+        .tooltip(format!("{} · {}", p.country(), p.zone))
+        .into()
 }
 
 /// A list's row with a rule under it, as the boards' lists have.
@@ -137,7 +153,10 @@ fn alarms(app: &Tokei) -> Element<Msg> {
             .on_select(Msg::SelectAlarm)
             .on_activate(Msg::EditAlarm)
             .context_menu(|i| {
-                Menu::new("Alarm").item(MenuItem::new("Edit…", Msg::EditAlarm(i))).separator().item(MenuItem::new("Delete", Msg::DeleteAlarm(i)))
+                Menu::new("Alarm")
+                    .item(MenuItem::new("Edit…", Msg::EditAlarm(i)))
+                    .separator()
+                    .item(MenuItem::new("Delete", Msg::DeleteAlarm(i)))
             })
             .id("alarms")
             .into()
@@ -185,17 +204,15 @@ fn alarm_row(app: &Tokei, i: usize, a: &Alarm) -> Element<Msg> {
         detail.push_str(" · wakes the computer");
     }
     let inner = row![
-        column![aizome_kit::row(time).spacing(4.0).align(Align::End), text(detail).size(12.0).role(Role::Text3)].spacing(2.0),
+        column![aizome_kit::row(time).spacing(4.0).align(Align::End), text(detail).size(12.0).role(Role::Text3)]
+            .spacing(2.0),
         spacer(),
         toggle(a.enabled).on_toggle(move |on| Msg::ToggleAlarm(i, on)).label(format!("{label} on")),
     ]
     .padding([0.0, 16.0])
     .width(Length::Fill)
     .height(Length::Fill);
-    rule(inner)
-    .key(a.id.clone())
-    .label(format!("{label}, {t}, {}", if a.enabled { "on" } else { "off" }))
-    .into()
+    rule(inner).key(a.id.clone()).label(format!("{label}, {t}, {}", if a.enabled { "on" } else { "off" })).into()
 }
 
 // The timer.
@@ -216,7 +233,9 @@ fn timer(app: &Tokei) -> Element<Msg> {
     };
     let face = stack![
         ring(tm.fraction(app.mono), 260.0),
-        column![digits(&timer_text(left), mono(52.0, 400.0), Role::Text), text(status).role(status_role)].spacing(2.0).align(Align::Center),
+        column![digits(&timer_text(left), mono(52.0, 400.0), Role::Text), text(status).role(status_role)]
+            .spacing(2.0)
+            .align(Align::Center),
     ]
     .align_x(Align::Center)
     .align_y(Align::Center);
@@ -253,7 +272,9 @@ fn timer(app: &Tokei) -> Element<Msg> {
         aizome_kit::row(presets).spacing(6.0),
         entry,
         row![
-            button("Cancel").on_press_maybe((!matches!(tm.state, TimerState::Ready)).then_some(Msg::TimerCancel)).id("timer-cancel"),
+            button("Cancel")
+                .on_press_maybe((!matches!(tm.state, TimerState::Ready)).then_some(Msg::TimerCancel))
+                .id("timer-cancel"),
             button(main).primary().on_press(Msg::TimerStart).id("timer-start"),
         ]
         .spacing(12.0),
@@ -317,7 +338,10 @@ fn stopwatch(app: &Tokei) -> Element<Msg> {
         .into()
     };
     column![
-        container(digits(&stopwatch_text(total), mono(56.0, 400.0), Role::Text)).padding([28.0, 16.0, 18.0, 16.0]).align_x(Align::Center).width(Length::Fill),
+        container(digits(&stopwatch_text(total), mono(56.0, 400.0), Role::Text))
+            .padding([28.0, 16.0, 18.0, 16.0])
+            .align_x(Align::Center)
+            .width(Length::Fill),
         row![side, main.on_press(Msg::WatchToggle).id("watch-start")].spacing(12.0),
         space(12.0),
         divider(),
@@ -359,9 +383,15 @@ fn add_city(app: &Tokei, query: &str, results: &[&'static crate::cities::City], 
                 Err(_) => (String::new(), String::new()),
             };
             row![
-                column![text(c.name.clone()).semibold(), text(c.country.clone()).size(11.5).role(Role::Text3)].spacing(1.0),
+                column![text(c.name.clone()).semibold(), text(c.country.clone()).size(11.5).role(Role::Text3)]
+                    .spacing(1.0),
                 spacer(),
-                column![text(time).font(mono(13.0, 500.0)).role(Role::Text2), text(offset).size(11.5).role(Role::Text3)].spacing(1.0).align(Align::End),
+                column![
+                    text(time).font(mono(13.0, 500.0)).role(Role::Text2),
+                    text(offset).size(11.5).role(Role::Text3)
+                ]
+                .spacing(1.0)
+                .align(Align::End),
             ]
             .padding([0.0, 10.0])
             .width(Length::Fill)
@@ -374,7 +404,11 @@ fn add_city(app: &Tokei, query: &str, results: &[&'static crate::cities::City], 
     };
     column![
         text("Add a City").semibold().size(15.0),
-        search_field(query).placeholder("City, country or zone").on_change(Msg::CityQuery).on_submit(Msg::CityAdd(None)).id("city-search"),
+        search_field(query)
+            .placeholder("City, country or zone")
+            .on_change(Msg::CityQuery)
+            .on_submit(Msg::CityAdd(None))
+            .id("city-search"),
         container(list_el).border(Edge::Line).height(260.0).width(Length::Fill),
         row![
             spacer(),
@@ -399,7 +433,11 @@ fn edit_alarm(app: &Tokei, a: &Alarm, index: Option<usize>, time: &str, error: O
     let days: Vec<Element<Msg>> = (1..=7u8)
         .map(|d| {
             let on = a.days.contains(&d);
-            let b = button(DAY_NAMES[usize::from(d - 1)]).compact().on_press(Msg::DraftDay(d)).width(36.0).label(format!("Repeat on {}", DAY_NAMES[usize::from(d - 1)]));
+            let b = button(DAY_NAMES[usize::from(d - 1)])
+                .compact()
+                .on_press(Msg::DraftDay(d))
+                .width(36.0)
+                .label(format!("Repeat on {}", DAY_NAMES[usize::from(d - 1)]));
             if on { b.primary().into() } else { b.into() }
         })
         .collect();
@@ -411,13 +449,33 @@ fn edit_alarm(app: &Tokei, a: &Alarm, index: Option<usize>, time: &str, error: O
     }
     buttons.push(spacer().into());
     buttons.push(button("Cancel").cancel().on_press(Msg::CloseSheet).into());
-    buttons.push(button("Save").default().on_press_maybe(error.is_none().then_some(Msg::SaveAlarm)).id("alarm-save").into());
+    buttons.push(
+        button("Save").default().on_press_maybe(error.is_none().then_some(Msg::SaveAlarm)).id("alarm-save").into(),
+    );
     column![
         text(if index.is_some() { "Edit Alarm" } else { "New Alarm" }).semibold().size(15.0),
-        row![label("Time"), text_field(time).mono().placeholder("7:30").on_change(Msg::DraftTime).on_submit(Msg::SaveAlarm).error(error).id("alarm-time").width(140.0)]
-            .spacing(8.0)
-            .align(Align::Start),
-        row![label("Label"), text_field(&a.label).placeholder("Alarm").on_change(Msg::DraftLabel).on_submit(Msg::SaveAlarm).id("alarm-label")].spacing(8.0),
+        row![
+            label("Time"),
+            text_field(time)
+                .mono()
+                .placeholder("7:30")
+                .on_change(Msg::DraftTime)
+                .on_submit(Msg::SaveAlarm)
+                .error(error)
+                .id("alarm-time")
+                .width(140.0)
+        ]
+        .spacing(8.0)
+        .align(Align::Start),
+        row![
+            label("Label"),
+            text_field(&a.label)
+                .placeholder("Alarm")
+                .on_change(Msg::DraftLabel)
+                .on_submit(Msg::SaveAlarm)
+                .id("alarm-label")
+        ]
+        .spacing(8.0),
         row![label("Repeat"), aizome_kit::row(days).spacing(4.0)].spacing(8.0),
         row![
             label("Sound"),
@@ -425,7 +483,11 @@ fn edit_alarm(app: &Tokei, a: &Alarm, index: Option<usize>, time: &str, error: O
             icon_button(Icon::Volume2).on_press(Msg::PreviewSound).tooltip("Play it").label("Play the sound"),
         ]
         .spacing(8.0),
-        row![label("Snooze"), stepper(f64::from(a.snooze_minutes)).range(1.0..=60.0).step(1.0).suffix(" min").on_change(Msg::DraftSnooze)].spacing(8.0),
+        row![
+            label("Snooze"),
+            stepper(f64::from(a.snooze_minutes)).range(1.0..=60.0).step(1.0).suffix(" min").on_change(Msg::DraftSnooze)
+        ]
+        .spacing(8.0),
         row![label(""), checkbox("Wake the computer from sleep", a.wake).on_toggle(Msg::DraftWake)].spacing(8.0),
         space(2.0),
         aizome_kit::row(buttons).spacing(8.0).width(Length::Fill),

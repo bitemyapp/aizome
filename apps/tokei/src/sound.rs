@@ -55,7 +55,8 @@ pub fn sound_file(id: &str) -> Option<PathBuf> {
 /// A program on `$PATH`, or in NixOS's profiles (a timer's service may
 /// run with a short `$PATH`).
 fn on_path(name: &str) -> Option<PathBuf> {
-    let mut dirs: Vec<PathBuf> = std::env::var_os("PATH").map(|p| std::env::split_paths(&p).collect()).unwrap_or_default();
+    let mut dirs: Vec<PathBuf> =
+        std::env::var_os("PATH").map(|p| std::env::split_paths(&p).collect()).unwrap_or_default();
     if let Some(user) = std::env::var_os("USER") {
         dirs.push(PathBuf::from("/etc/profiles/per-user").join(user).join("bin"));
     }

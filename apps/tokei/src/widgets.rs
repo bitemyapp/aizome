@@ -9,7 +9,9 @@ use aizome_kit::layout::{Constraints, Point, Size};
 use aizome_kit::sidestep_ui::kurbo::{Arc, Circle};
 use aizome_kit::sidestep_ui::{KeyEvent, StrokeStyle};
 use aizome_kit::theme::{FontSpec, Role};
-use aizome_kit::widget::{Event, EventCx, FocusRing, Focusable, LayoutCx, PaintCx, SemanticRole, Semantics, Status, Widget};
+use aizome_kit::widget::{
+    Event, EventCx, FocusRing, Focusable, LayoutCx, PaintCx, SemanticRole, Semantics, Status, Widget,
+};
 use aizome_kit::{Element, Layoutable, Length, text};
 
 /// IBM Plex Mono with tabular digits, at `size` and `weight`.
@@ -76,14 +78,24 @@ impl Widget for RingWidget {
     }
 
     fn semantics(&self) -> Option<Semantics> {
-        Some(Semantics { role: SemanticRole::ProgressIndicator, range: Some((0.0, 1000.0, f64::from(self.step))), ..Default::default() })
+        Some(Semantics {
+            role: SemanticRole::ProgressIndicator,
+            range: Some((0.0, 1000.0, f64::from(self.step))),
+            ..Default::default()
+        })
     }
 }
 
 /// Wraps the window's content and turns keys nothing else used into
 /// messages: `on_key(key, whether the window's own focus is here)`.
-pub fn keys<Msg: Clone + Send + 'static>(child: impl Into<Element<Msg>>, on_key: impl Fn(&KeyEvent, bool) -> Option<Msg> + 'static) -> Element<Msg> {
-    Element::new(Keys { on_key: Rc::new(on_key) }, vec![child.into()]).id("tokei-keys").width(Length::Fill).height(Length::Fill)
+pub fn keys<Msg: Clone + Send + 'static>(
+    child: impl Into<Element<Msg>>,
+    on_key: impl Fn(&KeyEvent, bool) -> Option<Msg> + 'static,
+) -> Element<Msg> {
+    Element::new(Keys { on_key: Rc::new(on_key) }, vec![child.into()])
+        .id("tokei-keys")
+        .width(Length::Fill)
+        .height(Length::Fill)
 }
 
 /// What turns a key into a message, if it means one: the key, and whether

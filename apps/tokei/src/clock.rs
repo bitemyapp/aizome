@@ -13,7 +13,9 @@ use jiff::tz::TimeZone;
 /// What the app tells time by.
 #[derive(Clone)]
 pub enum Clock {
-    System { start: Instant },
+    System {
+        start: Instant,
+    },
     /// A clock a test sets and moves: the wall time, and a monotonic time.
     Fake(Rc<Cell<(Timestamp, Duration)>>),
 }
@@ -87,7 +89,9 @@ pub fn zone_city(tz: &TimeZone) -> Option<String> {
 pub enum Daylight {
     Day,
     /// The sun just under the horizon (civil twilight): dawn or dusk.
-    Twilight { rising: bool },
+    Twilight {
+        rising: bool,
+    },
     Night,
 }
 

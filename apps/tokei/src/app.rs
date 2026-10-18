@@ -85,7 +85,11 @@ impl Default for Saved {
         let place = |name: &str, zone: &str| Place { name: name.into(), zone: zone.into() };
         Saved {
             page: Page::World,
-            places: vec![place("New York", "America/New_York"), place("London", "Europe/London"), place("Tokyo", "Asia/Tokyo")],
+            places: vec![
+                place("New York", "America/New_York"),
+                place("London", "Europe/London"),
+                place("Tokyo", "Asia/Tokyo"),
+            ],
             timer_secs: 300,
         }
     }
@@ -202,7 +206,12 @@ pub struct Tokei {
 impl Tokei {
     /// Tokei with its state and alarms from these files (none: afresh,
     /// keeping nothing), scheduling through `scheduler`.
-    pub fn new(state: Option<PathBuf>, alarms_path: Option<PathBuf>, scheduler: Box<dyn Scheduler>, player: Box<dyn Player>) -> Tokei {
+    pub fn new(
+        state: Option<PathBuf>,
+        alarms_path: Option<PathBuf>,
+        scheduler: Box<dyn Scheduler>,
+        player: Box<dyn Player>,
+    ) -> Tokei {
         let saved: Saved = state
             .as_ref()
             .and_then(|p| std::fs::read_to_string(p).ok())
@@ -210,7 +219,8 @@ impl Tokei {
             .unwrap_or_default();
         let alarms = alarms_path.as_deref().map(alarms::load).unwrap_or_default();
         let clock = Clock::default();
-        let h24 = aizome_config::Settings::load_or_default().menubar_settings().clock == aizome_config::ClockFormat::H24;
+        let h24 =
+            aizome_config::Settings::load_or_default().menubar_settings().clock == aizome_config::ClockFormat::H24;
         let timer = Timer::new(Duration::from_secs(saved.timer_secs.clamp(1, 99 * 3600)));
         Tokei {
             page: saved.page,
@@ -369,7 +379,11 @@ impl Tokei {
 
     /// The next alarm to ring, and when.
     pub fn next_alarm(&self) -> Option<(Timestamp, &Alarm)> {
-        self.alarms.iter().filter(|a| a.enabled).filter_map(|a| a.next(self.now, &self.local).map(|t| (t, a))).min_by_key(|(t, _)| *t)
+        self.alarms
+            .iter()
+            .filter(|a| a.enabled)
+            .filter_map(|a| a.next(self.now, &self.local).map(|t| (t, a)))
+            .min_by_key(|(t, _)| *t)
     }
 
     // The timer.
@@ -410,7 +424,9 @@ pub fn key_message(page: Page, k: &KeyEvent, here: bool) -> Option<Msg> {
         _ => None,
     };
     match (page, &k.key, ch) {
-        (Page::World, KeyName::Named(NamedKey::Delete | NamedKey::Backspace), _) => None.or(Some(Msg::RemovePlace(usize::MAX))),
+        (Page::World, KeyName::Named(NamedKey::Delete | NamedKey::Backspace), _) => {
+            None.or(Some(Msg::RemovePlace(usize::MAX)))
+        }
         (Page::Alarms, KeyName::Named(NamedKey::Delete | NamedKey::Backspace), _) => Some(Msg::DeleteAlarm(usize::MAX)),
         (Page::Stopwatch, _, Some(' ')) if here => Some(Msg::WatchToggle),
         (Page::Stopwatch, _, Some('l')) => Some(Msg::WatchLap),
@@ -440,7 +456,8 @@ impl Program for Tokei {
 
     fn update(&mut self, msg: Msg, cx: &mut Cx<Msg>) {
         // The timer's changes move the ticks to its own seconds (or back).
-        let rephase = matches!(msg, Msg::TimerPreset(_) | Msg::TimerSet | Msg::TimerStart | Msg::TimerCancel | Msg::TimerCheck);
+        let rephase =
+            matches!(msg, Msg::TimerPreset(_) | Msg::TimerSet | Msg::TimerStart | Msg::TimerCancel | Msg::TimerCheck);
         match msg {
             Msg::Tick => self.tick(cx),
             Msg::Frame => self.mono = self.clock.mono(),
@@ -721,14 +738,21 @@ impl Program for Tokei {
 
     fn menus(&self) -> MenuBar<Msg> {
         let file = Menu::new("File")
-            .item(MenuItem::new("Add City…", Msg::AddCity).shortcut(Shortcut::cmd('N')).enabled(self.page == Page::World))
-            .item(MenuItem::new("New Alarm…", Msg::NewAlarm).shortcut(Shortcut::cmd('N')).enabled(self.page == Page::Alarms))
+            .item(
+                MenuItem::new("Add City…", Msg::AddCity).shortcut(Shortcut::cmd('N')).enabled(self.page == Page::World),
+            )
+            .item(
+                MenuItem::new("New Alarm…", Msg::NewAlarm)
+                    .shortcut(Shortcut::cmd('N'))
+                    .enabled(self.page == Page::Alarms),
+            )
             .separator()
             .item(MenuItem::role_item("Close Window", MenuRole::CloseWindow).shortcut(Shortcut::cmd('W')));
         let mut view = Menu::new("View");
         for (i, p) in Page::ALL.iter().enumerate() {
             let digit = char::from(b'1' + i as u8);
-            view = view.item(MenuItem::new(p.name(), Msg::Page(*p)).shortcut(Shortcut::cmd(digit)).checked(self.page == *p));
+            view = view
+                .item(MenuItem::new(p.name(), Msg::Page(*p)).shortcut(Shortcut::cmd(digit)).checked(self.page == *p));
         }
         let mut clock = Menu::new("Clock");
         match self.page {
@@ -736,9 +760,17 @@ impl Program for Tokei {
                 let sel = self.selected_place;
                 clock = clock
                     .item(MenuItem::new("Add City…", Msg::AddCity))
-                    .item(MenuItem::new("Remove City", Msg::RemovePlace(sel.unwrap_or(usize::MAX))).shortcut(Shortcut::cmd_key(ShortcutKey::Backspace)).enabled(sel.is_some()))
+                    .item(
+                        MenuItem::new("Remove City", Msg::RemovePlace(sel.unwrap_or(usize::MAX)))
+                            .shortcut(Shortcut::cmd_key(ShortcutKey::Backspace))
+                            .enabled(sel.is_some()),
+                    )
                     .separator()
-                    .item(MenuItem::new("Move Up", Msg::MovePlace(sel.unwrap_or(0), -1)).shortcut(Shortcut::cmd_key(ShortcutKey::Up).alt()).enabled(sel.is_some_and(|i| i > 0)))
+                    .item(
+                        MenuItem::new("Move Up", Msg::MovePlace(sel.unwrap_or(0), -1))
+                            .shortcut(Shortcut::cmd_key(ShortcutKey::Up).alt())
+                            .enabled(sel.is_some_and(|i| i > 0)),
+                    )
                     .item(
                         MenuItem::new("Move Down", Msg::MovePlace(sel.unwrap_or(0), 1))
                             .shortcut(Shortcut::cmd_key(ShortcutKey::Down).alt())
@@ -750,9 +782,21 @@ impl Program for Tokei {
                 let on = sel.and_then(|i| self.alarms.get(i)).is_some_and(|a| a.enabled);
                 clock = clock
                     .item(MenuItem::new("New Alarm…", Msg::NewAlarm))
-                    .item(MenuItem::new("Edit Alarm…", Msg::EditAlarm(sel.unwrap_or(0))).shortcut(Shortcut::cmd('E')).enabled(sel.is_some()))
-                    .item(MenuItem::new(if on { "Turn Off" } else { "Turn On" }, Msg::ToggleAlarm(sel.unwrap_or(0), !on)).shortcut(Shortcut::cmd('T')).enabled(sel.is_some()))
-                    .item(MenuItem::new("Delete Alarm", Msg::DeleteAlarm(sel.unwrap_or(usize::MAX))).shortcut(Shortcut::cmd_key(ShortcutKey::Backspace)).enabled(sel.is_some()));
+                    .item(
+                        MenuItem::new("Edit Alarm…", Msg::EditAlarm(sel.unwrap_or(0)))
+                            .shortcut(Shortcut::cmd('E'))
+                            .enabled(sel.is_some()),
+                    )
+                    .item(
+                        MenuItem::new(if on { "Turn Off" } else { "Turn On" }, Msg::ToggleAlarm(sel.unwrap_or(0), !on))
+                            .shortcut(Shortcut::cmd('T'))
+                            .enabled(sel.is_some()),
+                    )
+                    .item(
+                        MenuItem::new("Delete Alarm", Msg::DeleteAlarm(sel.unwrap_or(usize::MAX)))
+                            .shortcut(Shortcut::cmd_key(ShortcutKey::Backspace))
+                            .enabled(sel.is_some()),
+                    );
             }
             Page::Timer => {
                 let label = if self.timer.running() { "Pause" } else { "Start" };
@@ -768,8 +812,16 @@ impl Program for Tokei {
                 let label = if self.stopwatch.running() { "Stop" } else { "Start" };
                 clock = clock
                     .item(MenuItem::new(label, Msg::WatchToggle).shortcut(Shortcut::key(ShortcutKey::Space)))
-                    .item(MenuItem::new("Lap", Msg::WatchLap).shortcut(Shortcut::key(ShortcutKey::Char('L'))).enabled(self.stopwatch.running()))
-                    .item(MenuItem::new("Reset", Msg::WatchReset).shortcut(Shortcut::key(ShortcutKey::Char('R'))).enabled(!self.stopwatch.running() && self.stopwatch.started()));
+                    .item(
+                        MenuItem::new("Lap", Msg::WatchLap)
+                            .shortcut(Shortcut::key(ShortcutKey::Char('L')))
+                            .enabled(self.stopwatch.running()),
+                    )
+                    .item(
+                        MenuItem::new("Reset", Msg::WatchReset)
+                            .shortcut(Shortcut::key(ShortcutKey::Char('R')))
+                            .enabled(!self.stopwatch.running() && self.stopwatch.started()),
+                    );
             }
         }
         let bar = MenuBar::standard(&self.info()).with_file_menu(file).with_menu(view).with_menu(clock);
@@ -779,7 +831,10 @@ impl Program for Tokei {
                 bar.replace(
                     "Edit",
                     Menu::new("Edit")
-                        .item(MenuItem::new(format!("Undo Delete “{what}”"), Msg::UndoDelete).shortcut(Shortcut::cmd('Z')))
+                        .item(
+                            MenuItem::new(format!("Undo Delete “{what}”"), Msg::UndoDelete)
+                                .shortcut(Shortcut::cmd('Z')),
+                        )
                         .separator()
                         .item(MenuItem::role_item("Cut", MenuRole::Cut).shortcut(Shortcut::cmd('X')))
                         .item(MenuItem::role_item("Copy", MenuRole::Copy).shortcut(Shortcut::cmd('C')))

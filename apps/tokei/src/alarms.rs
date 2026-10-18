@@ -113,7 +113,11 @@ impl Alarm {
         let time = format!("{:02}:{:02}:00", self.hour, self.minute);
         if self.repeats() {
             let d = self.sorted_days();
-            let days = if d.len() == 7 { String::new() } else { d.iter().map(|i| DAY_SHORT[usize::from(*i - 1)]).collect::<Vec<_>>().join(",") + " " };
+            let days = if d.len() == 7 {
+                String::new()
+            } else {
+                d.iter().map(|i| DAY_SHORT[usize::from(*i - 1)]).collect::<Vec<_>>().join(",") + " "
+            };
             Some(format!("{days}*-*-* {time}"))
         } else {
             let next = self.next(now, tz)?.to_zoned(tz.clone());
@@ -156,7 +160,11 @@ struct File {
 }
 
 pub fn load(path: &Path) -> Vec<Alarm> {
-    std::fs::read_to_string(path).ok().and_then(|s| serde_json::from_str::<File>(&s).ok()).map(|f| f.alarms).unwrap_or_default()
+    std::fs::read_to_string(path)
+        .ok()
+        .and_then(|s| serde_json::from_str::<File>(&s).ok())
+        .map(|f| f.alarms)
+        .unwrap_or_default()
 }
 
 pub fn save(path: &Path, alarms: &[Alarm]) -> std::io::Result<()> {
@@ -208,7 +216,11 @@ pub struct Systemd {
 impl Default for Systemd {
     fn default() -> Systemd {
         let installed = PathBuf::from("/run/current-system/sw/bin/aizome-tokei");
-        let exe = if installed.exists() { installed } else { std::env::current_exe().unwrap_or_else(|_| PathBuf::from("aizome-tokei")) };
+        let exe = if installed.exists() {
+            installed
+        } else {
+            std::env::current_exe().unwrap_or_else(|_| PathBuf::from("aizome-tokei"))
+        };
         Systemd { exe }
     }
 }
@@ -219,7 +231,10 @@ pub fn run_args(alarm: &Alarm, calendar: &str, exe: &Path) -> Vec<String> {
         "--user".to_owned(),
         "--collect".to_owned(),
         format!("--unit={}", alarm.unit()),
-        format!("--description=Aizome alarm{}", if alarm.label.is_empty() { String::new() } else { format!(": {}", alarm.label) }),
+        format!(
+            "--description=Aizome alarm{}",
+            if alarm.label.is_empty() { String::new() } else { format!(": {}", alarm.label) }
+        ),
         format!("--on-calendar={calendar}"),
         // Ring on the minute, not within systemd's default minute.
         "--timer-property=AccuracySec=1s".to_owned(),
@@ -242,7 +257,8 @@ fn run(cmd: &str, args: &[String]) -> Result<String, String> {
 
 fn stop(unit: &str) {
     let _ = run("systemctl", &["--user".into(), "stop".into(), format!("{unit}.timer"), format!("{unit}.service")]);
-    let _ = run("systemctl", &["--user".into(), "reset-failed".into(), format!("{unit}.timer"), format!("{unit}.service")]);
+    let _ =
+        run("systemctl", &["--user".into(), "reset-failed".into(), format!("{unit}.timer"), format!("{unit}.service")]);
 }
 
 impl Scheduler for Systemd {
@@ -276,7 +292,17 @@ impl Scheduler for Systemd {
     }
 
     fn scheduled(&mut self) -> Vec<String> {
-        let Ok(out) = run("systemctl", &["--user".into(), "list-units".into(), "--plain".into(), "--no-legend".into(), "--type=timer".into(), "aizome-alarm-*".into()]) else {
+        let Ok(out) = run(
+            "systemctl",
+            &[
+                "--user".into(),
+                "list-units".into(),
+                "--plain".into(),
+                "--no-legend".into(),
+                "--type=timer".into(),
+                "aizome-alarm-*".into(),
+            ],
+        ) else {
             return Vec::new();
         };
         out.lines()
@@ -343,7 +369,12 @@ impl Scheduler for Recorder {
     }
 
     fn scheduled(&mut self) -> Vec<String> {
-        self.units().iter().filter_map(|u| u.strip_prefix("aizome-alarm-")).filter(|u| !u.ends_with("-snooze")).map(str::to_owned).collect()
+        self.units()
+            .iter()
+            .filter_map(|u| u.strip_prefix("aizome-alarm-"))
+            .filter(|u| !u.ends_with("-snooze"))
+            .map(str::to_owned)
+            .collect()
     }
 }
 
@@ -394,7 +425,8 @@ mod tests {
         let mut a = alarm(7, 30, &[1, 2, 3, 4, 5]);
         a.label = "Work".into();
         a.wake = true;
-        let args = run_args(&a, "Mon,Tue,Wed,Thu,Fri *-*-* 07:30:00", Path::new("/run/current-system/sw/bin/aizome-tokei"));
+        let args =
+            run_args(&a, "Mon,Tue,Wed,Thu,Fri *-*-* 07:30:00", Path::new("/run/current-system/sw/bin/aizome-tokei"));
         assert_eq!(
             args,
             [
