@@ -26,6 +26,9 @@ enum Msg {
     Typed(String),
     /// F10: the bar's first menu, from the keyboard.
     Keyboard,
+    /// A bar menu whose submenus tear off.
+    OpenTearable,
+    TornSub(Vec<usize>, aizome_kit::Vec2),
     Side(i32),
 }
 
@@ -63,6 +66,11 @@ impl Program for Bar {
             Msg::Closed(n) => self.heard.push(format!("closed {n}")),
             Msg::Choose(c) => self.heard.push(c.to_owned()),
             Msg::Typed(s) => self.heard.push(format!("typed {s}")),
+            Msg::OpenTearable => {
+                let style = MenuStyle::below().on_tear_off_sub(Msg::TornSub);
+                cx.show_menu(bar, Rect::new(0.0, 0.0, 40.0, 24.0), menu(), style);
+            }
+            Msg::TornSub(path, at) => self.heard.push(format!("torn {path:?} at {:.0},{:.0}", at.x, at.y)),
             Msg::Keyboard | Msg::Side(_) => {
                 // Three titles, 40pt apart; the arrows wrap round.
                 let i = match (msg, self.title) {
@@ -203,4 +211,31 @@ fn a_bars_menus_follow_the_arrows_across_its_titles() {
     h.named(bar, NamedKey::ArrowRight, Modifiers::NONE);
     assert_eq!(heard(&mut h), ["title 0"]);
     assert_eq!(h.popups(bar).len(), 1);
+}
+
+#[test]
+fn submenus_tear_off_with_their_place() {
+    let mut h = Harness::new(Bar::default());
+    let bar = h.window();
+    h.send(Msg::OpenTearable);
+    for _ in 0..3 {
+        h.named(bar, NamedKey::ArrowDown, Modifiers::NONE);
+    }
+    h.named(bar, NamedKey::ArrowRight, Modifiers::NONE);
+    let popups = h.popups(bar);
+    assert_eq!(popups.len(), 2, "Open Recent opened");
+    let (sub, r) = popups[1];
+    // Its strip has its name, a close box and a pin; the pin tears it off.
+    let png = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("submenu-strip.png");
+    let img = h.render_popup(sub, 2.0);
+    let (w, hh) = img.pixel_size();
+    aizome_kit::testing::write_png(&png, w, hh, &img.to_rgba8().expect("pixels")).expect("written");
+    h.click_popup(sub, Point::new(r.width() - 3.0 - 12.0, 12.0));
+    let said = heard(&mut h);
+    assert_eq!(said.len(), 1, "{said:?}");
+    assert!(said[0].starts_with("torn [2] at "), "{said:?}");
+    assert!(h.popups(bar).is_empty(), "the menus closed");
+    // Beside its row: right of the menu, as far down as the row.
+    let at: Vec<f64> = said[0].trim_start_matches("torn [2] at ").split(',').map(|n| n.parse().unwrap()).collect();
+    assert!(at[0] > 150.0 && at[1] > 40.0, "{at:?}");
 }

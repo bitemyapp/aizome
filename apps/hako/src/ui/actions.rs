@@ -190,22 +190,7 @@ impl Hako {
                     b.drag = None;
                 }
             }
-            DragEvent::Leave(_) => {
-                let Some(drag) = self.windows.get_mut(&w).and_then(|b| b.drag.take()) else { return };
-                self.drag_out(cx, w, drag.sources);
-            }
         }
-    }
-
-    /// A drag of `sources` left window `w`: the desktop carries it on to
-    /// other programs, the Shelf and the desktop, as a list of files they
-    /// may copy (never move: Hako deletes nothing for another program).
-    /// Back over a Hako window it's Hako's own drag again (see
-    /// `on_drop_urls`).
-    pub(crate) fn drag_out(&mut self, cx: &mut Cx<Msg>, w: WindowKey, sources: Vec<PathBuf>) {
-        let urls: Vec<String> = sources.iter().map(|p| uri::file_uri(p)).collect();
-        self.outbound = Some(sources);
-        let _ = (cx, w, urls);
     }
 
     /// A drag waited over a folder: open it in the next column.
@@ -227,16 +212,10 @@ impl Hako {
         if sources.is_empty() || !self.drop_allowed(&sources, &dest) {
             return;
         }
-        // Hako's own drag, back from the desktop, moves within a disk as
-        // drags inside a window do; what other programs drop is copied, as
-        // they may still want it.
-        let ours = self.outbound.as_ref().is_some_and(|o| *o == sources);
         match dest {
             Dest::Trash => self.start_job(cx, w, Work::Trash { paths: sources }),
-            Dest::Folder(d) => {
-                let mode = if ours { drop_mode(&sources, &d, false) } else { Mode::Copy };
-                self.start_job(cx, w, Work::Transfer { sources, dest: d, mode });
-            }
+            // What other programs drop is copied, as they may still want it.
+            Dest::Folder(d) => self.start_job(cx, w, Work::Transfer { sources, dest: d, mode: Mode::Copy }),
         }
     }
 
@@ -573,35 +552,4 @@ fn build_index(root: &Path, home: &Path, shared: bool) -> aizome_search::files::
         return i;
     }
     FileIndex::build(&[root.to_path_buf()], &Limits { max_entries: 200_000, max_depth: 16, folders: true })
-}
-
-impl Hako {
-    /// Window `gone` closed: the questions jobs asked over it ask again
-    /// over another window (or the operations window), or, with none
-    /// left, stop their jobs.
-    pub(crate) fn reparent_questions(&mut self, cx: &mut Cx<Msg>, gone: WindowKey) {
-        let asking: Vec<(u64, WindowKey)> = self.jobs.iter().filter(|j| j.window == gone).filter_map(|j| j.sheet.map(|s| (j.id, s))).collect();
-        for (id, sheet) in asking {
-            self.sheets.remove(&sheet);
-            let to = self.windows.keys().next().copied().or(self.ops_window).or_else(|| {
-                self.show_operations(cx);
-                self.ops_window
-            });
-            match to {
-                Some(p) => {
-                    let s = self.open_sheet(cx, p, Sheet::Ask { job: id, all: false });
-                    if let Some(j) = self.jobs.iter_mut().find(|j| j.id == id) {
-                        j.sheet = Some(s);
-                        j.window = p;
-                    }
-                }
-                None => {
-                    if let Some(j) = self.jobs.iter_mut().find(|j| j.id == id) {
-                        j.sheet = None;
-                    }
-                    self.answer(cx, id, None);
-                }
-            }
-        }
-    }
 }

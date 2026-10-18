@@ -158,6 +158,25 @@ impl<Msg: Clone + Send + 'static> MenuStyle<Msg> {
         self.look.side = Some(MsgMap::new(f));
         self
     }
+
+    /// Submenus tear off too: each gets a title strip with its name, and
+    /// dragging it (or pressing its pin) sends `f(path, offset)` and
+    /// closes the menus. `path` is the submenu's place from this menu (its
+    /// row's index, and its submenus' down to it); `offset` is where it
+    /// opened from this menu's top left, as near as the kit knows (beside
+    /// its row), to put the palette where the submenu was.
+    pub fn on_tear_off_sub(mut self, f: impl Fn(Vec<usize>, Vec2) -> Msg + 'static) -> Self {
+        self.look.tear_sub = Some(TearSub { path: Vec::new(), offset: Vec2::ZERO, map: MsgMap::new(move |(p, o)| f(p, o)) });
+        self
+    }
+}
+
+/// Tearing submenus off: the path and place so far, and what to send.
+#[derive(Clone)]
+pub(crate) struct TearSub {
+    path: Vec<usize>,
+    offset: Vec2,
+    map: MsgMap<(Vec<usize>, Vec2)>,
 }
 
 /// What a menu looks like and does besides its items (type-erased).
@@ -180,13 +199,25 @@ pub(crate) struct MenuLook {
     pub is_sub: bool,
     /// Opened from the keyboard: the first row highlighted.
     pub keyboard: bool,
+    /// Its submenus tear off (and it, if it's one of them).
+    pub tear_sub: Option<TearSub>,
 }
 
 impl MenuLook {
-    /// A submenu's look: titled with its own name if its parent was.
-    pub fn sub(&self, title: &str) -> MenuLook {
+    /// The look of the submenu at `path` of this menu, opened beside
+    /// `anchor` (its row, in this menu's coordinates): titled with its own
+    /// name if this menu was titled or its submenus tear off.
+    pub fn sub(&self, title: &str, path: &[usize], anchor: Rect) -> MenuLook {
+        let tear_sub = self.tear_sub.as_ref().map(|t| TearSub {
+            path: t.path.iter().chain(path).copied().collect(),
+            offset: t.offset + Vec2::new(anchor.x1, anchor.y0),
+            map: t.map.clone(),
+        });
+        let tear_off = tear_sub.clone().map(|t| MsgFn::from_fn(move || t.map.make((t.path.clone(), t.offset))));
         MenuLook {
-            title: self.title.as_ref().map(|_| title.to_owned()),
+            title: (self.title.is_some() || tear_sub.is_some()).then(|| title.to_owned()),
+            tear_off,
+            tear_sub,
             typed: self.typed.clone(),
             side: self.side.clone(),
             is_sub: true,

@@ -871,7 +871,7 @@ impl Core {
         for o in self.menu_popups_of(win) {
             self.close_win(o, platform);
         }
-        let look = look.sub(&sub.title);
+        let look = look.sub(&sub.title, &path, anchor);
         self.settle_menu(&mut sub);
         let root = MenuView::element(sub.clone(), look.clone());
         self.open_popup(win, anchor, Placement::Beside, true, PopupKind::Menu { spec: sub, look, bar: None }, root, mapper, platform);
