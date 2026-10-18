@@ -52,8 +52,6 @@ pub enum Msg {
     Deskbar(crate::deskbar::DeskbarMsg),
     Palette(crate::palette::PaletteEvent),
     Panel(crate::systray::panels::PanelMsg),
-    /// What's playing, read on a thread.
-    Media(Option<crate::systray::panels::Media>),
     /// The OSD of generation `n` has shown long enough.
     OsdHide(u64),
     Desktop(u32, crate::desktop::DesktopMsg),
@@ -225,7 +223,6 @@ pub struct Shell {
     pub panel_ui: crate::systray::glue::PanelUi,
     /// Panels to show instead of the system's (tests and pictures).
     pub panels_fixture: Option<crate::systray::glue::Fixture>,
-    pub media: Option<crate::systray::panels::Media>,
     pub osd: Option<crate::osd::OsdState>,
     pub desktop: crate::desktop::DesktopState,
     /// Each output's wallpaper, scaled to it (see `wallpaper`).
@@ -337,7 +334,6 @@ impl Shell {
             panel: None,
             panel_ui: Default::default(),
             panels_fixture: None,
-            media: None,
             osd: None,
             desktop: Default::default(),
             wallpapers: HashMap::new(),
@@ -627,9 +623,6 @@ impl Shell {
                 self.show_menu(win, anchor, menu, style, cx);
             }
             Slot::Tray(w) => {
-                if w == TrayWidget::Sound && self.opts.live {
-                    cx.spawn(|| Msg::Media(crate::mpris::fetch()));
-                }
                 self.toggle_panel(win, w, rect, cx);
             }
             Slot::Apps => self.run(Action::SetDeskbarCollapsed(false), cx),
@@ -957,9 +950,9 @@ impl Shell {
                     self.pointer_menu_soon(x, y, cx);
                 }
             }
-            "play-pause" => crate::mpris::control(crate::systray::panels::MediaVerb::PlayPause),
-            "next" => crate::mpris::control(crate::systray::panels::MediaVerb::Next),
-            "previous" => crate::mpris::control(crate::systray::panels::MediaVerb::Previous),
+            "play-pause" => self.sys.media_control(crate::systray::panels::MediaVerb::PlayPause),
+            "next" => self.sys.media_control(crate::systray::panels::MediaVerb::Next),
+            "previous" => self.sys.media_control(crate::systray::panels::MediaVerb::Previous),
             a if self.media_key(a, cx) => {}
             _ => log::debug!("binding {action} at {pointer:?} on {output:?}"),
         }
@@ -1176,7 +1169,6 @@ impl Program for Shell {
             Msg::Deskbar(m) => self.deskbar_msg(m, cx),
             Msg::Palette(e) => self.palette_event(e, cx),
             Msg::Panel(m) => self.panel_msg(m, cx),
-            Msg::Media(m) => self.media = m,
             Msg::OsdHide(g) => self.hide_osd(g, cx),
             Msg::Desktop(o, m) => self.desktop_msg(o, m, cx),
             Msg::Lock(m) => self.lock_msg(m, cx),
