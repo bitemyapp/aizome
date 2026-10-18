@@ -120,12 +120,13 @@ impl Backend {
         }
     }
 
-    /// Makes a wlr-screencopy copy with the renderer (protocols/screencopy).
+    /// Makes a capture copy with the renderer (protocols/capture), for
+    /// wlr-screencopy and ext-image-copy-capture.
     pub fn screencopy(
         &mut self,
         az: &mut Aizome,
-        job: &mut crate::protocols::screencopy::Job,
-    ) -> Result<crate::protocols::screencopy::Outcome, String> {
+        job: &mut crate::protocols::capture::Job,
+    ) -> Result<crate::protocols::capture::Outcome, String> {
         match self {
             Backend::Headless(h) => h.screencopy(az, job),
             Backend::Winit(w) => w.screencopy(az, job),
@@ -133,12 +134,12 @@ impl Backend {
         }
     }
 
-    /// The dmabuf format screencopy can render into (GLES), if any.
-    pub fn screencopy_dmabuf_format(&mut self) -> Option<Fourcc> {
+    /// Where capture dmabufs may be and what GLES renders them in, if any.
+    pub fn screencopy_dmabuf(&mut self) -> Option<crate::protocols::capture::DmabufTarget> {
         match self {
-            Backend::Headless(h) => h.screencopy_dmabuf_format(),
-            Backend::Winit(w) => w.screencopy_dmabuf_format(),
-            Backend::Udev(u) => u.screencopy_dmabuf_format(),
+            Backend::Headless(h) => h.screencopy_dmabuf(),
+            Backend::Winit(w) => w.screencopy_dmabuf(),
+            Backend::Udev(u) => u.screencopy_dmabuf(),
         }
     }
 
