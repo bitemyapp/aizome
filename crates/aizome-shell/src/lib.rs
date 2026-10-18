@@ -54,6 +54,8 @@ Usage:
 Environment:
   AIZOME_SOCKET          the compositor's IPC socket
   AIZOME_SHELL_SOCKET    where apps publish their menus to the shell
+  AIZOME_SESSION=1       the machine's session (the compositor says): serve
+                         polkit, hold logind's sleep and lock for logind
   AIZOME_FONT_DIR        fonts to install for this process
   SIDESTEP_FRAME_STATS=1 print each surface's frame times every 5 s";
 

@@ -1565,13 +1565,20 @@ impl Shell {
 /// desktop): only then does it hold logind's sleep, serve polkit, and lock
 /// for logind.
 pub fn real_session() -> bool {
-    // The compositor says so (`AIZOME_SESSION`): headless and nested
-    // compositors run inside the user's real login session too, so the
-    // desktop's name alone doesn't tell.
-    if let Ok(v) = std::env::var("AIZOME_SESSION") {
-        return v == "1";
+    let var = |name| std::env::var(name).ok();
+    is_real_session(var("AIZOME_SESSION").as_deref(), var("XDG_CURRENT_DESKTOP").as_deref())
+}
+
+/// The decision, from `AIZOME_SESSION` and `XDG_CURRENT_DESKTOP`. The
+/// compositor says so (`AIZOME_SESSION`): headless and nested compositors
+/// run inside the user's real login session too, so the desktop's name
+/// alone doesn't tell. Without it (a compositor from before it said) the
+/// name decides.
+fn is_real_session(session: Option<&str>, desktops: Option<&str>) -> bool {
+    match session {
+        Some(v) => v == "1",
+        None => desktops.is_some_and(|v| v.split(':').any(|d| d.eq_ignore_ascii_case("aizome"))),
     }
-    std::env::var("XDG_CURRENT_DESKTOP").is_ok_and(|v| v.split(':').any(|d| d.eq_ignore_ascii_case("aizome")))
 }
 
 impl Shell {
@@ -1625,5 +1632,24 @@ impl Shell {
         {
             log::warn!("logind's sleep delay: {e}");
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_compositor_says_whether_the_session_is_real() {
+        // aizome.service's compositor, on a seat.
+        assert!(is_real_session(Some("1"), Some("Aizome")));
+        // scripts/headless-session, the tests, a nested development session:
+        // Aizome's desktop, inside the user's real session.
+        assert!(!is_real_session(Some("0"), Some("Aizome")));
+        assert!(!is_real_session(Some(""), Some("Aizome")));
+        // A compositor from before AIZOME_SESSION: the desktop's name decides.
+        assert!(is_real_session(None, Some("foo:aizome")));
+        assert!(!is_real_session(None, Some("Hyprland")));
+        assert!(!is_real_session(None, None));
     }
 }

@@ -338,6 +338,20 @@ The polkit agent (`aizome-sys`) asks the shell: an overlay dialog with the
 mark, the action's message, the identity (a dropdown if several admins), a
 password field, Cancel and Authenticate, PAM's prompts and errors inline.
 
+## Real and headless sessions
+
+Only the machine's Aizome session registers as polkit's agent, takes
+logind's sleep delay and follows logind's Lock, Unlock and PrepareForSleep
+(`real_session()` in `shell.rs`): the compositor says so with
+`AIZOME_SESSION=1`, which it gives only on udev without `--no-session`.
+Without the variable (a compositor older than it) `XDG_CURRENT_DESKTOP`
+naming Aizome decides. Under a headless or winit compositor
+(`scripts/headless-session`, the compositor's and shell's tests, a nested
+development session) `AIZOME_SESSION` is `0` and the shell does none of
+them, so it never competes with the real session's agent, holds up the
+real machine's sleep, or locks when the real session does. ⌃❖Q and the
+idle lock still lock it.
+
 ## Behaviour
 
 - Everything follows `aizome-config` live: theme (Night, Day, High
