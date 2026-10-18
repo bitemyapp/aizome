@@ -9,6 +9,8 @@
 use std::collections::HashSet;
 use std::time::{Duration, Instant};
 
+use smithay::reexports::calloop::timer::{TimeoutAction, Timer};
+
 use smithay::backend::input::{
     AbsolutePositionEvent, Axis, AxisSource, ButtonState, Event as _, GestureBeginEvent, GestureEndEvent,
     GesturePinchUpdateEvent as _, GestureSwipeUpdateEvent as _, InputBackend, InputEvent, KeyState, KeyboardKeyEvent,
@@ -220,7 +222,12 @@ impl State {
             AxisSource::Finger => self.az.settings.input.touchpad.natural_scroll,
             _ => self.az.settings.input.pointer.natural_scroll,
         };
-        let sign = if natural { -1.0 } else { 1.0 };
+        // Natural scrolling turns it round; `scroll_factor` scales it.
+        let factor = match source {
+            AxisSource::Finger => self.az.settings.input.touchpad.scroll_factor(),
+            _ => self.az.settings.input.pointer.scroll_factor(),
+        };
+        let sign = if natural { -factor } else { factor };
         let h = event.amount(Axis::Horizontal).unwrap_or_else(|| event.amount_v120(Axis::Horizontal).unwrap_or(0.0) * 15.0 / 120.0);
         let v = event.amount(Axis::Vertical).unwrap_or_else(|| event.amount_v120(Axis::Vertical).unwrap_or(0.0) * 15.0 / 120.0);
         let mut frame = AxisFrame::new(event.time_msec()).source(source);
@@ -255,6 +262,8 @@ impl State {
     /// Scrolls by points (synthetic input).
     pub fn pointer_scroll(&mut self, dx: f64, dy: f64, time: u32) {
         self.note_activity();
+        let f = self.az.settings.input.pointer.scroll_factor();
+        let (dx, dy) = (dx * f, dy * f);
         let Some(pointer) = self.az.seat.get_pointer() else { return };
         let mut frame = AxisFrame::new(time).source(AxisSource::Wheel);
         if dx != 0.0 {
@@ -485,14 +494,19 @@ impl State {
                 crate::grabs::start_box_click(self, hit, pos, serial, time);
             }
             (BTN_LEFT, Hit::Tab(w)) => {
-                // Double-click toggles fill.
+                // A double click fills (the zoom box), parks, or does nothing,
+                // as `[windows] tab_double_click` says.
                 let now = Instant::now();
                 let double = self.az.interactive.last_tab_click.is_some_and(|(t, last, p)| {
                     last == w && now.duration_since(t) < Duration::from_millis(400) && (p.0 - pos.x).abs() < 4.0 && (p.1 - pos.y).abs() < 4.0
                 });
                 if double {
                     self.az.interactive.last_tab_click = None;
-                    self.set_fill(w, None);
+                    match self.az.settings.windows.tab_double_click() {
+                        aizome_config::TabDoubleClick::Fill => self.set_fill(w, None),
+                        aizome_config::TabDoubleClick::Minimise => self.minimise(w),
+                        aizome_config::TabDoubleClick::Nothing => {}
+                    }
                     return;
                 }
                 self.az.interactive.last_tab_click = Some((now, w, (pos.x, pos.y)));
@@ -599,8 +613,95 @@ impl State {
 
     // ---- keyboard ------------------------------------------------------
 
+    /// A key from a keyboard (or IPC): slow keys, then sticky keys, then
+    /// bindings and the focused surface.
     pub fn keyboard_key(&mut self, code: u32, pressed: bool, time: u32) {
         self.note_activity();
+        if let Some(ms) = self.az.settings.input.keyboard.slow_keys() {
+            if pressed {
+                if self.az.access.slow.contains_key(&code) {
+                    return;
+                }
+                // It counts once held this long.
+                let token = self
+                    .az
+                    .lh
+                    .insert_source(Timer::from_duration(Duration::from_millis(ms as u64)), move |_, _, state: &mut State| {
+                        if let Some(k) = state.az.access.slow.get_mut(&code) {
+                            k.0 = None;
+                            let time = state.az.start.elapsed().as_millis() as u32;
+                            state.sticky_key(code, true, time);
+                        }
+                        TimeoutAction::Drop
+                    })
+                    .ok();
+                self.az.access.slow.insert(code, (token,));
+                return;
+            }
+            match self.az.access.slow.remove(&code) {
+                // Let go too soon: it never happened.
+                Some((Some(token),)) => {
+                    self.az.lh.remove(token);
+                    return;
+                }
+                Some((None,)) | None => {}
+            }
+        } else if !self.az.access.slow.is_empty() {
+            for (_, (t,)) in self.az.access.slow.drain() {
+                if let Some(t) = t {
+                    self.az.lh.remove(t);
+                }
+            }
+        }
+        self.sticky_key(code, pressed, time);
+    }
+
+    /// Sticky keys: a modifier tapped alone latches until the next key
+    /// (tapped again, it lets go); that key then comes with it.
+    fn sticky_key(&mut self, code: u32, pressed: bool, time: u32) {
+        if !self.az.settings.input.keyboard.sticky_keys() {
+            self.az.access.latched.clear();
+            self.az.access.alone = None;
+            return self.key_through(code, pressed, time);
+        }
+        if MODIFIER_KEYS.contains(&code) {
+            if pressed {
+                self.az.access.alone = Some(code);
+            } else if self.az.access.alone.take() == Some(code) {
+                let latched = &mut self.az.access.latched;
+                match latched.iter().position(|m| *m == code) {
+                    Some(i) => {
+                        latched.remove(i);
+                    }
+                    None => latched.push(code),
+                }
+            }
+            return self.key_through(code, pressed, time);
+        }
+        self.az.access.alone = None;
+        if pressed && !self.az.access.latched.is_empty() {
+            let mods = std::mem::take(&mut self.az.access.latched);
+            for m in &mods {
+                self.key_through(*m, true, time);
+            }
+            self.key_through(code, true, time);
+            self.az.access.applied.push((code, mods));
+            return;
+        }
+        if !pressed
+            && let Some(i) = self.az.access.applied.iter().position(|(k, _)| *k == code)
+        {
+            let (_, mods) = self.az.access.applied.remove(i);
+            self.key_through(code, false, time);
+            for m in mods.iter().rev() {
+                self.key_through(*m, false, time);
+            }
+            return;
+        }
+        self.key_through(code, pressed, time);
+    }
+
+    fn key_through(&mut self, code: u32, pressed: bool, time: u32) {
         let Some(keyboard) = self.az.seat.get_keyboard() else { return };
         let keycode = Keycode::new(code + 8);
         let state = if pressed { KeyState::Pressed } else { KeyState::Released };
@@ -889,4 +990,21 @@ pub fn window_gone(state: &mut State, id: WinId) {
         i.drag = None;
     }
     let _ = HashSet::<u32>::new();
+}
+
+/// Shift, Ctrl, Alt and Super, left and right (evdev codes).
+const MODIFIER_KEYS: [u32; 8] = [42, 54, 29, 97, 56, 100, 125, 126];
+
+/// Accessibility state of the keyboard: slow keys waiting to count, and
+/// sticky modifiers.
+#[derive(Default)]
+pub struct Access {
+    /// Keys held under slow keys: the timer while it hasn't counted yet.
+    pub slow: std::collections::HashMap<u32, (Option<smithay::reexports::calloop::RegistrationToken>,)>,
+    /// A modifier pressed with nothing else since.
+    pub alone: Option<u32>,
+    /// Modifiers latched for the next key.
+    pub latched: Vec<u32>,
+    /// Keys down with latched modifiers pressed for them.
+    pub applied: Vec<(u32, Vec<u32>)>,
 }

@@ -273,6 +273,8 @@ pub struct Seen {
     pub keys: Vec<(u32, u32)>,
     pub mods: u32,
     pub keyboard_focus: bool,
+    /// Vertical scrolling received, summed.
+    pub scrolled: f64,
 }
 
 pub enum Cmd {
@@ -351,6 +353,7 @@ fn run_client(stream: UnixStream, spec: Spec, rx: Receiver<Cmd>, seen: Arc<Mutex
     let wm: xdg_wm_base::XdgWmBase = globals.bind(&qh, 1..=6, ()).expect("xdg_wm_base");
     let seat: Option<wl_seat::WlSeat> = globals.bind(&qh, 5..=9, ()).ok();
     let _keyboard = seat.as_ref().map(|s| s.get_keyboard(&qh, ()));
+    let _pointer = seat.as_ref().map(|s| s.get_pointer(&qh, ()));
     let deco: Option<zxdg_decoration_manager_v1::ZxdgDecorationManagerV1> =
         if spec.ssd { globals.bind(&qh, 1..=1, ()).ok() } else { None };
     let mut app = App {
@@ -481,6 +484,15 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for App {
                 seen.keys.push((key, m));
             }
             _ => {}
+        }
+    }
+}
+
+impl Dispatch<wayland_client::protocol::wl_pointer::WlPointer, ()> for App {
+    fn event(app: &mut Self, _: &wayland_client::protocol::wl_pointer::WlPointer, event: wayland_client::protocol::wl_pointer::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
+        use wayland_client::protocol::wl_pointer;
+        if let wl_pointer::Event::Axis { axis: WEnum::Value(wl_pointer::Axis::VerticalScroll), value, .. } = event {
+            app.seen.lock().unwrap().scrolled += value;
         }
     }
 }

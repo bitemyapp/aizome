@@ -303,6 +303,8 @@ pub struct Aizome {
     /// Command-key translation in force for these pressed keys.
     pub translated_keys: HashSet<Keycode>,
     pub interactive: crate::input::Interactive,
+    /// Slow keys and sticky keys.
+    pub access: crate::input::Access,
     /// Surfaces that keep the screen awake (idle-inhibit).
     pub idle_inhibitors: HashSet<WlSurface>,
     /// Activation tokens that may move focus.
@@ -508,6 +510,7 @@ impl State {
             suppressed_keys: HashSet::new(),
             translated_keys: HashSet::new(),
             interactive: Default::default(),
+            access: Default::default(),
             idle_inhibitors: HashSet::new(),
             valid_tokens: HashSet::new(),
             idle: Default::default(),

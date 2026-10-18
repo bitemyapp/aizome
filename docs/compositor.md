@@ -24,7 +24,14 @@ aizome --socket NAME --no-shell --no-xwayland --no-session -- foot
 - Logging: `AIZOME_LOG` (or `RUST_LOG`), e.g. `AIZOME_LOG=debug,smithay=info`.
 - Settings: `~/.config/aizome/settings.toml` (`--config PATH` for another),
   watched once a second and applied live (theme, focus colour, effects,
-  keyboard, pointer and touchpad, outputs, Desks, key bindings).
+  keyboard, pointer and touchpad, outputs, Desks, key bindings, Night
+  Light). Keys Shitsurae keeps in the sections' extra tables are honoured
+  too: `[windows] tab_double_click` (`fill`, `minimise`, `nothing`),
+  `[input.pointer]` and `[input.touchpad]` `scroll_factor` (scales axis
+  events, wheel and finger), `[input.keyboard]` `sticky_keys` (a modifier
+  tapped alone latches for the next key; tapped again it lets go) and
+  `slow_keys` with `slow_keys_ms` (a key counts once held that long; a
+  brush is dropped), and `[performance] renderer` (at the next start).
 - Fonts: Archivo, IBM Plex Mono and Noto Sans Symbols 2 from fontconfig,
   else from `$AIZOME_FONT_DIR` or `../share/aizome/fonts` beside the
   binary.
@@ -186,6 +193,8 @@ nix develop --command cargo test -p aizome-comp
 - `tests/overlays.rs`: the switcher, the overview and the marking menu.
 - `tests/keys.rs`: ❖ as Ctrl, Ctrl+Shift in terminals, ❖ for kit apps,
   system and shell chords.
+- `tests/settings.rs`: tab double-click, scroll factor, sticky and slow
+  keys.
 - `tests/displays.rs`: outputs off and on (from IPC and the settings),
   mirroring scaled and letterboxed, the main display, Night Light's IPC
   and schedule, the renderer setting.
