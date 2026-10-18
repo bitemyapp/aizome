@@ -239,3 +239,30 @@ fn submenus_tear_off_with_their_place() {
     let at: Vec<f64> = said[0].trim_start_matches("torn [2] at ").split(',').map(|n| n.parse().unwrap()).collect();
     assert!(at[0] > 150.0 && at[1] > 40.0, "{at:?}");
 }
+
+#[test]
+fn menus_are_frosted_where_the_effects_are_full() {
+    // Inside a menu, away from its text: the face's alpha, and how much it
+    // varies (the grain).
+    let face = |effects: aizome_kit::theme::Effects| {
+        let look = aizome_kit::Appearance { effects, ..Default::default() };
+        let mut h = Harness::with(Bar::default(), look, false);
+        let bar = h.window();
+        h.send(Msg::Open(1));
+        let (menu, _) = h.popups(bar)[0];
+        let img = h.render_popup(menu, 1.0);
+        let (w, _) = img.pixel_size();
+        let px = img.to_premultiplied_rgba8().expect("pixels");
+        // The right half of the rows' gap under the last row: no text.
+        let y = 2u32;
+        let alphas: Vec<u8> = (w / 2..w - 10).map(|x| px[((y * w + x) * 4 + 3) as usize]).collect();
+        let lumas: Vec<u8> = (w / 2..w - 10).map(|x| px[((y * w + x) * 4) as usize]).collect();
+        (alphas, lumas)
+    };
+    let (alpha, luma) = face(aizome_kit::theme::Effects::Lean);
+    assert!(alpha.iter().all(|a| *a == 255), "Lean is opaque");
+    assert!(luma.windows(2).all(|p| p[0] == p[1]), "and even");
+    let (alpha, luma) = face(aizome_kit::theme::Effects::Full);
+    assert!(alpha.iter().all(|a| (200..250).contains(a)), "Full lets what's under show: {alpha:?}");
+    assert!(luma.windows(2).any(|p| p[0] != p[1]), "with a grain");
+}

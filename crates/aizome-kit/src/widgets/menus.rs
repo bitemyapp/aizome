@@ -569,7 +569,7 @@ impl Widget for MenuView {
     fn paint(&self, cx: &mut PaintCx) {
         let t = cx.theme();
         let panel = Rect::new(0.0, 0.0, self.width, cx.size().height - t.metrics.shadow);
-        draw::floating(cx.canvas, t, panel);
+        draw::menu_face(cx.canvas, t, panel);
         let state = cx.state::<MenuState>();
         let hover = state.and_then(|s| {
             s.hover.or_else(|| s.open_sub.as_ref().and_then(|p| self.rows.iter().position(|r| &r.path == p)))

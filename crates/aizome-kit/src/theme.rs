@@ -356,6 +356,12 @@ impl Theme {
         self.appearance.effects.shadows()
     }
 
+    /// Whether menus and floating panels are frosted (the Full effects):
+    /// a translucent face with a fine grain, the hard shadow kept.
+    pub fn frosted(&self) -> bool {
+        self.appearance.effects == Effects::Full
+    }
+
     pub fn role(&self, role: Role) -> Color {
         let p = &self.palette;
         color(match role {

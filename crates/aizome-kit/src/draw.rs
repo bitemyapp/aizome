@@ -73,6 +73,75 @@ pub fn floating(canvas: &mut Canvas, theme: &Theme, r: Rect) {
     top(canvas, r.inset(-1.0), theme.bevel_hi(), 1.0);
 }
 
+/// A menu's look: [`floating`]'s, frosted where the effects are Full.
+pub fn menu_face(canvas: &mut Canvas, theme: &Theme, r: Rect) {
+    if !theme.frosted() {
+        floating(canvas, theme, r);
+        return;
+    }
+    if theme.shadows() {
+        let s = theme.metrics.shadow;
+        canvas.fill_rect(Rect::new(r.x0 + s, r.y1, r.x1 + s, r.y1 + s), theme.slab());
+        canvas.fill_rect(Rect::new(r.x1, r.y0 + s, r.x1 + s, r.y1), theme.slab());
+    }
+    frost(canvas, theme, r, theme.raised());
+    border(canvas, r, theme.bevel_lo(), 1.0);
+    top(canvas, r.inset(-1.0), theme.bevel_hi(), 1.0);
+}
+
+/// How opaque a frosted face is: what's under it tints through.
+pub const FROST_ALPHA: f32 = 0.86;
+
+/// `r` filled with `face`: where the effects are Full, frosted (the colour
+/// at [`FROST_ALPHA`] with a fine static grain over it, no blur), else
+/// solid. The grain is one small tile made once, drawn a pixel to a point.
+pub fn frost(canvas: &mut Canvas, theme: &Theme, r: Rect, face: Color) {
+    if !theme.frosted() {
+        canvas.fill_rect(r, face);
+        return;
+    }
+    canvas.fill_rect(r, face.with_alpha(FROST_ALPHA));
+    let tile = grain();
+    let n = GRAIN as f64;
+    let opts = sidestep_ui::ImageOptions { smooth: false, ..Default::default() };
+    canvas.save();
+    canvas.clip_rect(r);
+    let mut y = r.y0;
+    while y < r.y1 {
+        let mut x = r.x0;
+        while x < r.x1 {
+            canvas.draw_image_with(tile, None, Rect::new(x, y, x + n, y + n), opts);
+            x += n;
+        }
+        y += n;
+    }
+    canvas.restore();
+}
+
+/// The grain tile's side, in pixels (and points).
+const GRAIN: u32 = 64;
+
+/// Fine noise at about 3% contrast: specks a little lighter or darker,
+/// the same everywhere and every time.
+fn grain() -> &'static sidestep_ui::Image {
+    static TILE: std::sync::OnceLock<sidestep_ui::Image> = std::sync::OnceLock::new();
+    TILE.get_or_init(|| {
+        let mut state: u32 = 0x9e37_79b9;
+        let mut px = Vec::with_capacity((GRAIN * GRAIN * 4) as usize);
+        for _ in 0..GRAIN * GRAIN {
+            // xorshift32
+            state ^= state << 13;
+            state ^= state >> 17;
+            state ^= state << 5;
+            let v = (state >> 24) as i32 - 128;
+            let a = (v.unsigned_abs() * 16 / 128) as u8;
+            let c = if v >= 0 { 255 } else { 0 };
+            px.extend([c, c, c, a]);
+        }
+        sidestep_ui::Image::from_rgba(GRAIN, GRAIN, &px).expect("the grain's pixels")
+    })
+}
+
 /// The 2pt focus ring outside `r`.
 pub fn focus_ring(canvas: &mut Canvas, r: Rect, color: Color) {
     border(canvas, r.inflate(2.0, 2.0), color, 2.0);
