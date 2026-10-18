@@ -31,6 +31,10 @@ TimeoutStartSec=60
 WatchdogSec=10s
 # Don't wait long for the core dump: the screen is frozen meanwhile.
 TimeoutAbortSec=5s
+# Only the compositor gets the watchdog's SIGABRT (one core dump, not one
+# for the shell, Xwayland and every program it started); what is left of
+# the service is killed after it.
+KillMode=mixed
 # Ahead of the rest of the session (pipewire, portals) for CPU and disk
 # when the machine is loaded, so frames and input keep coming; the session
 # itself is ahead of apps (session.slice over app.slice: see the NixOS
