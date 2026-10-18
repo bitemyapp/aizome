@@ -302,7 +302,8 @@ fn toolbar_view(k: &Koyomi) -> Element<Msg> {
 }
 
 fn status(k: &Koyomi) -> Element<Msg> {
-    let mut items: Vec<Element<Msg>> = vec![status_text(k.here.id.to_string())];
+    let zone = if k.here.id.is_empty() { "Local time".to_owned() } else { k.here.id.to_string() };
+    let mut items: Vec<Element<Msg>> = vec![status_text(zone)];
     items.push(status_text(format!("Week {}", k.weeks().number(k.cursor))));
     items.push(spacer().into());
     match &k.note {

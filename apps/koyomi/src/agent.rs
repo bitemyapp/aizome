@@ -246,6 +246,11 @@ impl Dbus {
         Ok(Dbus { conn: zbus::blocking::Connection::session()? })
     }
 
+    /// The bus at `address` (tests serve a notification daemon of their own).
+    pub fn at(address: &str) -> zbus::Result<Dbus> {
+        Ok(Dbus { conn: zbus::blocking::connection::Builder::address(address)?.build()? })
+    }
+
     /// Hear actions and closings on threads of their own, as replies.
     pub fn listen(&self, tx: Sender<Reply>) -> zbus::Result<()> {
         for (signal, closed) in [("ActionInvoked", false), ("NotificationClosed", true)] {
@@ -317,7 +322,7 @@ fn open_app(date: &str) {
 pub fn run() -> i32 {
     let settings = Settings::load();
     let h24 = settings.uses_24h(settings::desktop_24h());
-    let tz = TimeZone::system();
+    let tz = crate::tz::system().zone.unwrap_or(TimeZone::UTC);
     let store = Store::open(settings::data_dir());
     let mut agent = Agent::new(store, tz, AgentState::load(), &settings);
     let (tx, rx): (Sender<Reply>, Receiver<Reply>) = channel();

@@ -34,7 +34,7 @@ fn upcoming(args: &[String]) -> ExitCode {
     let limit = value_of(args, "--limit").and_then(|d| d.parse().ok()).unwrap_or(100usize);
     let store = Store::open(settings::data_dir());
     let hidden = State::load().hidden;
-    let tz = TimeZone::system();
+    let tz = koyomi::tz::system().zone.unwrap_or(TimeZone::UTC);
     let r = koyomi::upcoming::upcoming(&store.calendars, &hidden, &tz, Timestamp::now(), days, limit);
     if args.iter().any(|a| a == "--json") {
         match serde_json::to_string_pretty(&r) {

@@ -286,11 +286,8 @@ impl Koyomi {
         }
         let settings = opts.settings.clone().unwrap_or_else(Settings::load);
         let state = opts.state.clone().unwrap_or_else(State::load);
-        let tz = opts.zone.clone().unwrap_or_else(TimeZone::system);
-        let here = match tz.iana_name() {
-            Some(n) => Tz { id: n.into(), zone: Some(tz.clone()) },
-            None => Tz { id: "UTC".into(), zone: Some(tz.clone()) },
-        };
+        let here = crate::tz::named(opts.zone.clone().unwrap_or_else(TimeZone::system));
+        let tz = here.zone.clone().unwrap_or(TimeZone::UTC);
         let locale = opts.weeks.unwrap_or_else(Weeks::from_env);
         let now_ts = opts.now.unwrap_or_else(Timestamp::now);
         let now = now_ts.to_zoned(tz.clone()).datetime();

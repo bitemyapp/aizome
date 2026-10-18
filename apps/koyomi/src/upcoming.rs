@@ -91,7 +91,7 @@ pub fn upcoming(cals: &[Calendar], hidden: &[String], tz: &TimeZone, now: Timest
     Report {
         version: 1,
         now: rfc3339(now_local, tz),
-        time_zone: tz.iana_name().unwrap_or("UTC").into(),
+        time_zone: crate::tz::named(tz.clone()).id.to_string(),
         days: days.max(1),
         events,
     }

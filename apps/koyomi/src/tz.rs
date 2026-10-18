@@ -38,11 +38,25 @@ impl Tz {
 
 /// The zone this computer is in, with its IANA name if it has one.
 pub fn system() -> Tz {
-    let zone = TimeZone::system();
-    match zone.iana_name() {
-        Some(name) => Tz { id: name.into(), zone: Some(zone.clone()) },
-        None => Tz { id: "UTC".into(), zone: Some(TimeZone::UTC) },
+    named(TimeZone::system())
+}
+
+/// A zone with its IANA name, found where jiff couldn't find it (an
+/// `/etc/localtime` that links through other links into a zoneinfo
+/// folder, as on NixOS and in containers). Without a name, its id is
+/// empty and new events made in it are floating.
+pub fn named(zone: TimeZone) -> Tz {
+    if let Some(name) = zone.iana_name() {
+        return Tz { id: name.into(), zone: Some(zone.clone()) };
     }
+    if std::env::var_os("TZ").is_none()
+        && let Ok(path) = std::fs::canonicalize("/etc/localtime")
+        && let Some((_, name)) = path.to_string_lossy().split_once("/zoneinfo/")
+        && let Ok(z) = TimeZone::get(name)
+    {
+        return Tz { id: name.into(), zone: Some(z) };
+    }
+    Tz { id: "".into(), zone: Some(zone) }
 }
 
 /// Windows zone names (CLDR's `windowsZones`, territory 001) to IANA.
