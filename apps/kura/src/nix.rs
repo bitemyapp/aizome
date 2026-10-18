@@ -184,7 +184,9 @@ pub fn profiles() -> Vec<Profile> {
     candidates
         .iter()
         .filter_map(|p| profile(p))
-        .filter(|p| seen.insert(std::fs::canonicalize(p.path.parent().unwrap_or(&p.path)).unwrap_or_default().join(&p.name)))
+        .filter(|p| {
+            seen.insert(std::fs::canonicalize(p.path.parent().unwrap_or(&p.path)).unwrap_or_default().join(&p.name))
+        })
         .collect()
 }
 
@@ -199,7 +201,8 @@ mod tests {
 
     #[test]
     fn sums_both_shapes() {
-        let new = r#"{"/nix/store/a-x":{"narSize":100,"references":[]},"/nix/store/b-y":{"narSize":23},"/nix/store/c":null}"#;
+        let new =
+            r#"{"/nix/store/a-x":{"narSize":100,"references":[]},"/nix/store/b-y":{"narSize":23},"/nix/store/c":null}"#;
         assert_eq!(parse_path_info(new), Some((123, 3)));
         let old = r#"[{"path":"/nix/store/a","narSize":5},{"path":"/nix/store/b","narSize":6}]"#;
         assert_eq!(parse_path_info(old), Some((11, 2)));

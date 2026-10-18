@@ -15,13 +15,7 @@ fn dye(name: &str) -> Rgba {
 pub fn ramp(theme: &Theme) -> [Color; 5] {
     let c = aizome_kit::theme::color;
     if theme.is_dark() {
-        [
-            c(dye("hanada")),
-            c(dye("kohaku")),
-            c(Rgba::hex(0x4a67b3)),
-            c(dye("kamenozoki")),
-            c(theme.palette.cyan),
-        ]
+        [c(dye("hanada")), c(dye("kohaku")), c(Rgba::hex(0x4a67b3)), c(dye("kamenozoki")), c(theme.palette.cyan)]
     } else {
         // Day's surface is pale: the same dyes, a shade deeper.
         [c(Rgba::hex(0x5a7fd6)), c(Rgba::hex(0xd99a2b)), c(dye("ai")), c(Rgba::hex(0x8fb0f5)), c(Rgba::hex(0x3fa6d9))]

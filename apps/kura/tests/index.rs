@@ -72,7 +72,11 @@ fn hints_cover_each_kind_once() {
     let s = scan::scan(ScanOptions::new(&h), Progress::new()).unwrap();
     let cx = context(&h);
     let hs = hints::detect(&s, &cx);
-    let by_id = |id: &str| hs.iter().find(|x| x.id == id).unwrap_or_else(|| panic!("a {id} hint in {:#?}", hs.iter().map(|x| &x.id).collect::<Vec<_>>()));
+    let by_id = |id: &str| {
+        hs.iter()
+            .find(|x| x.id == id)
+            .unwrap_or_else(|| panic!("a {id} hint in {:#?}", hs.iter().map(|x| &x.id).collect::<Vec<_>>()))
+    };
     let has = |id: &str, p: &Path| by_id(id).paths.iter().any(|x| Path::new(&x.path) == p);
 
     assert!(has("caches", &h.join(".cache/someapp")));
@@ -156,7 +160,8 @@ fn command_line_scans_into_output() {
     assert_eq!(v["schema"], "org.aizome.kura.index");
     assert!(out.join("index.json").exists() && out.join("index.md").exists());
 
-    let hints = std::process::Command::new(bin).args(["hints", "--json", "--output", out.to_str().unwrap()]).output().unwrap();
+    let hints =
+        std::process::Command::new(bin).args(["hints", "--json", "--output", out.to_str().unwrap()]).output().unwrap();
     let v: serde_json::Value = serde_json::from_slice(&hints.stdout).unwrap();
     assert!(v["hints"].as_array().unwrap().iter().any(|x| x["id"] == "build-outputs"));
 

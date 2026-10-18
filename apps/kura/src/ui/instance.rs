@@ -8,7 +8,10 @@ use std::path::PathBuf;
 use aizome_kit::MsgSender;
 
 pub fn socket_path() -> PathBuf {
-    let dir = std::env::var_os("XDG_RUNTIME_DIR").filter(|v| !v.is_empty()).map(PathBuf::from).unwrap_or_else(std::env::temp_dir);
+    let dir = std::env::var_os("XDG_RUNTIME_DIR")
+        .filter(|v| !v.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(std::env::temp_dir);
     dir.join("aizome-app.kura.sock")
 }
 
@@ -40,7 +43,11 @@ pub fn claim(args: &[String]) -> Claim {
 }
 
 /// Hear later launches on a thread: each sends `msg(paths)`.
-pub fn serve<Msg: Send + 'static>(listener: UnixListener, tx: MsgSender<Msg>, msg: impl Fn(Vec<PathBuf>) -> Msg + Send + 'static) {
+pub fn serve<Msg: Send + 'static>(
+    listener: UnixListener,
+    tx: MsgSender<Msg>,
+    msg: impl Fn(Vec<PathBuf>) -> Msg + Send + 'static,
+) {
     let _ = std::thread::Builder::new().name("kura-instance".into()).spawn(move || {
         for stream in listener.incoming() {
             let Ok(mut s) = stream else { continue };

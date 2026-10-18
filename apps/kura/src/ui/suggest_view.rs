@@ -68,7 +68,12 @@ pub fn panel(k: &Kura) -> Element<Msg> {
         } else {
             "Nothing stands out here: no caches, build outputs, old downloads or duplicates worth the trouble."
         };
-        return container(text(words).role(Role::Text3).wrap().center()).center().padding(24.0).width(Length::Fill).height(Length::Fill).into();
+        return container(text(words).role(Role::Text3).wrap().center())
+            .center()
+            .padding(24.0)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .into();
     }
     let by = &k.analysis.by_risk;
     let get = |s: &str| by.get(s).copied().unwrap_or(0);
@@ -84,7 +89,10 @@ pub fn panel(k: &Kura) -> Element<Msg> {
             .size(11.5)
             .tabular()
             .role(Role::Text3),
-            text("Pick one to see it in the rings. Nothing is moved or deleted until you say yes.").size(11.5).role(Role::Text3).wrap(),
+            text("Pick one to see it in the rings. Nothing is moved or deleted until you say yes.")
+                .size(11.5)
+                .role(Role::Text3)
+                .wrap(),
         ]
         .spacing(3.0)
         .into(),
@@ -139,10 +147,10 @@ fn card(k: &Kura, i: usize) -> Element<Msg> {
                 (false, 1) => format!("Show the {}", what.trim_end_matches('s')),
                 (false, n) => format!("Show the {} {what}", format::count(n as u64)),
             })
-                .toolbar()
-                .icon(if open { Icon::ChevronDown } else { Icon::ChevronRight })
-                .on_press(Msg::ExpandHint(i, !open))
-                .into(),
+            .toolbar()
+            .icon(if open { Icon::ChevronDown } else { Icon::ChevronRight })
+            .on_press(Msg::ExpandHint(i, !open))
+            .into(),
         );
     }
     if open {
@@ -192,7 +200,12 @@ fn path_rows(k: &Kura, h: &Hint, ticks: bool) -> Vec<Element<Msg>> {
         .collect();
     let more = h.paths.len().saturating_sub(SHOWN) as u64 + h.more_paths;
     if more > 0 {
-        rows.push(text(format!("…and {} more in index.json", format::plural(more, "path", "paths"))).size(11.0).role(Role::Text3).into());
+        rows.push(
+            text(format!("…and {} more in index.json", format::plural(more, "path", "paths")))
+                .size(11.0)
+                .role(Role::Text3)
+                .into(),
+        );
     }
     rows
 }
@@ -202,7 +215,11 @@ fn duplicate_sets(k: &Kura, i: usize, h: &Hint) -> Vec<Element<Msg>> {
     let mut out = Vec::new();
     for (g, set) in h.groups.iter().enumerate().take(20) {
         let kept = k.kept(&set.hash).min(set.paths.len().saturating_sub(1));
-        let how = if set.verified == "full" { "identical, every byte compared" } else { "same size and ends: compare them first" };
+        let how = if set.verified == "full" {
+            "identical, every byte compared"
+        } else {
+            "same size and ends: compare them first"
+        };
         out.push(text(format!("{} each · {how}", format::size(set.bytes_each))).size(11.0).role(Role::Text3).into());
         let copies: Vec<Element<Msg>> = set
             .paths
@@ -215,7 +232,8 @@ fn duplicate_sets(k: &Kura, i: usize, h: &Hint) -> Vec<Element<Msg>> {
                 let folder = path.parent().map(format::path).unwrap_or_default();
                 container(
                     column![
-                        radio(if j == kept { "Keep" } else { "Keep this one" }, j, Some(kept)).on_select(move |j| Msg::Keep(hash.clone(), j)),
+                        radio(if j == kept { "Keep" } else { "Keep this one" }, j, Some(kept))
+                            .on_select(move |j| Msg::Keep(hash.clone(), j)),
                         text(name).size(12.5).semibold(),
                         text(folder).size(11.0).role(Role::Text3),
                     ]
@@ -243,7 +261,9 @@ fn duplicate_sets(k: &Kura, i: usize, h: &Hint) -> Vec<Element<Msg>> {
         );
     }
     if h.groups.len() > 20 {
-        out.push(text(format!("…and {} more sets in index.json", h.groups.len() - 20)).size(11.0).role(Role::Text3).into());
+        out.push(
+            text(format!("…and {} more sets in index.json", h.groups.len() - 20)).size(11.0).role(Role::Text3).into(),
+        );
     }
     out
 }
@@ -260,10 +280,14 @@ fn actions(k: &Kura, i: usize, h: &Hint, action: HintAction) -> Element<Msg> {
                 format!("{}; freed once the Trash is emptied", format::size(bytes))
             };
             row![
-                button(if n == 0 { "Move to Trash…".to_owned() } else { format!("Move {} to Trash…", format::plural(n, "item", "items")) })
-                    .compact()
-                    .icon(Icon::Trash)
-                    .on_press_maybe((n > 0).then_some(Msg::Act(i))),
+                button(if n == 0 {
+                    "Move to Trash…".to_owned()
+                } else {
+                    format!("Move {} to Trash…", format::plural(n, "item", "items"))
+                })
+                .compact()
+                .icon(Icon::Trash)
+                .on_press_maybe((n > 0).then_some(Msg::Act(i))),
                 text(note).size(11.0).role(Role::Text3).width(Length::Fill),
             ]
             .spacing(8.0)
@@ -276,7 +300,9 @@ fn actions(k: &Kura, i: usize, h: &Hint, action: HintAction) -> Element<Msg> {
         ]
         .spacing(8.0)
         .into(),
-        HintAction::Yukimi => button("Open Yukimi's Storage").compact().icon(Icon::Snowflake).on_press(Msg::Act(i)).into(),
+        HintAction::Yukimi => {
+            button("Open Yukimi's Storage").compact().icon(Icon::Snowflake).on_press(Msg::Act(i)).into()
+        }
         HintAction::Command => {
             let cmd = h.action.command.clone().unwrap_or_default();
             column![
@@ -296,8 +322,10 @@ fn actions(k: &Kura, i: usize, h: &Hint, action: HintAction) -> Element<Msg> {
             .width(Length::Fill)
             .into()
         }
-        HintAction::Duplicates => {
-            text("Open the sets, keep one copy of each, and move the others to the Trash.").size(11.0).role(Role::Text3).wrap().into()
-        }
+        HintAction::Duplicates => text("Open the sets, keep one copy of each, and move the others to the Trash.")
+            .size(11.0)
+            .role(Role::Text3)
+            .wrap()
+            .into(),
     }
 }

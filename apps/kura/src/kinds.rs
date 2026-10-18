@@ -90,7 +90,12 @@ pub fn classify(name: &[u8], in_git: bool) -> FileKind {
     if name.strip_suffix(".log").is_some_and(|s| !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit())) {
         return FileKind::Database;
     }
-    if name.ends_with(".log") || name.contains(".log.")|| name == "syslog" || name.ends_with(".journal") || name.ends_with(".journal~") {
+    if name.ends_with(".log")
+        || name.contains(".log.")
+        || name == "syslog"
+        || name.ends_with(".journal")
+        || name.ends_with(".journal~")
+    {
         return FileKind::Log;
     }
     let ext = match name.rsplit_once('.') {
@@ -98,9 +103,8 @@ pub fn classify(name: &[u8], in_git: bool) -> FileKind {
         _ => return FileKind::Other,
     };
     match ext {
-        "mp4" | "mkv" | "mov" | "avi" | "webm" | "m4v" | "wmv" | "flv" | "mpg" | "mpeg" | "mts" | "m2ts" | "3gp" | "ogv" => {
-            FileKind::Video
-        }
+        "mp4" | "mkv" | "mov" | "avi" | "webm" | "m4v" | "wmv" | "flv" | "mpg" | "mpeg" | "mts" | "m2ts" | "3gp"
+        | "ogv" => FileKind::Video,
         "mp3" | "flac" | "ogg" | "opus" | "wav" | "m4a" | "aac" | "wma" | "aiff" | "aif" | "alac" | "mid" | "midi" => {
             FileKind::Audio
         }
@@ -112,12 +116,14 @@ pub fn classify(name: &[u8], in_git: bool) -> FileKind {
         | "rpm" | "apk" | "jar" | "whl" | "crate" | "nar" | "cab" => FileKind::Archive,
         "iso" | "img" | "qcow2" | "qcow" | "vdi" | "vmdk" | "vhd" | "vhdx" | "dmg" | "appimage" | "ova"
         | "squashfs" | "wim" => FileKind::DiskImage,
-        "rs" | "c" | "h" | "cc" | "cpp" | "hpp" | "cxx" | "py" | "js" | "mjs" | "cjs" | "ts" | "tsx" | "jsx"
-        | "go" | "java" | "kt" | "swift" | "rb" | "php" | "pl" | "lua" | "hs" | "ml" | "nix" | "sh" | "fish" | "zsh"
+        "rs" | "c" | "h" | "cc" | "cpp" | "hpp" | "cxx" | "py" | "js" | "mjs" | "cjs" | "ts" | "tsx" | "jsx" | "go"
+        | "java" | "kt" | "swift" | "rb" | "php" | "pl" | "lua" | "hs" | "ml" | "nix" | "sh" | "fish" | "zsh"
         | "toml" | "yaml" | "yml" | "json" | "xml" | "html" | "css" | "scss" | "vue" | "svelte" | "zig" | "el"
         | "clj" | "ex" | "exs" | "erl" | "scala" | "sql" | "proto" | "cmake" | "mk" => FileKind::Code,
         "o" | "a" | "so" | "rlib" | "rmeta" | "dll" | "exe" | "dylib" | "lib" | "obj" | "class" | "pyc" | "wasm"
-        | "bin" | "elf" | "d" | "pdb" | "dwo" | "ko" | "node" | "pch" | "gch" | "dex" | "beam" | "hi" => FileKind::Binary,
+        | "bin" | "elf" | "d" | "pdb" | "dwo" | "ko" | "node" | "pch" | "gch" | "dex" | "beam" | "hi" => {
+            FileKind::Binary
+        }
         "sqlite" | "sqlite3" | "db" | "mdb" | "ldb" | "leveldb" | "realm" | "wal" | "db-wal" | "db-shm" => {
             FileKind::Database
         }

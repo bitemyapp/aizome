@@ -214,7 +214,9 @@ pub fn detect(scan: &Scan, cx: &Context) -> Vec<Hint> {
     d.nix();
     let mut hints = d.hints;
     // Under a megabyte isn't worth anyone's attention.
-    hints.retain(|h| h.reclaimable_bytes >= MIN_BYTES || h.count.is_some_and(|c| c > 0) || h.id == "containers" || h.id == "flatpak");
+    hints.retain(|h| {
+        h.reclaimable_bytes >= MIN_BYTES || h.count.is_some_and(|c| c > 0) || h.id == "containers" || h.id == "flatpak"
+    });
     hints.sort_by(|a, b| b.reclaimable_bytes.cmp(&a.reclaimable_bytes).then(a.risk.cmp(&b.risk)));
     hints
 }
@@ -254,8 +256,20 @@ const CARGO_TARGET: BuildRule =
     BuildRule { name: "", sibling: &[], inside: &[], what: "Rust (Cargo) build output", command: rm };
 
 const BUILD_RULES: &[BuildRule] = &[
-    BuildRule { name: "target", sibling: &["Cargo.toml"], inside: &[".rustc_info.json"], what: "Rust (Cargo) build output", command: cargo_clean },
-    BuildRule { name: "node_modules", sibling: &["package.json"], inside: &[".package-lock.json", ".yarn-integrity", ".modules.yaml"], what: "npm packages (npm install brings them back)", command: rm },
+    BuildRule {
+        name: "target",
+        sibling: &["Cargo.toml"],
+        inside: &[".rustc_info.json"],
+        what: "Rust (Cargo) build output",
+        command: cargo_clean,
+    },
+    BuildRule {
+        name: "node_modules",
+        sibling: &["package.json"],
+        inside: &[".package-lock.json", ".yarn-integrity", ".modules.yaml"],
+        what: "npm packages (npm install brings them back)",
+        command: rm,
+    },
     BuildRule { name: ".venv", sibling: &[], inside: &["pyvenv.cfg"], what: "Python virtual environment", command: rm },
     BuildRule { name: "venv", sibling: &[], inside: &["pyvenv.cfg"], what: "Python virtual environment", command: rm },
     BuildRule { name: ".tox", sibling: &[], inside: &[], what: "tox environments", command: rm },
@@ -263,23 +277,74 @@ const BUILD_RULES: &[BuildRule] = &[
     BuildRule { name: ".mypy_cache", sibling: &[], inside: &[], what: "mypy cache", command: rm },
     BuildRule { name: ".pytest_cache", sibling: &[], inside: &[], what: "pytest cache", command: rm },
     BuildRule { name: ".ruff_cache", sibling: &[], inside: &[], what: "Ruff cache", command: rm },
-    BuildRule { name: "dist", sibling: &["package.json", "pyproject.toml", "setup.py", "Cargo.toml"], inside: &[], what: "built distribution (release artefacts may be kept here)", command: rm },
-    BuildRule { name: "build", sibling: &["package.json", "pyproject.toml", "setup.py", "CMakeLists.txt", "meson.build", "build.gradle", "build.gradle.kts", "Makefile"], inside: &[], what: "build output", command: rm },
+    BuildRule {
+        name: "dist",
+        sibling: &["package.json", "pyproject.toml", "setup.py", "Cargo.toml"],
+        inside: &[],
+        what: "built distribution (release artefacts may be kept here)",
+        command: rm,
+    },
+    BuildRule {
+        name: "build",
+        sibling: &[
+            "package.json",
+            "pyproject.toml",
+            "setup.py",
+            "CMakeLists.txt",
+            "meson.build",
+            "build.gradle",
+            "build.gradle.kts",
+            "Makefile",
+        ],
+        inside: &[],
+        what: "build output",
+        command: rm,
+    },
     BuildRule { name: ".next", sibling: &["package.json"], inside: &[], what: "Next.js build output", command: rm },
     BuildRule { name: ".nuxt", sibling: &["package.json"], inside: &[], what: "Nuxt build output", command: rm },
-    BuildRule { name: ".svelte-kit", sibling: &["package.json"], inside: &[], what: "SvelteKit build output", command: rm },
+    BuildRule {
+        name: ".svelte-kit",
+        sibling: &["package.json"],
+        inside: &[],
+        what: "SvelteKit build output",
+        command: rm,
+    },
     BuildRule { name: ".parcel-cache", sibling: &[], inside: &[], what: "Parcel cache", command: rm },
     BuildRule { name: ".turbo", sibling: &[], inside: &[], what: "Turborepo cache", command: rm },
     BuildRule { name: ".angular", sibling: &["angular.json"], inside: &[], what: "Angular cache", command: rm },
-    BuildRule { name: ".gradle", sibling: &["build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts"], inside: &[], what: "Gradle project cache", command: rm },
+    BuildRule {
+        name: ".gradle",
+        sibling: &["build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts"],
+        inside: &[],
+        what: "Gradle project cache",
+        command: rm,
+    },
     BuildRule { name: "zig-cache", sibling: &["build.zig"], inside: &[], what: "Zig cache", command: rm },
     BuildRule { name: ".zig-cache", sibling: &["build.zig"], inside: &[], what: "Zig cache", command: rm },
     BuildRule { name: "zig-out", sibling: &["build.zig"], inside: &[], what: "Zig build output", command: rm },
     BuildRule { name: "dist-newstyle", sibling: &[], inside: &["cache"], what: "Cabal build output", command: rm },
     BuildRule { name: ".stack-work", sibling: &[], inside: &[], what: "Stack build output", command: rm },
-    BuildRule { name: "_build", sibling: &["dune-project", "mix.exs", "rebar.config"], inside: &[], what: "dune/Mix build output", command: rm },
-    BuildRule { name: ".direnv", sibling: &[".envrc"], inside: &[], what: "direnv's dev-shell cache; it holds Nix GC roots, so removing it lets Yukimi's Storage free the shell's store paths", command: rm },
-    BuildRule { name: ".devenv", sibling: &["devenv.nix"], inside: &[], what: "devenv state; it holds Nix GC roots", command: rm },
+    BuildRule {
+        name: "_build",
+        sibling: &["dune-project", "mix.exs", "rebar.config"],
+        inside: &[],
+        what: "dune/Mix build output",
+        command: rm,
+    },
+    BuildRule {
+        name: ".direnv",
+        sibling: &[".envrc"],
+        inside: &[],
+        what: "direnv's dev-shell cache; it holds Nix GC roots, so removing it lets Yukimi's Storage free the shell's store paths",
+        command: rm,
+    },
+    BuildRule {
+        name: ".devenv",
+        sibling: &["devenv.nix"],
+        inside: &[],
+        what: "devenv state; it holds Nix GC roots",
+        command: rm,
+    },
 ];
 
 /// Package managers' download caches outside `~/.cache` (or with a better
@@ -298,8 +363,18 @@ const PACKAGE_CACHES: &[(&str, &str, &str, Risk)] = &[
     ("go/pkg/mod", "Go's module cache", "go clean -modcache", Risk::Low),
     (".gradle/caches", "Gradle's caches", "rm -rf -- ~/.gradle/caches", Risk::Low),
     (".m2/repository", "Maven's repository", "rm -rf -- ~/.m2/repository", Risk::Low),
-    (".cache/bazel", "Bazel's cache", "bazel clean --expunge (in each workspace), or rm -rf -- ~/.cache/bazel", Risk::Low),
-    (".cache/huggingface", "Hugging Face models and datasets (large to download again)", "huggingface-cli delete-cache", Risk::Medium),
+    (
+        ".cache/bazel",
+        "Bazel's cache",
+        "bazel clean --expunge (in each workspace), or rm -rf -- ~/.cache/bazel",
+        Risk::Low,
+    ),
+    (
+        ".cache/huggingface",
+        "Hugging Face models and datasets (large to download again)",
+        "huggingface-cli delete-cache",
+        Risk::Medium,
+    ),
     (".cache/ms-playwright", "Playwright's browsers", "rm -rf -- ~/.cache/ms-playwright", Risk::Low),
     (".cache/nix", "Nix's evaluation and download caches", "rm -rf -- ~/.cache/nix", Risk::Safe),
     (".cache/thumbnails", "thumbnails", "rm -rf -- ~/.cache/thumbnails", Risk::Safe),
@@ -430,7 +505,15 @@ impl<'a> Detector<'a> {
     }
 
     /// Add a hint over `paths` (claiming them), if it frees anything.
-    fn push(&mut self, id: &str, title: String, summary: String, risk: Risk, action: Action, mut paths: Vec<(NodeId, HintPath)>) {
+    fn push(
+        &mut self,
+        id: &str,
+        title: String,
+        summary: String,
+        risk: Risk,
+        action: Action,
+        mut paths: Vec<(NodeId, HintPath)>,
+    ) {
         paths.retain(|(_, p)| p.allocated_bytes > 0);
         // Inner paths of an outer one in the same hint count once.
         paths.sort_by_key(|p| self.tree.depth(p.0));
@@ -487,7 +570,18 @@ impl<'a> Detector<'a> {
         for (i, n) in self.tree.nodes().iter().enumerate() {
             if n.is_dir() && self.tree.name_bytes(NodeId(i as u32)) == other.as_bytes() {
                 let id = NodeId(i as u32);
-                paths.push((id, self.hint_path(id, Some("trash of the filesystem it's on".into()), Some(format!("rm -rf -- {}/files {}/info", shell_quote(&self.tree.path(id)), shell_quote(&self.tree.path(id)))))));
+                paths.push((
+                    id,
+                    self.hint_path(
+                        id,
+                        Some("trash of the filesystem it's on".into()),
+                        Some(format!(
+                            "rm -rf -- {}/files {}/info",
+                            shell_quote(&self.tree.path(id)),
+                            shell_quote(&self.tree.path(id))
+                        )),
+                    ),
+                ));
             }
         }
         let n = crate::trash::items(&trash).len();
@@ -555,13 +649,20 @@ impl<'a> Detector<'a> {
                 continue;
             }
             let found: Vec<_> = self.under_home(rel).into_iter().filter(|&id| !self.is_claimed(id)).collect();
-            let paths: Vec<_> = found.iter().map(|&id| (id, self.hint_path(id, Some((*what).into()), Some((*command).into())))).collect();
+            let paths: Vec<_> = found
+                .iter()
+                .map(|&id| (id, self.hint_path(id, Some((*what).into()), Some((*command).into()))))
+                .collect();
             self.push(
                 "large-caches",
                 format!("{}{}", what[..1].to_uppercase(), &what[1..]),
                 "Fetched again when needed, but large and slow to download.".into(),
                 *risk,
-                Action { kind: ActionKind::Command, command: Some((*command).into()), description: "Ask before clearing: it may take long to download again.".into() },
+                Action {
+                    kind: ActionKind::Command,
+                    command: Some((*command).into()),
+                    description: "Ask before clearing: it may take long to download again.".into(),
+                },
                 paths,
             );
         }
@@ -667,19 +768,21 @@ impl<'a> Detector<'a> {
             stack.extend(tree.children(id).filter(|&c| tree.node(c).is_dir()));
         }
         let total: u64 = found.iter().map(|(_, p)| p.allocated_bytes).sum();
-        let mut summary = "Build tools make these again from the project's sources; the next build takes longer.".to_owned();
+        let mut summary =
+            "Build tools make these again from the project's sources; the next build takes longer.".to_owned();
         if stale > 0 && total > 0 {
-            summary.push_str(&format!(
-                " {} of it is in projects not built for 90 days or more.",
-                format::size(stale)
-            ));
+            summary.push_str(&format!(" {} of it is in projects not built for 90 days or more.", format::size(stale)));
         }
         self.push(
             "build-outputs",
             "Build outputs and dependencies".into(),
             summary,
             Risk::Low,
-            Action { kind: ActionKind::Command, command: None, description: "Run each path's command; prefer projects not worked on lately.".into() },
+            Action {
+                kind: ActionKind::Command,
+                command: None,
+                description: "Run each path's command; prefer projects not worked on lately.".into(),
+            },
             found,
         );
     }
@@ -709,15 +812,20 @@ impl<'a> Detector<'a> {
         let mut found = Vec::new();
         for (i, n) in tree.nodes().iter().enumerate() {
             let id = NodeId(i as u32);
-            let big_file = n.kind == Kind::File && n.alloc >= 1 << 20 && kinds::classify(tree.name_bytes(id), false) == FileKind::Log;
+            let big_file = n.kind == Kind::File
+                && n.alloc >= 1 << 20
+                && kinds::classify(tree.name_bytes(id), false) == FileKind::Log;
             let name = tree.name_bytes(id);
-            let log_dir = n.is_dir() && n.alloc >= 10 << 20 && (name == b"logs" || name == b"log") && id != NodeId::ROOT;
+            let log_dir =
+                n.is_dir() && n.alloc >= 10 << 20 && (name == b"logs" || name == b"log") && id != NodeId::ROOT;
             if !(big_file || log_dir) || self.is_claimed(id) {
                 continue;
             }
             // LevelDB and SQLite keep their write-ahead data in `NNNNNN.log`
             // beside `CURRENT` and `LOCK`: that's data, not a log.
-            if big_file && tree.parent(id).is_some_and(|p| ["CURRENT", "LOCK"].iter().any(|f| tree.child_named(p, f).is_some())) {
+            if big_file
+                && tree.parent(id).is_some_and(|p| ["CURRENT", "LOCK"].iter().any(|f| tree.child_named(p, f).is_some()))
+            {
                 continue;
             }
             let path = tree.path(id);
@@ -729,7 +837,11 @@ impl<'a> Detector<'a> {
             } else {
                 format!("truncate -s 0 -- {}", shell_quote(&path))
             };
-            let note = if n.is_dir() { "log folder: the command removes logs older than 30 days" } else { "log file: the command empties it" };
+            let note = if n.is_dir() {
+                "log folder: the command removes logs older than 30 days"
+            } else {
+                "log file: the command empties it"
+            };
             found.push((id, self.hint_path(id, Some(note.into()), Some(command))));
         }
         let mut summary = "Programs' logs. Old ones are rarely read again; a program still writing a log keeps writing to the emptied file.".to_owned();
@@ -756,7 +868,11 @@ impl<'a> Detector<'a> {
             .filter(|&c| self.tree.node(c).mtime < cutoff && self.tree.node(c).mtime > 0 && !self.is_claimed(c))
             .map(|c| {
                 let n = self.tree.node(c);
-                let note = format!("{}, untouched {}", kinds::classify(self.tree.name_bytes(c), false).title(), time::ago(n.mtime, self.cx.now));
+                let note = format!(
+                    "{}, untouched {}",
+                    kinds::classify(self.tree.name_bytes(c), false).title(),
+                    time::ago(n.mtime, self.cx.now)
+                );
                 (c, self.hint_path(c, Some(note), None))
             })
             .collect();
@@ -997,7 +1113,9 @@ impl<'a> Detector<'a> {
                 tools.push(tool);
             }
             match self.tree.find(&path) {
-                Some(id) if !self.is_claimed(id) => paths.push((id, self.hint_path(id, Some(format!("{tool} storage")), None))),
+                Some(id) if !self.is_claimed(id) => {
+                    paths.push((id, self.hint_path(id, Some(format!("{tool} storage")), None)))
+                }
                 Some(_) => {}
                 // Outside the scan (or unreadable): listed, size unknown.
                 None => extra.push(HintPath {
@@ -1023,7 +1141,11 @@ impl<'a> Detector<'a> {
             "Container storage".into(),
             summary.clone(),
             Risk::Medium,
-            Action { kind: ActionKind::Command, command: Some(command.clone()), description: "Ask before pruning: stopped containers and unused images go.".into() },
+            Action {
+                kind: ActionKind::Command,
+                command: Some(command.clone()),
+                description: "Ask before pruning: stopped containers and unused images go.".into(),
+            },
             paths,
         );
         if !extra.is_empty() {
@@ -1035,7 +1157,11 @@ impl<'a> Detector<'a> {
                     summary,
                     reclaimable_bytes: 0,
                     risk: Risk::Medium,
-                    action: Action { kind: ActionKind::Command, command: Some(command), description: "Measure with `system df` first; ask before pruning.".into() },
+                    action: Action {
+                        kind: ActionKind::Command,
+                        command: Some(command),
+                        description: "Measure with `system df` first; ask before pruning.".into(),
+                    },
                     paths: extra,
                     more_paths: 0,
                     count: None,
@@ -1079,7 +1205,8 @@ impl<'a> Detector<'a> {
 fn cachedir_tag_valid(path: &Path) -> bool {
     use std::io::Read;
     let mut buf = [0u8; 43];
-    std::fs::File::open(path).and_then(|mut f| f.read_exact(&mut buf)).is_ok() && &buf == b"Signature: 8a477f597d28d172789f06886806bc55"
+    std::fs::File::open(path).and_then(|mut f| f.read_exact(&mut buf)).is_ok()
+        && &buf == b"Signature: 8a477f597d28d172789f06886806bc55"
 }
 
 /// Reclaimable bytes by risk, for the index's summary.

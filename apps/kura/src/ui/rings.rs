@@ -76,7 +76,16 @@ pub fn segments(tree: &Tree, center: NodeId, depth: usize) -> Vec<Seg> {
                     at += span;
                     continue;
                 }
-                out.push(Seg { node: Some(c), parent, depth: d as u8, branch: b, sub: sb, x0: at, x1: at + span, is_dir: n.kind == Kind::Dir });
+                out.push(Seg {
+                    node: Some(c),
+                    parent,
+                    depth: d as u8,
+                    branch: b,
+                    sub: sb,
+                    x0: at,
+                    x1: at + span,
+                    is_dir: n.kind == Kind::Dir,
+                });
                 if n.is_dir() {
                     next.push((c, at, at + span, b, sb));
                 }
@@ -85,7 +94,16 @@ pub fn segments(tree: &Tree, center: NodeId, depth: usize) -> Vec<Seg> {
             if let Some(from) = small_from
                 && at - from >= MIN_SPAN / 4.0
             {
-                out.push(Seg { node: None, parent, depth: d as u8, branch, sub, x0: from, x1: at.min(px1), is_dir: false });
+                out.push(Seg {
+                    node: None,
+                    parent,
+                    depth: d as u8,
+                    branch,
+                    sub,
+                    x0: from,
+                    x1: at.min(px1),
+                    is_dir: false,
+                });
             }
         }
         level = next;
@@ -206,7 +224,10 @@ mod tests {
     fn tree() -> Tree {
         let e = |n: &str, k: Kind, a: u64| Entry { name: n.into(), kind: k, flags: 0, alloc: a, apparent: a, mtime: 0 };
         let mut t = Tree::new(PathBuf::from("/r"), Kind::Dir, 0, 0, 0);
-        let f = t.push_children(NodeId::ROOT, &[e("big", Kind::Dir, 0), e("file", Kind::File, 250), e("tiny", Kind::File, 1)]);
+        let f = t.push_children(
+            NodeId::ROOT,
+            &[e("big", Kind::Dir, 0), e("file", Kind::File, 250), e("tiny", Kind::File, 1)],
+        );
         t.push_children(NodeId(f), &[e("a", Kind::File, 500), e("b", Kind::File, 249)]);
         t.finish();
         t

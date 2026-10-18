@@ -46,7 +46,11 @@ pub fn markdown(ix: &Index) -> String {
         );
     }
     if t.errors > 0 {
-        let _ = writeln!(s, "{} couldn't be read (permissions); their contents aren't counted.", format::plural(t.errors, "path", "paths"));
+        let _ = writeln!(
+            s,
+            "{} couldn't be read (permissions); their contents aren't counted.",
+            format::plural(t.errors, "path", "paths")
+        );
     }
     if !ix.other_filesystems.is_empty() {
         let _ = writeln!(
@@ -75,7 +79,8 @@ pub fn markdown(ix: &Index) -> String {
         let _ = writeln!(s, "|---|---:|---|---|");
         for h in &ix.hints {
             let frees = h.frees();
-            let _ = writeln!(s, "| {} | {} | {} | {} |", cell(&h.title), frees, h.risk.id(), cell(&h.action.description));
+            let _ =
+                writeln!(s, "| {} | {} | {} | {} |", cell(&h.title), frees, h.risk.id(), cell(&h.action.description));
         }
         for h in &ix.hints {
             hint_section(&mut s, h);
@@ -100,7 +105,14 @@ pub fn markdown(ix: &Index) -> String {
     let _ = writeln!(s, "| File | Size | Kind | Modified |");
     let _ = writeln!(s, "|---|---:|---|---|");
     for f in ix.largest_files.iter().take(30) {
-        let _ = writeln!(s, "| `{}` | {} | {} | {} |", cell(&p(&f.path)), size(f.allocated_bytes), f.kind, &f.modified[..10.min(f.modified.len())]);
+        let _ = writeln!(
+            s,
+            "| `{}` | {} | {} | {} |",
+            cell(&p(&f.path)),
+            size(f.allocated_bytes),
+            f.kind,
+            &f.modified[..10.min(f.modified.len())]
+        );
     }
 
     // Kinds.
@@ -131,7 +143,13 @@ pub fn markdown(ix: &Index) -> String {
         let _ = writeln!(s, "\n## Nix\n");
         match n.store_bytes {
             Some(b) => {
-                let _ = writeln!(s, "The Nix store (`{}`) holds {} in {} paths.", n.store, size(b), count(n.store_paths.unwrap_or(0)));
+                let _ = writeln!(
+                    s,
+                    "The Nix store (`{}`) holds {} in {} paths.",
+                    n.store,
+                    size(b),
+                    count(n.store_paths.unwrap_or(0))
+                );
             }
             None => {
                 let _ = writeln!(s, "There's a Nix store at `{}` (not measured this time).", n.store);
@@ -156,10 +174,18 @@ pub fn markdown(ix: &Index) -> String {
         ix.schema, ix.version
     );
     let _ = writeln!(s, "- Sizes are allocated bytes: what removing a file frees. Hard links count once.");
-    let _ = writeln!(s, "- Ask the person before acting on anything above `safe`; show them what goes and how much it frees.");
-    let _ = writeln!(s, "- `aizome-kura trash PATH…` moves things to the Trash (reversible, by the freedesktop spec); it refuses the Nix store.");
-    let _ = writeln!(s, "- Never remove paths in `/nix/store`: open Yukimi's Storage (`aizome-yukimi --page storage`).");
-    let _ = writeln!(s, "- `aizome-kura scan` refreshes this report; `aizome-kura hints --json` prints just the hints.");
+    let _ = writeln!(
+        s,
+        "- Ask the person before acting on anything above `safe`; show them what goes and how much it frees."
+    );
+    let _ = writeln!(
+        s,
+        "- `aizome-kura trash PATH…` moves things to the Trash (reversible, by the freedesktop spec); it refuses the Nix store."
+    );
+    let _ =
+        writeln!(s, "- Never remove paths in `/nix/store`: open Yukimi's Storage (`aizome-yukimi --page storage`).");
+    let _ =
+        writeln!(s, "- `aizome-kura scan` refreshes this report; `aizome-kura hints --json` prints just the hints.");
     s
 }
 

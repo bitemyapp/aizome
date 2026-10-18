@@ -24,10 +24,10 @@ use aizome_kit::theme::FontSpec;
 use aizome_kit::widget::Event;
 use aizome_kit::{Icon, Point, Rect, Size, Theme};
 
+use super::Msg;
 use super::colors;
 use super::drag::{DragEvent, SLOP, ZoneCell};
 use super::rings::{self, Geometry, Place, RINGS, Seg, Zoom};
-use super::Msg;
 use crate::format;
 use crate::scan::Scan;
 use crate::tree::NodeId;
@@ -52,7 +52,8 @@ impl Transition {
     /// How far along, 0–1 (eased), or `None` once done.
     pub fn progress(&self, now: Instant) -> Option<f64> {
         let e = now.saturating_duration_since(self.started);
-        (e < self.duration && !self.duration.is_zero()).then(|| rings::ease(e.as_secs_f64() / self.duration.as_secs_f64()))
+        (e < self.duration && !self.duration.is_zero())
+            .then(|| rings::ease(e.as_secs_f64() / self.duration.as_secs_f64()))
     }
 }
 
@@ -72,7 +73,15 @@ pub struct Labels {
 impl Labels {
     fn get(&mut self, theme: &Theme, text: &str, font: FontSpec, color: Color, width: Option<f64>) -> TextLayout {
         let mut h = std::collections::hash_map::DefaultHasher::new();
-        (font.size.to_bits(), font.weight.to_bits(), font.tabular, color.r.to_bits(), color.g.to_bits(), color.b.to_bits(), color.a.to_bits())
+        (
+            font.size.to_bits(),
+            font.weight.to_bits(),
+            font.tabular,
+            color.r.to_bits(),
+            color.g.to_bits(),
+            color.b.to_bits(),
+            color.a.to_bits(),
+        )
             .hash(&mut h);
         width.map(f64::to_bits).hash(&mut h);
         let key = (text.to_owned(), h.finish());
@@ -215,7 +224,8 @@ impl Burst {
                 if let Some((t, from)) = self.press {
                     let node = self.node_of(t)?;
                     if !self.dragging {
-                        return ((*pos - from).hypot() >= SLOP && self.draggable(node)).then_some(Msg::Drag(DragEvent::Start(node)));
+                        return ((*pos - from).hypot() >= SLOP && self.draggable(node))
+                            .then_some(Msg::Drag(DragEvent::Start(node)));
                     }
                     let over = self.in_window(*pos).is_some_and(|p| self.zone.get().is_some_and(|z| z.contains(p)));
                     return (over != self.drag_over).then_some(Msg::Drag(DragEvent::Over(over)));
@@ -328,7 +338,8 @@ impl Burst {
     /// first two rings.
     fn label_segments(&self, canvas: &mut Canvas, theme: &Theme, geo: &Geometry, labels: &mut Labels) {
         let tree = &self.scan.tree;
-        let mut order: Vec<usize> = (0..self.segs.len()).filter(|&i| self.segs[i].depth <= 2 && self.segs[i].node.is_some()).collect();
+        let mut order: Vec<usize> =
+            (0..self.segs.len()).filter(|&i| self.segs[i].depth <= 2 && self.segs[i].node.is_some()).collect();
         order.sort_by(|&a, &b| self.segs[b].span().total_cmp(&self.segs[a].span()));
         let small = theme.metrics.small;
         for i in order.into_iter().take(24) {
@@ -355,7 +366,8 @@ impl Burst {
             let mid = Geometry::angle((seg.x0 + seg.x1) / 2.0);
             let rm = (ri + ro) / 2.0;
             let c = Point::new(geo.center.x + rm * mid.cos(), geo.center.y + rm * mid.sin());
-            let both = Rect::new(c.x - nw.max(sw) / 2.0, c.y - (nh + sh) / 2.0, c.x + nw.max(sw) / 2.0, c.y + (nh + sh) / 2.0);
+            let both =
+                Rect::new(c.x - nw.max(sw) / 2.0, c.y - (nh + sh) / 2.0, c.x + nw.max(sw) / 2.0, c.y + (nh + sh) / 2.0);
             if fits(geo, &seg, ri, ro, both.inflate(3.0, 1.0)) {
                 canvas.draw_text(&name_l, Point::new((c.x - nw / 2.0).round(), both.y0.round()));
                 canvas.draw_text(&size_l, Point::new((c.x - sw / 2.0).round(), (both.y0 + nh).round()));
@@ -418,7 +430,11 @@ impl Burst {
                         } else {
                             crate::kinds::classify(tree.name_bytes(n), false).title().to_owned()
                         };
-                        (tree.name(n).into_owned(), format::size(node.alloc), format!("{what} · {}", format::percent(node.alloc, total)))
+                        (
+                            tree.name(n).into_owned(),
+                            format::size(node.alloc),
+                            format!("{what} · {}", format::percent(node.alloc, total)),
+                        )
                     }
                     None => {
                         let bytes = ((seg.x1 - seg.x0) * total as f64) as u64;
@@ -428,11 +444,16 @@ impl Burst {
             }
             _ => match &self.hint {
                 // A picked hint, in the middle while nothing's pointed at.
-                Some((title, frees)) if self.hover.is_none() => (title.clone(), frees.clone(), "could be freed".to_owned()),
+                Some((title, frees)) if self.hover.is_none() => {
+                    (title.clone(), frees.clone(), "could be freed".to_owned())
+                }
                 _ => {
                     let n = tree.node(self.center);
-                    let title =
-                        if self.center == tree.root() { format::path(tree.root_path()) } else { tree.name(self.center).into_owned() };
+                    let title = if self.center == tree.root() {
+                        format::path(tree.root_path())
+                    } else {
+                        tree.name(self.center).into_owned()
+                    };
                     (title, format::size(n.alloc), format::plural(u64::from(n.items), "item", "items"))
                 }
             },
@@ -486,7 +507,6 @@ fn sector(center: Point, ri: f64, ro: f64, x0: f64, x1: f64) -> CircleSegment {
     let gap = (0.5 / ((ri + ro) / 2.0).max(1.0)).min(span / 4.0);
     CircleSegment::new(center, ro, ri, Geometry::angle(x0) + gap, (span - 2.0 * gap).max(0.0))
 }
-
 
 /// Rectangles that together cover a segment (with room for the selection's
 /// ring): one per eighth of a turn, so a long arc's damage hugs it.

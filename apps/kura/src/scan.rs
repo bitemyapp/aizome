@@ -457,7 +457,8 @@ mod tests {
         let apparent = t.node(root).apparent;
         // The link's target counts once; symlinks count their own length.
         let links = dir.join("a").as_os_str().len() as u64 + 1;
-        let dirs: u64 = ["", "a", "a/b", "a/b/c"].iter().map(|d| fs::symlink_metadata(dir.join(d)).unwrap().size()).sum();
+        let dirs: u64 =
+            ["", "a", "a/b", "a/b/c"].iter().map(|d| fs::symlink_metadata(dir.join(d)).unwrap().size()).sum();
         assert_eq!(apparent, 10_000 + 50_000 + 5 + links + dirs);
         // Whichever name of the hard-linked file came first holds its size.
         let again = t.node(t.find(&dir.join("a/two-again")).unwrap()).apparent;

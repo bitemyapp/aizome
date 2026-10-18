@@ -5,9 +5,9 @@ mod colors;
 pub mod drag;
 mod instance;
 pub mod rings;
-pub mod sunburst;
 mod suggest;
 mod suggest_view;
+pub mod sunburst;
 mod view;
 
 use std::cell::Cell;
@@ -40,7 +40,11 @@ pub fn run(paths: Vec<PathBuf>) {
 }
 
 fn absolute(p: &Path) -> PathBuf {
-    if p.is_absolute() { p.to_path_buf() } else { std::env::current_dir().map(|d| d.join(p)).unwrap_or_else(|_| p.to_path_buf()) }
+    if p.is_absolute() {
+        p.to_path_buf()
+    } else {
+        std::env::current_dir().map(|d| d.join(p)).unwrap_or_else(|_| p.to_path_buf())
+    }
 }
 
 /// Which page shows.
@@ -66,7 +70,10 @@ pub enum IndexState {
     None,
     Writing,
     /// Analysed; written to `json` when there's an index folder.
-    Written { json: Option<PathBuf>, reclaimable: u64 },
+    Written {
+        json: Option<PathBuf>,
+        reclaimable: u64,
+    },
     Failed(String),
 }
 
@@ -138,7 +145,10 @@ pub enum Msg {
     AskTrash,
     Trash,
     /// What moving to the Trash did.
-    Moved { moved: Vec<PathBuf>, refused: Vec<(PathBuf, String)> },
+    Moved {
+        moved: Vec<PathBuf>,
+        refused: Vec<(PathBuf, String)>,
+    },
     Indexed(Result<Analysis, String>),
     // Suggestions.
     ShowSide(Side),
@@ -302,13 +312,19 @@ impl Kura {
     /// A Kura that writes nothing outside `out` (for tests): the index goes
     /// there, the Trash is there, and the Nix store isn't measured.
     pub fn sandboxed(out: &Path) -> Kura {
-        Kura { index_dir: Some(out.join("index")), trash_dir: Some(out.join("Trash")), measure_store: false, ..Kura::new() }
+        Kura {
+            index_dir: Some(out.join("index")),
+            trash_dir: Some(out.join("Trash")),
+            measure_store: false,
+            ..Kura::new()
+        }
     }
 
     /// Show the scanning page with `snapshot` as its progress, without a
     /// scan (for pictures of it).
     pub fn show_progress(&mut self, root: PathBuf, snapshot: ProgressSnapshot) {
-        self.scanning = Some(Scanning { root, progress: Progress::new(), snapshot, started: Instant::now(), timer: None });
+        self.scanning =
+            Some(Scanning { root, progress: Progress::new(), snapshot, started: Instant::now(), timer: None });
         self.page = Page::Scanning;
     }
 
@@ -335,12 +351,17 @@ impl Kura {
         // Down or up one level moves; other jumps cut.
         let started = Instant::now();
         self.transition = match (tree.parent(center), tree.parent(old)) {
-            (Some(p), _) if p == old => Some(Transition { outer: old, inner: center, zoom_in: true, started, duration }),
-            (_, Some(p)) if p == center => Some(Transition { outer: center, inner: old, zoom_in: false, started, duration }),
+            (Some(p), _) if p == old => {
+                Some(Transition { outer: old, inner: center, zoom_in: true, started, duration })
+            }
+            (_, Some(p)) if p == center => {
+                Some(Transition { outer: center, inner: old, zoom_in: false, started, duration })
+            }
             _ => None,
         }
         .filter(|_| !duration.is_zero());
-        self.outer_segs = self.transition.and_then(|t| self.tree().map(|tree| Rc::new(rings::segments(tree, t.outer, RINGS + 1))));
+        self.outer_segs =
+            self.transition.and_then(|t| self.tree().map(|tree| Rc::new(rings::segments(tree, t.outer, RINGS + 1))));
         if self.transition.is_some() {
             cx.after(FRAME, Msg::Frame);
         }
@@ -372,7 +393,9 @@ impl Kura {
             Target::Seg(i) => {
                 let Some(&seg) = self.segs.get(i) else { return };
                 match seg.node {
-                    Some(n) if seg.is_dir && self.tree().is_some_and(|t| t.node(n).count > 0) => self.update(Msg::Open(n), cx),
+                    Some(n) if seg.is_dir && self.tree().is_some_and(|t| t.node(n).count > 0) => {
+                        self.update(Msg::Open(n), cx)
+                    }
                     Some(n) => self.selected = Some(n),
                     // Smaller items: their folder.
                     None if seg.parent != self.center => self.update(Msg::Open(seg.parent), cx),
@@ -392,8 +415,13 @@ impl Kura {
         let options = ScanOptions::new(root.clone());
         cx.spawn(move || Msg::Scanned(scan::scan(options, p).map(Arc::new).map_err(|e| e.to_string())));
         let timer = Some(cx.every(Duration::from_millis(100), Msg::Poll));
-        self.scanning =
-            Some(Scanning { root: root.clone(), progress, snapshot: ProgressSnapshot::default(), started: Instant::now(), timer });
+        self.scanning = Some(Scanning {
+            root: root.clone(),
+            progress,
+            snapshot: ProgressSnapshot::default(),
+            started: Instant::now(),
+            timer,
+        });
         self.last_root = Some(root.clone());
         self.page = Page::Scanning;
         self.notice = None;
@@ -570,7 +598,8 @@ impl Program for Kura {
                 }
             }
             Msg::Rescan => {
-                if let Some(root) = self.tree().map(|t| t.root_path().to_path_buf()).or_else(|| self.last_root.clone()) {
+                if let Some(root) = self.tree().map(|t| t.root_path().to_path_buf()).or_else(|| self.last_root.clone())
+                {
                     self.start_scan(root, cx);
                 }
             }
@@ -766,20 +795,34 @@ impl Program for Kura {
         let scanning = self.scanning.is_some();
         let tree = self.tree();
         let can_up = results && tree.is_some_and(|t| t.parent(self.center).is_some());
-        let sel_dir = results && self.selected.is_some_and(|s| tree.is_some_and(|t| t.node(s).is_dir() && t.node(s).count > 0));
+        let sel_dir =
+            results && self.selected.is_some_and(|s| tree.is_some_and(|t| t.node(s).is_dir() && t.node(s).count > 0));
         let selected = results && self.selected.is_some();
         let file = Menu::new("File")
             .item(MenuItem::new("Scan Home Folder", Msg::ScanHome).shortcut(Shortcut::cmd('N')))
             .item(MenuItem::new("Scan Folder…", Msg::ChooseFolder).shortcut(Shortcut::cmd('O')))
             .item(MenuItem::new("Show Disks", Msg::ShowDisks).shortcut(Shortcut::cmd('D')))
             .separator()
-            .item(MenuItem::new("Rescan", Msg::Rescan).shortcut(Shortcut::cmd('R')).enabled(!scanning && self.last_root.is_some()))
+            .item(
+                MenuItem::new("Rescan", Msg::Rescan)
+                    .shortcut(Shortcut::cmd('R'))
+                    .enabled(!scanning && self.last_root.is_some()),
+            )
             .item(MenuItem::new("Stop Scanning", Msg::Stop).shortcut(Shortcut::cmd('.')).enabled(scanning))
             .separator()
-            .item(MenuItem::new("Open Report for Agents", Msg::OpenReport).enabled(matches!(self.index, IndexState::Written { .. })));
+            .item(
+                MenuItem::new("Open Report for Agents", Msg::OpenReport)
+                    .enabled(matches!(self.index, IndexState::Written { .. })),
+            );
         let go = Menu::new("Go")
-            .item(MenuItem::new("Enclosing Folder", Msg::Up).shortcut(Shortcut::cmd_key(ShortcutKey::Up)).enabled(can_up))
-            .item(MenuItem::new("Open Selected", Msg::OpenSelected).shortcut(Shortcut::cmd_key(ShortcutKey::Down)).enabled(sel_dir))
+            .item(
+                MenuItem::new("Enclosing Folder", Msg::Up).shortcut(Shortcut::cmd_key(ShortcutKey::Up)).enabled(can_up),
+            )
+            .item(
+                MenuItem::new("Open Selected", Msg::OpenSelected)
+                    .shortcut(Shortcut::cmd_key(ShortcutKey::Down))
+                    .enabled(sel_dir),
+            )
             .item(MenuItem::new("Top", Msg::Top).shortcut(Shortcut::cmd_key(ShortcutKey::Up).shift()).enabled(can_up));
         let sel = self.selected.unwrap_or(NodeId::ROOT);
         let items = Menu::new("Items")
@@ -794,7 +837,9 @@ impl Program for Kura {
             .item(MenuItem::new("Reveal in Files", Msg::Reveal(sel)).enabled(selected))
             .item(MenuItem::new("Copy Path", Msg::CopyPath(sel)).shortcut(Shortcut::cmd('C').shift()).enabled(selected))
             .separator()
-            .item(MenuItem::new("Open Yukimi's Storage", Msg::OpenYukimi).icon(Icon::Snowflake).enabled(self.has_store));
+            .item(
+                MenuItem::new("Open Yukimi's Storage", Msg::OpenYukimi).icon(Icon::Snowflake).enabled(self.has_store),
+            );
         MenuBar::standard(&self.info()).with_file_menu(file).with_menu(go).with_menu(items)
     }
 }

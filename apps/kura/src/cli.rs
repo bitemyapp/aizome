@@ -66,7 +66,8 @@ pub const COMMANDS: [&str; 4] = ["scan", "report", "hints", "trash"];
 
 /// Whether these arguments are for the command line (else the window).
 pub fn is_cli(args: &[String]) -> bool {
-    args.first().is_some_and(|a| COMMANDS.contains(&a.as_str()) || matches!(a.as_str(), "-h" | "--help" | "-V" | "--version"))
+    args.first()
+        .is_some_and(|a| COMMANDS.contains(&a.as_str()) || matches!(a.as_str(), "-h" | "--help" | "-V" | "--version"))
 }
 
 pub fn parse(args: &[String]) -> Result<Args, String> {
@@ -142,7 +143,10 @@ pub fn run(args: &[String]) -> i32 {
 }
 
 fn output_dir(a: &Args) -> Result<PathBuf, String> {
-    a.output.clone().or_else(index::default_dir).ok_or_else(|| "no cache folder: set HOME or XDG_CACHE_HOME, or pass --output".into())
+    a.output
+        .clone()
+        .or_else(index::default_dir)
+        .ok_or_else(|| "no cache folder: set HOME or XDG_CACHE_HOME, or pass --output".into())
 }
 
 fn scan_root(a: &Args) -> Result<PathBuf, String> {
@@ -158,7 +162,8 @@ fn scan_and_write(a: &Args, root: &Path) -> Result<(Index, PathBuf, PathBuf), St
     let progress = Progress::new();
     let show = !a.quiet && std::io::stderr().is_terminal();
     let ticker = show.then(|| spawn_ticker(progress.clone()));
-    let options = ScanOptions { root: root.to_path_buf(), cross_filesystems: a.cross, threads: a.threads, skip: Vec::new() };
+    let options =
+        ScanOptions { root: root.to_path_buf(), cross_filesystems: a.cross, threads: a.threads, skip: Vec::new() };
     let result = scan::scan(options, progress.clone());
     if let Some((stop, handle)) = ticker {
         stop.store(true, std::sync::atomic::Ordering::Relaxed);
@@ -172,7 +177,8 @@ fn scan_and_write(a: &Args, root: &Path) -> Result<(Index, PathBuf, PathBuf), St
     let mut cx = crate::context(a.nix, Some(&dir));
     cx.duplicates = a.duplicates;
     cx.dupe_limits.threads = scan.threads.min(8);
-    let limits = a.depth.map(|d| TreeLimits { max_depth: d, ..TreeLimits::for_total(scan.tree.node(scan.tree.root()).alloc) });
+    let limits =
+        a.depth.map(|d| TreeLimits { max_depth: d, ..TreeLimits::for_total(scan.tree.node(scan.tree.root()).alloc) });
     let ix = crate::analyse(&scan, &cx, limits);
     if show {
         eprint!("\r\x1b[2K");
@@ -290,7 +296,8 @@ fn cmd_hints(a: &Args) -> Result<i32, String> {
             println!("  {}", h.action.description);
         }
         for p in h.paths.iter().take(5) {
-            let size_s = if p.allocated_bytes > 0 { format!("{:>9}  ", size(p.allocated_bytes)) } else { String::new() };
+            let size_s =
+                if p.allocated_bytes > 0 { format!("{:>9}  ", size(p.allocated_bytes)) } else { String::new() };
             println!("    {size_s}{}", format::path(Path::new(&p.path)));
         }
         let more = h.paths.len().saturating_sub(5) as u64 + h.more_paths;

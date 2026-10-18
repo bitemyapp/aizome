@@ -329,13 +329,21 @@ pub fn build(scan: &Scan, hints: Vec<Hint>, cx: &hints::Context, limits: Option<
             allocated_bytes: n.alloc,
             apparent_bytes: n.apparent,
             modified: time::rfc3339(n.mtime),
-            kind: if n.is_dir() { "directory".into() } else { kinds::classify(tree.name_bytes(id), git[id.index()]).id().into() },
+            kind: if n.is_dir() {
+                "directory".into()
+            } else {
+                kinds::classify(tree.name_bytes(id), git[id.index()]).id().into()
+            },
             items: n.is_dir().then_some(u64::from(n.items)),
         }
     };
-    let largest_files: Vec<Item> = largest(tree, 500, |id| tree.node(id).kind == Kind::File && !gone[id.index()]).into_iter().map(item).collect();
+    let largest_files: Vec<Item> =
+        largest(tree, 500, |id| tree.node(id).kind == Kind::File && !gone[id.index()]).into_iter().map(item).collect();
     let largest_directories: Vec<Item> =
-        largest(tree, 500, |id| id != NodeId::ROOT && tree.node(id).is_dir() && !gone[id.index()]).into_iter().map(item).collect();
+        largest(tree, 500, |id| id != NodeId::ROOT && tree.node(id).is_dir() && !gone[id.index()])
+            .into_iter()
+            .map(item)
+            .collect();
 
     let by = hints::by_risk(&hints);
     let reclaimable = Reclaimable {

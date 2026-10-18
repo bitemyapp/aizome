@@ -15,7 +15,6 @@ use aizome_kit::{Constraints, column, row};
 
 use super::drag::{self, RowActions};
 use super::sunburst::Burst;
-use std::time::Instant;
 use super::{IndexState, Kura, Msg, Page, Side, colors, suggest_view};
 use crate::format;
 use crate::kinds::{self, FileKind};
@@ -23,7 +22,7 @@ use crate::mounts::Mount;
 use crate::nix;
 use crate::scan::Scan;
 use crate::tree::NodeId;
-
+use std::time::Instant;
 
 pub const SIDE: f64 = 340.0;
 pub const COLLECTOR: f64 = 214.0;
@@ -75,7 +74,11 @@ fn status(k: &Kura) -> Element<Msg> {
         IndexState::Failed(e) => format!("The index for agents wasn't written: {e}"),
     };
     aizome_kit::status_bar(vec![
-        text(left).size(11.5).role(if k.notice.is_some() { Role::Text } else { Role::Text3 }).width(Length::Fill).into(),
+        text(left)
+            .size(11.5)
+            .role(if k.notice.is_some() { Role::Text } else { Role::Text3 })
+            .width(Length::Fill)
+            .into(),
         aizome_kit::status_text(right),
     ])
 }
@@ -131,7 +134,9 @@ fn disk_card(m: &Mount) -> Element<Msg> {
     card(
         row![
             icon(Icon::HardDrive).size(24.0).role(Role::Accent),
-            column![text(m.title()).semibold(), text(detail).size(11.5).role(Role::Text3)].spacing(2.0).width(Length::Fill),
+            column![text(m.title()).semibold(), text(detail).size(11.5).role(Role::Text3)]
+                .spacing(2.0)
+                .width(Length::Fill),
             column![progress(m.used_fraction()).width(200.0), text(free).size(11.5).tabular().role(Role::Text2)]
                 .spacing(4.0)
                 .align(Align::End),
@@ -180,7 +185,11 @@ fn scanning(k: &Kura) -> Element<Msg> {
         text(format!("Scanning {}", format::path(&s.root))).semibold().into(),
         spacer().into(),
     ]);
-    let current = p.current.strip_prefix(&s.root).map(|r| r.display().to_string()).unwrap_or_else(|_| p.current.display().to_string());
+    let current = p
+        .current
+        .strip_prefix(&s.root)
+        .map(|r| r.display().to_string())
+        .unwrap_or_else(|_| p.current.display().to_string());
     let body = column![
         text(format::size(p.bytes)).size(34.0).weight(650.0).tabular(),
         text(format!("{} · {}", format::plural(p.files, "file", "files"), format::plural(p.dirs, "folder", "folders")))
@@ -235,7 +244,9 @@ fn results(k: &Kura) -> Element<Msg> {
     items.extend(crumbs);
     items.push(spacer().into());
     items.push(suggest_view::toolbar_button(k));
-    items.push(icon_button(Icon::RefreshCw).toolbar().on_press(Msg::Rescan).tooltip("Rescan (❖R)").label("Rescan").into());
+    items.push(
+        icon_button(Icon::RefreshCw).toolbar().on_press(Msg::Rescan).tooltip("Rescan (❖R)").label("Rescan").into(),
+    );
     let bar = toolbar(items);
 
     let state = Burst {
@@ -272,11 +283,15 @@ fn results(k: &Kura) -> Element<Msg> {
         .into();
 
     let side: Element<Msg> = match k.side {
-        Side::Contents => column![side_switch(k), list_header(), nix_note(k, &scan), folder_list(k, scan.clone()), collector(k)]
-            .width(SIDE)
-            .height(Length::Fill)
-            .into(),
-        Side::Suggestions => column![side_switch(k), suggest_view::panel(k)].width(suggest_view::WIDTH).height(Length::Fill).into(),
+        Side::Contents => {
+            column![side_switch(k), list_header(), nix_note(k, &scan), folder_list(k, scan.clone()), collector(k)]
+                .width(SIDE)
+                .height(Length::Fill)
+                .into()
+        }
+        Side::Suggestions => {
+            column![side_switch(k), suggest_view::panel(k)].width(suggest_view::WIDTH).height(Length::Fill).into()
+        }
     };
     let main = row![
         container(burst).fill(Tone::Surface).width(Length::Fill).height(Length::Fill),
@@ -309,7 +324,8 @@ fn nix_note(k: &Kura, scan: &Scan) -> Element<Msg> {
     }
     container(
         column![
-            row![icon(Icon::Snowflake).size(14.0).role(Role::Cyan), text("The Nix store").semibold().size(12.0)].spacing(6.0),
+            row![icon(Icon::Snowflake).size(14.0).role(Role::Cyan), text("The Nix store").semibold().size(12.0)]
+                .spacing(6.0),
             text("Store paths go when Yukimi collects the garbage, never by hand.").size(11.5).role(Role::Text2).wrap(),
             button("Open Yukimi's Storage").compact().on_press(Msg::OpenYukimi),
         ]
@@ -375,7 +391,12 @@ fn folder_list(k: &Kura, scan: Arc<Scan>) -> Element<Msg> {
             text(name).width(Length::Fill),
             mark,
             text(format::percent(nd.alloc, total)).size(11.0).tabular().role(Role::Text3),
-            text(format::size(nd.alloc)).size(11.5).tabular().role(Role::Text2).width(64.0).align(aizome_kit::sidestep_ui::Alignment::Right),
+            text(format::size(nd.alloc))
+                .size(11.5)
+                .tabular()
+                .role(Role::Text2)
+                .width(64.0)
+                .align(aizome_kit::sidestep_ui::Alignment::Right),
         ]
         .spacing(6.0)
         .padding([0.0, 8.0])
@@ -440,14 +461,17 @@ fn collector(k: &Kura) -> Element<Msg> {
         } else {
             "Drag items here, or right-click one and choose Collect"
         };
-        Element::new(Dashed { lit: k.drag_over, target }, vec![
-            container(text(words).size(11.5).role(if target { Role::Text } else { Role::Text3 }).center().wrap())
-                .center()
-                .padding(8.0)
-                .width(Length::Fill)
-                .height(Length::Fill)
-                .into(),
-        ])
+        Element::new(
+            Dashed { lit: k.drag_over, target },
+            vec![
+                container(text(words).size(11.5).role(if target { Role::Text } else { Role::Text3 }).center().wrap())
+                    .center()
+                    .padding(8.0)
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+                    .into(),
+            ],
+        )
         .width(Length::Fill)
         .height(Length::Fill)
     } else {

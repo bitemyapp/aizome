@@ -429,7 +429,8 @@ mod tests {
     fn sums_and_sorts_keeping_parents() {
         let mut t = Tree::new(PathBuf::from("/r"), Kind::Dir, 4, 4, 0);
         // root: a (dir), b (file 100), c (dir)
-        let first = t.push_children(NodeId::ROOT, &[e("a", Kind::Dir, 4), e("b", Kind::File, 100), e("c", Kind::Dir, 4)]);
+        let first =
+            t.push_children(NodeId::ROOT, &[e("a", Kind::Dir, 4), e("b", Kind::File, 100), e("c", Kind::Dir, 4)]);
         let (a, c) = (NodeId(first), NodeId(first + 2));
         t.push_children(a, &[e("a1", Kind::File, 10), e("a2", Kind::File, 1000)]);
         let cf = t.push_children(c, &[e("c1", Kind::Dir, 4)]);
@@ -464,7 +465,8 @@ mod tests {
 
         // The folder scanned again: one file went, two came, one deeper.
         let mut sub = Tree::new(PathBuf::from("/r/dir"), Kind::Dir, 0, 0, 0);
-        let s = sub.push_children(NodeId::ROOT, &[e("old-a", Kind::File, 100), e("new", Kind::Dir, 0), e("c", Kind::File, 1)]);
+        let s = sub
+            .push_children(NodeId::ROOT, &[e("old-a", Kind::File, 100), e("new", Kind::Dir, 0), e("c", Kind::File, 1)]);
         sub.push_children(NodeId(s + 1), &[e("deep", Kind::File, 7)]);
         sub.finish();
         t.graft(dir, &sub);
@@ -479,7 +481,8 @@ mod tests {
         assert!(t.find(Path::new("/r/dir/old-b")).is_none());
         // What was there is gone from every count.
         let gone = t.gone();
-        let live: u64 = t.nodes().iter().enumerate().filter(|(i, n)| !gone[*i] && n.kind == Kind::File).map(|(_, n)| n.alloc).sum();
+        let live: u64 =
+            t.nodes().iter().enumerate().filter(|(i, n)| !gone[*i] && n.kind == Kind::File).map(|(_, n)| n.alloc).sum();
         assert_eq!(live, 118);
         for i in 1..t.len() {
             assert!(t.nodes()[i].parent < i as u32, "children come after their parents");

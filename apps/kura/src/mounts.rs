@@ -41,15 +41,42 @@ impl Mount {
         {
             return "Home".into();
         }
-        self.mount_point.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| self.mount_point.display().to_string())
+        self.mount_point
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| self.mount_point.display().to_string())
     }
 }
 
 /// Filesystems that hold no files on any disk: never scanned, never listed.
 pub const PSEUDO: &[&str] = &[
-    "proc", "sysfs", "devtmpfs", "devpts", "cgroup", "cgroup2", "securityfs", "debugfs", "tracefs", "fusectl",
-    "configfs", "bpf", "mqueue", "hugetlbfs", "pstore", "efivarfs", "autofs", "binfmt_misc", "rpc_pipefs", "nsfs",
-    "selinuxfs", "ramfs", "fuse.portal", "fuse.gvfsd-fuse", "overlay", "squashfs", "nfsd",
+    "proc",
+    "sysfs",
+    "devtmpfs",
+    "devpts",
+    "cgroup",
+    "cgroup2",
+    "securityfs",
+    "debugfs",
+    "tracefs",
+    "fusectl",
+    "configfs",
+    "bpf",
+    "mqueue",
+    "hugetlbfs",
+    "pstore",
+    "efivarfs",
+    "autofs",
+    "binfmt_misc",
+    "rpc_pipefs",
+    "nsfs",
+    "selinuxfs",
+    "ramfs",
+    "fuse.portal",
+    "fuse.gvfsd-fuse",
+    "overlay",
+    "squashfs",
+    "nfsd",
 ];
 
 /// Whether a filesystem type is a pseudo-filesystem.
@@ -163,7 +190,15 @@ pub fn mount_of(path: &Path) -> Option<Mount> {
     let (point, source, fs_type, ro) =
         all.into_iter().filter(|(p, ..)| path.starts_with(p)).max_by_key(|(p, ..)| p.as_os_str().len())?;
     let (total, free, avail) = space(path).unwrap_or((0, 0, 0));
-    Some(Mount { mount_point: point, source, fs_type, total_bytes: total, free_bytes: free, available_bytes: avail, read_only: ro })
+    Some(Mount {
+        mount_point: point,
+        source,
+        fs_type,
+        total_bytes: total,
+        free_bytes: free,
+        available_bytes: avail,
+        read_only: ro,
+    })
 }
 
 #[cfg(test)]

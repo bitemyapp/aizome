@@ -39,41 +39,121 @@ enum Fake {
 use Fake::{D, F};
 
 fn many(prefix: &'static str, n: usize, each: u64) -> Vec<Fake> {
-    (0..n).map(|i| F(Box::leak(format!("{prefix}-{i:03}.jpg").into_boxed_str()), each + (i as u64 * 7919) % (each / 3 + 1))).collect()
+    (0..n)
+        .map(|i| {
+            F(Box::leak(format!("{prefix}-{i:03}.jpg").into_boxed_str()), each + (i as u64 * 7919) % (each / 3 + 1))
+        })
+        .collect()
 }
 
 fn home() -> Fake {
-    D("/home/sekka", vec![
-        D("work", vec![
-            D("aizome", vec![
-                D("target", vec![D("debug", vec![
-                    D("deps", vec![F("libsidestep_ui.rlib", 9 * GB), F("libsmithay.rlib", 6 * GB), F("aizome-comp", 4 * GB)]),
-                    D("build", vec![F("out.o", 5 * GB)]),
-                    D("incremental", vec![F("state.bin", 3 * GB)]),
-                ])]),
-                D("crates", vec![F("lib.rs", 2 * MB), F("main.rs", MB)]),
-                F("Cargo.toml", 4096),
-            ]),
-            D("sekka", vec![D("result", vec![F("system.img", 3 * GB)]), D("desktop", vec![F("wallpapers.tar", 2 * GB)]), F("flake.lock", 8192)]),
-            D("notes", vec![F("plan.md", 40_000)]),
-        ]),
-        D("Videos", vec![F("holiday-2025.mkv", 8 * GB), F("conference-talk.mp4", 3 * GB), D("clips", vec![F("a.mp4", GB), F("b.mp4", 700 * MB)])]),
-        D("Pictures", vec![D("2025", many("IMG", 60, 90 * MB)), D("wallpapers", many("wall", 12, 40 * MB))]),
-        D("Downloads", vec![F("sekka-nightly.iso", 3 * GB + 400 * MB), F("old-backup.zip", 1200 * MB), F("installer.AppImage", 400 * MB)]),
-        D(".cache", vec![D("google-chrome", vec![F("data_1", 1900 * MB)]), D("pip", vec![F("wheels", 800 * MB)]), D("nix", vec![F("eval.sqlite", 600 * MB)])]),
-        D(".local", vec![D("share", vec![D("containers", vec![F("layers.tar", 4 * GB)]), D("Trash", vec![F("old-vm.qcow2", 1100 * MB)])])]),
-        D("Documents", vec![F("thesis.pdf", 30 * MB), F("taxes-2025.pdf", 4 * MB), D("scans", many("scan", 20, 15 * MB))]),
-        D("Music", vec![D("albums", many("track", 40, 60 * MB))]),
-        F(".bash_history", 200_000),
-    ])
+    D(
+        "/home/sekka",
+        vec![
+            D(
+                "work",
+                vec![
+                    D(
+                        "aizome",
+                        vec![
+                            D(
+                                "target",
+                                vec![D(
+                                    "debug",
+                                    vec![
+                                        D(
+                                            "deps",
+                                            vec![
+                                                F("libsidestep_ui.rlib", 9 * GB),
+                                                F("libsmithay.rlib", 6 * GB),
+                                                F("aizome-comp", 4 * GB),
+                                            ],
+                                        ),
+                                        D("build", vec![F("out.o", 5 * GB)]),
+                                        D("incremental", vec![F("state.bin", 3 * GB)]),
+                                    ],
+                                )],
+                            ),
+                            D("crates", vec![F("lib.rs", 2 * MB), F("main.rs", MB)]),
+                            F("Cargo.toml", 4096),
+                        ],
+                    ),
+                    D(
+                        "sekka",
+                        vec![
+                            D("result", vec![F("system.img", 3 * GB)]),
+                            D("desktop", vec![F("wallpapers.tar", 2 * GB)]),
+                            F("flake.lock", 8192),
+                        ],
+                    ),
+                    D("notes", vec![F("plan.md", 40_000)]),
+                ],
+            ),
+            D(
+                "Videos",
+                vec![
+                    F("holiday-2025.mkv", 8 * GB),
+                    F("conference-talk.mp4", 3 * GB),
+                    D("clips", vec![F("a.mp4", GB), F("b.mp4", 700 * MB)]),
+                ],
+            ),
+            D("Pictures", vec![D("2025", many("IMG", 60, 90 * MB)), D("wallpapers", many("wall", 12, 40 * MB))]),
+            D(
+                "Downloads",
+                vec![
+                    F("sekka-nightly.iso", 3 * GB + 400 * MB),
+                    F("old-backup.zip", 1200 * MB),
+                    F("installer.AppImage", 400 * MB),
+                ],
+            ),
+            D(
+                ".cache",
+                vec![
+                    D("google-chrome", vec![F("data_1", 1900 * MB)]),
+                    D("pip", vec![F("wheels", 800 * MB)]),
+                    D("nix", vec![F("eval.sqlite", 600 * MB)]),
+                ],
+            ),
+            D(
+                ".local",
+                vec![D(
+                    "share",
+                    vec![
+                        D("containers", vec![F("layers.tar", 4 * GB)]),
+                        D("Trash", vec![F("old-vm.qcow2", 1100 * MB)]),
+                    ],
+                )],
+            ),
+            D(
+                "Documents",
+                vec![F("thesis.pdf", 30 * MB), F("taxes-2025.pdf", 4 * MB), D("scans", many("scan", 20, 15 * MB))],
+            ),
+            D("Music", vec![D("albums", many("track", 40, 60 * MB))]),
+            F(".bash_history", 200_000),
+        ],
+    )
 }
 
 fn push(t: &mut Tree, at: NodeId, kids: &[Fake]) {
     let entries: Vec<Entry> = kids
         .iter()
         .map(|k| match k {
-            F(n, s) => Entry { name: n.as_bytes().to_vec(), kind: Kind::File, flags: 0, alloc: *s, apparent: *s, mtime: 1_760_000_000 },
-            D(n, _) => Entry { name: n.as_bytes().to_vec(), kind: Kind::Dir, flags: 0, alloc: 4096, apparent: 4096, mtime: 1_760_000_000 },
+            F(n, s) => Entry {
+                name: n.as_bytes().to_vec(),
+                kind: Kind::File,
+                flags: 0,
+                alloc: *s,
+                apparent: *s,
+                mtime: 1_760_000_000,
+            },
+            D(n, _) => Entry {
+                name: n.as_bytes().to_vec(),
+                kind: Kind::Dir,
+                flags: 0,
+                alloc: 4096,
+                apparent: 4096,
+                mtime: 1_760_000_000,
+            },
         })
         .collect();
     let first = t.push_children(at, &entries);
@@ -207,7 +287,13 @@ fn scanning_page() {
     let w = h.window();
     h.program_mut().show_progress(
         PathBuf::from("/home/sekka"),
-        ProgressSnapshot { files: 412_331, dirs: 38_212, bytes: 182_400_000_000, errors: 0, current: PathBuf::from("/home/sekka/work/aizome/target/debug/deps") },
+        ProgressSnapshot {
+            files: 412_331,
+            dirs: 38_212,
+            bytes: 182_400_000_000,
+            errors: 0,
+            current: PathBuf::from("/home/sekka/work/aizome/target/debug/deps"),
+        },
     );
     h.send(Msg::Dismiss);
     assert!(h.texts(w).iter().any(|t| t == "412,331 files · 38,212 folders"));
@@ -317,7 +403,9 @@ fn moving_to_the_trash_and_writing_the_index() {
     k.duplicates = false;
     let mut h = Harness::new(k);
     h.send(Msg::Scan(home.clone()));
-    settle(&mut h, |k| k.page == Page::Results && k.busy == 0 && matches!(k.index, kura::ui::IndexState::Written { .. }));
+    settle(&mut h, |k| {
+        k.page == Page::Results && k.busy == 0 && matches!(k.index, kura::ui::IndexState::Written { .. })
+    });
     let index = out.join("index/index.json");
     assert!(index.exists() && out.join("index/index.md").exists());
     let before = h.program().tree().unwrap().node(NodeId::ROOT).alloc;
@@ -325,7 +413,9 @@ fn moving_to_the_trash_and_writing_the_index() {
     let big = h.program().tree().unwrap().find(&home.join("big")).unwrap();
     h.send(Msg::Collect(big));
     h.send(Msg::Trash);
-    settle(&mut h, |k| k.collector.is_empty() && k.busy == 0 && matches!(k.index, kura::ui::IndexState::Written { .. }));
+    settle(&mut h, |k| {
+        k.collector.is_empty() && k.busy == 0 && matches!(k.index, kura::ui::IndexState::Written { .. })
+    });
     assert!(!home.join("big").exists());
     assert!(out.join("Trash/files/big/blob.bin").exists());
     assert!(out.join("Trash/info/big.trashinfo").exists());
@@ -343,7 +433,14 @@ fn moving_to_the_trash_and_writing_the_index() {
 fn the_nix_store_is_never_collected() {
     let out = scratch("store");
     let mut h = kura(&out, night());
-    let e = |n: &str, k: Kind, a: u64| Entry { name: n.as_bytes().to_vec(), kind: k, flags: 0, alloc: a, apparent: a, mtime: 0 };
+    let e = |n: &str, k: Kind, a: u64| Entry {
+        name: n.as_bytes().to_vec(),
+        kind: k,
+        flags: 0,
+        alloc: a,
+        apparent: a,
+        mtime: 0,
+    };
     let mut t = Tree::new(PathBuf::from("/nix"), Kind::Dir, 4096, 4096, 0);
     let s = t.push_children(NodeId::ROOT, &[e("store", Kind::Dir, 4096), e("var", Kind::Dir, 4096)]);
     t.push_children(NodeId(s), &[e("abc123-firefox-140", Kind::Dir, 300 * MB)]);
@@ -381,7 +478,8 @@ fn big_scan() -> Arc<Scan> {
         seed ^= seed << 17;
         seed
     };
-    let dir = |n: String| Entry { name: n.into_bytes(), kind: Kind::Dir, flags: 0, alloc: 4096, apparent: 4096, mtime: 0 };
+    let dir =
+        |n: String| Entry { name: n.into_bytes(), kind: Kind::Dir, flags: 0, alloc: 4096, apparent: 4096, mtime: 0 };
     let top = t.push_children(NodeId::ROOT, &(0..12).map(|i| dir(format!("top-{i}"))).collect::<Vec<_>>());
     for a in 0..12 {
         let mid = t.push_children(NodeId(top + a), &(0..8).map(|i| dir(format!("mid-{i}"))).collect::<Vec<_>>());
@@ -391,7 +489,14 @@ fn big_scan() -> Arc<Scan> {
                 let files: Vec<Entry> = (0..30)
                     .map(|i| {
                         let s = (rand() % 50_000_000) * (1 + (a as u64 % 4)) * (1 + (i as u64 % 3));
-                        Entry { name: format!("file-{i}.bin").into_bytes(), kind: Kind::File, flags: 0, alloc: s, apparent: s, mtime: 0 }
+                        Entry {
+                            name: format!("file-{i}.bin").into_bytes(),
+                            kind: Kind::File,
+                            flags: 0,
+                            alloc: s,
+                            apparent: s,
+                            mtime: 0,
+                        }
                     })
                     .collect();
                 t.push_children(NodeId(low + c), &files);
@@ -427,7 +532,13 @@ fn frame(h: &mut Harness<Kura>, act: impl FnOnce(&mut Harness<Kura>)) -> Option<
 fn report(what: &str, mut frames: Vec<Duration>) -> Duration {
     frames.sort();
     let p = |q: f64| frames[((frames.len() - 1) as f64 * q) as usize];
-    eprintln!("kura {what}: p50 {:?} p95 {:?} max {:?} (n={}, at 2x)", p(0.5), p(0.95), frames.last().unwrap(), frames.len());
+    eprintln!(
+        "kura {what}: p50 {:?} p95 {:?} max {:?} (n={}, at 2x)",
+        p(0.5),
+        p(0.95),
+        frames.last().unwrap(),
+        frames.len()
+    );
     p(0.5)
 }
 
@@ -486,7 +597,11 @@ fn hovering_and_going_down_fit_the_frame_budget() {
     h.click(w, row.center());
     let mut keys = Vec::new();
     for i in 0..40 {
-        let k = if i % 20 < 10 { aizome_kit::sidestep_ui::NamedKey::ArrowDown } else { aizome_kit::sidestep_ui::NamedKey::ArrowUp };
+        let k = if i % 20 < 10 {
+            aizome_kit::sidestep_ui::NamedKey::ArrowDown
+        } else {
+            aizome_kit::sidestep_ui::NamedKey::ArrowUp
+        };
         if let Some(d) = frame(&mut h, |h| h.named(w, k, aizome_kit::sidestep_ui::Modifiers::NONE)) {
             keys.push(d);
         }
@@ -626,7 +741,13 @@ fn what_drawing_the_rings_costs() {
             let sweep = s.span() * std::f64::consts::TAU;
             let n = if pieces { (sweep / (64.0 / ro).min(0.35)).ceil().max(1.0) as usize } else { 1 };
             for k in 0..n {
-                let seg = aizome_kit::sidestep_ui::kurbo::CircleSegment::new(g.center, ro, ri, a0 + sweep * k as f64 / n as f64, sweep / n as f64);
+                let seg = aizome_kit::sidestep_ui::kurbo::CircleSegment::new(
+                    g.center,
+                    ro,
+                    ri,
+                    a0 + sweep * k as f64 / n as f64,
+                    sweep / n as f64,
+                );
                 c.fill(&seg, surface);
             }
         }
@@ -653,7 +774,11 @@ fn pictures_of_the_rings_moving() {
     h.click(w, p);
     for (i, at) in [20u64, 40, 60].into_iter().enumerate() {
         let t = h.program().transition.unwrap();
-        h.program_mut().transition = Some(kura::ui::sunburst::Transition { started: std::time::Instant::now() - Duration::from_millis(at), duration: Duration::from_millis(80), ..t });
+        h.program_mut().transition = Some(kura::ui::sunburst::Transition {
+            started: std::time::Instant::now() - Duration::from_millis(at),
+            duration: Duration::from_millis(80),
+            ..t
+        });
         h.send(Msg::Dismiss);
         h.save_png(w, dir.join(format!("moving-{i}.png")), 1.0);
     }
@@ -747,7 +872,14 @@ fn hp(path: &str, bytes: u64, note: Option<&str>) -> kura::hints::HintPath {
     }
 }
 
-fn hint(id: &str, title: &str, summary: &str, risk: kura::hints::Risk, kind: kura::hints::ActionKind, paths: Vec<kura::hints::HintPath>) -> kura::hints::Hint {
+fn hint(
+    id: &str,
+    title: &str,
+    summary: &str,
+    risk: kura::hints::Risk,
+    kind: kura::hints::ActionKind,
+    paths: Vec<kura::hints::HintPath>,
+) -> kura::hints::Hint {
     kura::hints::Hint {
         id: id.into(),
         title: title.into(),
@@ -781,7 +913,10 @@ fn fake_hints() -> Vec<kura::hints::Hint> {
         "Downloads that pip and Nix keep so the next build needn't fetch them. They're fetched again when needed.",
         R::Safe,
         K::Command,
-        vec![hp("/home/sekka/.cache/pip", 800 * MB, Some("pip's cache")), hp("/home/sekka/.cache/nix", 600 * MB, Some("Nix's evaluation and download caches"))],
+        vec![
+            hp("/home/sekka/.cache/pip", 800 * MB, Some("pip's cache")),
+            hp("/home/sekka/.cache/nix", 600 * MB, Some("Nix's evaluation and download caches")),
+        ],
     );
     let browser = hint(
         "browser-caches",
@@ -877,7 +1012,13 @@ fn suggestions_list_the_hints_and_light_their_paths() {
     assert!(h.texts(w).iter().any(|t| t.ends_with("to free")), "the toolbar says what could be freed");
     h.send(Msg::ShowSide(kura::ui::Side::Suggestions));
     let texts = h.texts(w);
-    for t in ["Build outputs and dependencies", "Old Nix generations", "Duplicate files", "podman image prune", "Empty Trash…"] {
+    for t in [
+        "Build outputs and dependencies",
+        "Old Nix generations",
+        "Duplicate files",
+        "podman image prune",
+        "Empty Trash…",
+    ] {
         assert!(texts.iter().any(|x| x == t), "{t} in {texts:?}");
     }
 
@@ -994,7 +1135,9 @@ fn suggested_actions_ask_then_act_and_rescan_what_they_touched() {
     // Build outputs: asked first; nothing moves until the yes.
     let b = hint_named(&h, "build-outputs");
     h.send(Msg::Act(b));
-    assert!(matches!(&h.program().pending, Some(kura::ui::Pending::Trash { paths, .. }) if paths == &[home.join("proj/target")]));
+    assert!(
+        matches!(&h.program().pending, Some(kura::ui::Pending::Trash { paths, .. }) if paths == &[home.join("proj/target")])
+    );
     assert!(home.join("proj/target").exists());
     // "Cancel" leaves it.
     h.send(Msg::CancelPending);

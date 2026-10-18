@@ -137,7 +137,11 @@ impl Kura {
         if let (Some(i), Some(tree)) = (self.hint_index(), self.tree()) {
             let gone = tree.gone();
             let h = &self.analysis.hints[i];
-            let paths = h.paths.iter().map(|p| p.path.as_str()).chain(h.groups.iter().flat_map(|g| g.paths.iter().map(String::as_str)));
+            let paths = h
+                .paths
+                .iter()
+                .map(|p| p.path.as_str())
+                .chain(h.groups.iter().flat_map(|g| g.paths.iter().map(String::as_str)));
             for p in paths {
                 if let Some(n) = tree.find(Path::new(p))
                     && !gone[n.index()]
@@ -224,11 +228,13 @@ impl Kura {
     pub(super) fn ask_group(&mut self, i: usize, g: usize, cx: &mut Cx<Msg>) {
         let Some(group) = self.analysis.hints.get(i).and_then(|h| h.groups.get(g)).cloned() else { return };
         let kept = self.kept(&group.hash).min(group.paths.len().saturating_sub(1));
-        let others: Vec<PathBuf> = group.paths.iter().enumerate().filter(|(j, _)| *j != kept).map(|(_, p)| PathBuf::from(p)).collect();
+        let others: Vec<PathBuf> =
+            group.paths.iter().enumerate().filter(|(j, _)| *j != kept).map(|(_, p)| PathBuf::from(p)).collect();
         if others.is_empty() {
             return;
         }
-        let name = Path::new(&group.paths[kept]).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        let name =
+            Path::new(&group.paths[kept]).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
         let n = others.len() as u64;
         let alert = Alert::new(
             format!("Move {} of “{name}” to the Trash?", format::plural(n, "copy", "copies")),
@@ -314,7 +320,8 @@ impl Kura {
         self.busy = self.busy.saturating_sub(1);
         match r {
             Ok(n) => {
-                self.notice = Some(format!("Emptied the Trash: {} deleted.", format::plural(n as u64, "item", "items")));
+                self.notice =
+                    Some(format!("Emptied the Trash: {} deleted.", format::plural(n as u64, "item", "items")));
                 let folders = self.trash_dir.clone().into_iter().collect();
                 self.rescan(folders, cx);
             }

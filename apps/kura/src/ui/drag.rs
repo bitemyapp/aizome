@@ -133,7 +133,12 @@ pub struct RowActions {
 }
 
 /// `child` as a row for `node`.
-pub fn handle<Msg: 'static>(node: NodeId, draggable: bool, actions: &RowActions, child: impl Into<Element<Msg>>) -> Element<Msg> {
+pub fn handle<Msg: 'static>(
+    node: NodeId,
+    draggable: bool,
+    actions: &RowActions,
+    child: impl Into<Element<Msg>>,
+) -> Element<Msg> {
     let w = DragHandle {
         node,
         draggable,

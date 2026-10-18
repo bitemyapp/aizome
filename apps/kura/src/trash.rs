@@ -40,7 +40,8 @@ pub fn refusal(path: &Path, trash: &Path) -> Option<String> {
         Ok(m) => m,
         Err(e) => return Some(e.to_string()),
     };
-    let real = path.parent().and_then(|p| fs::canonicalize(p).ok()).map(|p| p.join(path.file_name().unwrap_or_default()));
+    let real =
+        path.parent().and_then(|p| fs::canonicalize(p).ok()).map(|p| p.join(path.file_name().unwrap_or_default()));
     let real = real.unwrap_or_else(|| path.to_path_buf());
     if crate::nix::in_store(&real) {
         return Some("it is in the Nix store, which Yukimi's Storage cleans up".into());
@@ -214,7 +215,11 @@ pub fn empty(trash: &Path) -> std::io::Result<usize> {
             let p = e.path();
             // Never through a link: a link in the trash goes, not its target.
             let is_dir = fs::symlink_metadata(&p).is_ok_and(|m| m.is_dir());
-            if is_dir { fs::remove_dir_all(&p)? } else { fs::remove_file(&p)? }
+            if is_dir {
+                fs::remove_dir_all(&p)?
+            } else {
+                fs::remove_file(&p)?
+            }
             if part == "files" {
                 count += 1;
             }
@@ -271,7 +276,13 @@ mod tests {
         let trash_dir = dir.join("Trash");
         fs::create_dir_all(&trash_dir).unwrap();
         let out = trash(
-            &[PathBuf::from("/nix/store/abc-x"), trash_dir.clone(), dir.clone(), PathBuf::from("relative"), dir.join("missing")],
+            &[
+                PathBuf::from("/nix/store/abc-x"),
+                trash_dir.clone(),
+                dir.clone(),
+                PathBuf::from("relative"),
+                dir.join("missing"),
+            ],
             &trash_dir,
             &|_| None,
         );
