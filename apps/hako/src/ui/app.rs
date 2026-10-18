@@ -12,7 +12,7 @@ use aizome_kit::sidestep_ui::KeyEvent;
 use aizome_kit::{MsgSender, Point};
 
 use super::browser::{Browser, Load, Loc, Rename};
-use super::dnd::{Dest, DragEvent};
+use super::dnd::{Dest, DragEvent, Target};
 use super::fileview::{Layout, Thumbs, ViewKey};
 use super::jobs::{self, Answer, Done, Job, JobEvent, Work};
 use super::settings::Settings;
@@ -181,6 +181,8 @@ pub enum Msg {
     ViewKey(WindowKey, usize, ViewKey),
     ContextMenu(WindowKey, usize, Option<usize>, Point),
     Drag(WindowKey, usize, DragEvent),
+    /// A drag has waited over a folder: open it (if it still waits there).
+    Spring(WindowKey, Target, u64),
     DropUrls(WindowKey, Dest, Vec<String>),
     SetLayout(WindowKey, Layout),
     SortBy(SortKey),

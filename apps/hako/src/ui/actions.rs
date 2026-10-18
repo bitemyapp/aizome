@@ -12,8 +12,8 @@ use aizome_kit::sidestep_ui::KeyEvent;
 
 use super::app::{Hako, Msg, Sheet};
 use super::browser::{Drag, Load, Loc, Search};
-use super::dnd::{Dest, DragEvent};
-use super::fileview::ViewKey;
+use super::dnd::{Dest, DragEvent, Target};
+use super::fileview::{Layout, ViewKey};
 use super::jobs::{Answer, Work, drop_mode};
 use crate::fsops::is_within;
 use crate::fsops::transfer::Mode;
@@ -142,12 +142,12 @@ impl Hako {
         }
     }
 
-    pub(crate) fn on_drag(&mut self, cx: &mut Cx<Msg>, w: WindowKey, ev: DragEvent) {
+    pub(crate) fn on_drag(&mut self, cx: &mut Cx<Msg>, w: WindowKey, col: usize, ev: DragEvent) {
         match ev {
             DragEvent::Start => {
                 let sources = self.selection_of(w);
                 if let Some(b) = self.windows.get_mut(&w) {
-                    b.drag = (!sources.is_empty()).then(|| Drag { sources, target: None });
+                    b.drag = (!sources.is_empty()).then(|| Drag { sources, target: None, from: col, spring: 0 });
                 }
             }
             DragEvent::Over(t) => {
@@ -155,8 +155,20 @@ impl Hako {
                     (Some(t), Some(d)) => self.drop_allowed(&d.sources, &t.dest),
                     _ => false,
                 };
+                let columns = self.windows.get(&w).is_some_and(|b| b.layout == Layout::Column && b.search.is_none());
                 if let Some(d) = self.windows.get_mut(&w).and_then(|b| b.drag.as_mut()) {
                     d.target = if allowed { t } else { None };
+                    d.spring += 1;
+                    // Waiting over a folder in a column (this one or one
+                    // after it, which opening it can't close) opens it.
+                    if let Some(t) = &d.target
+                        && columns
+                        && t.row.is_some()
+                        && t.spot < super::dnd::SIDEBAR
+                        && t.spot as usize >= d.from
+                    {
+                        cx.after(Duration::from_millis(900), Msg::Spring(w, t.clone(), d.spring));
+                    }
                 }
             }
             DragEvent::Drop { target, copy } => {
@@ -179,6 +191,19 @@ impl Hako {
                 }
             }
         }
+    }
+
+    /// A drag waited over a folder: open it in the next column.
+    pub(crate) fn spring(&mut self, cx: &mut Cx<Msg>, w: WindowKey, target: Target, n: u64) {
+        let g = self.next_gen();
+        let Some(b) = self.windows.get_mut(&w) else { return };
+        let still = b.drag.as_ref().is_some_and(|d| d.spring == n && d.target.as_ref() == Some(&target));
+        let (Some(row), true) = (target.row, still) else { return };
+        let col = target.spot as usize;
+        if b.select(col, vec![row], g) {
+            self.start_loads(cx, w);
+        }
+        self.after_change(cx, w);
     }
 
     /// Files dropped from another program.

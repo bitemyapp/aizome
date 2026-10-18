@@ -162,7 +162,8 @@ impl Program for Hako {
                 let menu = self.item_menu(w);
                 cx.show_context_menu(w, at, menu);
             }
-            Msg::Drag(w, _col, ev) => self.on_drag(cx, w, ev),
+            Msg::Drag(w, col, ev) => self.on_drag(cx, w, col, ev),
+            Msg::Spring(w, target, n) => self.spring(cx, w, target, n),
             Msg::DropUrls(w, dest, urls) => self.on_drop_urls(cx, w, dest, urls),
             Msg::SetLayout(w, layout) => {
                 let w = self.owner(w);

@@ -147,6 +147,10 @@ pub struct Drag {
     pub sources: Vec<PathBuf>,
     /// What it's over, if a drop there would do something.
     pub target: Option<Target>,
+    /// The column it started in.
+    pub from: usize,
+    /// Counts targets, so a folder opens only if the drag waits over it.
+    pub spring: u64,
 }
 
 /// A window's browser.

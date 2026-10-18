@@ -439,3 +439,30 @@ fn context_menus_offer_what_fits() {
         assert!(l.iter().any(|x| x == want), "{want} in {l:?}");
     }
 }
+
+#[test]
+fn a_drag_that_waits_over_a_folder_opens_it() {
+    let s = Sandbox::new("spring");
+    populate(&s);
+    let (mut h, w) = open(&s, "work/notes.txt", Layout::Column);
+    h.render(w, 1.0);
+    let from = row_at(&h, w, 1, names(&h, w, 1).iter().position(|n| n == "notes.txt").unwrap());
+    let over = row_at(&h, w, 1, names(&h, w, 1).iter().position(|n| n == "sidestep").unwrap());
+    h.press(w, from, PointerButton::Left, 1);
+    for i in 1..=6 {
+        h.move_to(w, from.lerp(over, i as f64 / 6.0));
+    }
+    // Waiting there opens sidestep in the next column.
+    h.advance(std::time::Duration::from_millis(1000));
+    settle(&mut h);
+    assert_eq!(names(&h, w, 2), ["crates", "Cargo.toml", "README.md"]);
+    h.render(w, 1.0);
+    // Let go in it: the file goes in.
+    let into = h.find_id(w, "col-2").unwrap();
+    let at = Point::new(into.x0 + 80.0, into.y1 - 60.0);
+    h.move_to(w, at);
+    h.release(w, at, PointerButton::Left);
+    settle(&mut h);
+    assert!(s.home().join("work/sidestep/notes.txt").exists());
+    assert!(!s.home().join("work/notes.txt").exists());
+}
