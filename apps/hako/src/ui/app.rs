@@ -139,6 +139,9 @@ pub struct Preview {
     pub image: Option<Image>,
     pub text: Option<String>,
     pub mime: Option<String>,
+    /// Made for Quick Look (the picture itself, more of the text), not
+    /// just the preview column.
+    pub full: bool,
 }
 
 /// Something big that messages share, which says nothing of itself in
@@ -298,6 +301,9 @@ pub struct Hako {
     pub focus_window: Option<WindowKey>,
     /// What a sandbox would have opened in other apps.
     pub opened: Vec<PathBuf>,
+    /// The files of Hako's own drag gone out to the desktop, to know them
+    /// if they're dropped back on one of its windows.
+    pub outbound: Option<Vec<PathBuf>>,
     /// Free space by folder, as last asked (views ask often).
     pub(crate) space: std::cell::RefCell<HashMap<PathBuf, (Instant, Option<u64>)>>,
 }
@@ -345,6 +351,7 @@ impl Hako {
             trash_count: 0,
             focus_window: None,
             opened: Vec::new(),
+            outbound: None,
             space: Default::default(),
             opts,
         }
@@ -647,7 +654,7 @@ impl Hako {
         cx.spawn(move || {
             let db = MimeDb::get();
             let mime = if mime == crate::model::mime::UNKNOWN { db.for_file(&path, true).to_string() } else { mime };
-            let mut p = Preview { mime: Some(mime.clone()), ..Default::default() };
+            let mut p = Preview { mime: Some(mime.clone()), full, ..Default::default() };
             if thumbs::can_thumbnail(&mime) {
                 p.image = if full && size < 12 << 20 {
                     Image::open(&path).ok()

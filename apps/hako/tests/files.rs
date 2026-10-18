@@ -503,3 +503,48 @@ fn compress_and_extract_from_the_window() {
     settle(&mut h);
     assert!(s.home().join("Documents/Archive/roadmap.md").is_file());
 }
+
+#[test]
+fn a_drag_out_of_the_window_goes_on_as_the_desktop_s() {
+    let s = Sandbox::new("drag-out");
+    populate(&s);
+    let (mut h, w) = open(&s, "work/notes.txt", Layout::Column);
+    h.render(w, 1.0);
+    let from = row_at(&h, w, 1, names(&h, w, 1).iter().position(|n| n == "notes.txt").unwrap());
+    h.drag(w, from, Point::new(-40.0, from.y), 8);
+    settle(&mut h);
+    assert_eq!(h.program().outbound, Some(vec![s.home().join("work/notes.txt")]));
+    assert!(s.home().join("work/notes.txt").exists(), "nothing moved");
+    // Dropped back on a Hako window, it's Hako's own: it moves.
+    let docs = h.find_id(w, "col-0").unwrap();
+    let url = format!("file://{}", s.home().join("work/notes.txt").display());
+    let i = names(&h, w, 0).iter().position(|n| n == "Documents").unwrap();
+    assert!(h.drop(w, row_at(&h, w, 0, i), vec![url], None));
+    settle(&mut h);
+    assert!(s.home().join("Documents/notes.txt").exists() && !s.home().join("work/notes.txt").exists());
+    let _ = docs;
+}
+
+#[test]
+fn a_question_outlives_its_window() {
+    let s = Sandbox::new("orphan");
+    populate(&s);
+    s.file("home/Documents/notes.txt", "already here");
+    let (mut h, w) = open(&s, "work/notes.txt", Layout::Column);
+    h.send(Msg::NewWindow);
+    settle(&mut h);
+    h.command(w, 'c');
+    h.send(Msg::GoPath(w, s.home().join("Documents")));
+    settle(&mut h);
+    h.command(w, 'v');
+    assert!(wait_for(&mut h, |p| p.jobs.first().is_some_and(|j| j.question.is_some())));
+    h.send(Msg::CloseWindow(w));
+    let p = h.program();
+    let j = &p.jobs[0];
+    assert_ne!(j.window, w, "asked over the other window now");
+    assert!(j.sheet.is_some_and(|s| p.sheets.contains_key(&s)));
+    let other = j.window;
+    assert!(h.click_text(other, "Skip"));
+    settle(&mut h);
+    assert!(h.program().jobs.is_empty());
+}

@@ -25,7 +25,8 @@ pub fn window(h: &Hako, w: WindowKey, b: &Browser) -> Element<Msg> {
     b.spots.retain(|id| id < n || (dnd::SIDEBAR..dnd::SIDEBAR + 64).contains(&id) || (dnd::PATHBAR..dnd::PATHBAR + 64).contains(&id));
     let main = sidebar_layout(sidebar(h, w, b), content(h, w, b)).first_size(h.settings.sidebar).on_resize(Msg::SidebarWidth);
     let body = column![toolbar(h, w, b), pathbar(h, w, b), main, status(h, w, b)].width(Length::Fill).height(Length::Fill);
-    keys::catcher(body.into(), window_key).width(Length::Fill).height(Length::Fill)
+    let body = dnd::window_bounds(body.into(), b.spots.clone());
+    keys::catcher(body, window_key).width(Length::Fill).height(Length::Fill)
 }
 
 /// The arrows, when nothing took them (Quick Look's sheet is up): they
