@@ -69,10 +69,11 @@ whole session — login, terminal, Settings, Calculator, Files, lock and unlock
   virtual GPUs, headless outputs) can't show it, and Settings hides the
   switch there.
 - **Mirroring** reads the source output back on the CPU in both modes.
-- **Effects** cost nothing extra in either mode: Aizome's look is hard
-  shadows, opaque surfaces and motion that moves layers, so nothing is
-  blurred or blended per frame (the Full effects tier's frost is the
-  exception and is off by default).
+- **Effects** cost little in either mode: Aizome's look is hard shadows,
+  opaque surfaces and motion that moves layers, so nothing is blurred per
+  frame. The Full effects tier (not the default) makes the shell's menus and
+  Deskbar translucent with a fine grain, which the compositor blends; true
+  background blur is future work (it needs a compositor effect, GLES only).
 
 Nothing was given up for software rendering: every feature of the desktop
 works under pixman, and the VM test runs the whole session that way.
