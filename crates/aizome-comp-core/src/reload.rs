@@ -21,3 +21,12 @@ pub fn reload_compositor(state: &mut State) -> Result<String, String> {
         _ => Err(text),
     }
 }
+
+impl State {
+    /// Reloads at the end of this loop iteration, out of any logic call (a
+    /// logic's own binding for `reload`, or a key): says what happened in
+    /// a notification.
+    pub fn reload_soon(&mut self, args: ReloadArgs) {
+        self.lg.pending_reload = Some(args);
+    }
+}

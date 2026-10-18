@@ -738,7 +738,12 @@ fn panic_message(payload: &Box<dyn std::any::Any + Send>) -> String {
 /// How the core was built, as JSON (`aizome --build-info`): what a logic
 /// library must be built with to load into it.
 pub fn build_info_json() -> String {
-    let v = serde_json::json!({
+    serde_json::to_string_pretty(&build_info()).unwrap_or_default()
+}
+
+/// How this core was built: what a logic library must be built with.
+pub fn build_info() -> serde_json::Value {
+    serde_json::json!({
         "abi": ABI,
         "abi_parts": ABI_PARTS,
         "rustc": crate::build::RUSTC,
@@ -746,7 +751,7 @@ pub fn build_info_json() -> String {
         "profile": crate::build::PROFILE,
         "opt_level": crate::build::OPT_LEVEL,
         "rustflags": crate::build::RUSTFLAGS,
+        "explicit_target": crate::build::EXPLICIT_TARGET == "true",
         "version": env!("CARGO_PKG_VERSION"),
-    });
-    serde_json::to_string_pretty(&v).unwrap_or_default()
+    })
 }

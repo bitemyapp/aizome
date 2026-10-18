@@ -22,9 +22,13 @@ impl State {
 
     fn request(&mut self, req: Request) -> Result<Response, String> {
         Ok(match req {
-            Request::Version => {
-                Response::Version { version: env!("CARGO_PKG_VERSION").into(), protocol: aizome_ipc::PROTOCOL_VERSION }
-            }
+            Request::Version => Response::Version {
+                version: env!("CARGO_PKG_VERSION").into(),
+                protocol: aizome_ipc::PROTOCOL_VERSION,
+                pid: std::process::id(),
+                exe: std::env::current_exe().ok().map(|p| p.to_string_lossy().into_owned()),
+                build: Some(crate::logic::build_info()),
+            },
             Request::Outputs => Response::Outputs { outputs: crate::outputs::all_info(&self.az) },
             Request::Spawn { argv, cwd, in_desk_folder } => {
                 let cwd = cwd.map(|c| aizome_config::expand_home(&c)).or_else(|| {

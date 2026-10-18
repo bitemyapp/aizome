@@ -14,3 +14,7 @@ serde_json.workspace = true
 [[bin]]
 name = "aizomectl"
 path = "src/bin/aizomectl.rs"
+
+[[bin]]
+name = "aizome-dev"
+path = "src/bin/aizome-dev.rs"

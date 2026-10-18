@@ -80,6 +80,9 @@ pub mod build {
     pub const PROFILE: &str = env!("AIZOME_CORE_PROFILE");
     pub const OPT_LEVEL: &str = env!("AIZOME_CORE_OPT_LEVEL");
     pub const RUSTFLAGS: &str = env!("AIZOME_CORE_RUSTFLAGS");
+    /// "true" when it was built with Cargo's `--target` (as the Nix package
+    /// is): a logic must be too.
+    pub const EXPLICIT_TARGET: &str = env!("AIZOME_CORE_EXPLICIT_TARGET");
 }
 
 use std::process::ExitCode;

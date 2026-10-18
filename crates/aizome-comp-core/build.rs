@@ -69,6 +69,12 @@ fn main() {
         build.push_str(&format!("{name}={}\n", env(name).unwrap_or_default()));
     }
     build.push_str(&format!("debug_assertions={}\n", std::env::var_os("CARGO_CFG_DEBUG_ASSERTIONS").is_some()));
+    // Cargo's `--target` (even naming the host) puts the build under
+    // target/<triple>/ and gives every crate other symbols.
+    let target = std::env::var("TARGET").unwrap_or_default();
+    let explicit_target =
+        std::env::var("OUT_DIR").is_ok_and(|d| Path::new(&d).components().any(|c| c.as_os_str() == target.as_str()));
+    build.push_str(&format!("explicit_target={explicit_target}\n"));
     let flags = env("CARGO_ENCODED_RUSTFLAGS").unwrap_or_default();
     build.push_str(&format!("rustflags={}\n", codegen_flags(&flags).join(" ")));
     let mut features: Vec<String> =
@@ -149,6 +155,7 @@ fn main() {
     println!("cargo:rustc-env=AIZOME_CORE_PROFILE={}", std::env::var("PROFILE").unwrap_or_default());
     println!("cargo:rustc-env=AIZOME_CORE_OPT_LEVEL={}", std::env::var("OPT_LEVEL").unwrap_or_default());
     println!("cargo:rustc-env=AIZOME_CORE_RUSTFLAGS={}", codegen_flags(&flags).join(" "));
+    println!("cargo:rustc-env=AIZOME_CORE_EXPLICIT_TARGET={explicit_target}");
 }
 
 fn digest(bytes: &[u8]) -> String {

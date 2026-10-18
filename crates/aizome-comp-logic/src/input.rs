@@ -425,6 +425,7 @@ impl InputExt for State {
             }
             Action::ChangeVt(vt) => self.backend.change_vt(vt),
             Action::Quit => self.quit(),
+            Action::Reload => self.reload_soon(Default::default()),
             Action::Shell(name) => {
                 let output = self.az.output_at(self.az.pointer_pos).map(|o| o.name());
                 self.az.ipc.emit(&aizome_comp_core::aizome_ipc::Event::Binding { action: name, pointer: None, output });

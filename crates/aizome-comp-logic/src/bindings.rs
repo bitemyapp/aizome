@@ -49,6 +49,10 @@ pub enum Action {
     ScreenshotArea,
     ScreenshotWindow,
     ChangeVt(i32),
+    /// Reload what changed (the core does it after this key: ⌃❖R is the
+    /// core's own, so it works with the logic set aside; this is for
+    /// another chord in `[keys.bindings]`).
+    Reload,
     Quit,
     Spawn(Vec<String>),
     /// Sent to the shell as an `Event::Binding`.
@@ -95,6 +99,7 @@ impl Action {
             "screenshot-area" => Action::ScreenshotArea,
             "screenshot-window" => Action::ScreenshotWindow,
             "quit" => Action::Quit,
+            "reload" => Action::Reload,
             "none" => Action::None,
             other if SHELL_ACTIONS.contains(&other) => Action::Shell(other.to_string()),
             _ => return None,

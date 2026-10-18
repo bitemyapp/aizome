@@ -83,14 +83,3 @@ codegen-units = 4
 [profile.release-lto]
 inherits = "release"
 lto = "thin"
-
-# What `aizome-dev` builds the compositor's logic with: the core and every
-# dependency exactly as `release` builds them (so the core's symbols match
-# the running session's), the logic itself quicker to compile.
-[profile.reload-dev]
-inherits = "release"
-
-[profile.reload-dev.package.aizome-comp-logic]
-opt-level = 1
-codegen-units = 64
-incremental = true

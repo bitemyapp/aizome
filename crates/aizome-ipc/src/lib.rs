@@ -429,6 +429,15 @@ pub enum Response {
     Version {
         version: String,
         protocol: u32,
+        /// The compositor's process and program (what aizome-dev asks how
+        /// the session was built).
+        #[serde(default)]
+        pid: u32,
+        #[serde(default)]
+        exe: Option<String>,
+        /// How its core was built (`aizome --build-info`).
+        #[serde(default)]
+        build: Option<serde_json::Value>,
     },
     Outputs {
         outputs: Vec<OutputInfo>,

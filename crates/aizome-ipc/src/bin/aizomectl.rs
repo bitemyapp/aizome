@@ -63,7 +63,7 @@ session
   lock                          ask the shell to lock
   action NAME                   run a key-binding action by name
   quit                          end the session
-  reload [--logic] [--shell] [--from PATH] [--check]
+  reload [--logic] [--shell] [--from PATH] [--check] [--offer]
                                 reload Aizome without touching the apps:
                                 the compositor's logic (a new build, swapped
                                 between frames), the shell (restarted, its
@@ -72,8 +72,9 @@ session
                                 builds); --from takes a logic library, a shell
                                 binary, or a build directory holding either
                                 (aizome-dev uses it); --check says what would
-                                happen. Also ⌃❖R, and Reload Aizome in the
-                                palette
+                                happen; --offer asks in a notification
+                                (after a system update). Also ⌃❖R, and
+                                Reload Aizome in the palette
 
 recovery (what Ctrl+Alt+Del opens)
   recovery [on|off]             open or close the recovery overlay (toggles)
@@ -119,6 +120,10 @@ fn main() -> ExitCode {
         return ExitCode::SUCCESS;
     }
     let command = args.remove(0);
+    // After a system update: say what a reload would pick up, and do it
+    // if asked (the aizome-update path unit runs this).
+    let offer = command == "reload" && args.iter().any(|a| a == "--offer");
+    args.retain(|a| a != "--offer");
     let request = match parse(&command, args) {
         Ok(r) => r,
         Err(e) => {
@@ -157,6 +162,9 @@ fn main() -> ExitCode {
             }
         }
         return ExitCode::SUCCESS;
+    }
+    if offer {
+        return offer_reload(&mut client, request);
     }
     let response = match client.request(&request) {
         Ok(r) => r,
@@ -540,7 +548,7 @@ fn print_response(r: &Response) -> ExitCode {
             eprintln!("aizomectl: {message}");
             return ExitCode::FAILURE;
         }
-        Response::Version { version, protocol } => println!("aizome {version} (IPC protocol {protocol})"),
+        Response::Version { version, protocol, .. } => println!("aizome {version} (IPC protocol {protocol})"),
         Response::Outputs { outputs } => {
             for o in outputs {
                 print_output(o);
@@ -698,6 +706,75 @@ fn reload_sources(
             if is_library { "library" } else { "program" },
             if is_library { "shell" } else { "logic" }
         )),
+    }
+}
+
+/// `reload --offer`: asks what a reload would pick up; if anything, a
+/// notification says so, and its button reloads. A core that changed
+/// waits for the next login, and the notification says that too.
+fn offer_reload(client: &mut Client, request: Request) -> ExitCode {
+    let Request::Reload { logic, shell, from, shell_from, .. } = request else { return ExitCode::from(2) };
+    let check = Request::Reload { logic, shell, from: from.clone(), shell_from: shell_from.clone(), check: true };
+    let report = match client.request(&check) {
+        Ok(Response::Reload { report }) => report,
+        Ok(r) => return print_response(&r),
+        Err(e) => {
+            eprintln!("aizomectl: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let mut would: Vec<&str> = Vec::new();
+    for (what, part) in [("its window manager", &report.logic), ("the shell", &report.shell)] {
+        if part.action == "would-reload" {
+            would.push(what);
+        }
+    }
+    let core = report.core.action == "needs-restart";
+    if would.is_empty() && !core {
+        println!("nothing to reload");
+        return ExitCode::SUCCESS;
+    }
+    let mut body = String::new();
+    if !would.is_empty() {
+        body.push_str(&format!("Reloading updates {} without closing anything (also ⌃❖R).", would.join(" and ")));
+    }
+    if core {
+        if !body.is_empty() {
+            body.push(' ');
+        }
+        body.push_str("The compositor's core changed too: that part runs at your next login.");
+    }
+    println!("{body}");
+    let mut cmd = std::process::Command::new("notify-send");
+    cmd.args(["--app-name=Aizome", "--icon=system-software-update"]);
+    if !would.is_empty() {
+        cmd.args(["--action=reload=Reload Now", "--wait"]);
+    }
+    cmd.args(["Aizome was updated", &body]);
+    let answer = match cmd.stderr(std::process::Stdio::null()).output() {
+        Ok(o) => String::from_utf8_lossy(&o.stdout).trim().to_string(),
+        Err(e) => {
+            eprintln!("aizomectl: notify-send: {e}");
+            return ExitCode::SUCCESS;
+        }
+    };
+    if answer != "reload" {
+        return ExitCode::SUCCESS;
+    }
+    // A new connection: the compositor may have let an idle one go.
+    let mut client = match Client::connect() {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("aizomectl: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+    match client.request(&Request::Reload { logic, shell, from, shell_from, check: false }) {
+        Ok(r) => print_response(&r),
+        Err(e) => {
+            eprintln!("aizomectl: {e}");
+            ExitCode::FAILURE
+        }
     }
 }
 
