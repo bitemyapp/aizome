@@ -284,6 +284,16 @@ pub(crate) fn read<T: Default + Serialize + for<'de> Deserialize<'de>>(table: Op
 
 /// Writes `value` over `table`, keeping the keys it doesn't have.
 pub(crate) fn write<T: Serialize>(table: &mut toml::Table, value: &T) {
+    // An option set to none leaves the table: TOML has no null, so it
+    // isn't written, and the old value would stay (quiet hours turned off
+    // came back).
+    if let Ok(serde_json::Value::Object(fields)) = serde_json::to_value(value) {
+        for (k, v) in fields {
+            if v.is_null() {
+                table.remove(&k);
+            }
+        }
+    }
     if let Ok(toml::Value::Table(t)) = toml::Value::try_from(value) {
         for (k, v) in t {
             table.insert(k, v);
@@ -296,6 +306,22 @@ mod tests {
     use crate::Settings;
 
     use super::*;
+
+    #[test]
+    fn an_option_set_to_none_leaves_the_section() {
+        let mut s = Settings::from_toml("[notifications]\nquiet_from = \"22:00\"\nquiet_until = \"07:00\"\nkept = 1\n")
+            .unwrap();
+        let mut n = s.notification_settings();
+        assert_eq!(n.quiet_from.as_deref(), Some("22:00"));
+        n.quiet_from = None;
+        n.quiet_until = None;
+        s.set_shell_section("notifications", &n);
+        let n = s.notification_settings();
+        assert_eq!((n.quiet_from, n.quiet_until), (None, None));
+        assert!(!s.notifications.contains_key("quiet_from"));
+        // Keys of others stay.
+        assert!(s.notifications.contains_key("kept"));
+    }
 
     #[test]
     fn sections_read_with_defaults() {
