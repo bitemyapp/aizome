@@ -36,7 +36,9 @@ pub struct Snapshot {
 #[derive(Clone, Debug, PartialEq)]
 pub enum JobEvent {
     /// A step starts a command; `as_root` when it asks for permission first.
-    Started { as_root: bool },
+    Started {
+        as_root: bool,
+    },
     Progress(Snapshot),
     Done(Result<String, String>),
 }
@@ -337,7 +339,10 @@ echo '{{"ok":true}}'"#
         assert!(why.starts_with("error: builder for firefox failed"));
         assert!(why.ends_with("the running system was not changed."));
         assert!(job.details);
-        assert_eq!(explain("Error executing command as another user: Not authorized", true, false), "Cancelled. Nothing was changed.");
+        assert_eq!(
+            explain("Error executing command as another user: Not authorized", true, false),
+            "Cancelled. Nothing was changed."
+        );
         assert!(explain("x", false, true).starts_with("Stopped. Nothing"));
     }
 
@@ -352,7 +357,10 @@ echo '@nix {"action":"msg","level":0,"msg":"error: it broke"}' >&2; exit 1"#,
             job.take(event, Instant::now());
         }
         let lines: Vec<&str> = job.log.iter().map(String::as_str).collect();
-        assert_eq!(lines, ["line 1", "line 2", "line 3", "line 4", "line 5", "line 6", "line 7", "line 8", "error: it broke"]);
+        assert_eq!(
+            lines,
+            ["line 1", "line 2", "line 3", "line 4", "line 5", "line 6", "line 7", "line 8", "error: it broke"]
+        );
     }
 
     #[test]

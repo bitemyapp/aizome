@@ -27,7 +27,12 @@ fn remove_button(tooltip: &str, msg: Msg) -> Element<Msg> {
 
 /// A row for a package: its name, what it is (from the index, once there
 /// is one) and its version.
-fn package_row(app: &Yukimi, attr: &str, fallback: Option<(String, String)>, trailing: Vec<Element<Msg>>) -> Element<Msg> {
+fn package_row(
+    app: &Yukimi,
+    attr: &str,
+    fallback: Option<(String, String)>,
+    trailing: Vec<Element<Msg>>,
+) -> Element<Msg> {
     let found = app.index.as_ref().and_then(|i| i.get(attr));
     let (description, version) = match (found, fallback) {
         (Some(p), _) => (p.description.clone(), p.version.clone()),
@@ -71,7 +76,12 @@ fn added(app: &Yukimi) -> Element<Msg> {
         ));
     }
     for attr in &mine.packages {
-        rows.push(package_row(app, attr, None, vec![remove_button("Remove for everyone", Msg::Remove(Removal::Package(attr.clone())))]));
+        rows.push(package_row(
+            app,
+            attr,
+            None,
+            vec![remove_button("Remove for everyone", Msg::Remove(Removal::Package(attr.clone())))],
+        ));
     }
     group(
         "Added with Yukimi",
@@ -127,7 +137,12 @@ fn listed(app: &Yukimi, entries: &[ListedPackage], user: Option<&str>) -> Option
             None => item_row(
                 Some(monogram(&entry.text, 28.0)),
                 text(entry.text.clone()).mono().size(12.0).into(),
-                Some(text("Written as an expression, so change it in the file itself.").size(12.0).role(Role::Text3).into()),
+                Some(
+                    text("Written as an expression, so change it in the file itself.")
+                        .size(12.0)
+                        .role(Role::Text3)
+                        .into(),
+                ),
                 Vec::new(),
             ),
             Some(attr) => package_row(
@@ -197,7 +212,8 @@ fn system_row(package: &SystemPackage) -> Element<Msg> {
 /// Everything else the running system has.
 fn the_rest(app: &Yukimi) -> Element<Msg> {
     let model = &app.model;
-    let filter: Element<Msg> = search_field(&app.filter).placeholder("Filter").on_change(Msg::Filter).id("filter").width(220.0).into();
+    let filter: Element<Msg> =
+        search_field(&app.filter).placeholder("Filter").on_change(Msg::Filter).id("filter").width(220.0).into();
     let Some(store) = &model.store else {
         return group("Part of the system", None, Some(filter), vec![pending("Reading what the system has…")]);
     };
@@ -219,7 +235,8 @@ fn the_rest(app: &Yukimi) -> Element<Msg> {
         let shown: std::rc::Rc<Vec<SystemPackage>> = std::rc::Rc::new(matching.iter().map(|p| (*p).clone()).collect());
         let height = (shown.len() as f64 * SYSTEM_ROW).min(ALL_HEIGHT);
         let all = virtual_list(shown.len(), SYSTEM_ROW, move |i| system_row(&shown[i])).height(height);
-        let description = format!("{} packages your desktops and settings bring. They come and go with those settings.", rest.len());
+        let description =
+            format!("{} packages your desktops and settings bring. They come and go with those settings.", rest.len());
         return group("Part of the system", Some(description), Some(filter), vec![all.into()]);
     }
     let limit = FIRST_ROWS;
@@ -228,11 +245,13 @@ fn the_rest(app: &Yukimi) -> Element<Msg> {
         rows.push(empty(&format!("Nothing called “{}” is part of the system.", app.filter.trim())));
     } else if matching.len() > limit {
         rows.push(
-            tap(
-                row![text(format!("Show all {}", matching.len())).role(Role::Accent), spacer(), icon(Icon::ChevronDown).size(14.0).role(Role::Text3)]
-                    .width(Fill)
-                    .height(22.0),
-            )
+            tap(row![
+                text(format!("Show all {}", matching.len())).role(Role::Accent),
+                spacer(),
+                icon(Icon::ChevronDown).size(14.0).role(Role::Text3)
+            ]
+            .width(Fill)
+            .height(22.0))
             .padding([6.0, 12.0])
             .on_press(Msg::ShowAll)
             .named("Show all")
@@ -241,7 +260,10 @@ fn the_rest(app: &Yukimi) -> Element<Msg> {
     }
     group(
         "Part of the system",
-        Some(format!("{} packages your desktops and settings bring. They come and go with those settings.", rest.len())),
+        Some(format!(
+            "{} packages your desktops and settings bring. They come and go with those settings.",
+            rest.len()
+        )),
         Some(filter),
         rows,
     )
@@ -251,7 +273,11 @@ pub fn page(app: &Yukimi) -> Element<Msg> {
     let model = &app.model;
     let mut c = column(Vec::new()).spacing(22.0).width(Fill);
     if let Some(why) = model.cannot_change_system() {
-        let words = if model.paths.elsewhere { why } else { format!("{why}. Add ./yukimi.nix to its imports to install for everyone.") };
+        let words = if model.paths.elsewhere {
+            why
+        } else {
+            format!("{why}. Add ./yukimi.nix to its imports to install for everyone.")
+        };
         c = c.push(banner(Icon::TriangleAlert, Role::Warning, words));
     }
     c = c.push(added(app));

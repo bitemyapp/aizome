@@ -52,7 +52,10 @@ pub fn view(app: &Yukimi, window: WindowKey) -> Element<Msg> {
         Page::History => history::page(app),
         Page::Storage => storage::page(app),
     };
-    let content = container(page.max_width(PAGE_WIDTH).width(Fill)).align_x(Align::Center).width(Fill).padding([20.0, 24.0, 28.0, 24.0]);
+    let content = container(page.max_width(PAGE_WIDTH).width(Fill))
+        .align_x(Align::Center)
+        .width(Fill)
+        .padding([20.0, 24.0, 28.0, 24.0]);
     let main = column![tool_bar(app), scroll(content).key(app.page).width(Fill).height(Fill), status_line(app)]
         .width(Fill)
         .height(Fill);
@@ -127,16 +130,17 @@ fn place(app: &Yukimi, page: Page) -> Element<Msg> {
 
 fn sidebar(app: &Yukimi) -> Element<Msg> {
     let brand = row![
-        container(icon(Icon::Snowflake).size(18.0).role(Role::Accent)).padding(5.0).fill(Tone::Chrome).border(Edge::Line),
-        column![
-            text("Yukimi").size(15.0).weight(700.0),
-            text("雪見 · Software").size(11.0).role(Role::Text3),
-        ]
-        .spacing(1.0),
+        container(icon(Icon::Snowflake).size(18.0).role(Role::Accent))
+            .padding(5.0)
+            .fill(Tone::Chrome)
+            .border(Edge::Line),
+        column![text("Yukimi").size(15.0).weight(700.0), text("雪見 · Software").size(11.0).role(Role::Text3),]
+            .spacing(1.0),
     ]
     .spacing(10.0)
     .padding([14.0, 12.0, 12.0, 12.0]);
-    let places = column(Page::ALL.iter().map(|p| place(app, *p)).collect()).spacing(1.0).padding([0.0, 6.0]).width(Fill);
+    let places =
+        column(Page::ALL.iter().map(|p| place(app, *p)).collect()).spacing(1.0).padding([0.0, 6.0]).width(Fill);
     column![brand, divider().edge(Edge::Line), aizome_kit::caption("Places"), places, spacer(), system_card(app)]
         .width(Fill)
         .height(Fill)
@@ -147,7 +151,9 @@ fn sidebar(app: &Yukimi) -> Element<Msg> {
 fn system_card(app: &Yukimi) -> Element<Msg> {
     let model = &app.model;
     let name = if model.info.hostname.is_empty() { "This computer".to_owned() } else { model.info.hostname.clone() };
-    let mut lines = column![row![icon(Icon::Laptop).size(14.0).role(Role::Text3), text(name).weight(650.0)].spacing(7.0)].spacing(4.0);
+    let mut lines =
+        column![row![icon(Icon::Laptop).size(14.0).role(Role::Text3), text(name).weight(650.0)].spacing(7.0)]
+            .spacing(4.0);
     if !model.info.nixos_version.is_empty() {
         lines = lines.push(text(format!("NixOS {}", model.info.release())).mono().size(11.0).role(Role::Text3));
     }
@@ -169,7 +175,8 @@ fn system_card(app: &Yukimi) -> Element<Msg> {
 }
 
 fn tool_bar(app: &Yukimi) -> Element<Msg> {
-    let mut items: Vec<Element<Msg>> = vec![container(text(app.page.title()).size(14.0).weight(650.0)).padding([0.0, 6.0, 0.0, 6.0]).into()];
+    let mut items: Vec<Element<Msg>> =
+        vec![container(text(app.page.title()).size(14.0).weight(650.0)).padding([0.0, 6.0, 0.0, 6.0]).into()];
     if let Some(sub) = subtitle(app) {
         items.push(status_text(sub));
     }
@@ -338,7 +345,11 @@ pub fn item_row<Msg: 'static>(
     }
     main = main.push(words);
     // What's at the right goes under the rest when the window is narrow.
-    container(widgets::adapt(main.into(), trailing, 8.0, 200.0)).padding([8.0, 12.0]).min_height(44.0).width(Fill).into()
+    container(widgets::adapt(main.into(), trailing, 8.0, 200.0))
+        .padding([8.0, 12.0])
+        .min_height(44.0)
+        .width(Fill)
+        .into()
 }
 
 /// A row saying something is on its way.
@@ -357,7 +368,12 @@ pub fn empty<Msg: 'static>(what: &str) -> Element<Msg> {
 
 /// A note across the page: an edge in the role's colour and the text.
 pub fn banner<Msg: 'static>(icon_name: Icon, role: Role, words: String) -> Element<Msg> {
-    widgets::noted(role, row![icon(icon_name).size(16.0).role(role), text(words).wrap().role(Role::Text).width(Fill)].spacing(10.0).width(Fill))
+    widgets::noted(
+        role,
+        row![icon(icon_name).size(16.0).role(role), text(words).wrap().role(Role::Text).width(Fill)]
+            .spacing(10.0)
+            .width(Fill),
+    )
 }
 
 /// A plain button that goes somewhere: "See what's installed →".

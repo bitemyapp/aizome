@@ -5,9 +5,9 @@
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+use aizome_kit::WindowKey;
 use aizome_kit::layout::{Point, Vec2};
 use aizome_kit::testing::Harness;
-use aizome_kit::WindowKey;
 use aizome_yukimi::app::{Changes, Clock, Msg, Page, Runner, Source, Yukimi};
 use aizome_yukimi::job::Outcome;
 use aizome_yukimi::ops::{Operation, Run, Step, SystemChange};
@@ -78,7 +78,8 @@ fn the_sidebar_goes_to_each_page() {
         ("Storage", Page::Storage),
         ("Overview", Page::Overview),
     ] {
-        let at = h.semantics(w).into_iter().find(|(s, _)| s.label.as_deref() == Some(title)).map(|(_, r)| r).expect(title);
+        let at =
+            h.semantics(w).into_iter().find(|(s, _)| s.label.as_deref() == Some(title)).map(|(_, r)| r).expect(title);
         h.click(w, at.center());
         assert_eq!(h.program().page, page, "{title}");
     }
@@ -131,10 +132,7 @@ fn install_for_everyone_asks_first_then_runs_the_helper() {
     };
     assert_eq!(ran.lock().unwrap().as_slice(), [expected.clone()]);
     // What the helper is asked, as the GTK Yukimi asks it.
-    assert_eq!(
-        expected.helper_args(None),
-        ["change", "--packages", "gimp,inkscape,ripgrep,gimp2", "--mode", "auto"]
-    );
+    assert_eq!(expected.helper_args(None), ["change", "--packages", "gimp,inkscape,ripgrep,gimp2", "--mode", "auto"]);
     settle(&mut h, |a| a.job.as_ref().is_some_and(|j| j.outcome.is_some()));
     let job = h.program().job.as_ref().unwrap();
     assert_eq!(job.outcome, Some(Outcome::Done("gimp2 is installed for everyone".into())));
@@ -202,11 +200,14 @@ fn removing_takes_just_that_entry_out() {
     h.send(Msg::Remove(aizome_yukimi::app::Removal::Package("ripgrep".into())));
     assert!(has(&h, w, "Remove ripgrep?"));
     assert!(click_last(&mut h, w, "Remove"));
-    assert_eq!(ran.lock().unwrap().as_slice(), [Operation::ChangeSystem {
-        change: SystemChange { packages: Some(vec!["gimp".into(), "inkscape".into()]), ..SystemChange::default() },
-        what: "ripgrep".into(),
-        adding: false,
-    }]);
+    assert_eq!(
+        ran.lock().unwrap().as_slice(),
+        [Operation::ChangeSystem {
+            change: SystemChange { packages: Some(vec!["gimp".into(), "inkscape".into()]), ..SystemChange::default() },
+            what: "ripgrep".into(),
+            adding: false,
+        }]
+    );
     settle(&mut h, |a| a.job.as_ref().is_some_and(|j| j.outcome.is_some()));
     h.advance(Duration::from_secs(1));
     // An entry written in configuration.nix comes out of its list.
@@ -288,8 +289,11 @@ fn nothing_is_changed_when_looking_at_another_system() {
     let seen = ran.clone();
     let dir = std::env::temp_dir().join(format!("aizome-yukimi-elsewhere-{}", std::process::id()));
     std::fs::create_dir_all(dir.join("nixos")).unwrap();
-    std::fs::write(dir.join("nixos/configuration.nix"), "{ pkgs, ... }: { environment.systemPackages = [ pkgs.git ]; }\n")
-        .unwrap();
+    std::fs::write(
+        dir.join("nixos/configuration.nix"),
+        "{ pkgs, ... }: { environment.systemPackages = [ pkgs.git ]; }\n",
+    )
+    .unwrap();
     let paths = aizome_yukimi::paths::Paths { etc: dir.clone(), elsewhere: true };
     let runner = Runner::Mock(Arc::new(move |op: &Operation| {
         seen.lock().unwrap().push(op.clone());

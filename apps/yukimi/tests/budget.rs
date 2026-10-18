@@ -6,11 +6,11 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use aizome_kit::WindowKey;
 use aizome_kit::layout::{Point, Rect, Vec2};
 use aizome_kit::sidestep_ui::{Modifiers, NamedKey};
 use aizome_kit::testing::Harness;
 use aizome_kit::theme::Appearance;
-use aizome_kit::WindowKey;
 use aizome_yukimi::app::{Clock, Msg, Page, Runner, Source, Yukimi};
 
 fn sample(motion: bool) -> (Harness<Yukimi>, WindowKey) {
@@ -46,7 +46,13 @@ fn draw(h: &mut Harness<Yukimi>, w: WindowKey) -> f64 {
 }
 
 /// Time `act` `n` times (after two to warm up), with its frame.
-fn measure(name: &str, n: usize, h: &mut Harness<Yukimi>, w: WindowKey, mut act: impl FnMut(&mut Harness<Yukimi>, usize)) -> Duration {
+fn measure(
+    name: &str,
+    n: usize,
+    h: &mut Harness<Yukimi>,
+    w: WindowKey,
+    mut act: impl FnMut(&mut Harness<Yukimi>, usize),
+) -> Duration {
     let _ = h.render(w, 2.0);
     let mut frames = Vec::new();
     let mut damaged = 0.0;

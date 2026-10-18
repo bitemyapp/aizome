@@ -26,7 +26,8 @@ pub fn sheet(app: &Yukimi) -> Element<Msg> {
         Some(Outcome::Failed(_)) => Role::Danger,
     };
     let mut c = column![
-        row![icon(title_icon).size(20.0).role(title_role), text(job.operation.title()).size(17.0).weight(700.0)].spacing(10.0),
+        row![icon(title_icon).size(20.0).role(title_role), text(job.operation.title()).size(17.0).weight(700.0)]
+            .spacing(10.0),
         text(job.status.clone()).wrap().size(14.0).weight(500.0),
     ]
     .spacing(12.0)
@@ -59,10 +60,18 @@ pub fn sheet(app: &Yukimi) -> Element<Msg> {
         .compact()
         .icon(if job.details { Icon::ChevronDown } else { Icon::ChevronRight })
         .on_press(Msg::JobDetails(!job.details));
-    let copy = button("Copy Log").compact().plain().icon(Icon::Copy).on_press_maybe((!job.log.is_empty()).then_some(Msg::CopyLog));
-    let mut details = column![row![toggle, spacer(), text(format!("{} lines", job.logged)).mono().size(11.0).role(Role::Text3), copy].spacing(8.0).width(Fill)]
-        .spacing(6.0)
-        .width(Fill);
+    let copy = button("Copy Log")
+        .compact()
+        .plain()
+        .icon(Icon::Copy)
+        .on_press_maybe((!job.log.is_empty()).then_some(Msg::CopyLog));
+    let mut details = column![
+        row![toggle, spacer(), text(format!("{} lines", job.logged)).mono().size(11.0).role(Role::Text3), copy]
+            .spacing(8.0)
+            .width(Fill)
+    ]
+    .spacing(6.0)
+    .width(Fill);
     if job.details {
         let skip = job.log.len().saturating_sub(LOG_SHOWN);
         let lines: Vec<Element<Msg>> =

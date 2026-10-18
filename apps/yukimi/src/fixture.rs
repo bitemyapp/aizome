@@ -116,7 +116,12 @@ fn generations(paths: &[String]) -> Vec<Generation> {
 fn graph() -> (Graph, Vec<String>) {
     let mut paths: Vec<PathInfo> = Vec::new();
     let mut add = |name: &str, size: u64| {
-        paths.push(PathInfo { path: store_path(paths.len() + 100, name), nar_size: size, registered: NOW - 30 * DAY, deriver: None });
+        paths.push(PathInfo {
+            path: store_path(paths.len() + 100, name),
+            nar_size: size,
+            registered: NOW - 30 * DAY,
+            deriver: None,
+        });
         paths.len() - 1
     };
     let common: Vec<usize> = COMMON.iter().map(|(n, s)| add(n, *s)).collect();
@@ -152,8 +157,13 @@ fn locked(kind: &str, owner: &str, repo: &str, rev: &str, age_days: i64, referen
         nar_hash: Some(format!("sha256-{rev}")),
         ..Locked::default()
     };
-    let original =
-        Locked { kind: kind.into(), owner: Some(owner.into()), repo: Some(repo.into()), reference: reference.map(Into::into), ..Locked::default() };
+    let original = Locked {
+        kind: kind.into(),
+        owner: Some(owner.into()),
+        repo: Some(repo.into()),
+        reference: reference.map(Into::into),
+        ..Locked::default()
+    };
     (locked, original)
 }
 
@@ -170,7 +180,11 @@ fn input(name: &str, (locked, original): (Locked, Locked), follows_inputs: &[&st
 /// The flake's inputs, as its lock file has them.
 fn inputs() -> Vec<Input> {
     vec![
-        input("aizome", locked("github", "bitemyapp", "aizome", "a1c3e5f7b9d2468ace013579bdf2468ace013579", 1, Some("main")), &["nixpkgs"]),
+        input(
+            "aizome",
+            locked("github", "bitemyapp", "aizome", "a1c3e5f7b9d2468ace013579bdf2468ace013579", 1, Some("main")),
+            &["nixpkgs"],
+        ),
         input(
             "home-manager",
             locked("github", "nix-community", "home-manager", "3b7f1e9c2d4a6b8c0e2f4a6c8e0b2d4f6a8c0e2f", 5, None),
@@ -186,7 +200,11 @@ fn inputs() -> Vec<Input> {
             locked("github", "NixOS", "nixpkgs", "7fd4004d0511991fff3a0524856a9be09e28c5f0", 6, Some("nixos-unstable")),
             &[],
         ),
-        input("sekka", locked("github", "bitemyapp", "sekka", "65b011c2e8f4a6b8d0f2e4c6a8b0d2f4e6a8c0b2", 3, Some("nightly")), &["nixpkgs"]),
+        input(
+            "sekka",
+            locked("github", "bitemyapp", "sekka", "65b011c2e8f4a6b8d0f2e4c6a8b0d2f4e6a8c0b2", 3, Some("nightly")),
+            &["nixpkgs"],
+        ),
         Input {
             name: "sops-nix".into(),
             locked: None,
@@ -223,7 +241,11 @@ pub fn index() -> PackageIndex {
         package("gthumb", "3.12.8", "Image browser and viewer for GNOME"),
         package("htop", "3.4.1", "Interactive process viewer"),
         package("btop", "1.4.5", "Monitor of resources"),
-        package("ripgrep", "15.1.0", "Utility that combines the usability of The Silver Searcher with the raw speed of grep"),
+        package(
+            "ripgrep",
+            "15.1.0",
+            "Utility that combines the usability of The Silver Searcher with the raw speed of grep",
+        ),
         package("firefox", "143.0.1", "Web browser built from Firefox source tree"),
         package("thunderbird", "144.0", "Full-featured e-mail client"),
         package("yt-dlp", "2025.10.14", "Command-line tool to download videos from YouTube.com and other sites"),
@@ -255,7 +277,8 @@ pub fn index() -> PackageIndex {
 pub fn store(generations: &[Generation], graph: Graph) -> Store {
     let latest = match generations {
         [.., before, after] => {
-            let closure = |g: &Generation| graph.lookup(g.target.as_str()).map(|id| graph.closure([id])).unwrap_or_default();
+            let closure =
+                |g: &Generation| graph.lookup(g.target.as_str()).map(|id| graph.closure([id])).unwrap_or_default();
             Some(yukimi_system::diff::diff(&graph, &closure(before), &closure(after)))
         }
         _ => None,
@@ -269,8 +292,36 @@ pub fn store(generations: &[Generation], graph: Graph) -> Store {
             SystemPackage { name: name.to_owned(), version: version.to_owned(), size: *size }
         })
         .collect();
-    for (i, name) in ["bash-interactive", "coreutils-full", "findutils", "gnugrep", "gnused", "less", "man-db", "nano", "openssh", "procps", "shadow", "su", "util-linux", "which", "xz", "zstd", "curl", "dbus", "fish", "fontconfig"].iter().enumerate() {
-        system_packages.push(SystemPackage { name: (*name).to_owned(), version: format!("{}.{}", 1 + i % 9, i), size: (1 + i as u64 % 7) * 3 * MB });
+    for (i, name) in [
+        "bash-interactive",
+        "coreutils-full",
+        "findutils",
+        "gnugrep",
+        "gnused",
+        "less",
+        "man-db",
+        "nano",
+        "openssh",
+        "procps",
+        "shadow",
+        "su",
+        "util-linux",
+        "which",
+        "xz",
+        "zstd",
+        "curl",
+        "dbus",
+        "fish",
+        "fontconfig",
+    ]
+    .iter()
+    .enumerate()
+    {
+        system_packages.push(SystemPackage {
+            name: (*name).to_owned(),
+            version: format!("{}.{}", 1 + i % 9, i),
+            size: (1 + i as u64 % 7) * 3 * MB,
+        });
     }
     system_packages.sort_by(|a, b| a.name.cmp(&b.name));
     let mut heaviest: Vec<Heavy> = COMMON
@@ -293,11 +344,11 @@ pub fn store(generations: &[Generation], graph: Graph) -> Store {
         root("/run/booted-system", 1, RootKind::BootedSystem),
         root("/nix/var/nix/profiles/system-27-link", 2, RootKind::SystemGeneration(27)),
         root("/nix/var/nix/profiles/system-26-link", 3, RootKind::SystemGeneration(26)),
-        root("/nix/var/nix/profiles/per-user/callen/profile-12-link", 4, RootKind::Profile {
-            name: "profile".into(),
-            user: Some("callen".into()),
-            generation: Some(12),
-        }),
+        root(
+            "/nix/var/nix/profiles/per-user/callen/profile-12-link",
+            4,
+            RootKind::Profile { name: "profile".into(), user: Some("callen".into()), generation: Some(12) },
+        ),
         root("/home/callen/work/aizome/result", 5, RootKind::BuildResult),
         root("/home/callen/work/sekka/.direnv/flake-profile", 6, RootKind::DevShell),
     ];
@@ -334,7 +385,12 @@ pub fn model() -> Model {
             main: Some(PathBuf::from("/etc/nixos/configuration.nix")),
             host: "ganymede".into(),
             git: false,
-            facts: Facts { nixpkgs: Some(nixpkgs.clone()), allow_unfree: Some(true), configuration: None, catalogs: Vec::new() },
+            facts: Facts {
+                nixpkgs: Some(nixpkgs.clone()),
+                allow_unfree: Some(true),
+                configuration: None,
+                catalogs: Vec::new(),
+            },
         },
         info: SystemInfo {
             hostname: "ganymede".into(),
@@ -360,7 +416,10 @@ pub fn model() -> Model {
             },
         ],
         configured: Configured {
-            yukimi: Choices { packages: vec!["gimp".into(), "inkscape".into(), "ripgrep".into()], programs: vec!["steam".into()] },
+            yukimi: Choices {
+                packages: vec!["gimp".into(), "inkscape".into(), "ripgrep".into()],
+                programs: vec!["steam".into()],
+            },
             system: vec![
                 ListedPackage { attr: Some("git".into()), text: "git".into() },
                 ListedPackage { attr: Some("vim".into()), text: "vim".into() },

@@ -424,7 +424,10 @@ mod tests {
         assert_eq!(change.steps(&model).len(), 1);
         assert_eq!(change.title(), "Installing htop for everyone");
         assert!(Operation::Rollback { generation: 3 }.is_system());
-        assert_eq!(Operation::UpdateSekka { inputs: vec![] }.helper_args(None), ["change", "--sekka", "--mode", "auto"]);
+        assert_eq!(
+            Operation::UpdateSekka { inputs: vec![] }.helper_args(None),
+            ["change", "--sekka", "--mode", "auto"]
+        );
         assert_eq!(Operation::Rollback { generation: 7 }.helper_args(None), ["rollback", "7"]);
         assert_eq!(
             Operation::Clean { older_than_days: Some(30) }.helper_args(None),

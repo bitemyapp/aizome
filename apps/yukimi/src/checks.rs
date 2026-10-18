@@ -270,9 +270,10 @@ mod tests {
         assert_eq!(newer_count(&moves), 1);
         assert_eq!(older(&moves), ["sops"]);
         assert_eq!(to_update(&model, Some(&moves), false), ["nixpkgs"]);
-        assert_eq!(update_operation(&model, vec!["nixpkgs".into()], false), Operation::UpdateFlake {
-            inputs: vec!["nixpkgs".into()]
-        });
+        assert_eq!(
+            update_operation(&model, vec!["nixpkgs".into()], false),
+            Operation::UpdateFlake { inputs: vec!["nixpkgs".into()] }
+        );
         assert!(!check.stale(1000 + STALE_AFTER) && check.stale(1001 + STALE_AFTER));
     }
 
@@ -302,18 +303,20 @@ mod tests {
         let mut model = flake_model();
         model.inputs.push(input("sekka", "fff", 100));
         assert_eq!(to_update(&model, None, true), ["sekka"]);
-        assert_eq!(update_operation(&model, vec!["sekka".into(), "nixpkgs".into()], true), Operation::UpdateSekka {
-            inputs: vec!["sekka".into(), "nixpkgs".into()]
-        });
+        assert_eq!(
+            update_operation(&model, vec!["sekka".into(), "nixpkgs".into()], true),
+            Operation::UpdateSekka { inputs: vec!["sekka".into(), "nixpkgs".into()] }
+        );
         let older = BTreeMap::from([("sekka".to_owned(), Movement::Older(Locked::default()))]);
         assert!(to_update(&model, Some(&older), true).is_empty());
         // An installation from before Sekka moves over, leaving behind the
         // inputs Sekka takes the place of.
         let mut old = flake_model();
         old.inputs.push(input("tatami", "ggg", 100));
-        assert_eq!(update_operation(&old, vec!["tatami".into(), "nixpkgs".into()], true), Operation::UpdateSekka {
-            inputs: vec!["nixpkgs".into()]
-        });
+        assert_eq!(
+            update_operation(&old, vec!["tatami".into(), "nixpkgs".into()], true),
+            Operation::UpdateSekka { inputs: vec!["nixpkgs".into()] }
+        );
     }
 
     #[test]

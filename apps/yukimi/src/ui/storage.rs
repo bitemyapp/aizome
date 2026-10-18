@@ -55,7 +55,10 @@ pub fn page(app: &Yukimi) -> Element<Msg> {
          side by side and why going back is instant. Here is what keeps each part of it.",
     );
     let Some(store) = app.model.store.clone() else {
-        return column![intro, super::list(vec![super::pending("Reading the store…")])].spacing(18.0).width(Fill).into();
+        return column![intro, super::list(vec![super::pending("Reading the store…")])]
+            .spacing(18.0)
+            .width(Fill)
+            .into();
     };
     let c = &store.composition;
     let total = c.total.max(1) as f64;
@@ -155,17 +158,15 @@ pub fn page(app: &Yukimi) -> Element<Msg> {
 
     // What keeps things alive.
     let mut roots: Vec<Element<Msg>> = vec![
-        tap(
-            row![
-                icon(if app.roots_open { Icon::ChevronDown } else { Icon::ChevronRight }).size(14.0).role(Role::Text3),
-                text(format!("{} roots", group_digits(store.roots.len()))).weight(600.0),
-                spacer(),
-                text(if app.roots_open { "Hide" } else { "Show" }).size(12.0).role(Role::Text3),
-            ]
-            .spacing(8.0)
-            .width(Fill)
-            .height(24.0),
-        )
+        tap(row![
+            icon(if app.roots_open { Icon::ChevronDown } else { Icon::ChevronRight }).size(14.0).role(Role::Text3),
+            text(format!("{} roots", group_digits(store.roots.len()))).weight(600.0),
+            spacer(),
+            text(if app.roots_open { "Hide" } else { "Show" }).size(12.0).role(Role::Text3),
+        ]
+        .spacing(8.0)
+        .width(Fill)
+        .height(24.0))
         .padding([8.0, 12.0])
         .on_press(Msg::ToggleRoots)
         .named("Garbage-collector roots")
@@ -177,7 +178,14 @@ pub fn page(app: &Yukimi) -> Element<Msg> {
                 None,
                 text(root_kind(&root.kind)).into(),
                 Some(text(root.link.display().to_string()).mono().size(11.0).role(Role::Text3).into()),
-                vec![text(root.target.full_name().to_owned()).mono().size(11.0).role(Role::Text3).max_width(260.0).into()],
+                vec![
+                    text(root.target.full_name().to_owned())
+                        .mono()
+                        .size(11.0)
+                        .role(Role::Text3)
+                        .max_width(260.0)
+                        .into(),
+                ],
             ));
         }
         if store.roots.len() > ROOTS_SHOWN {

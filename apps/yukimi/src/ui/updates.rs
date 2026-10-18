@@ -51,26 +51,32 @@ pub fn tools(app: &Yukimi) -> Vec<Element<Msg>> {
 
 /// The time, chip and tooltip for one source, given how updating would
 /// move it, or why it couldn't be checked.
-fn status(app: &Yukimi, source: &str, age: Option<String>, movement: Option<&Movement>, failure: Option<&str>) -> Vec<Element<Msg>> {
+fn status(
+    app: &Yukimi,
+    source: &str,
+    age: Option<String>,
+    movement: Option<&Movement>,
+    failure: Option<&str>,
+) -> Vec<Element<Msg>> {
     let age = age.unwrap_or_default();
     let now = app.now();
     if let Some(reason) = failure {
         return vec![
             mono(age).role(Role::Text3).into(),
-            tag("couldn't check", Role::Text3).tooltip(format!("{source} couldn't be asked for its newest version: {reason}")),
+            tag("couldn't check", Role::Text3)
+                .tooltip(format!("{source} couldn't be asked for its newest version: {reason}")),
         ];
     }
     match movement {
         Some(Movement::Newer(next)) => {
             // How old it is, and over it, how old the newer version is.
             let words: Element<Msg> = match next.last_modified {
-                Some(t) if !age.is_empty() => column![
-                    mono(age).role(Role::Text3),
-                    mono(format!("→ {}", human_age(t, now))).role(Role::Accent),
-                ]
-                .spacing(1.0)
-                .align(Align::End)
-                .into(),
+                Some(t) if !age.is_empty() => {
+                    column![mono(age).role(Role::Text3), mono(format!("→ {}", human_age(t, now))).role(Role::Accent),]
+                        .spacing(1.0)
+                        .align(Align::End)
+                        .into()
+                }
                 _ => mono(age).into(),
             };
             let mut chip = tag("newer version", Role::Accent);
@@ -102,13 +108,21 @@ fn inputs(app: &Yukimi, moves: Option<&BTreeMap<String, Movement>>) -> Vec<Eleme
         rows.push(super::item_row(
             None,
             text(format!("No flake.lock in {}", model.setup.dir.display())).weight(600.0).into(),
-            Some(text("The flake has no inputs pinned yet; building it once makes its lock file.").size(12.0).role(Role::Text3).into()),
+            Some(
+                text("The flake has no inputs pinned yet; building it once makes its lock file.")
+                    .size(12.0)
+                    .role(Role::Text3)
+                    .into(),
+            ),
             Vec::new(),
         ));
     }
     for input in &model.inputs {
         let (subtitle, trailing): (String, Vec<Element<Msg>>) = match (&input.locked, &input.follows) {
-            (_, Some(path)) => (format!("Follows {}", path.join("/")), slots(vec![space(0.0), tag("follows", Role::Text3)], None, None, None)),
+            (_, Some(path)) => (
+                format!("Follows {}", path.join("/")),
+                slots(vec![space(0.0), tag("follows", Role::Text3)], None, None, None),
+            ),
             (Some(locked), None) => {
                 let source = input.original.as_ref().unwrap_or(locked).describe();
                 let mut subtitle = source.clone();
@@ -140,9 +154,13 @@ fn inputs(app: &Yukimi, moves: Option<&BTreeMap<String, Movement>>) -> Vec<Eleme
                             .into(),
                     );
                 }
-                let link = locked
-                    .web_url()
-                    .map(|url| icon_button(Icon::ExternalLink).plain().on_press(Msg::OpenUrl(url)).tooltip("See this version").into());
+                let link = locked.web_url().map(|url| {
+                    icon_button(Icon::ExternalLink)
+                        .plain()
+                        .on_press(Msg::OpenUrl(url))
+                        .tooltip("See this version")
+                        .into()
+                });
                 let update = matches!(movement, Some(Movement::Newer(_)))
                     .then(|| button("Update").compact().on_press(Msg::Update(vec![input.name.clone()])).into());
                 (subtitle, slots(status, branch_button, link, update))
@@ -221,16 +239,28 @@ fn completion(c: &Completion) -> Element<Msg> {
     };
     let mut r = row![
         icon(icon_name).size(20.0).role(role),
-        column![text(c.title()).weight(650.0), text(c.description()).wrap().size(12.0).role(Role::Text2)].spacing(3.0).width(Fill),
+        column![text(c.title()).weight(650.0), text(c.description()).wrap().size(12.0).role(Role::Text2)]
+            .spacing(3.0)
+            .width(Fill),
     ]
     .spacing(12.0)
     .width(Fill);
     match c.action {
         Action::Reboot => {
-            r = r.push(button("Restart Now").primary().on_press(Msg::Restart).tooltip("Save your work first. You can also leave this until later."))
+            r = r.push(
+                button("Restart Now")
+                    .primary()
+                    .on_press(Msg::Restart)
+                    .tooltip("Save your work first. You can also leave this until later."),
+            )
         }
         Action::Logout => {
-            r = r.push(button("Sign Out").primary().on_press(Msg::SignOut).tooltip("Save your work first. You can also leave this until later."))
+            r = r.push(
+                button("Sign Out")
+                    .primary()
+                    .on_press(Msg::SignOut)
+                    .tooltip("Save your work first. You can also leave this until later."),
+            )
         }
         _ => {}
     }
@@ -266,7 +296,10 @@ pub fn page(app: &Yukimi) -> Element<Msg> {
             c = c.push(banner(
                 Icon::TriangleAlert,
                 Role::Warning,
-                format!("Updating {} would go back to an older version, so Yukimi leaves {it} as {is}.", older.join(" and ")),
+                format!(
+                    "Updating {} would go back to an older version, so Yukimi leaves {it} as {is}.",
+                    older.join(" and ")
+                ),
             ));
         } else if failures == 0 && moves.values().all(|m| *m == Movement::Current) {
             c = c.push(banner(
@@ -283,7 +316,10 @@ pub fn page(app: &Yukimi) -> Element<Msg> {
         Kind::Channels => channels(app, moves.as_ref()),
     };
     let (title, whence) = match model.setup.kind {
-        Kind::Flake => ("Sources", format!("The inputs of {}, as its lock file pins them.", model.setup.dir.join("flake.nix").display())),
+        Kind::Flake => (
+            "Sources",
+            format!("The inputs of {}, as its lock file pins them.", model.setup.dir.join("flake.nix").display()),
+        ),
         Kind::Channels => ("Channels", "root's channels, which the system is built with.".to_owned()),
     };
     c.push(
@@ -313,7 +349,10 @@ pub fn branch_sheet(_app: &Yukimi, chooser: &BranchChooser) -> Element<Msg> {
                 .on_submit(Msg::Follow(chooser.typed.clone()))
                 .id("branch")
                 .width(Fill),
-            button("Follow").primary().default().on_press_maybe((!chooser.typed.trim().is_empty()).then(|| Msg::Follow(chooser.typed.clone()))),
+            button("Follow")
+                .primary()
+                .default()
+                .on_press_maybe((!chooser.typed.trim().is_empty()).then(|| Msg::Follow(chooser.typed.clone()))),
         ]
         .spacing(8.0)
         .width(Fill),
@@ -333,7 +372,11 @@ pub fn branch_sheet(_app: &Yukimi, chooser: &BranchChooser) -> Element<Msg> {
                 .iter()
                 .take(100)
                 .map(|b| {
-                    let mut r = row![icon(Icon::GitBranch).size(14.0).role(Role::Text3), text(b.clone()).mono().size(12.5)].spacing(10.0).width(Fill).height(22.0);
+                    let mut r =
+                        row![icon(Icon::GitBranch).size(14.0).role(Role::Text3), text(b.clone()).mono().size(12.5)]
+                            .spacing(10.0)
+                            .width(Fill)
+                            .height(22.0);
                     if Some(b) == chooser.current.as_ref() {
                         r = r.push(spacer()).push(tag("following", Role::Success));
                     }
@@ -341,12 +384,15 @@ pub fn branch_sheet(_app: &Yukimi, chooser: &BranchChooser) -> Element<Msg> {
                 })
                 .collect(),
         };
-        c = c.push(column![caption(&format!("Branches of {owner}/{name}")), super::list(rows).max_height(300.0)].spacing(6.0).width(Fill));
+        c = c.push(
+            column![caption(&format!("Branches of {owner}/{name}")), super::list(rows).max_height(300.0)]
+                .spacing(6.0)
+                .width(Fill),
+        );
     }
     c = c.push(row![spacer(), button("Cancel").cancel().on_press(Msg::CloseSheet(chooser.sheet))].width(Fill));
     container(c).padding(20.0).width(520.0).into()
 }
-
 
 /// A source's row's right side, in columns that line up from row to row:
 /// its age, how it would move, the branch it follows, a link to see it,

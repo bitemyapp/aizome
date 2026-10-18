@@ -15,8 +15,7 @@ use aizome_kit::sidestep_ui::{Cursor, PointerButton, StrokeStyle};
 use aizome_kit::text::TextSpec;
 use aizome_kit::theme::{FontSpec, Role, Theme};
 use aizome_kit::widget::{
-    Event, EventCx, FocusRing, Focusable, LayoutCx, PaintCx, SemanticAction, SemanticRole, Semantics,
-    Status, Widget,
+    Event, EventCx, FocusRing, Focusable, LayoutCx, PaintCx, SemanticAction, SemanticRole, Semantics, Status, Widget,
 };
 use aizome_kit::{Color, Element};
 
@@ -44,7 +43,14 @@ pub struct Tap<Msg> {
 }
 
 pub fn tap<Msg>(content: impl Into<Element<Msg>>) -> Tap<Msg> {
-    Tap { content: content.into(), on_press: None, selected: false, style: TapStyle::Row, padding: [0.0; 4], label: None }
+    Tap {
+        content: content.into(),
+        on_press: None,
+        selected: false,
+        style: TapStyle::Row,
+        padding: [0.0; 4],
+        label: None,
+    }
 }
 
 impl<Msg: Clone + Send + 'static> Tap<Msg> {
@@ -80,7 +86,13 @@ impl<Msg> Tap<Msg> {
 
 impl<Msg> From<Tap<Msg>> for Element<Msg> {
     fn from(t: Tap<Msg>) -> Element<Msg> {
-        let w = TapWidget { on_press: t.on_press, selected: t.selected, style: t.style, padding: t.padding, label: t.label };
+        let w = TapWidget {
+            on_press: t.on_press,
+            selected: t.selected,
+            style: t.style,
+            padding: t.padding,
+            label: t.label,
+        };
         Element::new(w, vec![t.content])
     }
 }
@@ -199,7 +211,11 @@ impl Widget for TapWidget {
             role: if self.on_press.is_some() { SemanticRole::Button } else { SemanticRole::Group },
             label: self.label.as_deref().map(str::to_owned),
             selected: self.selected.then_some(true),
-            actions: if self.on_press.is_some() { vec![SemanticAction::Click, SemanticAction::Focus] } else { Vec::new() },
+            actions: if self.on_press.is_some() {
+                vec![SemanticAction::Click, SemanticAction::Focus]
+            } else {
+                Vec::new()
+            },
             ..Default::default()
         })
     }
@@ -333,7 +349,9 @@ impl Widget for GridWidget {
             // Cells in a row share the tallest one's height.
             let mut h = 0.0f64;
             for &k in &row {
-                h = h.max(cx.layout_child(k, Constraints::tight(Size::new(cell, 0.0)).with_max_height(f64::INFINITY)).height);
+                h = h.max(
+                    cx.layout_child(k, Constraints::tight(Size::new(cell, 0.0)).with_max_height(f64::INFINITY)).height,
+                );
             }
             for (c, &k) in row.iter().enumerate() {
                 cx.layout_child(k, Constraints::tight(Size::new(cell, h)));
@@ -361,8 +379,7 @@ struct Monogram {
 
 impl Monogram {
     fn initials(&self) -> String {
-        let words: Vec<&str> =
-            self.name.split(|c: char| !c.is_alphanumeric()).filter(|w| !w.is_empty()).collect();
+        let words: Vec<&str> = self.name.split(|c: char| !c.is_alphanumeric()).filter(|w| !w.is_empty()).collect();
         let mut out = String::new();
         match words.as_slice() {
             [] => {}
@@ -571,7 +588,6 @@ impl Widget for Snow {
     }
 }
 
-
 // Chips.
 
 /// A small label tinted in a role's colour: `newer version`, `running`,
@@ -769,7 +785,10 @@ impl Widget for Adapt {
         let tall = sizes.iter().map(|s| s.height).fold(0.0, f64::max);
         let beside = width - trailing;
         if n == 1 || beside >= self.min_main {
-            let main = cx.layout_child(0, Constraints { min: Size::new(beside.max(0.0), 0.0), max: Size::new(beside.max(0.0), f64::INFINITY) });
+            let main = cx.layout_child(
+                0,
+                Constraints { min: Size::new(beside.max(0.0), 0.0), max: Size::new(beside.max(0.0), f64::INFINITY) },
+            );
             let h = main.height.max(tall);
             cx.place_child(0, Point::new(0.0, ((h - main.height) / 2.0).round()));
             let mut x = beside + self.spacing;

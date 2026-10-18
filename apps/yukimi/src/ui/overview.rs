@@ -56,11 +56,10 @@ fn hero(app: &Yukimi) -> Element<Msg> {
         facts.push(format!("Linux {}", model.info.kernel));
     }
     let facts = if app.loading && facts.is_empty() { "Looking around…".to_owned() } else { facts.join("  ·  ") };
-    let tab = container(
-        text(greeting(app.clock.hour())).size(12.0).weight(650.0).condensed().color(Color::hex(0x1a1b26)),
-    )
-    .padding([3.0, 10.0])
-    .fill(Tone::Color(Color::hex(KOHAKU)));
+    let tab =
+        container(text(greeting(app.clock.hour())).size(12.0).weight(650.0).condensed().color(Color::hex(0x1a1b26)))
+            .padding([3.0, 10.0])
+            .fill(Tone::Color(Color::hex(KOHAKU)));
     let mut words = column![
         tab,
         text(name.to_owned()).size(34.0).weight(750.0).color(Color::hex(SNOW)),
@@ -82,9 +81,12 @@ fn hero(app: &Yukimi) -> Element<Msg> {
         );
     }
     let seal = container(
-        column![text("雪").size(20.0).color(Color::hex(KAMENOZOKI)), text("見").size(20.0).color(Color::hex(KAMENOZOKI))]
-            .spacing(0.0)
-            .align(Align::Center),
+        column![
+            text("雪").size(20.0).color(Color::hex(KAMENOZOKI)),
+            text("見").size(20.0).color(Color::hex(KAMENOZOKI))
+        ]
+        .spacing(0.0)
+        .align(Align::Center),
     )
     .padding([6.0, 8.0])
     .border(Edge::Color(Color::hex(KAMENOZOKI).with_alpha(0.55)));
@@ -164,7 +166,14 @@ fn tiles(app: &Yukimi) -> Element<Msg> {
         )),
         None => line.push('.'),
     }
-    let packages = tile(Icon::Package, Role::Accent, "Packages", (chosen + mine).to_string(), line, ("See what's installed", Page::Installed));
+    let packages = tile(
+        Icon::Package,
+        Role::Accent,
+        "Packages",
+        (chosen + mine).to_string(),
+        line,
+        ("See what's installed", Page::Installed),
+    );
     let (big, line) = freshness(app);
     let fresh = tile(Icon::RefreshCw, Role::Success, "Freshness", big, line, ("See updates", Page::Updates));
     let (big, line) = match &model.store {
@@ -192,7 +201,14 @@ fn tiles(app: &Yukimi) -> Element<Msg> {
         Some(_) => "version of the system so far. Each change makes another to go back to.".to_owned(),
         None => "No generations were found.".to_owned(),
     };
-    let history = tile(Icon::GitCommitHorizontal, Role::Warning, "Generations", gens.len().to_string(), line, ("See history", Page::History));
+    let history = tile(
+        Icon::GitCommitHorizontal,
+        Role::Warning,
+        "Generations",
+        gens.len().to_string(),
+        line,
+        ("See history", Page::History),
+    );
     grid(vec![packages, fresh, storage, history], 190.0, 12.0)
 }
 
@@ -212,9 +228,12 @@ fn store_panel(app: &Yukimi) -> Element<Msg> {
                 })
                 .collect();
             column![
-                row![text(human_size(c.total)).mono().tabular().size(20.0).weight(600.0), text("in the Nix store").role(Role::Text3)]
-                    .spacing(8.0)
-                    .align(Align::End),
+                row![
+                    text(human_size(c.total)).mono().tabular().size(20.0).weight(600.0),
+                    text("in the Nix store").role(Role::Text3)
+                ]
+                .spacing(8.0)
+                .align(Align::End),
                 widgets::bar(super::storage::segments(c), 14.0).width(Fill),
                 grid(legend, 200.0, 4.0),
             ]
@@ -223,10 +242,13 @@ fn store_panel(app: &Yukimi) -> Element<Msg> {
             .into()
         }
     };
-    column![row![caption("The store"), spacer(), link("See storage", Msg::Show(Page::Storage))].width(Fill), panel(body).width(Fill)]
-        .spacing(6.0)
-        .width(Fill)
-        .into()
+    column![
+        row![caption("The store"), spacer(), link("See storage", Msg::Show(Page::Storage))].width(Fill),
+        panel(body).width(Fill)
+    ]
+    .spacing(6.0)
+    .width(Fill)
+    .into()
 }
 
 /// Each generation by its size, the running one in the focus colour.
@@ -234,7 +256,11 @@ fn generations_panel(app: &Yukimi) -> Element<Msg> {
     let model = &app.model;
     let sizes: Vec<(u32, u64)> = model.store.as_ref().map(|s| s.generation_sizes.clone()).unwrap_or_default();
     let body: Element<Msg> = if sizes.is_empty() {
-        if model.store.is_none() { super::pending("Reading the store…") } else { super::empty("No generations were found.") }
+        if model.store.is_none() {
+            super::pending("Reading the store…")
+        } else {
+            super::empty("No generations were found.")
+        }
     } else {
         // The last dozen, sized from a little under the smallest so growth shows.
         let shown = &sizes[sizes.len().saturating_sub(12)..];
@@ -252,16 +278,22 @@ fn generations_panel(app: &Yukimi) -> Element<Msg> {
         let highlight = shown.iter().position(|(n, _)| Some(*n) == running);
         column![
             columns(bars, highlight, 118.0).width(Fill),
-            text("Each generation's size in GB: everything that version of the system needs.").size(11.0).role(Role::Text3).wrap(),
+            text("Each generation's size in GB: everything that version of the system needs.")
+                .size(11.0)
+                .role(Role::Text3)
+                .wrap(),
         ]
         .spacing(6.0)
         .width(Fill)
         .into()
     };
-    column![row![caption("Generations"), spacer(), link("See history", Msg::Show(Page::History))].width(Fill), panel(body).width(Fill)]
-        .spacing(6.0)
-        .width(Fill)
-        .into()
+    column![
+        row![caption("Generations"), spacer(), link("See history", Msg::Show(Page::History))].width(Fill),
+        panel(body).width(Fill)
+    ]
+    .spacing(6.0)
+    .width(Fill)
+    .into()
 }
 
 /// What the latest change brought.
@@ -277,7 +309,14 @@ fn recent(app: &Yukimi) -> Option<Element<Msg>> {
             human_age(after.created, app.now())
         );
         let Some(d) = model.store.as_ref().and_then(|s| s.latest.as_ref()) else {
-            return Some(column![caption("Most recently"), panel(column![text(said), super::pending("Reading what it changed…")].spacing(6.0)).width(Fill)].spacing(6.0).into());
+            return Some(
+                column![
+                    caption("Most recently"),
+                    panel(column![text(said), super::pending("Reading what it changed…")].spacing(6.0)).width(Fill)
+                ]
+                .spacing(6.0)
+                .into(),
+            );
         };
         let mut chips = row![].spacing(6.0);
         let mut any = false;
@@ -297,7 +336,8 @@ fn recent(app: &Yukimi) -> Option<Element<Msg>> {
             chips = chips.push(tag("only settings changed", Role::Text3));
         }
         let names: Vec<String> = d.changes.iter().take(8).map(|c| c.name.clone()).collect();
-        let mut c = column![row![text(said).weight(600.0), spacer(), chips].spacing(12.0).width(Fill)].spacing(8.0).width(Fill);
+        let mut c =
+            column![row![text(said).weight(600.0), spacer(), chips].spacing(12.0).width(Fill)].spacing(8.0).width(Fill);
         if !names.is_empty() {
             let more = if d.changes.len() > 8 { format!(" and {} more", d.changes.len() - 8) } else { String::new() };
             c = c.push(text(format!("{}{more}", names.join(", "))).mono().size(12.0).role(Role::Text2).wrap());
@@ -317,10 +357,13 @@ fn recent(app: &Yukimi) -> Option<Element<Msg>> {
         return None;
     };
     Some(
-        column![row![caption("Most recently"), spacer(), link("See what changed", Msg::Show(Page::History))].width(Fill), panel(body).width(Fill)]
-            .spacing(6.0)
-            .width(Fill)
-            .into(),
+        column![
+            row![caption("Most recently"), spacer(), link("See what changed", Msg::Show(Page::History))].width(Fill),
+            panel(body).width(Fill)
+        ]
+        .spacing(6.0)
+        .width(Fill)
+        .into(),
     )
 }
 
@@ -377,10 +420,13 @@ fn sources(app: &Yukimi) -> Option<Element<Msg>> {
         return None;
     }
     Some(
-        column![row![caption("Where it comes from"), spacer(), link("See updates", Msg::Show(Page::Updates))].width(Fill), super::list(rows)]
-            .spacing(6.0)
-            .width(Fill)
-            .into(),
+        column![
+            row![caption("Where it comes from"), spacer(), link("See updates", Msg::Show(Page::Updates))].width(Fill),
+            super::list(rows)
+        ]
+        .spacing(6.0)
+        .width(Fill)
+        .into(),
     )
 }
 

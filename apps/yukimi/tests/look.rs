@@ -88,7 +88,8 @@ sleep 30"#,
     }));
     for (theme, name) in [(ThemeChoice::Night, "night"), (ThemeChoice::Day, "day")] {
         let model = Arc::new(aizome_yukimi::fixture::model());
-        let mut app = Yukimi::with(Source::Sample(model.clone()), runner.clone(), Clock::Fixed(aizome_yukimi::fixture::NOW, 21));
+        let mut app =
+            Yukimi::with(Source::Sample(model.clone()), runner.clone(), Clock::Fixed(aizome_yukimi::fixture::NOW, 21));
         app.check = Some(Arc::new(aizome_yukimi::fixture::check(&model)));
         app.index = Some(Arc::new(aizome_yukimi::fixture::index()));
         let appearance = Appearance { theme, reduced_motion: true, ..Appearance::default() };
@@ -113,7 +114,12 @@ sleep 30"#,
         h.send(Msg::CloseJob);
         h.send(Msg::Show(Page::Updates));
         h.send(Msg::ChooseBranch("sekka".into()));
-        h.send(Msg::Branches(Ok(vec!["main".into(), "nightly".into(), "selective-updates".into(), "fish-shell".into()])));
+        h.send(Msg::Branches(Ok(vec![
+            "main".into(),
+            "nightly".into(),
+            "selective-updates".into(),
+            "fish-shell".into(),
+        ])));
         h.save_png(w, dir.join(format!("branch-{name}.png")), 1.0);
     }
 }
@@ -126,7 +132,8 @@ fn this_computer() {
     use aizome_yukimi::app::{Clock, Runner, Source};
     use aizome_yukimi::paths::Paths;
 
-    let (Some(dir), true) = (std::env::var_os("YUKIMI_PICTURES"), std::env::var_os("AIZOME_YUKIMI_ETC").is_some()) else {
+    let (Some(dir), true) = (std::env::var_os("YUKIMI_PICTURES"), std::env::var_os("AIZOME_YUKIMI_ETC").is_some())
+    else {
         return;
     };
     let dir = std::path::PathBuf::from(dir);

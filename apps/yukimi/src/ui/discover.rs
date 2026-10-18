@@ -114,7 +114,8 @@ fn app_card(model: &Model, system: &BTreeSet<&str>, app: &Application) -> Elemen
     let body = column![
         row![
             monogram(&app.name, 36.0),
-            column![text(app.name.clone()).weight(650.0), text(app.category.clone()).size(11.5).role(Role::Text3)].spacing(1.0),
+            column![text(app.name.clone()).weight(650.0), text(app.category.clone()).size(11.5).role(Role::Text3)]
+                .spacing(1.0),
         ]
         .spacing(10.0),
         text(app.description.clone()).wrap().size(12.0).role(Role::Text2).line_height(1.3),
@@ -165,7 +166,9 @@ fn result_row(installed: &Installed, package: &Package) -> Element<Msg> {
     for b in installed.badges(package) {
         r = r.push(b);
     }
-    r = r.push(mono(package.version.clone()).role(Role::Text3)).push(icon(Icon::ChevronRight).size(14.0).role(Role::Text3));
+    r = r
+        .push(mono(package.version.clone()).role(Role::Text3))
+        .push(icon(Icon::ChevronRight).size(14.0).role(Role::Text3));
     tap(r).padding([8.0, 12.0]).on_press(Msg::Open(package.clone())).named(package.attr.clone()).into()
 }
 
@@ -191,10 +194,12 @@ pub fn page(app: &Yukimi) -> Element<Msg> {
                 panel(
                     row![
                         icon(Icon::ListTree).size(18.0).role(Role::Accent),
-                        text("To search all of Nixpkgs, Yukimi first makes a list of its packages: about a minute, once \
-                              for each version.")
-                            .wrap()
-                            .width(Fill),
+                        text(
+                            "To search all of Nixpkgs, Yukimi first makes a list of its packages: about a minute, once \
+                              for each version."
+                        )
+                        .wrap()
+                        .width(Fill),
                         button("Make the List").on_press(Msg::MakeIndex),
                     ]
                     .spacing(12.0)
@@ -216,8 +221,11 @@ pub fn page(app: &Yukimi) -> Element<Msg> {
         c = c.push(column![caption("Applications"), cards(model, &system, &apps)].spacing(8.0).width(Fill));
     }
     let Some(index) = &app.index else {
-        let waiting = if app.indexing { "The package list is still being made." } else { "There is no package list yet." };
-        return c.push(column![caption("Packages"), super::list(vec![super::empty(waiting)])].spacing(8.0).width(Fill)).into();
+        let waiting =
+            if app.indexing { "The package list is still being made." } else { "There is no package list yet." };
+        return c
+            .push(column![caption("Packages"), super::list(vec![super::empty(waiting)])].spacing(8.0).width(Fill))
+            .into();
     };
     let current = app.found.as_ref().filter(|f| f.query == app.query && f.index == index_id(index));
     let packages: Element<Msg> = match current {
@@ -248,7 +256,8 @@ pub fn page(app: &Yukimi) -> Element<Msg> {
         }
     };
     let count = current.map(|f| f.results.len()).unwrap_or(0);
-    let label = if count >= crate::app::RESULTS { format!("Packages · the first {count}") } else { "Packages".to_owned() };
+    let label =
+        if count >= crate::app::RESULTS { format!("Packages · the first {count}") } else { "Packages".to_owned() };
     c.push(column![caption(&label), packages].spacing(8.0).width(Fill)).into()
 }
 
@@ -306,7 +315,10 @@ pub fn details(app: &Yukimi, package: &Package, sheet: WindowKey) -> Element<Msg
         facts.push(fact("License", &package.license, None));
     }
     if !package.homepage.is_empty() {
-        let open = icon_button(Icon::ExternalLink).plain().on_press(Msg::OpenUrl(package.homepage.clone())).tooltip("Open the homepage");
+        let open = icon_button(Icon::ExternalLink)
+            .plain()
+            .on_press(Msg::OpenUrl(package.homepage.clone()))
+            .tooltip("Open the homepage");
         facts.push(fact("Homepage", &package.homepage, Some(open.into())));
     }
     if !facts.is_empty() {
@@ -335,29 +347,38 @@ pub fn details(app: &Yukimi, package: &Package, sheet: WindowKey) -> Element<Msg
         Some(a) => model.app_installed(a, &installed.system),
         None => installed.for_everyone(&package.attr),
     };
-    let mut try_it = button("Try It").icon(Icon::Play).on_press_maybe((installable && needing.is_none()).then(|| Msg::TryIt(package.clone())));
+    let mut try_it = button("Try It")
+        .icon(Icon::Play)
+        .on_press_maybe((installable && needing.is_none()).then(|| Msg::TryIt(package.clone())));
     try_it = try_it.tooltip(match needing {
-        Some(a) => format!("Only the system can set up what {} needs, so it can't be tried without installing it", a.name),
+        Some(a) => {
+            format!("Only the system can set up what {} needs, so it can't be tried without installing it", a.name)
+        }
         None => "Run it in a terminal without installing it. Nothing is changed.".to_owned(),
     });
-    let mut for_me = button("Install for Me")
-        .icon(Icon::User)
-        .on_press_maybe((installable && needing.is_none() && !installed.for_you(&package.attr)).then(|| Msg::InstallForMe(package.clone())));
+    let mut for_me = button("Install for Me").icon(Icon::User).on_press_maybe(
+        (installable && needing.is_none() && !installed.for_you(&package.attr))
+            .then(|| Msg::InstallForMe(package.clone())),
+    );
     if let Some(a) = needing {
-        for_me = for_me.tooltip(format!("Only the system can set up what {} needs, so it can't be installed just for you", a.name));
+        for_me = for_me.tooltip(format!(
+            "Only the system can set up what {} needs, so it can't be installed just for you",
+            a.name
+        ));
     } else {
         for_me = for_me.tooltip("Into your own profile: no password, and nobody else sees it.");
     }
-    let mut for_all = button("Install for Everyone")
-        .primary()
-        .icon(Icon::Users)
-        .on_press_maybe((installable && why_not.is_none() && !done).then(|| Msg::InstallForEveryone(package.attr.clone())));
+    let mut for_all = button("Install for Everyone").primary().icon(Icon::Users).on_press_maybe(
+        (installable && why_not.is_none() && !done).then(|| Msg::InstallForEveryone(package.attr.clone())),
+    );
     if let Some(why) = &why_not {
         for_all = for_all.tooltip(why.clone());
     }
     c = c.push(divider().edge(Edge::Line));
     c = c.push(
-        row![button("Close").cancel().on_press(Msg::CloseSheet(sheet)), spacer(), try_it, for_me, for_all].spacing(8.0).width(Fill),
+        row![button("Close").cancel().on_press(Msg::CloseSheet(sheet)), spacer(), try_it, for_me, for_all]
+            .spacing(8.0)
+            .width(Fill),
     );
     container(c).padding(20.0).width(600.0).into()
 }

@@ -173,10 +173,23 @@ pub enum Removal {
 pub enum Msg {
     // Reading.
     Reload,
-    Read { epoch: u64, model: Arc<Model> },
-    StoreRead { epoch: u64, store: Arc<Store>, problems: Vec<String> },
-    FlakeNixpkgs { epoch: u64, path: String },
-    IndexCached { index: Arc<PackageIndex>, current: bool },
+    Read {
+        epoch: u64,
+        model: Arc<Model>,
+    },
+    StoreRead {
+        epoch: u64,
+        store: Arc<Store>,
+        problems: Vec<String>,
+    },
+    FlakeNixpkgs {
+        epoch: u64,
+        path: String,
+    },
+    IndexCached {
+        index: Arc<PackageIndex>,
+        current: bool,
+    },
     IndexMade(Result<Arc<PackageIndex>, String>),
     /// Make the package index now (Discover's "Make the list").
     MakeIndex,
@@ -196,7 +209,12 @@ pub enum Msg {
 
     // Discover.
     Search(String),
-    Found { number: u64, query: String, index: usize, results: Arc<Vec<Package>> },
+    Found {
+        number: u64,
+        query: String,
+        index: usize,
+        results: Arc<Vec<Package>>,
+    },
     Open(Package),
     TryIt(Package),
     InstallForMe(Package),
@@ -219,7 +237,12 @@ pub enum Msg {
     ToggleRoots,
 
     // Operations.
-    Confirm { heading: String, body: String, action: String, operation: Operation },
+    Confirm {
+        heading: String,
+        body: String,
+        action: String,
+        operation: Operation,
+    },
     Run(Operation),
     Job(u64, JobEvent),
     StopJob,
@@ -332,7 +355,11 @@ impl Yukimi {
     /// Yukimi for the sample system: nothing is read or changed.
     pub fn sample() -> Yukimi {
         let model = Arc::new(crate::fixture::model());
-        let mut app = Yukimi::with(Source::Sample(model.clone()), Runner::Mock(Arc::new(|_| Vec::new())), Clock::Fixed(crate::fixture::NOW, crate::fixture::HOUR));
+        let mut app = Yukimi::with(
+            Source::Sample(model.clone()),
+            Runner::Mock(Arc::new(|_| Vec::new())),
+            Clock::Fixed(crate::fixture::NOW, crate::fixture::HOUR),
+        );
         app.check = Some(Arc::new(crate::fixture::check(&model)));
         app.index = Some(Arc::new(crate::fixture::index()));
         app
@@ -374,9 +401,7 @@ impl Yukimi {
             notes_made: 0,
             listener: None,
             auto_check: true,
-            stalls: std::env::var("YUKIMI_STALLS")
-                .ok()
-                .map(|v| Duration::from_millis(v.trim().parse().unwrap_or(50))),
+            stalls: std::env::var("YUKIMI_STALLS").ok().map(|v| Duration::from_millis(v.trim().parse().unwrap_or(50))),
         }
     }
 
@@ -444,7 +469,8 @@ impl Yukimi {
         if self.check.is_none() && !sample {
             self.check = checks::load(&checks::subject(&model)).map(Arc::new);
         }
-        let flake_nixpkgs = (model.nixpkgs.is_none() && model.setup.kind == Kind::Flake && !sample).then(|| model.setup.flake());
+        let flake_nixpkgs =
+            (model.nixpkgs.is_none() && model.setup.kind == Kind::Flake && !sample).then(|| model.setup.flake());
         let generations = model.generations.clone();
         let store = model.store.clone();
         self.model = Arc::new(model);
@@ -797,7 +823,10 @@ impl Yukimi {
                 }
                 _ => None,
             };
-            Msg::Changes(number, Changes::Ready { kept, diff, store_read: store.is_some(), has_previous: previous.is_some() })
+            Msg::Changes(
+                number,
+                Changes::Ready { kept, diff, store_read: store.is_some(), has_previous: previous.is_some() },
+            )
         });
     }
 
@@ -867,7 +896,9 @@ impl Yukimi {
             };
             match command.output() {
                 Ok(out) if out.status.success() => Msg::Finished(Ok(())),
-                Ok(out) => Msg::Finished(Err(format!("Could not finish: {}", String::from_utf8_lossy(&out.stderr).trim()))),
+                Ok(out) => {
+                    Msg::Finished(Err(format!("Could not finish: {}", String::from_utf8_lossy(&out.stderr).trim())))
+                }
                 Err(_) => Msg::Finished(Err("Could not start that. Your session is still running.".to_owned())),
             }
         });

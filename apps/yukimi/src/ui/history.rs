@@ -15,7 +15,9 @@ const SHOWN: usize = 200;
 
 fn change_row(change: &Change) -> Element<Msg> {
     let (icon_name, role, versions) = match change.kind {
-        ChangeKind::Upgraded => (Icon::ArrowUp, Role::Success, format!("{} → {}", change.before.join(", "), change.after.join(", "))),
+        ChangeKind::Upgraded => {
+            (Icon::ArrowUp, Role::Success, format!("{} → {}", change.before.join(", "), change.after.join(", ")))
+        }
         ChangeKind::Downgraded => {
             (Icon::ArrowDown, Role::Warning, format!("{} → {}", change.before.join(", "), change.after.join(", ")))
         }
