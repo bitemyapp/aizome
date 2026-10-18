@@ -386,6 +386,22 @@ smithay::delegate_security_context!(State);
 smithay::delegate_content_type!(State);
 smithay::delegate_xdg_dialog!(State);
 smithay::delegate_xdg_toplevel_icon!(State);
+smithay::delegate_xdg_system_bell!(State);
+
+/// xdg-system-bell: the shell rings it (flashes the screen edge or plays
+/// the alert sound), told as a `bell` binding with the output.
+impl smithay::wayland::xdg_system_bell::XdgSystemBellHandler for State {
+    fn ring(&mut self, surface: Option<WlSurface>) {
+        let output = surface
+            .as_ref()
+            .and_then(|s| self.az.window_for_surface(s))
+            .and_then(|id| self.az.wm.get(id).map(|w| w.rect))
+            .and_then(|r| self.az.output_for_rect(r))
+            .or_else(|| self.az.active_output())
+            .map(|o| o.name());
+        self.az.ipc.emit(&aizome_ipc::Event::Binding { action: "bell".into(), pointer: None, output });
+    }
+}
 smithay::delegate_alpha_modifier!(State);
 smithay::delegate_fifo!(State);
 smithay::delegate_commit_timing!(State);

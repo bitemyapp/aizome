@@ -63,33 +63,44 @@ the scene's elements, rendering what's damaged and submitting it.
   Intel graphics (Panther Lake) through EGL on the render node; pixman on
   the same CPU. Effects tier Lean (hard shadows, 80 ms motion).
 
-### Results (2026-10-17)
+### Results (2026-10-17, evening run)
 
-Milliseconds of compositor CPU per rendered frame.
+Milliseconds of compositor CPU per rendered frame. Other agents were
+building on the machine during the run (load average 6–12), so the tails
+are pessimistic.
 
 GLES:
 
 | Scenario | Frames | p50 | p95 | p99 | max | GPU p50 / p99 |
 |---|---|---|---|---|---|---|
 | Idle, 2 s | 0 | – | – | – | – | – |
-| Moving a 320 × 200 window, 240 steps | 229 | 0.39 | 0.70 | 1.38 | 1.85 | 0.45 / 4.31 |
-| A client drawing every frame (800 × 500) | 145 | 0.83 | 1.89 | 3.32 | 3.51 | 1.39 / 17.4 |
-| Switching Desks (slides), 12 | 25 | 0.38 | 0.97 | 3.28 | 3.28 | 0.46 / 13.3 |
-| Overview open and close, 8 | 32 | 1.36 | 4.70 | 13.2 | 13.2 | 1.40 / 4.57 |
-| 10 windows, one moving | 110 | 0.70 | 1.39 | 3.17 | 3.76 | 0.42 / 3.51 |
-| A full-screen client drawing every frame | 143 | 1.84 | 3.27 | 5.03 | 7.71 | 1.52 / 4.83 |
+| Moving a 320 × 200 window, 240 steps | 220 | 0.34 | 0.67 | 0.98 | 1.44 | 0.68 / 0.93 |
+| A client drawing every frame (800 × 500) | 166 | 0.39 | 0.60 | 0.73 | 0.75 | 0.97 / 1.34 |
+| Switching Desks (slides), 12 | 26 | 0.36 | 0.84 | 1.23 | 1.23 | 0.63 / 0.82 |
+| Overview open and close, 8 | 32 | 0.92 | 2.33 | 8.16 | 8.16 | 1.89 / 3.25 |
+| 10 windows, one moving | 109 | 0.51 | 0.99 | 1.37 | 2.17 | 0.67 / 0.91 |
+| A full-screen client drawing every frame | 153 | 0.38 | 0.58 | 0.81 | 1.13 | 2.37 / 3.05 |
 
 pixman:
 
 | Scenario | Frames | p50 | p95 | p99 | max |
 |---|---|---|---|---|---|
 | Idle, 2 s | 0 | – | – | – | – |
-| Moving a 320 × 200 window, 240 steps | 230 | 0.57 | 0.68 | 0.78 | 0.97 |
-| A client drawing every frame (800 × 500) | 163 | 1.49 | 2.10 | 3.99 | 6.34 |
-| Switching Desks (slides), 12 | 25 | 0.65 | 1.49 | 1.50 | 1.50 |
-| Overview open and close, 8 | 31 | 3.15 | 12.8 | 18.5 | 18.5 |
-| 10 windows, one moving | 113 | 0.73 | 1.04 | 1.22 | 1.58 |
-| A full-screen client drawing every frame | 149 | 3.51 | 4.45 | 5.08 | 5.64 |
+| Moving a 320 × 200 window, 240 steps | 226 | 0.54 | 0.84 | 1.26 | 1.29 |
+| A client drawing every frame (800 × 500) | 165 | 1.59 | 1.97 | 2.22 | 2.35 |
+| Switching Desks (slides), 12 | 26 | 0.36 | 0.89 | 0.98 | 0.98 |
+| Overview open and close, 8 | 32 | 3.77 | 14.8 | 15.2 | 15.2 |
+| 10 windows, one moving | 112 | 0.77 | 0.99 | 1.26 | 1.55 |
+| A full-screen client drawing every frame | 155 | 2.53 | 3.55 | 3.79 | 4.02 |
+
+Under GLES a client's wl_shm frame is now uploaded into its texture when
+it commits (so the buffer can go straight back to the client), not while
+the output renders: the frames above no longer include those uploads,
+which is why a client drawing every frame costs 0.4 ms here against
+0.8–1.8 ms in the morning run. The upload (a few hundred microseconds
+for a full 800 × 500 frame) is still the compositor's work, in the
+commit handler. Pixman reads client memory as it composites, so its
+numbers include it as before.
 
 (With Archivo and IBM Plex Mono installed through `AIZOME_FONT_DIR`, as in
 a session. An earlier run without them, before fonts were loaded at
@@ -113,21 +124,22 @@ What these show:
 ### Exceptions
 
 1. **Full-output damage under pixman at 2880 × 1800** (a full-screen
-   client redrawing every frame: p50 3.5 ms, p95 4.4 ms, max 5.6 ms; an
-   earlier run on a busier machine had p95 11.6 ms). Each frame composites
+   client redrawing every frame: p50 2.5–3.5 ms, p95 3.6–4.4 ms, max 4–5.6 ms;
+   an earlier run on a busier machine had p95 11.6 ms). Each frame composites
    5.2 million pixels on the CPU; the cost is memory traffic, not the
-   scene. GLES does the same frame in 1.8 ms. Full-screen video or games
+   scene. GLES does the same frame in 0.4 ms (1.8 ms in the morning run,
+   when the client's upload was part of the frame). Full-screen video or games
    without a usable GPU sit at or over the budget; ordinary windows
    (partial damage) don't.
-2. **The Desks overview under pixman** (p50 3.1 ms, p95 12.8 ms, max
-   18.5 ms; up to 57 ms in the earlier run). Opening and closing it
+2. **The Desks overview under pixman** (p50 3.1–3.8 ms, p95 12.8–14.8 ms,
+   max 15–18.5 ms; up to 57 ms in the earliest run). Opening and closing it
    damages the whole output, and its thumbnails are window buffers scaled
    down at composition, which pixman filters on the CPU. It redraws only
    when opened, closed, filtered or dragged in, never continuously, so the
    cost is a handful of frames per use.
 3. **First frames of new labels.** A frame that first shows a label (a new
    title, the overview's captions) rasterizes it with Sidestep's offscreen
-   canvas and uploads it: the 13.2 ms overview maximum under GLES is its
+   canvas and uploads it: the 8–13 ms overview maximum under GLES is its
    first opening, setting a dozen captions. Labels are cached per text,
    style and scale (and dropped half a minute after they were last
    drawn), so these are one-off costs; fonts load at start-up.

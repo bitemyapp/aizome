@@ -242,6 +242,7 @@ pub struct Aizome {
     pub content_type: ContentTypeState,
     pub tablet: TabletManagerState,
     pub toplevel_icon: XdgToplevelIconManager,
+    pub system_bell: smithay::wayland::xdg_system_bell::XdgSystemBellState,
     pub alpha_modifier: AlphaModifierState,
     pub fifo: FifoManagerState,
     pub commit_timing: CommitTimingManagerState,
@@ -392,6 +393,7 @@ impl State {
         let content_type = ContentTypeState::new::<State>(&dh);
         let tablet = TabletManagerState::new::<State>(&dh);
         let toplevel_icon = XdgToplevelIconManager::new::<State>(&dh);
+        let system_bell = smithay::wayland::xdg_system_bell::XdgSystemBellState::new::<State>(&dh);
         let alpha_modifier = AlphaModifierState::new::<State>(&dh);
         let fifo = FifoManagerState::new::<State>(&dh);
         let commit_timing = CommitTimingManagerState::new::<State>(&dh);
@@ -468,6 +470,7 @@ impl State {
             content_type,
             tablet,
             toplevel_icon,
+            system_bell,
             alpha_modifier,
             fifo,
             commit_timing,

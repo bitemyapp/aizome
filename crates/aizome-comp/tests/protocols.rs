@@ -112,14 +112,41 @@ impl Client {
     /// A solid ARGB8888 buffer; `released` turns true when the compositor
     /// releases it.
     fn buffer(&self, w: i32, h: i32, color: u32, released: Option<Arc<AtomicBool>>) -> wl_buffer::WlBuffer {
+        self.buffer_in(wl_shm::Format::Argb8888, w, h, color, None, released)
+    }
+
+    /// A buffer in a format: `color` (0xRRGGBB) everywhere, or only in
+    /// `patch` (x, y, w, h) over 0x808080.
+    fn buffer_in(
+        &self,
+        format: wl_shm::Format,
+        w: i32,
+        h: i32,
+        color: u32,
+        patch: Option<(i32, i32, i32, i32)>,
+        released: Option<Arc<AtomicBool>>,
+    ) -> wl_buffer::WlBuffer {
         // Safety: memfd_create with a static name.
         let fd = unsafe { OwnedFd::from_raw_fd(libc::memfd_create(c"aizome-probe".as_ptr(), 0)) };
         let mut file = std::fs::File::from(fd);
-        let px = [color as u8, (color >> 8) as u8, (color >> 16) as u8, 0xff];
-        let data: Vec<u8> = std::iter::repeat_n(px, (w * h) as usize).flatten().collect();
+        let bytes = |c: u32| -> [u8; 4] {
+            let (r, g, b) = ((c >> 16) as u8, (c >> 8) as u8, c as u8);
+            match format {
+                // Little-endian words: ARGB is B, G, R, A in memory; ABGR is R, G, B, A.
+                wl_shm::Format::Abgr8888 | wl_shm::Format::Xbgr8888 => [r, g, b, 0xff],
+                _ => [b, g, r, 0xff],
+            }
+        };
+        let mut data = Vec::with_capacity((w * h * 4) as usize);
+        for y in 0..h {
+            for x in 0..w {
+                let inside = patch.is_none_or(|(px, py, pw, ph)| x >= px && x < px + pw && y >= py && y < py + ph);
+                data.extend_from_slice(&bytes(if inside { color } else { 0x808080 }));
+            }
+        }
         file.write_all(&data).unwrap();
         let pool = self.shm.create_pool(file.as_fd(), w * h * 4, &self.qh, ());
-        let b = pool.create_buffer(0, w, h, w * 4, wl_shm::Format::Argb8888, &self.qh, released.unwrap_or_default());
+        let b = pool.create_buffer(0, w, h, w * 4, format, &self.qh, released.unwrap_or_default());
         pool.destroy();
         b
     }
@@ -403,4 +430,85 @@ fn gamma_control_is_offered_and_refused_where_there_is_no_gamma() {
     queue.roundtrip(&mut g).unwrap();
     // Headless outputs have no CRTC to take ramps.
     assert!(g.failed && g.size.is_none());
+}
+
+// ---- formats, first frame and damaged frames ----------------------------------
+
+/// Frames in a sequence of formats: the first fills the window, each later
+/// one damages only a patch; the screenshot must show each in its colours.
+fn frames_keep_their_colours(renderer_name: &str) {
+    use wl_shm::Format::{Abgr8888, Argb8888, Xbgr8888, Xrgb8888};
+    let c = Compositor::start(Options { renderer: Some(renderer_name), ..Default::default() });
+    let mut a = Client::new(&c, "org.example.formats");
+    let w = c.window("org.example.formats").unwrap();
+    let (x0, y0) = (w.geometry.x, w.geometry.y);
+    // (format, colour, patch)
+    let steps: [(wl_shm::Format, u32, Option<(i32, i32, i32, i32)>); 6] = [
+        (Xbgr8888, 0xd02010, None),
+        (Xbgr8888, 0x1040e0, Some((20, 20, 60, 40))),
+        (Abgr8888, 0x20b040, Some((100, 20, 60, 40))),
+        (Argb8888, 0xe0a020, Some((180, 20, 60, 40))),
+        (Abgr8888, 0x9030c0, Some((20, 100, 60, 40))),
+        (Xrgb8888, 0x30c0c0, Some((100, 100, 60, 40))),
+    ];
+    let mut drawn: Vec<(u32, Option<(i32, i32, i32, i32)>)> = Vec::new();
+    for (format, color, patch) in steps {
+        // Every buffer holds the whole picture so far (as a client's would).
+        let b = {
+            // Draw the history into one buffer of this format.
+            let (w, h) = (300, 200);
+            let fd = unsafe { OwnedFd::from_raw_fd(libc::memfd_create(c"aizome-formats".as_ptr(), 0)) };
+            let mut file = std::fs::File::from(fd);
+            let mut layers = drawn.clone();
+            layers.push((color, patch));
+            let mut data = Vec::with_capacity((w * h * 4) as usize);
+            for y in 0..h {
+                for x in 0..w {
+                    let mut c = 0x808080;
+                    for (lc, lp) in &layers {
+                        if lp.is_none_or(|(px, py, pw, ph)| x >= px && x < px + pw && y >= py && y < py + ph) {
+                            c = *lc;
+                        }
+                    }
+                    let (r, g, b) = ((c >> 16) as u8, (c >> 8) as u8, c as u8);
+                    data.extend_from_slice(&match format {
+                        Abgr8888 | Xbgr8888 => [r, g, b, 0xff],
+                        _ => [b, g, r, 0xff],
+                    });
+                }
+            }
+            file.write_all(&data).unwrap();
+            let pool = a.shm.create_pool(file.as_fd(), w * h * 4, &a.qh, ());
+            let buf = pool.create_buffer(0, w, h, w * 4, format, &a.qh, Arc::default());
+            pool.destroy();
+            buf
+        };
+        a.surface.attach(Some(&b), 0, 0);
+        match patch {
+            Some((x, y, w, h)) => a.surface.damage_buffer(x, y, w, h),
+            None => a.surface.damage_buffer(0, 0, 300, 200),
+        }
+        a.surface.commit();
+        a.roundtrip();
+        c.settle();
+        drawn.push((color, patch));
+        let img = c.screenshot();
+        for (color, patch) in &drawn {
+            let (px, py) = match patch {
+                Some((x, y, w, h)) => (x + w / 2, y + h / 2),
+                None => (270, 180),
+            };
+            assert_px(&img, x0 + px, y0 + py, rgb(*color), &format!("{color:06x} after a {format:?} frame ({renderer_name})"));
+        }
+    }
+}
+
+#[test]
+fn every_shm_format_keeps_its_colours_gles() {
+    frames_keep_their_colours("gles");
+}
+
+#[test]
+fn every_shm_format_keeps_its_colours_pixman() {
+    frames_keep_their_colours("pixman");
 }

@@ -83,15 +83,19 @@ fn system_chords_stay_with_the_system_and_shell_ones_go_to_subscribers() {
         _ => None,
     });
     assert_eq!(got.as_deref(), Some("palette"));
-    // F10 and ⌥❖M: the menu bar.
-    for keys in ["f10", "super+alt+m"] {
+    // ⌥❖M: the menu bar, and the power key: the shell's. (F10 stays with
+    // this app: it isn't one of Aizome's.)
+    for (keys, want) in [("f10", None), ("super+alt+m", Some("menu-bar")), ("power", Some("power-key"))] {
         chord(&c, keys);
-        let got = events.by_ref().find_map(|e| match e {
-            Ok(Event::Binding { action, .. }) => Some(action),
-            _ => None,
-        });
-        assert_eq!(got.as_deref(), Some("menubar"), "{keys}");
+        if let Some(want) = want {
+            let got = events.by_ref().find_map(|e| match e {
+                Ok(Event::Binding { action, .. }) => Some(action),
+                _ => None,
+            });
+            assert_eq!(got.as_deref(), Some(want), "{keys}");
+        }
     }
+    a.wait_seen("F10 in the app", |s| s.keys.iter().any(|(k, _)| *k == 68));
     // ⌥❖↑ fills: the compositor's, and the app sees no key.
     chord(&c, "alt+super+up");
     c.wait_windows("filled", |ws| ws[0].fill);
@@ -100,6 +104,57 @@ fn system_chords_stay_with_the_system_and_shell_ones_go_to_subscribers() {
     let aizome_ipc::Response::Desks { current, .. } = c.request(Request::Desks) else { panic!() };
     assert_eq!(current, 2);
     let s = a.seen();
-    assert!(!s.keys.iter().any(|(k, _)| *k == 57 || *k == 103 || *k == 3 || *k == 68 || *k == 50), "no system chord reached the app: {:?}", s.keys);
+    assert!(!s.keys.iter().any(|(k, _)| *k == 57 || *k == 103 || *k == 3 || *k == 50 || *k == 116), "no system chord reached the app: {:?}", s.keys);
     let _ = w;
+}
+
+#[test]
+fn f10_opens_the_menu_bar_over_aizomes_apps_and_the_desktop() {
+    let c = Compositor::start(Options::default());
+    let mut events = aizome_ipc::Client::connect_to(&c.ipc).unwrap().events().unwrap();
+    events.stream().set_read_timeout(Some(Duration::from_secs(10))).unwrap();
+    let next_binding = |events: &mut aizome_ipc::Events| {
+        events.by_ref().find_map(|e| match e {
+            Ok(Event::Binding { action, .. }) => Some(action),
+            _ => None,
+        })
+    };
+    // Nothing focused: the desktop.
+    chord(&c, "f10");
+    assert_eq!(next_binding(&mut events).as_deref(), Some("menu-bar"));
+    // An Aizome app.
+    let a = c.client(Spec::new("org.aizome.Soroban", 0x2222cc));
+    c.wait_window("org.aizome.Soroban");
+    a.wait_seen("keyboard focus", |s| s.keyboard_focus);
+    chord(&c, "f10");
+    assert_eq!(next_binding(&mut events).as_deref(), Some("menu-bar"));
+    assert!(!a.seen().keys.iter().any(|(k, _)| *k == 68));
+}
+
+#[test]
+fn the_system_bell_rings_for_the_shell() {
+    use wayland_client::globals::{GlobalListContents, registry_queue_init};
+    use wayland_client::protocol::wl_registry;
+    use wayland_client::{Connection, Dispatch, QueueHandle};
+    use wayland_protocols::xdg::system_bell::v1::client::xdg_system_bell_v1;
+    struct B;
+    impl Dispatch<wl_registry::WlRegistry, GlobalListContents> for B {
+        fn event(_: &mut Self, _: &wl_registry::WlRegistry, _: wl_registry::Event, _: &GlobalListContents, _: &Connection, _: &QueueHandle<Self>) {}
+    }
+    impl Dispatch<xdg_system_bell_v1::XdgSystemBellV1, ()> for B {
+        fn event(_: &mut Self, _: &xdg_system_bell_v1::XdgSystemBellV1, _: xdg_system_bell_v1::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {}
+    }
+    let c = Compositor::start(Options::default());
+    let mut events = aizome_ipc::Client::connect_to(&c.ipc).unwrap().events().unwrap();
+    events.stream().set_read_timeout(Some(Duration::from_secs(10))).unwrap();
+    let conn = Connection::from_socket(std::os::unix::net::UnixStream::connect(c.dir.join(&c.socket)).unwrap()).unwrap();
+    let (globals, mut queue) = registry_queue_init::<B>(&conn).unwrap();
+    let bell: xdg_system_bell_v1::XdgSystemBellV1 = globals.bind(&queue.handle(), 1..=1, ()).expect("xdg_system_bell_v1");
+    bell.ring(None);
+    queue.roundtrip(&mut B).unwrap();
+    let got = events.by_ref().find_map(|e| match e {
+        Ok(Event::Binding { action, output, .. }) => Some((action, output)),
+        _ => None,
+    });
+    assert_eq!(got, Some(("bell".to_string(), Some("HEADLESS-1".to_string()))));
 }

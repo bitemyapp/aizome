@@ -458,6 +458,7 @@ pub fn key_code(name: &str) -> Result<u32, String> {
         "pagedown" => 109,
         "delete" => 111,
         "mute" => 113,
+        "power" => 116,
         "volumedown" => 114,
         "volumeup" => 115,
         "super" | "logo" | "cmd" | "leftmeta" => 125,

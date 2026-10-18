@@ -104,7 +104,9 @@ impl Action {
 pub const SHELL_ACTIONS: &[&str] = &[
     "palette",
     "toolchest",
-    "menubar",
+    "menu-bar",
+    "power-key",
+    "bell",
     "lock",
     "screenshot-tool",
     "volume-up",
@@ -187,8 +189,11 @@ pub fn defaults() -> Vec<(&'static str, String)> {
     let mut v: Vec<(&'static str, String)> = vec![
         ("Super+Space", "palette".into()),
         ("Super+Alt+Space", "toolchest".into()),
-        ("F10", "menubar".into()),
-        ("Super+Alt+M", "menubar".into()),
+        // F10 only over Aizome's apps and the desktop (decide_key): other
+        // apps keep it.
+        ("F10", "menu-bar".into()),
+        ("Super+Alt+M", "menu-bar".into()),
+        ("XF86PowerOff", "power-key".into()),
         ("Super+Tab", "switcher".into()),
         ("Super+Shift+Tab", "switcher-reverse".into()),
         ("Super+Grave", "next-window-of-app".into()),

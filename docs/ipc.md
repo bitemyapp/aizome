@@ -208,7 +208,9 @@ Sent to subscribers as `binding` events, for the shell:
 |---|---|
 | ❖Space | `palette` |
 | ❖⌥Space | `toolchest` |
-| F10, ❖⌥M | `menubar` (focus the menu bar) |
+| ❖⌥M; F10 over Aizome's apps (`org.aizome.…`) and the desktop (other apps keep F10) | `menu-bar` (focus the menu bar) |
+| XF86PowerOff (the power key, when logind leaves it to the session) | `power-key` |
+| a client rings xdg-system-bell | `bell`, with the `output` (its window's, else the pointer's) |
 | ⌃❖Q | `lock` |
 | ❖⇧5 | `screenshot-tool` |
 | volume, mute, mic mute keys | `volume-up`, `volume-down`, `mute`, `mic-mute` |

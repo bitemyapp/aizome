@@ -772,8 +772,13 @@ impl State {
             .and_then(|f| self.az.seat.keyboard_shortcuts_inhibitor_for_surface(&f.0))
             .is_some_and(|i| i.is_active());
         if let Some(action) = self.az.bindings.find(m, &syms).cloned() {
+            // A bare F10 opens the menu bar only over Aizome's apps and the
+            // desktop; other apps (mc, htop) keep it.
+            let f10 = m == Mods::default() && syms.iter().any(|s| s.raw() == keysyms::KEY_F10);
+            let other_app = self.az.wm.focused().filter(|w| self.az.wm.is_shown(*w)).and_then(|w| self.az.wm.get(w)).is_some_and(|w| !crate::cmdkey::is_kit_app(&w.app_id));
+            let keep_for_app = f10 && other_app && matches!(&action, Action::Shell(a) if a == "menu-bar");
             // Inhibitors (VMs, remote desktops) take everything but VT keys.
-            if !inhibited {
+            if !inhibited && !keep_for_app {
                 self.az.suppressed_keys.insert(keycode);
                 return KeyDecision::Act(action);
             }
