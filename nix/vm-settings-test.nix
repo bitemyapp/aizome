@@ -225,12 +225,21 @@ pkgs.testers.runNixOSTest {
         pkgs.dconf
         pkgs.glib
         pkgs.python3
-        # A second text editor for Default Apps to choose.
+        # A second text editor and a second terminal for Default Apps.
         (pkgs.makeDesktopItem {
           name = "aizome-test-editor";
           desktopName = "Plain Editor";
           exec = "cat %F";
           mimeTypes = [ "text/plain" ];
+        })
+        (pkgs.makeDesktopItem {
+          name = "aizome-test-terminal";
+          desktopName = "Test Terminal";
+          exec = "foot --app-id=aizome-test-terminal";
+          categories = [
+            "System"
+            "TerminalEmulator"
+          ];
         })
       ];
     };

@@ -548,7 +548,7 @@ def about():
     S.quit()
 
 
-@part("Default Apps: the text editor chosen opens text files")
+@part("Default Apps: the text editor chosen opens text files; the terminal chosen opens on ❖Return")
 def default_apps():
     S.open("general.default-apps")
     S.choose(S.control("general", "default-text-editor", role="combobox"), "Plain Editor")
@@ -560,8 +560,20 @@ def default_apps():
         "XDG_CURRENT_DESKTOP=Aizome XDG_CONFIG_DIRS=/etc/xdg/aizome:/etc/xdg xdg-mime query default text/plain"
     )
     assert query.strip() == "aizome-test-editor.desktop", query
+
+    # The terminal chosen is the one ❖Return starts.
+    S.choose(S.control("general", "default-terminal", role="combobox"), "Test Terminal")
+    until("[keys] terminal", lambda: setting("keys.terminal") == ["foot", "--app-id=aizome-test-terminal"])
+    chord("super+return")
+    term = until(
+        "the chosen terminal",
+        lambda: next((w for w in ipc("windows")["windows"] if w["app_id"] == "aizome-test-terminal"), None),
+    )
+    ipc(f"close {term['id']}")
+
     reopen("general.default-apps")
     assert S.control("general", "default-text-editor", role="combobox").get("value") == "Plain Editor"
+    assert S.control("general", "default-terminal", role="combobox").get("value") == "Test Terminal"
     S.quit()
 
 
