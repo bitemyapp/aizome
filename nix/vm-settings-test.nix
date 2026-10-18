@@ -98,7 +98,7 @@ pkgs.testers.runNixOSTest {
           "-machine vmport=off"
         ];
       };
-      boot.kernelParams = [ "video=Virtual-2:1024x768e" ];
+      boot.kernelParams = [ "video=Virtual-2:1920x1080e" ];
 
       # Every kit app (Settings, the shell) writes where its controls are,
       # for the script to find them as a person finds them by eye.

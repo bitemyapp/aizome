@@ -242,10 +242,10 @@ class Settings:
             # Over the pane (right of the 232pt sidebar), wheel towards it.
             px = win["x"] + 232 + (win["w"] - 232) / 2
             py = win["y"] + win["h"] / 2
-            dy = 3 if y > height / 2 else -3
+            dy = 60 if y > height / 2 else -60
             alice(f"aizomectl input motion {px:.1f} {py:.1f} && aizomectl input scroll 0 {dy}")
             time.sleep(0.4)
-        raise AssertionError(f"couldn't scroll {kw} into view")
+        raise AssertionError(f"couldn't scroll {kw} into view: {e}, the window {self.doc()['size']}")
 
     # Acting.
 
@@ -952,6 +952,85 @@ def bluetooth():
     assert S.wait(name="bluetooth-name").get("value") == "Alice's Aizome"
     S.quit()
     until("discovery stopped with the pane", lambda: "Discovering: no" in show(), timeout=20)
+
+
+def outputs():
+    return {o["name"]: o for o in ipc("outputs")["outputs"]}
+
+
+def output_entry(name):
+    for o in setting("outputs") or []:
+        if o.get("name") == name:
+            return o
+    return None
+
+
+def keep_sheet(button):
+    S.wait(text="Keep these display settings?", timeout=30)
+    S.press(button)
+    S.gone("the sheet to go", text="Keep these display settings?", timeout=30)
+
+
+@part("Displays: scale, arrangement and mirroring reach the compositor and are kept; a change not kept goes back; Night Light is explained")
+def displays():
+    S.open("displays")
+    two = "RHT QEMU Monitor (Virtual-2)"
+    picker = S.wait(role="tablist", contains="RHT QEMU Monitor")
+    S.segment(picker, two)
+    S.wait(contains="Virtual-2 ·")
+
+    # Night Light: virtio's outputs take no gamma table, so no switch.
+    assert not any(o.get("gamma") for o in outputs().values()), outputs()
+    night = " ".join(S.texts(S.reveal(name="entry:displays.night-light")))
+    assert "Not on these displays" in night, night
+    assert not S.find(role="switch", inside=S.row("displays", "night-light"), visible=False)
+
+    # Scale: not a risky change, applied and kept at once.
+    S.click(S.reveal(role="button", contains="(1×)"))
+    until("Virtual-2 at 1×", lambda: outputs()["Virtual-2"]["scale"] == 1.0)
+    until("kept at 1×", lambda: (output_entry("Virtual-2") or {}).get("scale") == 1.0)
+
+    # Arrangement: drag Virtual-2's tile under Virtual-1's.
+    arr = S.reveal(name="entry:displays.arrangement")
+    tiles = {p["name"]: p["rect"] for p in arr["parts"]}
+    win = S.window()["geometry"]
+    x1, y1, w1, h1 = tiles["Virtual-1"]
+    x2, y2, w2, h2 = tiles["Virtual-2"]
+    sx, sy = win["x"] + x2 + w2 / 2, win["y"] + y2 + h2 / 2
+    tx, ty = win["x"] + x1 + w2 / 2, win["y"] + y1 + h1 + h2 / 2 + 2
+    alice(
+        f"aizomectl input motion {sx:.1f} {sy:.1f} && aizomectl input button left down && "
+        + " && ".join(
+            f"aizomectl input motion {sx + (tx - sx) * i / 6:.1f} {sy + (ty - sy) * i / 6:.1f}" for i in range(1, 7)
+        )
+        + " && aizomectl input button left up"
+    )
+    until("Virtual-2 below Virtual-1", lambda: outputs()["Virtual-2"]["logical"]["y"] == outputs()["Virtual-1"]["logical"]["h"])
+    until("kept below", lambda: ((output_entry("Virtual-2") or {}).get("position") or [0, 0])[1] > 0)
+    shot("displays-arranged")
+
+    # Rotation, not kept: it goes back.
+    S.choose(S.control("displays", "rotation", role="combobox"), "90")
+    until("Virtual-2 turned", lambda: outputs()["Virtual-2"]["transform"] == "90")
+    keep_sheet("Revert")
+    until("Virtual-2 straight again", lambda: outputs()["Virtual-2"]["transform"] == "normal")
+    assert (output_entry("Virtual-2") or {}).get("transform") in (None, "normal")
+
+    # Mirroring, kept.
+    S.choose(S.control("displays", "use-as", role="combobox"), "Mirror for")
+    keep_sheet("Keep Changes")
+    until("Virtual-2 mirroring", lambda: outputs()["Virtual-2"].get("mirror") == "Virtual-1", timeout=30)
+    assert (output_entry("Virtual-2") or {}).get("mirror") == "Virtual-1", setting("outputs")
+
+    reopen("displays")
+    S.segment(S.wait(role="tablist", contains="RHT QEMU Monitor"), two)
+    use = S.control("displays", "use-as", role="combobox")
+    assert use.get("value", "").startswith("Mirror for"), use
+    # Back to extending the desktop.
+    S.choose(use, "Extended display")
+    keep_sheet("Keep Changes")
+    until("Virtual-2 its own again", lambda: outputs()["Virtual-2"].get("mirror") is None, timeout=30)
+    S.quit()
 
 
 @part("Printers: the network's printer is set up and not offered twice; one added by its address is the default and prints")
