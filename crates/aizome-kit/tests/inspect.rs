@@ -89,3 +89,36 @@ fn a_segmented_control_names_its_segments_where_they_are() {
     h.click(w, Point::new(soft[0] + soft[2] / 2.0, soft[1] + soft[3] / 2.0));
     assert_eq!(h.program().renderer, 2);
 }
+
+struct Tools;
+
+impl Program for Tools {
+    type Msg = ();
+    fn info(&self) -> AppInfo {
+        AppInfo::new("org.aizome.Tools", "Tools", "Tools")
+    }
+    fn launched(&mut self, cx: &mut Cx<()>) {
+        cx.open_window(WindowSpec::new("Tools").size(200.0, 80.0));
+    }
+    fn update(&mut self, _msg: (), _cx: &mut Cx<()>) {}
+    fn view(&self, _w: WindowKey) -> Element<()> {
+        aizome_kit::row![
+            icon_button(Icon::ArrowUp).on_press(()).tooltip("Move up"),
+            button("Remove").on_press(()).tooltip("Remove this layout"),
+        ]
+        .padding(16.0)
+        .into()
+    }
+}
+
+#[test]
+fn an_icon_button_is_named_by_its_tooltip_and_a_text_button_by_its_text() {
+    let h = Harness::new(Tools);
+    let w = h.window();
+    let labels: Vec<String> = h.semantics(w).into_iter().filter_map(|(s, _)| s.label).collect();
+    assert!(labels.iter().any(|l| l == "Move up"), "{labels:?}");
+    assert!(labels.iter().any(|l| l == "Remove"), "{labels:?}");
+    assert!(!labels.iter().any(|l| l == "arrow-up"), "{labels:?}");
+    let elements = h.inspected(w);
+    find(&elements, "label", "Move up");
+}

@@ -46,10 +46,10 @@ pub(crate) fn describe(tree: &Tree, focused: Option<crate::tree::NodeId>) -> Vec
         names.insert(*id, name.clone());
     }
     let mut out = Vec::new();
-    for n in tree.nodes.iter().filter(|n| !n.dead) {
+    for (i, n) in tree.nodes.iter().enumerate().filter(|(_, n)| !n.dead) {
         let name = names.get(&n.id);
         let text = n.widget.text();
-        let semantics = n.widget.semantics();
+        let semantics = crate::a11y::of(tree, i);
         if name.is_none() && text.is_none() && semantics.is_none() {
             continue;
         }
@@ -83,15 +83,7 @@ pub(crate) fn describe(tree: &Tree, focused: Option<crate::tree::NodeId>) -> Vec
                 .collect();
             o.insert("parts".into(), Value::Array(parts));
         }
-        if let Some(mut s) = semantics {
-            if let Some(l) = &n.common.label {
-                s.label = Some(l.to_string());
-            }
-            if s.label.is_none()
-                && let Some(t) = &n.common.tooltip
-            {
-                s.label = Some(t.to_string());
-            }
+        if let Some(s) = semantics {
             o.insert("role".into(), json!(format!("{:?}", s.role).to_lowercase()));
             if let Some(l) = s.label {
                 o.insert("label".into(), json!(l));
@@ -111,8 +103,8 @@ pub(crate) fn describe(tree: &Tree, focused: Option<crate::tree::NodeId>) -> Vec
             if let Some(e) = s.expanded {
                 o.insert("expanded".into(), json!(e));
             }
-            if let Some((min, value, max)) = s.range {
-                o.insert("range".into(), json!([min, value, max]));
+            if let Some((min, max, value)) = s.range {
+                o.insert("range".into(), json!([min, max, value]));
             }
         }
         out.push(v);
