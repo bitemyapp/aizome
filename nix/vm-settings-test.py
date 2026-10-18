@@ -834,6 +834,28 @@ def keyboard():
     S.quit()
 
 
+@part("Keyboard shortcuts: ❖T recorded for the terminal opens one; back to the default")
+def shortcuts():
+    S.open("keyboard.shortcuts")
+    S.press("Change Open a terminal")
+    S.wait(name="recorder")
+    chord("super+t")
+    until("❖T bound", lambda: (setting("keys.bindings") or {}).get("Super+T") == "terminal")
+    before = {w["id"] for w in ipc("windows")["windows"]}
+    chord("super+t")
+    term = until(
+        "a terminal from ❖T",
+        lambda: next((w for w in ipc("windows")["windows"] if w["id"] not in before and w["app_id"] != APP), None),
+    )
+    ipc(f"close {term['id']}")
+    reopen("keyboard.shortcuts")
+    row = S.reveal(name="entry:keyboard.shortcut-terminal")
+    assert "T" in S.texts(row), S.texts(row)
+    S.click(S.find(inside=row, role="button", label="Back to the default"))
+    until("❖T unbound", lambda: "Super+T" not in (setting("keys.bindings") or {}))
+    S.quit()
+
+
 def mouse_index(kind):
     """QEMU's number for a mouse ("PS/2", "Tablet")."""
     for line in machine.send_monitor_command("info mice").splitlines():
