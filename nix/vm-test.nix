@@ -100,6 +100,22 @@ pkgs.testers.runNixOSTest {
         )
         capture("02-terminal")
 
+    with subtest("every app is installed: its program, desktop entry and icon"):
+        sw = "/run/current-system/sw"
+        apps = ["Shitsurae", "Yukimi", "Hako", "Sumi", "Fusen", "Koyomi", "Tokei",
+                "Soroban", "Tenki", "Tansu", "Kura", "Myaku", "Shashin", "Annai"]
+        for app in apps:
+            entry = f"{sw}/share/applications/org.aizome.{app}.desktop"
+            machine.succeed(f"test -f {entry}")
+            machine.succeed(f"test -f {sw}/share/icons/hicolor/scalable/apps/org.aizome.{app}.svg")
+            # Exec names a program on the PATH.
+            machine.succeed(f"command -v $(sed -n 's/^Exec=\\([^ ]*\\).*/\\1/p' {entry})")
+        machine.succeed("test -f /etc/xdg/autostart/org.aizome.Annai.Welcome.desktop")
+        # The units the package installs name its programs by store path.
+        unit = "/etc/systemd/user/aizome-koyomi-agent.service"
+        machine.succeed(f"grep -q '^ExecStart=/nix/store/[^ ]*/bin/aizome-koyomi --agent$' {unit}")
+        machine.fail("grep -Rl @bindir@ /etc/systemd/user/")
+
     with subtest("Aizome's apps open"):
         for app in ["aizome-shitsurae", "aizome-soroban", "aizome-hako"]:
             machine.succeed(f"test -x /run/current-system/sw/bin/{app}")
