@@ -4,17 +4,20 @@
 use aizome_kit::prelude::*;
 use aizome_kit::{column, row};
 
-use crate::app::{Myaku, Msg, RowRef, Sel};
+use crate::app::{Msg, Myaku, RowRef, Sel};
 use crate::model::{self, Frame, Kind, Meter, Usage};
 
 pub const WIDTH: f64 = 320.0;
 
 fn pair(name: &str, value: String) -> Element<Msg> {
-    row![text(name.to_owned()).size(12.0).role(Role::Text3).width(112.0), text(value).size(12.0).tabular().selectable().width(Length::Fill)]
-        .spacing(8.0)
-        .align(Align::Start)
-        .width(Length::Fill)
-        .into()
+    row![
+        text(name.to_owned()).size(12.0).role(Role::Text3).width(112.0),
+        text(value).size(12.0).tabular().selectable().width(Length::Fill)
+    ]
+    .spacing(8.0)
+    .align(Align::Start)
+    .width(Length::Fill)
+    .into()
 }
 
 fn section(title: &str, rows: Vec<Element<Msg>>) -> Element<Msg> {
@@ -57,7 +60,14 @@ fn usage_sections(f: &Frame, u: &Usage, readable: bool) -> Vec<Element<Msg>> {
         pair("Virtual", model::bytes(u.virt)),
     ];
     if !readable {
-        mem.push(text("Another user's memory maps can't be read: Memory is its resident size.").size(11.0).role(Role::Text3).wrap().width(Length::Fill).into());
+        mem.push(
+            text("Another user's memory maps can't be read: Memory is its resident size.")
+                .size(11.0)
+                .role(Role::Text3)
+                .wrap()
+                .width(Length::Fill)
+                .into(),
+        );
     }
     v.push(section("Memory", mem));
     let mut energy = Vec::new();
@@ -86,7 +96,14 @@ fn usage_sections(f: &Frame, u: &Usage, readable: bool) -> Vec<Element<Msg>> {
         pair("Written", opt(u.write_total, model::bytes)),
     ];
     if !readable {
-        disk.push(text("Another user's storage counters can't be read.").size(11.0).role(Role::Text3).wrap().width(Length::Fill).into());
+        disk.push(
+            text("Another user's storage counters can't be read.")
+                .size(11.0)
+                .role(Role::Text3)
+                .wrap()
+                .width(Length::Fill)
+                .into(),
+        );
     }
     v.push(section("Disk", disk));
     v
@@ -97,7 +114,11 @@ pub fn view(m: &Myaku) -> Element<Msg> {
     let body: Vec<Element<Msg>> = match m.selected() {
         None => vec![
             text("Nothing selected").size(15.0).semibold().into(),
-            text("Select an application or a process to see what it uses.").role(Role::Text3).wrap().width(Length::Fill).into(),
+            text("Select an application or a process to see what it uses.")
+                .role(Role::Text3)
+                .wrap()
+                .width(Length::Fill)
+                .into(),
         ],
         Some(RowRef::Group(g)) => {
             let grp = &f.groups[g];
@@ -106,7 +127,11 @@ pub fn view(m: &Myaku) -> Element<Msg> {
             let mut list: Vec<Element<Msg>> = Vec::new();
             for &i in grp.members.iter().take(40) {
                 let p = &f.processes[i];
-                let label = if p.role.is_empty() { format!("{} · {}", p.name, p.pid) } else { format!("{} ({}) · {}", p.name, p.role, p.pid) };
+                let label = if p.role.is_empty() {
+                    format!("{} · {}", p.name, p.pid)
+                } else {
+                    format!("{} ({}) · {}", p.name, p.role, p.pid)
+                };
                 list.push(button(label).plain().compact().on_press(Msg::Select(Sel::Process(p.key()))).into());
             }
             if grp.members.len() > 40 {
@@ -126,20 +151,27 @@ pub fn view(m: &Myaku) -> Element<Msg> {
             }
             let group = &f.groups[p.group];
             if group.members.len() > 1 || group.name != p.name {
-                about.push(row![
-                    text("Application").size(12.0).role(Role::Text3).width(112.0),
-                    button(group.name.clone()).plain().compact().on_press(Msg::Select(Sel::Group(group.key))),
-                ]
-                .spacing(8.0)
-                .into());
+                about.push(
+                    row![
+                        text("Application").size(12.0).role(Role::Text3).width(112.0),
+                        button(group.name.clone()).plain().compact().on_press(Msg::Select(Sel::Group(group.key))),
+                    ]
+                    .spacing(8.0)
+                    .into(),
+                );
             }
             if let Some(parent) = f.processes.iter().find(|q| q.pid == p.ppid) {
-                about.push(row![
-                    text("Parent").size(12.0).role(Role::Text3).width(112.0),
-                    button(format!("{} · {}", parent.name, parent.pid)).plain().compact().on_press(Msg::Select(Sel::Process(parent.key()))),
-                ]
-                .spacing(8.0)
-                .into());
+                about.push(
+                    row![
+                        text("Parent").size(12.0).role(Role::Text3).width(112.0),
+                        button(format!("{} · {}", parent.name, parent.pid))
+                            .plain()
+                            .compact()
+                            .on_press(Msg::Select(Sel::Process(parent.key()))),
+                    ]
+                    .spacing(8.0)
+                    .into(),
+                );
             } else if p.ppid > 0 {
                 about.push(pair("Parent", format!("PID {}", p.ppid)));
             }
@@ -160,12 +192,16 @@ pub fn view(m: &Myaku) -> Element<Msg> {
             v
         }
     };
-    container(scroll(aizome_kit::widgets::layout::column(body).spacing(16.0).padding([14.0, 16.0]).width(Length::Fill)).width(Length::Fill).height(Length::Fill))
-        .fill(Tone::Surface)
-        .width(WIDTH)
-        .height(Length::Fill)
-        .id("inspector")
-        .into()
+    container(
+        scroll(aizome_kit::widgets::layout::column(body).spacing(16.0).padding([14.0, 16.0]).width(Length::Fill))
+            .width(Length::Fill)
+            .height(Length::Fill),
+    )
+    .fill(Tone::Surface)
+    .width(WIDTH)
+    .height(Length::Fill)
+    .id("inspector")
+    .into()
 }
 
 fn group_detail(f: &Frame, g: usize) -> String {
@@ -183,7 +219,10 @@ fn group_detail(f: &Frame, g: usize) -> String {
 
 fn header(m: &Myaku, name: &str, meta: &str, kind: Option<Kind>) -> Vec<Element<Msg>> {
     let can = m.can_quit();
-    let paused = m.sel.map(|s| m.targets(s).0).is_some_and(|ms| !ms.is_empty() && ms.iter().all(|&i| m.frame.processes[i].paused()));
+    let paused = m
+        .sel
+        .map(|s| m.targets(s).0)
+        .is_some_and(|ms| !ms.is_empty() && ms.iter().all(|&i| m.frame.processes[i].paused()));
     let (glyph, role) = match kind {
         Some(Kind::App) => (Icon::AppWindow, Role::Accent),
         Some(Kind::Service) => (Icon::Settings2, Role::Text2),
@@ -191,15 +230,25 @@ fn header(m: &Myaku, name: &str, meta: &str, kind: Option<Kind>) -> Vec<Element<
         _ => (Icon::Cpu, Role::Text3),
     };
     let mut v: Vec<Element<Msg>> = vec![
-        row![icon(glyph).size(22.0).role(role), column![text(name.to_owned()).size(15.0).semibold(), text(meta.to_owned()).size(11.5).role(Role::Text3).wrap().width(Length::Fill)].spacing(2.0).width(Length::Fill)]
-            .spacing(10.0)
-            .align(Align::Start)
+        row![
+            icon(glyph).size(22.0).role(role),
+            column![
+                text(name.to_owned()).size(15.0).semibold(),
+                text(meta.to_owned()).size(11.5).role(Role::Text3).wrap().width(Length::Fill)
+            ]
+            .spacing(2.0)
             .width(Length::Fill)
-            .into(),
+        ]
+        .spacing(10.0)
+        .align(Align::Start)
+        .width(Length::Fill)
+        .into(),
         row![
             button("Quit").compact().on_press_maybe(can.is_ok().then_some(Msg::AskQuit(false))),
             button("Force Quit").compact().destructive().on_press_maybe(can.is_ok().then_some(Msg::AskQuit(true))),
-            button(if paused { "Resume" } else { "Pause" }).compact().on_press_maybe(can.is_ok().then_some(Msg::Pause(!paused))),
+            button(if paused { "Resume" } else { "Pause" })
+                .compact()
+                .on_press_maybe(can.is_ok().then_some(Msg::Pause(!paused))),
         ]
         .spacing(6.0)
         .into(),

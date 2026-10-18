@@ -30,12 +30,32 @@ const APPS: [(&str, &str, &str, usize, f64, u64); 10] = [
 ];
 
 const SERVICES: [&str; 12] = [
-    "pipewire", "wireplumber", "aizome-shell", "xdg-desktop-portal", "dbus-broker", "gvfsd", "syncthing", "ssh-agent", "mako", "at-spi-bus-launcher",
-    "gnome-keyring-daemon", "xwayland-satellite",
+    "pipewire",
+    "wireplumber",
+    "aizome-shell",
+    "xdg-desktop-portal",
+    "dbus-broker",
+    "gvfsd",
+    "syncthing",
+    "ssh-agent",
+    "mako",
+    "at-spi-bus-launcher",
+    "gnome-keyring-daemon",
+    "xwayland-satellite",
 ];
 
-const SYSTEM: [&str; 10] =
-    ["systemd", "systemd-journald", "systemd-udevd", "NetworkManager", "udisksd", "upowerd", "polkitd", "nix-daemon", "sshd", "cupsd"];
+const SYSTEM: [&str; 10] = [
+    "systemd",
+    "systemd-journald",
+    "systemd-udevd",
+    "NetworkManager",
+    "udisksd",
+    "upowerd",
+    "polkitd",
+    "nix-daemon",
+    "sshd",
+    "cupsd",
+];
 
 /// A reading with about `processes` processes, at reading `tick`.
 pub fn frame(processes: usize, tick: u64) -> Frame {
@@ -44,7 +64,15 @@ pub fn frame(processes: usize, tick: u64) -> Frame {
     let mut procs: Vec<Process> = Vec::new();
     let mut groups: Vec<Group> = Vec::new();
     let mut pid = 1u32;
-    let mut add = |procs: &mut Vec<Process>, name: &str, role: &str, uid: u32, cpu: f64, mem: u64, noise: &mut Noise, kernel: bool| -> usize {
+    let mut add = |procs: &mut Vec<Process>,
+                   name: &str,
+                   role: &str,
+                   uid: u32,
+                   cpu: f64,
+                   mem: u64,
+                   noise: &mut Noise,
+                   kernel: bool|
+     -> usize {
         pid += 1;
         let jitter = 0.6 + noise.next() * 0.8;
         let own = uid == 1000;
@@ -84,13 +112,23 @@ pub fn frame(processes: usize, tick: u64) -> Frame {
             cgroup: String::new(),
             kernel,
             readable: own,
-            gpus: if usage.gpu > 0.0 { vec![GpuUse { device: 0, busy: usage.gpu, video: 0.0, vram: usage.vram, shared: 0 }] } else { Vec::new() },
+            gpus: if usage.gpu > 0.0 {
+                vec![GpuUse { device: 0, busy: usage.gpu, video: 0.0, vram: usage.vram, shared: 0 }]
+            } else {
+                Vec::new()
+            },
             usage,
             group: 0,
         });
         procs.len() - 1
     };
-    let push_group = |groups: &mut Vec<Group>, procs: &mut [Process], members: Vec<usize>, name: &str, kind: Kind, app: Option<&str>, detail: &str| {
+    let push_group = |groups: &mut Vec<Group>,
+                      procs: &mut [Process],
+                      members: Vec<usize>,
+                      name: &str,
+                      kind: Kind,
+                      app: Option<&str>,
+                      detail: &str| {
         let mut usage = Usage::default();
         for &m in &members {
             usage.add(&procs[m].usage);
@@ -132,7 +170,15 @@ pub fn frame(processes: usize, tick: u64) -> Frame {
     while procs.len() + 40 < processes {
         let name = SERVICES[s % SERVICES.len()];
         let m = add(&mut procs, name, "", 1000, 0.3, 9_000_000 + (s as u64 % 9) * 3_000_000, &mut noise, false);
-        push_group(&mut groups, &mut procs, vec![m], name, Kind::Service, None, if s < SERVICES.len() { "" } else { "user service" });
+        push_group(
+            &mut groups,
+            &mut procs,
+            vec![m],
+            name,
+            Kind::Service,
+            None,
+            if s < SERVICES.len() { "" } else { "user service" },
+        );
         s += 1;
         if procs.len() + 40 >= processes {
             break;
@@ -176,7 +222,13 @@ pub fn frame(processes: usize, tick: u64) -> Frame {
             swap_total: 31 << 30,
             swap_used: 420 << 20,
         },
-        pressure: Some(aizome_sys::sysinfo::detail::Pressure { cpu_some: 2.1, memory_some: 0.4, memory_full: 0.0, io_some: 0.6, io_full: 0.1 }),
+        pressure: Some(aizome_sys::sysinfo::detail::Pressure {
+            cpu_some: 2.1,
+            memory_some: 0.4,
+            memory_full: 0.0,
+            io_some: 0.6,
+            io_full: 0.1,
+        }),
         disks: Vec::new(),
         disk_read: 18_000_000.0 * wave(3.0).powi(3),
         disk_write: 6_000_000.0 * wave(4.1).powi(2),

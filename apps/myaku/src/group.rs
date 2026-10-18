@@ -55,7 +55,8 @@ fn chromium_role(args: &[String]) -> Option<String> {
     Some(role.to_owned())
 }
 
-const INTERPRETERS: [&str; 12] = ["python", "python3", "node", "nodejs", "perl", "ruby", "bun", "deno", "lua", "luajit", "php", "java"];
+const INTERPRETERS: [&str; 12] =
+    ["python", "python3", "node", "nodejs", "perl", "ruby", "bun", "deno", "lua", "luajit", "php", "java"];
 const SHELLS: [&str; 6] = ["sh", "bash", "zsh", "fish", "dash", "nu"];
 
 /// A process's name and role: "chrome" and "Renderer", "python3" and
@@ -100,7 +101,10 @@ pub fn name_and_role(comm: &str, args: &[String], exe: &str) -> (String, String)
         }
         role
     } else if SHELLS.contains(&name.as_str()) {
-        args.get(1).filter(|a| !a.starts_with('-') && (a.contains('/') || a.ends_with(".sh"))).map(|a| program(a)).unwrap_or_default()
+        args.get(1)
+            .filter(|a| !a.starts_with('-') && (a.contains('/') || a.ends_with(".sh")))
+            .map(|a| program(a))
+            .unwrap_or_default()
     } else {
         String::new()
     };
@@ -113,7 +117,18 @@ fn launcher(name: &str) -> bool {
         || name.starts_with("start-")
         || matches!(
             name,
-            "env" | "uwsm" | "systemd-run" | "dbus-run-session" | "setsid" | "nohup" | "timeout" | "xdg-open" | "gtk-launch" | "bwrap" | "steam-run" | "aizome-session"
+            "env"
+                | "uwsm"
+                | "systemd-run"
+                | "dbus-run-session"
+                | "setsid"
+                | "nohup"
+                | "timeout"
+                | "xdg-open"
+                | "gtk-launch"
+                | "bwrap"
+                | "steam-run"
+                | "aizome-session"
         )
 }
 
@@ -123,7 +138,20 @@ fn manager(pid: u32, name: &str, kernel: bool) -> bool {
         || kernel
         || matches!(
             name,
-            "systemd" | "init" | "aizome" | "Hyprland" | "sway" | "niri" | "river" | "labwc" | "wayfire" | "kwin_wayland" | "gnome-shell" | "cosmic-comp" | "Xwayland" | "xwayland-satellite"
+            "systemd"
+                | "init"
+                | "aizome"
+                | "Hyprland"
+                | "sway"
+                | "niri"
+                | "river"
+                | "labwc"
+                | "wayfire"
+                | "kwin_wayland"
+                | "gnome-shell"
+                | "cosmic-comp"
+                | "Xwayland"
+                | "xwayland-satellite"
         )
 }
 
@@ -316,7 +344,16 @@ mod tests {
     use super::*;
 
     fn node(pid: u32, ppid: u32, name: &str, cgroup: &str) -> Node {
-        Node { pid, ppid, started: u64::from(pid), uid: 1000, name: name.into(), comm: name.into(), cgroup: cgroup.into(), ..Default::default() }
+        Node {
+            pid,
+            ppid,
+            started: u64::from(pid),
+            uid: 1000,
+            name: name.into(),
+            comm: name.into(),
+            cgroup: cgroup.into(),
+            ..Default::default()
+        }
     }
 
     #[test]
@@ -324,8 +361,14 @@ mod tests {
         assert_eq!(tidy(".firefox-wrapped"), "firefox");
         assert_eq!(tidy(".Hyprland-wrapp"), "Hyprland");
         let args = |a: &[&str]| a.iter().map(|s| s.to_string()).collect::<Vec<_>>();
-        assert_eq!(name_and_role("chrome", &args(&["/opt/chrome", "--type=renderer"]), ""), ("chrome".into(), "Renderer".into()));
-        assert_eq!(name_and_role("python3", &args(&["python3", "-u", "/srv/server.py"]), ""), ("python3".into(), "server.py".into()));
+        assert_eq!(
+            name_and_role("chrome", &args(&["/opt/chrome", "--type=renderer"]), ""),
+            ("chrome".into(), "Renderer".into())
+        );
+        assert_eq!(
+            name_and_role("python3", &args(&["python3", "-u", "/srv/server.py"]), ""),
+            ("python3".into(), "server.py".into())
+        );
         assert_eq!(name_and_role("sshd", &args(&["sshd: callen@pts/0"]), "/run/sshd"), ("sshd".into(), String::new()));
         assert_eq!(name_and_role("kworker/0:1", &[], ""), ("kworker/0:1".into(), String::new()));
     }

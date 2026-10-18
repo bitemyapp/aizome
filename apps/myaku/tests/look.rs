@@ -15,7 +15,11 @@ const THEMES: [(ThemeChoice, &str); 2] = [(ThemeChoice::Night, "night"), (ThemeC
 /// Myaku after two minutes of readings.
 fn harness(theme: ThemeChoice) -> Harness<Myaku> {
     let (signals, _) = Myaku::recorder();
-    let mut h = Harness::with(Myaku::with_frame(Arc::new(fixture::frame(420, 1)), signals, Request::default()), Appearance { theme, ..Appearance::default() }, false);
+    let mut h = Harness::with(
+        Myaku::with_frame(Arc::new(fixture::frame(420, 1)), signals, Request::default()),
+        Appearance { theme, ..Appearance::default() },
+        false,
+    );
     for tick in 2..=120 {
         h.send(Msg::Frame(Arc::new(fixture::frame(420, tick))));
     }

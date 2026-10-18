@@ -474,11 +474,21 @@ mod tests {
     #[test]
     fn groups_sum_what_could_be_read() {
         let mut total = Usage::default();
-        total.add(&Usage { cpu: 50.0, pss: Some(100), resident: 300, private: Some(80), power: Some(2.0), ..Default::default() });
+        total.add(&Usage {
+            cpu: 50.0,
+            pss: Some(100),
+            resident: 300,
+            private: Some(80),
+            power: Some(2.0),
+            ..Default::default()
+        });
         // Another user's process: its resident size stands in for its
         // proportional one.
         total.add(&Usage { cpu: 25.0, resident: 200, ..Default::default() });
-        assert_eq!((total.cpu, total.pss, total.private, total.resident, total.power), (75.0, Some(300), Some(80), 500, Some(2.0)));
+        assert_eq!(
+            (total.cpu, total.pss, total.private, total.resident, total.power),
+            (75.0, Some(300), Some(80), 500, Some(2.0))
+        );
         assert_eq!(total.memory(), 300);
     }
 }

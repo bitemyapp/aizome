@@ -12,7 +12,7 @@ use aizome_kit::{column, row};
 
 use super::columns::{self, Col};
 use super::graph::{Hue, Scale, Style, graph};
-use crate::app::{Myaku, Msg, RowRef, Show};
+use crate::app::{Msg, Myaku, RowRef, Show};
 use crate::model::{self, Frame, Kind, Lens, Meter};
 
 pub fn window(m: &Myaku) -> Element<Msg> {
@@ -49,15 +49,23 @@ fn toolbar(m: &Myaku) -> Element<Msg> {
             .tooltip("Inspector (❖I)")
             .label("Inspector")
             .into(),
-        button("Quit").icon(Icon::CircleX).toolbar().on_press_maybe(can.is_ok().then_some(Msg::AskQuit(false))).tooltip(tip).into(),
+        button("Quit")
+            .icon(Icon::CircleX)
+            .toolbar()
+            .on_press_maybe(can.is_ok().then_some(Msg::AskQuit(false)))
+            .tooltip(tip)
+            .into(),
         toolbar_separator(),
         segmented(lenses.iter().map(|l| l.title()), current).on_select(move |i| Msg::Lens(picks[i])).into(),
         spacer().into(),
-        dropdown(["Applications", "All Processes", "My Processes"], Some(match m.show {
-            Show::Apps => 0,
-            Show::All => 1,
-            Show::Mine => 2,
-        }))
+        dropdown(
+            ["Applications", "All Processes", "My Processes"],
+            Some(match m.show {
+                Show::Apps => 0,
+                Show::All => 1,
+                Show::Mine => 2,
+            }),
+        )
         .compact()
         .on_select(|i| Msg::Show([Show::Apps, Show::All, Show::Mine][i.min(2)]))
         .into(),
@@ -123,16 +131,27 @@ fn table_view(m: &Myaku) -> Element<Msg> {
         .height(Length::Fill)
         .id("processes");
     if count == 0 && m.frames > 0 {
-        let message = if m.search.is_empty() { "Nothing to list.".to_owned() } else { format!("Nothing matches “{}”.", m.search) };
-        return container(text(message).role(Role::Text3)).center().fill(Tone::Surface).width(Length::Fill).height(Length::Fill).into();
-    }
-    if m.frames == 0 {
-        return container(row![progress_indeterminate().width(120.0), text("Reading the system…").role(Role::Text3)].spacing(10.0))
+        let message = if m.search.is_empty() {
+            "Nothing to list.".to_owned()
+        } else {
+            format!("Nothing matches “{}”.", m.search)
+        };
+        return container(text(message).role(Role::Text3))
             .center()
             .fill(Tone::Surface)
             .width(Length::Fill)
             .height(Length::Fill)
             .into();
+    }
+    if m.frames == 0 {
+        return container(
+            row![progress_indeterminate().width(120.0), text("Reading the system…").role(Role::Text3)].spacing(10.0),
+        )
+        .center()
+        .fill(Tone::Surface)
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .into();
     }
     body.into()
 }
@@ -173,7 +192,11 @@ fn cell(f: &Frame, r: RowRef, col: Col, expanded: &std::collections::HashSet<(u3
             } else {
                 space(12.0)
             };
-            let mut parts = vec![disclosure, icon(glyph).size(14.0).role(role).into(), text(grp.name.clone()).weight(if grp.focused { 650.0 } else { 500.0 }).into()];
+            let mut parts = vec![
+                disclosure,
+                icon(glyph).size(14.0).role(role).into(),
+                text(grp.name.clone()).weight(if grp.focused { 650.0 } else { 500.0 }).into(),
+            ];
             let detail = if !grp.detail.is_empty() && grp.detail != grp.name {
                 grp.detail.clone()
             } else if grp.members.len() > 1 {
@@ -219,7 +242,10 @@ fn cell(f: &Frame, r: RowRef, col: Col, expanded: &std::collections::HashSet<(u3
         (RowRef::Process(p, _), c) => {
             let p = &f.processes[p];
             match columns::text(c, &p.usage, Some(p.pid), Some(&p.user)) {
-                Some(t) => text(t).tabular().role(if matches!(c, Col::User | Col::Pid) { Role::Text2 } else { Role::Text }).into(),
+                Some(t) => text(t)
+                    .tabular()
+                    .role(if matches!(c, Col::User | Col::Pid) { Role::Text2 } else { Role::Text })
+                    .into(),
                 None => dash(),
             }
         }
@@ -255,7 +281,12 @@ fn key(hue: Hue, words: String) -> Element<Msg> {
 
 fn card(title: &str, value: String, body: Element<Msg>, keys: Vec<Element<Msg>>) -> Element<Msg> {
     column![
-        row![text(title.to_owned()).semibold().size(12.0), spacer(), text(value).size(11.5).tabular().role(Role::Text2)].width(Length::Fill),
+        row![
+            text(title.to_owned()).semibold().size(12.0),
+            spacer(),
+            text(value).size(11.5).tabular().role(Role::Text2)
+        ]
+        .width(Length::Fill),
         body,
         aizome_kit::widgets::layout::row(keys).spacing(10.0),
     ]
@@ -276,8 +307,17 @@ fn graphs(m: &Myaku) -> Element<Msg> {
     let cpu = card(
         "CPU",
         format!("{}%", model::percent(s.cpu)),
-        graph([h.cpu_user.clone(), h.cpu_system.clone()], [Hue::Blue, Hue::Violet], Style::Stacked, Scale::Fixed(100.0), "Processor use over two minutes".into()),
-        vec![key(Hue::Blue, format!("User {}%", model::percent(s.user))), key(Hue::Violet, format!("System {}%", model::percent(s.kernel)))],
+        graph(
+            [h.cpu_user.clone(), h.cpu_system.clone()],
+            [Hue::Blue, Hue::Violet],
+            Style::Stacked,
+            Scale::Fixed(100.0),
+            "Processor use over two minutes".into(),
+        ),
+        vec![
+            key(Hue::Blue, format!("User {}%", model::percent(s.user))),
+            key(Hue::Violet, format!("System {}%", model::percent(s.kernel))),
+        ],
     );
     let memory = card(
         "Memory",
@@ -285,20 +325,47 @@ fn graphs(m: &Myaku) -> Element<Msg> {
             Some(w) => format!("{} of {} · {w}", model::bytes(mem.used()), model::bytes(mem.total)),
             None => format!("{} of {}", model::bytes(mem.used()), model::bytes(mem.total)),
         },
-        graph([h.mem_used.clone(), h.mem_cached.clone()], [Hue::Cyan, Hue::Blue], Style::Over, Scale::Fixed(1.0), "Memory use over two minutes".into()),
-        vec![key(Hue::Cyan, format!("Used {}", model::bytes(mem.used()))), key(Hue::Blue, format!("Cached {}", model::bytes(mem.cached + mem.buffers)))],
+        graph(
+            [h.mem_used.clone(), h.mem_cached.clone()],
+            [Hue::Cyan, Hue::Blue],
+            Style::Over,
+            Scale::Fixed(1.0),
+            "Memory use over two minutes".into(),
+        ),
+        vec![
+            key(Hue::Cyan, format!("Used {}", model::bytes(mem.used()))),
+            key(Hue::Blue, format!("Cached {}", model::bytes(mem.cached + mem.buffers))),
+        ],
     );
     let disk = card(
         "Disk",
         format!("{} · {}", model::rate(s.disk_read), model::rate(s.disk_write)),
-        graph([h.disk_read.clone(), h.disk_write.clone()], [Hue::Blue, Hue::Violet], Style::Mirrored, Scale::Auto, "Storage read and written over two minutes".into()),
-        vec![key(Hue::Blue, format!("Read {}", model::rate(s.disk_read))), key(Hue::Violet, format!("Written {}", model::rate(s.disk_write)))],
+        graph(
+            [h.disk_read.clone(), h.disk_write.clone()],
+            [Hue::Blue, Hue::Violet],
+            Style::Mirrored,
+            Scale::Auto,
+            "Storage read and written over two minutes".into(),
+        ),
+        vec![
+            key(Hue::Blue, format!("Read {}", model::rate(s.disk_read))),
+            key(Hue::Violet, format!("Written {}", model::rate(s.disk_write))),
+        ],
     );
     let net = card(
         "Network",
         format!("{} · {}", model::rate(s.net_rx), model::rate(s.net_tx)),
-        graph([h.net_rx.clone(), h.net_tx.clone()], [Hue::Green, Hue::Amber], Style::Mirrored, Scale::Auto, "Network received and sent over two minutes".into()),
-        vec![key(Hue::Green, format!("In {}", model::rate(s.net_rx))), key(Hue::Amber, format!("Out {}", model::rate(s.net_tx)))],
+        graph(
+            [h.net_rx.clone(), h.net_tx.clone()],
+            [Hue::Green, Hue::Amber],
+            Style::Mirrored,
+            Scale::Auto,
+            "Network received and sent over two minutes".into(),
+        ),
+        vec![
+            key(Hue::Green, format!("In {}", model::rate(s.net_rx))),
+            key(Hue::Amber, format!("Out {}", model::rate(s.net_tx))),
+        ],
     );
     container(row![cpu, memory, disk, net].spacing(16.0).width(Length::Fill))
         .padding([10.0, 14.0, 10.0, 14.0])
@@ -334,8 +401,14 @@ fn status(m: &Myaku) -> Element<Msg> {
             if !s.cores.is_empty() {
                 parts.push(model::count(s.cores.len(), "core", "cores"));
             }
-            if let (Some(lo), Some(hi)) = (s.frequencies.iter().copied().reduce(f64::min), s.frequencies.iter().copied().reduce(f64::max)) {
-                parts.push(if (hi - lo) < 50.0 { model::frequency(hi) } else { format!("{}–{}", model::frequency(lo), model::frequency(hi)) });
+            if let (Some(lo), Some(hi)) =
+                (s.frequencies.iter().copied().reduce(f64::min), s.frequencies.iter().copied().reduce(f64::max))
+            {
+                parts.push(if (hi - lo) < 50.0 {
+                    model::frequency(hi)
+                } else {
+                    format!("{}–{}", model::frequency(lo), model::frequency(hi))
+                });
             }
             if let Some(t) = s.temperature {
                 parts.push(format!("{t:.0} °C"));

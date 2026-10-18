@@ -36,7 +36,10 @@ pub enum Command {
     Interval(Duration),
     /// What shows: the lens, and the processes whose costlier figures to
     /// read every time (the inspector's).
-    Focus { lens: Lens, pids: Vec<u32> },
+    Focus {
+        lens: Lens,
+        pids: Vec<u32>,
+    },
 }
 
 /// Start the sampler: `deliver` gets each frame until it returns false.
@@ -208,7 +211,11 @@ impl Sampler {
             let key = (p.pid, p.start_ticks);
             seen.insert(key);
             let own = p.uid == self.uid || self.uid == 0;
-            let (name, role) = group::name_and_role(&p.name, &p.args, &p.exe.as_ref().map(|e| e.display().to_string()).unwrap_or_default());
+            let (name, role) = group::name_and_role(
+                &p.name,
+                &p.args,
+                &p.exe.as_ref().map(|e| e.display().to_string()).unwrap_or_default(),
+            );
             let mut usage = Usage {
                 cpu: f64::from(p.cpu_percent),
                 cpu_time: p.cpu_time.as_secs_f64(),
@@ -223,8 +230,12 @@ impl Sampler {
             let ran = p.cpu_percent > 0.0 || self.focus.contains(&p.pid);
             let mut known = self.before.remove(&key).unwrap_or_default();
             let fresh = known.status_at.is_none();
-            let stale = |at: Option<Instant>| at.is_none_or(|a| started.duration_since(a) >= Duration::from_millis(4500));
-            if !p.kernel_thread && (ran || stale(known.status_at)) && let Some(s) = self.reader.status(p.pid) {
+            let stale =
+                |at: Option<Instant>| at.is_none_or(|a| started.duration_since(a) >= Duration::from_millis(4500));
+            if !p.kernel_thread
+                && (ran || stale(known.status_at))
+                && let Some(s) = self.reader.status(p.pid)
+            {
                 if let Some(at) = known.status_at {
                     let dt = started.duration_since(at).as_secs_f64();
                     if dt > 0.0 {
@@ -242,11 +253,16 @@ impl Sampler {
             usage.swap = known.swap;
             usage.virt = known.virt;
             if own && !p.kernel_thread {
-                if (ran || stale(known.io_at)) && let Some(io) = self.reader.io(p.pid) {
+                if (ran || stale(known.io_at))
+                    && let Some(io) = self.reader.io(p.pid)
+                {
                     if let (Some((r0, w0)), Some(at)) = (known.io, known.io_at) {
                         let dt = started.duration_since(at).as_secs_f64();
                         if dt > 0.0 {
-                            known.rates = (io.read_bytes.saturating_sub(r0) as f64 / dt, io.write_bytes.saturating_sub(w0) as f64 / dt);
+                            known.rates = (
+                                io.read_bytes.saturating_sub(r0) as f64 / dt,
+                                io.write_bytes.saturating_sub(w0) as f64 / dt,
+                            );
                         }
                     }
                     known.io = Some((io.read_bytes, io.write_bytes));
@@ -378,7 +394,12 @@ impl Sampler {
                 .devices
                 .iter()
                 .filter(|d| d.whole_disk && !d.virtual_device)
-                .map(|d| model::Disk { name: d.name.clone(), read_rate: d.read_per_sec, write_rate: d.write_per_sec, busy: f64::from(d.busy_percent) })
+                .map(|d| model::Disk {
+                    name: d.name.clone(),
+                    read_rate: d.read_per_sec,
+                    write_rate: d.write_per_sec,
+                    busy: f64::from(d.busy_percent),
+                })
                 .collect(),
             disk_read: disk.read_per_sec,
             disk_write: disk.write_per_sec,
@@ -398,7 +419,8 @@ impl Sampler {
             .map(|(i, c)| {
                 let s = gpu_stats(&c.gpu.card);
                 let busy = s.busy.map(f64::from).or_else(|| {
-                    let sum: f64 = processes.iter().flat_map(|p| p.gpus.iter()).filter(|g| g.device == i).map(|g| g.busy).sum();
+                    let sum: f64 =
+                        processes.iter().flat_map(|p| p.gpus.iter()).filter(|g| g.device == i).map(|g| g.busy).sum();
                     (sum > 0.0 || !processes.iter().all(|p| p.gpus.is_empty())).then_some(sum.min(100.0))
                 });
                 model::Gpu {
@@ -422,7 +444,9 @@ impl Sampler {
         let mut power = model::Power::default();
         let counters = rapl_counters(&self.rapl);
         let rapl_watts = match (&self.rapl_before, &counters) {
-            (Some(b), Some(a)) if seconds > 0.0 && b.len() == a.len() => Some(b.iter().zip(a).map(|(b, a)| joules(b, a)).sum::<f64>() / seconds),
+            (Some(b), Some(a)) if seconds > 0.0 && b.len() == a.len() => {
+                Some(b.iter().zip(a).map(|(b, a)| joules(b, a)).sum::<f64>() / seconds)
+            }
             _ => None,
         };
         self.rapl_before = counters;
@@ -528,7 +552,10 @@ impl Sampler {
 /// "Intel(R) Core(TM) Ultra 7 155H" → "Intel Core Ultra 7 155H".
 pub fn tidy_cpu_name(name: &str) -> String {
     let name = name.replace("(R)", "").replace("(TM)", "").replace("(tm)", "");
-    name.split_whitespace().filter(|w| !w.ends_with("-Core") && *w != "Processor" && *w != "CPU").collect::<Vec<_>>().join(" ")
+    name.split_whitespace()
+        .filter(|w| !w.ends_with("-Core") && *w != "Processor" && *w != "CPU")
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 impl Sampler {
@@ -536,7 +563,8 @@ impl Sampler {
     fn temperature(&mut self) -> Option<f64> {
         let path = self.sensor.get_or_insert_with(|| {
             let all = sysinfo::temperatures();
-            sysinfo::pick_cpu_temperature(&all).map(|t| PathBuf::from(format!("/sys/class/hwmon/{}/temp{}_input", t.hwmon, t.index)))
+            sysinfo::pick_cpu_temperature(&all)
+                .map(|t| PathBuf::from(format!("/sys/class/hwmon/{}/temp{}_input", t.hwmon, t.index)))
         });
         let text = std::fs::read_to_string(path.as_ref()?).ok()?;
         text.trim().parse::<f64>().ok().map(|mc| mc / 1000.0)
@@ -566,7 +594,10 @@ mod tests {
             eprintln!("reading {}: {:?} {:?}", g.tick, g.cost, s.phases);
         }
         assert!(f.processes.len() > 5);
-        assert!(f.groups.iter().any(|g| g.kind == Some(crate::model::Kind::Kernel)) || f.processes.iter().all(|p| !p.kernel));
+        assert!(
+            f.groups.iter().any(|g| g.kind == Some(crate::model::Kind::Kernel))
+                || f.processes.iter().all(|p| !p.kernel)
+        );
         assert!(f.processes.iter().all(|p| p.group < f.groups.len()));
         let members: usize = f.groups.iter().map(|g| g.members.len()).sum();
         assert_eq!(members, f.processes.len(), "every process in one group");

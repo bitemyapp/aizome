@@ -161,10 +161,13 @@ impl Myaku {
     pub fn recorder() -> (Signaller, Sent) {
         let sent: Sent = Rc::default();
         let s = sent.clone();
-        (Box::new(move |pid, _, signal| {
-            s.borrow_mut().push((pid, signal));
-            Ok(())
-        }), sent)
+        (
+            Box::new(move |pid, _, signal| {
+                s.borrow_mut().push((pid, signal));
+                Ok(())
+            }),
+            sent,
+        )
     }
 
     pub fn sort(&self) -> (Col, bool) {
@@ -210,7 +213,9 @@ impl Myaku {
     pub fn selected(&self) -> Option<RowRef> {
         match self.sel? {
             Sel::Group(k) => self.frame.groups.iter().position(|g| g.key == k).map(RowRef::Group),
-            Sel::Process(k) => self.frame.processes.iter().position(|p| p.key() == k).map(|i| RowRef::Process(i, false)),
+            Sel::Process(k) => {
+                self.frame.processes.iter().position(|p| p.key() == k).map(|i| RowRef::Process(i, false))
+            }
         }
     }
 
@@ -245,16 +250,32 @@ impl Myaku {
                 for g in groups {
                     rows.push(RowRef::Group(g));
                     let grp = &f.groups[g];
-                    if grp.members.len() > 1 && (self.expanded.contains(&grp.key) || !self.search.is_empty() && !grp.name.to_lowercase().contains(&self.search.to_lowercase())) {
-                        let mut members: Vec<usize> = grp.members.iter().copied().filter(|&m| self.search.is_empty() || self.matches(&f.processes[m]) || grp.name.to_lowercase().contains(&self.search.to_lowercase())).collect();
+                    if grp.members.len() > 1
+                        && (self.expanded.contains(&grp.key)
+                            || !self.search.is_empty()
+                                && !grp.name.to_lowercase().contains(&self.search.to_lowercase()))
+                    {
+                        let mut members: Vec<usize> = grp
+                            .members
+                            .iter()
+                            .copied()
+                            .filter(|&m| {
+                                self.search.is_empty()
+                                    || self.matches(&f.processes[m])
+                                    || grp.name.to_lowercase().contains(&self.search.to_lowercase())
+                            })
+                            .collect();
                         members.sort_by(cmp_p);
                         rows.extend(members.into_iter().map(|m| RowRef::Process(m, true)));
                     }
                 }
             }
             Show::All | Show::Mine => {
-                let mut procs: Vec<usize> =
-                    (0..f.processes.len()).filter(|&i| (self.show == Show::All || f.processes[i].uid == f.uid) && self.matches(&f.processes[i])).collect();
+                let mut procs: Vec<usize> = (0..f.processes.len())
+                    .filter(|&i| {
+                        (self.show == Show::All || f.processes[i].uid == f.uid) && self.matches(&f.processes[i])
+                    })
+                    .collect();
                 procs.sort_by(cmp_p);
                 rows.extend(procs.into_iter().map(|p| RowRef::Process(p, false)));
             }
@@ -318,7 +339,16 @@ impl Myaku {
 
     fn tell_sampler(&mut self) {
         let Some(s) = &self.sampler else { return };
-        let pids: Vec<u32> = if self.inspector { self.sel.map(|s| self.targets(s).0).unwrap_or_default().into_iter().map(|i| self.frame.processes[i].pid).collect() } else { Vec::new() };
+        let pids: Vec<u32> = if self.inspector {
+            self.sel
+                .map(|s| self.targets(s).0)
+                .unwrap_or_default()
+                .into_iter()
+                .map(|i| self.frame.processes[i].pid)
+                .collect()
+        } else {
+            Vec::new()
+        };
         let now = (self.lens, pids);
         if self.told.as_ref() != Some(&now) {
             let _ = s.send(Command::Focus { lens: now.0, pids: now.1.clone() });
@@ -430,13 +460,18 @@ impl Program for Myaku {
                     let message = if force {
                         format!("Force quitting stops {what} at once: anything unsaved in “{name}” is lost.")
                     } else {
-                        format!("Quitting asks {what} to finish and close, as {name} chooses. Force quit stops {} at once, losing what's unsaved.", if n > 1 { "them" } else { "it" })
+                        format!(
+                            "Quitting asks {what} to finish and close, as {name} chooses. Force quit stops {} at once, losing what's unsaved.",
+                            if n > 1 { "them" } else { "it" }
+                        )
                     };
                     let mut alert = Alert::new(format!("Quit “{name}”?"), message).cancel_button("Cancel");
                     alert = if force {
                         alert.destructive_button("Force Quit", Msg::Signal(sel, Signal::Kill))
                     } else {
-                        alert.button("Force Quit", Msg::Signal(sel, Signal::Kill)).default_button("Quit", Msg::Signal(sel, Signal::Terminate))
+                        alert
+                            .button("Force Quit", Msg::Signal(sel, Signal::Kill))
+                            .default_button("Quit", Msg::Signal(sel, Signal::Terminate))
                     };
                     cx.alert(self.window, alert);
                 }
@@ -491,16 +526,36 @@ impl Program for Myaku {
             .item(MenuItem::new("All Processes", Msg::Show(Show::All)).checked(self.show == Show::All))
             .item(MenuItem::new("My Processes", Msg::Show(Show::Mine)).checked(self.show == Show::Mine))
             .separator()
-            .item(MenuItem::new(if self.inspector { "Hide Inspector" } else { "Show Inspector" }, Msg::Inspector(!self.inspector)).shortcut(Shortcut::cmd('I')))
-            .submenu(INTERVALS.iter().fold(Menu::new("Update Frequency"), |m, (label, ms)| m.item(MenuItem::new(*label, Msg::Interval(*ms)).checked(self.interval == *ms))));
+            .item(
+                MenuItem::new(
+                    if self.inspector { "Hide Inspector" } else { "Show Inspector" },
+                    Msg::Inspector(!self.inspector),
+                )
+                .shortcut(Shortcut::cmd('I')),
+            )
+            .submenu(INTERVALS.iter().fold(Menu::new("Update Frequency"), |m, (label, ms)| {
+                m.item(MenuItem::new(*label, Msg::Interval(*ms)).checked(self.interval == *ms))
+            }));
         let can = self.can_quit().is_ok();
-        let paused = self.sel.map(|s| self.targets(s).0).is_some_and(|m| !m.is_empty() && m.iter().all(|&i| self.frame.processes[i].paused()));
+        let paused = self
+            .sel
+            .map(|s| self.targets(s).0)
+            .is_some_and(|m| !m.is_empty() && m.iter().all(|&i| self.frame.processes[i].paused()));
         let process = Menu::new("Process")
             .item(MenuItem::new("Quit…", Msg::AskQuit(false)).shortcut(Shortcut::cmd('Q').alt()).enabled(can))
-            .item(MenuItem::new("Force Quit…", Msg::AskQuit(true)).shortcut(Shortcut::cmd('Q').alt().shift()).enabled(can))
+            .item(
+                MenuItem::new("Force Quit…", Msg::AskQuit(true))
+                    .shortcut(Shortcut::cmd('Q').alt().shift())
+                    .enabled(can),
+            )
             .separator()
-            .item(MenuItem::new(if paused { "Resume" } else { "Pause" }, Msg::Pause(!paused)).shortcut(Shortcut::cmd('P').alt()).enabled(can));
-        let file = Menu::new("File").item(MenuItem::role_item("Close Window", MenuRole::CloseWindow).shortcut(Shortcut::cmd('W')));
+            .item(
+                MenuItem::new(if paused { "Resume" } else { "Pause" }, Msg::Pause(!paused))
+                    .shortcut(Shortcut::cmd('P').alt())
+                    .enabled(can),
+            );
+        let file = Menu::new("File")
+            .item(MenuItem::role_item("Close Window", MenuRole::CloseWindow).shortcut(Shortcut::cmd('W')));
         let edit = Menu::new("Edit")
             .item(MenuItem::role_item("Undo", MenuRole::Undo).shortcut(Shortcut::cmd('Z')))
             .item(MenuItem::role_item("Redo", MenuRole::Redo).shortcut(Shortcut::cmd('Z').shift()))
@@ -511,11 +566,7 @@ impl Program for Myaku {
             .item(MenuItem::role_item("Select All", MenuRole::SelectAll).shortcut(Shortcut::cmd('A')))
             .separator()
             .item(MenuItem::new("Find…", Msg::FocusSearch).role(MenuRole::Find).shortcut(Shortcut::cmd('F')));
-        MenuBar::standard(&self.info())
-            .replace("Edit", edit)
-            .with_file_menu(file)
-            .with_menu(view)
-            .with_menu(process)
+        MenuBar::standard(&self.info()).replace("Edit", edit).with_file_menu(file).with_menu(view).with_menu(process)
     }
 }
 
@@ -536,6 +587,9 @@ mod tests {
     #[test]
     fn launch_requests() {
         let args: Vec<String> = ["--pid", "42", "--lens", "memory", "--search", "fox"].map(String::from).to_vec();
-        assert_eq!(Request::parse(&args), Request { pid: Some(42), lens: Some(Lens::Memory), search: Some("fox".into()) });
+        assert_eq!(
+            Request::parse(&args),
+            Request { pid: Some(42), lens: Some(Lens::Memory), search: Some("fox".into()) }
+        );
     }
 }

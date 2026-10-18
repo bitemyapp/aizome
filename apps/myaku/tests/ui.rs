@@ -56,7 +56,9 @@ fn applications_come_busiest_first_and_open_to_their_processes() {
     h.send(Msg::Sort(0, true));
     let n = names(&h);
     assert_eq!(n[0], "Firefox");
-    assert!(n.iter().position(|r| r == "Visual Studio Code").unwrap() < n.iter().position(|r| r == "aizome-shell").unwrap());
+    assert!(
+        n.iter().position(|r| r == "Visual Studio Code").unwrap() < n.iter().position(|r| r == "aizome-shell").unwrap()
+    );
 }
 
 #[test]
@@ -87,7 +89,11 @@ fn lenses_change_the_columns_and_energy_needs_a_meter() {
     assert_eq!(h.program().lens, Lens::Memory);
     assert!(!h.texts(w).iter().any(|t| t == "Energy"));
     h.send(Msg::Inspector(true));
-    assert!(h.texts(w).iter().any(|t| t.contains("Not measured: the processor's power meter (RAPL) is readable only by root")));
+    assert!(
+        h.texts(w)
+            .iter()
+            .any(|t| t.contains("Not measured: the processor's power meter (RAPL) is readable only by root"))
+    );
     // With the battery discharging, it is.
     let mut f: Frame = fixture::frame(300, 3);
     f.power.meter = Meter::Battery;
@@ -100,7 +106,10 @@ fn lenses_change_the_columns_and_energy_needs_a_meter() {
     h.send(Msg::Lens(Lens::Energy));
     assert_eq!(h.program().lens, Lens::Energy);
     let average = h.program().frame.groups[0].usage.average_power();
-    assert!(average.is_none() || h.texts(w).iter().any(|t| t.ends_with(" W") || t.ends_with(" mW")), "power figures show");
+    assert!(
+        average.is_none() || h.texts(w).iter().any(|t| t.ends_with(" W") || t.ends_with(" mW")),
+        "power figures show"
+    );
 }
 
 #[test]

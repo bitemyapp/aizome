@@ -56,7 +56,13 @@ pub enum Scale {
     Auto,
 }
 
-pub fn graph<Msg: 'static>(series: [Ring; 2], hues: [Hue; 2], style: Style, scale: Scale, label: String) -> Element<Msg> {
+pub fn graph<Msg: 'static>(
+    series: [Ring; 2],
+    hues: [Hue; 2],
+    style: Style,
+    scale: Scale,
+    label: String,
+) -> Element<Msg> {
     Element::new(Graph { series, hues, style, scale }, Vec::new()).width(Length::Fill).height(64.0).label(label)
 }
 
@@ -87,7 +93,9 @@ impl Graph {
             Scale::Fixed(m) => m,
             Scale::Auto => {
                 let m = match self.style {
-                    Style::Stacked => (0..self.series[0].len()).map(|i| self.series[0].get(i) + self.series[1].get(i)).fold(0.0, f32::max),
+                    Style::Stacked => (0..self.series[0].len())
+                        .map(|i| self.series[0].get(i) + self.series[1].get(i))
+                        .fold(0.0, f32::max),
                     _ => self.series[0].max().max(self.series[1].max()),
                 };
                 nice(m.max(1.0))

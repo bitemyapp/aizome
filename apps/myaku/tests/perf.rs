@@ -29,14 +29,22 @@ fn frame(h: &mut Harness<Myaku>, act: impl FnOnce(&mut Harness<Myaku>)) -> Durat
 fn report(what: &str, mut v: Vec<Duration>) -> (Duration, Duration) {
     v.sort();
     let p = |q: f64| v[((v.len() - 1) as f64 * q) as usize];
-    eprintln!("myaku {what}: p50 {:?} p95 {:?} max {:?} (n={}, at 2x, {PROCESSES} processes)", p(0.5), p(0.95), v.last().unwrap(), v.len());
+    eprintln!(
+        "myaku {what}: p50 {:?} p95 {:?} max {:?} (n={}, at 2x, {PROCESSES} processes)",
+        p(0.5),
+        p(0.95),
+        v.last().unwrap(),
+        v.len()
+    );
     (p(0.5), p(0.95))
 }
 
 fn rss_kib() -> u64 {
     std::fs::read_to_string("/proc/self/status")
         .ok()
-        .and_then(|s| s.lines().find_map(|l| l.strip_prefix("VmRSS:").and_then(|v| v.split_whitespace().next()?.parse().ok())))
+        .and_then(|s| {
+            s.lines().find_map(|l| l.strip_prefix("VmRSS:").and_then(|v| v.split_whitespace().next()?.parse().ok()))
+        })
         .unwrap_or(0)
 }
 

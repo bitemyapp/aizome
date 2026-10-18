@@ -7,7 +7,10 @@ use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::PathBuf;
 
 pub fn socket_path() -> PathBuf {
-    let dir = std::env::var_os("XDG_RUNTIME_DIR").filter(|v| !v.is_empty()).map(PathBuf::from).unwrap_or_else(std::env::temp_dir);
+    let dir = std::env::var_os("XDG_RUNTIME_DIR")
+        .filter(|v| !v.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(std::env::temp_dir);
     dir.join("aizome-app.myaku.sock")
 }
 
