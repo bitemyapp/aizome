@@ -8,11 +8,13 @@ use aizome_kit::testing::Harness;
 #[derive(Default)]
 struct Form {
     on: bool,
+    renderer: usize,
 }
 
 #[derive(Clone, Debug)]
 enum Msg {
     Toggle(bool),
+    Renderer(usize),
 }
 
 impl Program for Form {
@@ -26,6 +28,7 @@ impl Program for Form {
     fn update(&mut self, msg: Msg, _cx: &mut Cx<Msg>) {
         match msg {
             Msg::Toggle(on) => self.on = on,
+            Msg::Renderer(i) => self.renderer = i,
         }
     }
     fn view(&self, _w: WindowKey) -> Element<Msg> {
@@ -33,6 +36,7 @@ impl Program for Form {
             text("Wi-Fi"),
             toggle(self.on).on_toggle(Msg::Toggle).id("wifi-switch").label("Wi-Fi"),
             button("Join Other Network…"),
+            segmented(["Automatic", "GPU", "Software"], self.renderer).on_select(Msg::Renderer).id("renderer"),
         ]
         .spacing(8.0)
         .padding(16.0)
@@ -65,4 +69,23 @@ fn elements_carry_their_names_texts_places_and_states() {
     assert_eq!(find(&h.inspected(w), "name", "wifi-switch")["checked"], true);
 
     find(&elements, "text", "Join Other Network…");
+}
+
+#[test]
+fn a_segmented_control_names_its_segments_where_they_are() {
+    let mut h = Harness::new(Form::default());
+    let w = h.window();
+    let elements = h.inspected(w);
+    let seg = find(&elements, "name", "renderer");
+    assert_eq!(seg["value"], "Automatic");
+    let parts = seg["parts"].as_array().expect("parts");
+    let names: Vec<&str> = parts.iter().map(|p| p["name"].as_str().unwrap()).collect();
+    assert_eq!(names, ["Automatic", "GPU", "Software"]);
+    // Side by side across the control, the whole height.
+    let r = |v: &serde_json::Value| -> Vec<f64> { v.as_array().unwrap().iter().map(|x| x.as_f64().unwrap()).collect() };
+    let (whole, soft) = (r(&seg["rect"]), r(&parts[2]["rect"]));
+    assert!(soft[0] > whole[0] && soft[0] + soft[2] <= whole[0] + whole[2] + 0.5, "{soft:?} in {whole:?}");
+    assert_eq!((soft[1], soft[3]), (whole[1], whole[3]));
+    h.click(w, Point::new(soft[0] + soft[2] / 2.0, soft[1] + soft[3] / 2.0));
+    assert_eq!(h.program().renderer, 2);
 }

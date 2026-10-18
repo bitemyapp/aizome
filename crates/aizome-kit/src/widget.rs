@@ -324,6 +324,14 @@ pub trait Widget: 'static {
         None
     }
 
+    /// Parts of it that aren't elements, each by its name, in its own
+    /// coordinates (a segmented control's segments, the shapes on a
+    /// canvas), for tests that drive the app from outside
+    /// ([`crate::inspect`]).
+    fn parts(&self) -> Vec<(String, Rect)> {
+        Vec::new()
+    }
+
     /// When the kit draws the focus ring around it.
     fn focus_ring(&self) -> FocusRing {
         FocusRing::Keyboard

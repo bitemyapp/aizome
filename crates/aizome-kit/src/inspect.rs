@@ -3,11 +3,13 @@
 //! way a person would, and need to know where they are).
 //!
 //! With `AIZOME_KIT_INSPECT` naming a directory, each window writes
-//! `<dir>/<app_id>.<pid>.<window>.json` after it paints: its title, kind,
-//! size, focused element, and every element with a name (`.id`), text or
-//! semantics, with its rectangle in the window's coordinates (points) and
-//! the part of it that shows. Closing the window removes its file. Without
-//! the variable nothing is written and nothing is measured.
+//! `<dir>/<app_id>.<pid>.<window>.json` after it paints (and as the pointer
+//! moves over it): its title, kind, size, the pointer, the focused element,
+//! and every element with a name (`.id`), text or semantics, with its
+//! rectangle in the window's coordinates (points), the part of it that
+//! shows, and its parts that aren't elements (a segmented control's
+//! segments). Closing the window removes its file. Without the variable
+//! nothing is written and nothing is measured.
 
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
@@ -66,6 +68,20 @@ pub(crate) fn describe(tree: &Tree, focused: Option<crate::tree::NodeId>) -> Vec
         }
         if focused == Some(n.id) {
             o.insert("focused".into(), json!(true));
+        }
+        let parts = n.widget.parts();
+        if !parts.is_empty() {
+            // In the window's coordinates; a part without a height spans
+            // the widget's.
+            let parts: Vec<Value> = parts
+                .into_iter()
+                .map(|(name, r)| {
+                    let (y0, y1) = if r.height() > 0.0 { (r.y0, r.y1) } else { (0.0, n.rect.height()) };
+                    let r = Rect::new(r.x0, y0, r.x1, y1) + n.rect.origin().to_vec2();
+                    json!({ "name": name, "rect": rect(r) })
+                })
+                .collect();
+            o.insert("parts".into(), Value::Array(parts));
         }
         if let Some(mut s) = semantics {
             if let Some(l) = &n.common.label {
