@@ -34,6 +34,10 @@ pub struct State {
     /// The computer name as typed, before Return.
     draft: Option<String>,
     host_draft: Option<String>,
+    /// The displays, as the compositor describes them.
+    displays: Option<Vec<String>>,
+    /// The system disk: free and total bytes.
+    disk: Option<(u64, u64)>,
 }
 
 #[derive(Clone, Debug)]
@@ -46,6 +50,9 @@ pub enum Msg {
     ConfirmHostName(String),
     Done(&'static str, Result<(), String>),
     CopyDetails,
+    Displays(Vec<String>),
+    Disk(Option<(u64, u64)>),
+    Open(&'static str, Option<&'static str>),
 }
 
 pub fn entries() -> Vec<SettingEntry> {
@@ -53,6 +60,7 @@ pub fn entries() -> Vec<SettingEntry> {
         SettingEntry::new("computer-name", "Computer name").under("About").keywords(&["rename", "pretty hostname", "name"]),
         SettingEntry::new("hostname", "Host name").under("About").keywords(&["network name", "hostname"]),
         SettingEntry::new("hardware", "Hardware").under("About").keywords(&["cpu", "memory", "ram", "graphics", "gpu", "disk", "model"]),
+        SettingEntry::new("displays-glance", "Displays and storage").under("About").keywords(&["specs", "screens", "free space"]),
     ]
 }
 
@@ -216,6 +224,19 @@ impl State {
                 cx.spawn(|| G::About(Msg::Hardware(Arc::new(aizome_sys::sysinfo::hardware()))));
             }
         }
+        // At a glance: the displays and the disk, read again each time.
+        if cx.sample() {
+            self.displays = Some(vec!["Built-in display · 2880 × 1800 at 120 Hz".into(), "Dell U2723QE · 3840 × 2160 at 60 Hz".into()]);
+            self.disk = Some((412_000_000_000, 1_000_000_000_000));
+        } else {
+            cx.compositor(aizome_ipc::Request::Outputs, |r| {
+                G::About(Msg::Displays(match r {
+                    Ok(aizome_ipc::Response::Outputs { outputs }) => outputs.iter().filter(|o| o.enabled).map(display_line).collect(),
+                    _ => Vec::new(),
+                }))
+            });
+            cx.spawn(|| G::About(Msg::Disk(super::storage::statvfs(std::path::Path::new("/")).map(|(total, free)| (free, total)))));
+        }
     }
 
     fn names(&self) -> Arc<HostnameState> {
@@ -243,6 +264,9 @@ impl State {
     pub fn update(&mut self, msg: Msg, cx: &mut PaneCx<G>) {
         match msg {
             Msg::Hardware(hw) => self.hardware = Some(hw),
+            Msg::Displays(d) => self.displays = Some(d),
+            Msg::Disk(d) => self.disk = d,
+            Msg::Open(pane, entry) => cx.show_pane(pane, entry),
             Msg::Name(s) => self.draft = Some(s),
             Msg::SaveName => {
                 let Some(name) = self.draft.take() else { return };
@@ -351,10 +375,38 @@ impl State {
         }
         .entry("hostname");
 
+        // At a glance, each with the pane that changes it.
+        let mut glance: Vec<form::Row<Msg>> = Vec::new();
+        let displays = self.displays.clone().unwrap_or_default();
+        let shown = if displays.is_empty() { vec!["Not known: the compositor didn't say".to_owned()] } else { displays };
+        let list = column(shown.into_iter().map(|d| text(d).mono().size(11.0).role(Role::Text2).into()).collect()).spacing(3.0);
+        glance.push(
+            form::row("Displays", row![list, button("Displays…").compact().on_press(Msg::Open("displays", None))].spacing(12.0).align(Align::Center))
+                .leading(icon(Icon::Monitor).size(16.0).role(Role::Text2))
+                .entry("displays-glance"),
+        );
+        if let Some((free, total)) = self.disk {
+            let used = total.saturating_sub(free);
+            let bar = crate::widgets::bar(vec![(used as f64, crate::widgets::Segment::Ai)], total as f64, 8.0).width(120.0);
+            glance.push(
+                form::row(
+                    "Storage",
+                    row![
+                        bar,
+                        text(format!("{} free of {}", super::storage::size(free), super::storage::size(total))).mono().size(11.0).role(Role::Text2),
+                        button("Storage…").compact().on_press(Msg::Open("general", Some("storage"))),
+                    ]
+                    .spacing(12.0)
+                    .align(Align::Center),
+                )
+                .leading(icon(Icon::HardDrive).size(16.0).role(Role::Text2)),
+            );
+        }
         form::page(vec![
             hero,
             vcx.section("Name", vec![name_row, host_row]),
             vcx.section_with("Hardware", spec_rows, None),
+            vcx.section("At a Glance", glance),
             row![spacer(), button("Copy Details").icon(Icon::Copy).on_press(Msg::CopyDetails)].width(Fill).into(),
         ])
     }
@@ -386,4 +438,20 @@ impl State {
 pub fn summary(state: &State, _vcx: &ViewCx) -> Element<G> {
     let hero = state.hero(false).map(G::About);
     crate::widgets::press(hero).style(crate::widgets::PressStyle::Plain).on_press(G::Page(super::Page::About)).named("About").width(Fill).into()
+}
+
+/// "BOE NE135A1M · 2880 × 1800 at 120 Hz", or "Built-in display" for a
+/// laptop's panel.
+pub fn display_line(o: &aizome_ipc::OutputInfo) -> String {
+    let name = if o.name.starts_with("eDP") || o.name.starts_with("LVDS") || o.name.starts_with("DSI") {
+        "Built-in display".to_owned()
+    } else if o.make.is_empty() && o.model.is_empty() {
+        o.name.clone()
+    } else {
+        format!("{} {}", o.make, o.model).trim().to_owned()
+    };
+    match &o.current_mode {
+        Some(m) => format!("{name} · {} × {} at {:.0} Hz", m.width, m.height, f64::from(m.refresh) / 1000.0),
+        None => name,
+    }
 }
