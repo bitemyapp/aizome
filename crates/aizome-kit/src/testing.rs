@@ -991,8 +991,16 @@ pub fn difference(a: &[u8], b: &[u8], tolerance: u8) -> f64 {
 /// given); with `AIZOME_UPDATE_GOLDENS=1` (or no golden yet) write it
 /// instead. Panics if more than 0.5% of the pixels differ, writing what
 /// was drawn beside the golden as `*.actual.png`.
+///
+/// Goldens are drawn in Aizome's fonts: without Archivo (see
+/// `AIZOME_FONT_DIR`) the comparison is skipped, rather than failing on
+/// the system's sans, or writing a golden in it.
 pub fn assert_golden<P: Program>(h: &mut Harness<P>, key: WindowKey, path: impl AsRef<Path>, scale: f64) {
     let path = path.as_ref();
+    if !h.theme().has_ui_font() {
+        eprintln!("skipping the golden {}: Archivo isn't installed (set AIZOME_FONT_DIR)", path.display());
+        return;
+    }
     let (w, hgt, px) = h.render_rgba(key, scale);
     let update = std::env::var_os("AIZOME_UPDATE_GOLDENS").is_some_and(|v| v != "0");
     if update || !path.exists() {
