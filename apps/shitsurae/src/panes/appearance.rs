@@ -380,6 +380,7 @@ impl Pane for Appearance {
                     let fill = aizome_theme::focus_color(now, *f);
                     press(swatch(fill, 22.0, a.focus == *f))
                         .style(PressStyle::Plain)
+                        .selected(a.focus == *f)
                         .on_press(Msg::Focus(*f))
                         .named(*name)
                         .into()
