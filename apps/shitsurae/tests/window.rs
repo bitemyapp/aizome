@@ -180,3 +180,27 @@ fn a_command_of_ones_own_gets_keys() {
     let saved = std::fs::read_to_string(&path).unwrap();
     assert!(saved.contains("\"Alt+Super+T\" = \"spawn foot -e htop\""), "{saved}");
 }
+
+#[test]
+fn a_desk_name_is_kept_when_the_focus_moves_on() {
+    let (mut h, path) = common::open("deskblur", "desktop");
+    let w = h.window();
+    let fields: Vec<aizome_kit::layout::Rect> = h
+        .inspected(w)
+        .iter()
+        .filter(|e| e["role"] == "textinput" && e["visible"] == true)
+        .map(|e| {
+            let r: Vec<f64> = e["rect"].as_array().unwrap().iter().map(|v| v.as_f64().unwrap()).collect();
+            aizome_kit::layout::Rect::new(r[0], r[1], r[0] + r[2], r[1] + r[3])
+        })
+        .collect();
+    assert!(fields.len() >= 2, "the Desks' names: {fields:?}");
+    h.click(w, fields[0].center());
+    h.command(w, 'a');
+    h.type_text(w, "Mail");
+    // Not Return: the next Desk's name, clicked.
+    h.click(w, fields[1].center());
+    h.program().shared.flush();
+    let saved = std::fs::read_to_string(&path).unwrap_or_default();
+    assert!(saved.contains("name = \"Mail\""), "{saved}");
+}

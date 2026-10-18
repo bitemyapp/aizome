@@ -505,6 +505,7 @@ impl Pane for Users {
                             text_field(&name)
                                 .on_change(Msg::Name)
                                 .on_submit(Msg::SaveName)
+                                .on_blur(Msg::SaveName)
                                 .enabled(!fixed)
                                 .width(240.0),
                         )

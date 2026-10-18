@@ -620,6 +620,7 @@ impl Pane for Bluetooth {
                         text_field(&name)
                             .on_change(Msg::NameText)
                             .on_submit(Msg::Rename)
+                            .on_blur(Msg::Rename)
                             .width(200.0)
                             .id("bluetooth-name"),
                     )

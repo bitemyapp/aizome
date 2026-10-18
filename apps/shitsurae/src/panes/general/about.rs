@@ -383,6 +383,7 @@ impl State {
                 text_field(&pretty)
                     .on_change(Msg::Name)
                     .on_submit(Msg::SaveName)
+                    .on_blur(Msg::SaveName)
                     .placeholder("A name people see")
                     .width(240.0),
             )
