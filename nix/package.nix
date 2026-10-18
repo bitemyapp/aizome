@@ -190,6 +190,11 @@ rustPlatform.buildRustPackage {
     for so in $out/lib/aizome/*.so; do
       patchelf --add-rpath '$ORIGIN' "$so"
     done
+    # Not in the toolchain's sysroot, where the linker found std: that would
+    # keep the compiler (a gigabyte) in the system's closure.
+    for f in $out/bin/aizome $out/lib/aizome/*.so; do
+      patchelf --set-rpath "$(patchelf --print-rpath "$f" | tr ':' '\n' | grep -v -- '-rustc-' | paste -sd:)" "$f"
+    done
     patchelf --add-rpath ${lib.makeLibraryPath runtimeLibs} $out/lib/aizome/libaizome_comp_core.so
   '';
 
