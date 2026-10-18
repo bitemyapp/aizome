@@ -122,7 +122,9 @@ impl Shell {
                     night_light: self.night.as_ref().filter(|s| !s.outputs.is_empty()).map(|s| s.enabled),
                     ..DisplayPanel::default()
                 };
-                if let Some(b) = &self.sys.backlight {
+                if let Some(b) = &self.sys.backlight
+                    && self.shows_builtin_panel()
+                {
                     p.backlights = b.snapshot().devices.iter().map(|d| (d.name.clone(), d.fraction())).collect();
                 }
                 Panel::Display(p)

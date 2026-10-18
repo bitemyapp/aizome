@@ -174,6 +174,10 @@ impl Shell {
                 Osd { kind: OsdKind::Microphone, value: 1.0, muted: !m }
             }
             "brightness-up" | "brightness-down" => {
+                // No built-in panel shows: the backlight isn't this session's.
+                if !self.shows_builtin_panel() {
+                    return true;
+                }
                 let up = action == "brightness-up";
                 let mut v = self
                     .sys

@@ -241,3 +241,25 @@ fn night_light_shows_where_the_compositor_can() {
     assert_eq!(display(&h), Some(true));
     assert!(h.program().settings.night_light.enabled, "kept in the settings");
 }
+
+#[test]
+fn brightness_keys_reach_only_a_built_in_panel() {
+    // On a laptop's panel, the key shows its level.
+    let mut h = scene(false);
+    assert!(h.program().shows_builtin_panel());
+    binding(&mut h, "brightness-up");
+    assert!(h.program().osd.is_some(), "the brightness OSD shows on eDP-1");
+    // A session on other outputs (headless, nested in another desktop)
+    // leaves the machine's backlight alone, and shows nothing.
+    let mut h = scene(false);
+    let mut o = output();
+    o.id = 2;
+    o.name = "HEADLESS-1".into();
+    o.connector = Some("HEADLESS-1".into());
+    h.set_outputs(vec![o]);
+    h.send(Msg::Nothing);
+    assert!(!h.program().shows_builtin_panel());
+    binding(&mut h, "brightness-up");
+    assert!(h.program().osd.is_none(), "no OSD, and no backlight changed, on HEADLESS-1");
+    assert!(aizome_shell::shell::builtin_panel("LVDS-1") && !aizome_shell::shell::builtin_panel("DP-2"));
+}

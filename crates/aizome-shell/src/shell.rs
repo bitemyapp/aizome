@@ -150,6 +150,22 @@ impl Screen {
     }
 }
 
+/// Whether a connector is a built-in panel (a laptop's eDP, LVDS or DSI),
+/// the kind whose light `/sys/class/backlight` sets.
+pub fn builtin_panel(connector: &str) -> bool {
+    ["eDP", "LVDS", "DSI"].iter().any(|p| connector.starts_with(p))
+}
+
+impl Shell {
+    /// Whether one of the outputs shown is a built-in panel: only then do
+    /// the brightness keys and sliders reach the machine's backlight. A
+    /// session on other outputs (headless, nested in another desktop, a
+    /// desktop computer's monitors) leaves the machine's panel alone.
+    pub fn shows_builtin_panel(&self) -> bool {
+        self.screens.iter().any(|s| builtin_panel(&s.name()))
+    }
+}
+
 /// How the shell starts.
 #[derive(Clone, Debug, Default)]
 pub struct Options {
