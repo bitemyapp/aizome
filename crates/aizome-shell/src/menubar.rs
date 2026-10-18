@@ -489,6 +489,8 @@ fn tray_icon(widget: TrayWidget, icon: Icon, text: Option<String>, open: bool, l
         }
     })
     .on_press(move |p: Press| BarMsg::Press(Slot::Tray(widget), p.rect))
+    // Its highlight reaches 3pt past each side: repaint that too.
+    .overflow(3.0)
     .text(label, SemanticRole::Button)
     .key(("tray", widget))
     .into()
@@ -515,6 +517,7 @@ fn clock(label: &str, open: bool) -> Element<BarMsg> {
         cx.measure(&m, &look::digits(12.5 * t.metrics.factor, typeface::WEIGHT_SEMIBOLD, t.text())).width
     })
     .on_press(|p: Press| BarMsg::Press(Slot::Tray(TrayWidget::Clock), p.rect))
+    .overflow(4.0)
     .text(label.to_owned(), SemanticRole::Label)
     .key("clock")
     .into()
@@ -546,6 +549,7 @@ fn apps_control(n: usize, unread: usize, open: bool) -> Element<BarMsg> {
         if unread > 0 { w + 6.0 + 8.0 * unread.to_string().len() as f64 } else { w }
     })
     .on_click(BarMsg::Run(Action::SetDeskbarCollapsed(false)))
+    .overflow(4.0)
     .text(format!("{n} apps"), SemanticRole::Button)
     .key("apps")
     .into()
