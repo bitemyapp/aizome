@@ -1,5 +1,8 @@
-//! The recovery overlay's look: a scrim over every output and, on one, a
-//! panel in Aizome's look (square, `raised`, 1pt bevels, hard 3pt
+//! The recovery overlay's look: an opaque backdrop over every output (in
+//! the desktop's colour, as a secure attention screen: nothing below is
+//! composited, so it costs the same over a stuck game as over an empty
+//! desk, and opening it is one cheap frame) and, on one, a panel in
+//! Aizome's look (square, `raised`, 1pt bevels, hard 3pt
 //! shadow) with a `menu-title` strip, the apps as rows (the selected one
 //! on `selection` with a 2pt `focus` rail, as the palette's), the app
 //! actions under them, the system actions, and key hints.
@@ -41,6 +44,12 @@ const FOOTER_H: f64 = 30.0;
 const CPU_RIGHT: f64 = 118.0;
 const MEM_RIGHT: f64 = 24.0;
 const STATUS_RIGHT: f64 = 190.0;
+/// Widths labels are fitted to (fixed, so warmed labels are the ones
+/// drawn).
+const NAME_MAX_W: f64 = 300.0;
+const CAPTION_MAX_W: f64 = 360.0;
+const BUTTON_LABEL_MAX_W: f64 = 140.0;
+const RIGHT_MAX_W: f64 = 160.0;
 
 #[derive(Default)]
 pub struct View {
@@ -163,19 +172,28 @@ pub fn hit(state: &State, pos: Point<f64, Logical>) -> Option<Hit> {
 }
 
 impl View {
-    /// Rasterizes the fixed labels for these scales ahead of a first open.
-    pub fn warm(&mut self, palette: &Palette, scales: &[f64]) {
+    /// Rasterizes the fixed labels for these scales ahead of a first open,
+    /// and the apps' names.
+    pub fn warm(&mut self, palette: &Palette, scales: &[f64], names: &[String]) {
         for s in scales {
             let key = (s.ceil().max(1.0) as u32 * 4, *palette);
-            if self.warm.contains(&key) {
-                continue;
+            if !self.warm.contains(&key) {
+                self.warm.push(key);
+                for (text, style, max_w) in fixed_labels(palette) {
+                    self.warm_one(text, style, *s, max_w);
+                }
             }
-            self.warm.push(key);
-            for (text, style, max_w) in fixed_labels(palette) {
-                let fitted = self.labels.fit(text, style.face, style.size(), max_w);
-                let _ = self.labels.get(&fitted, style, *s, max_w + 1.0);
+            for name in names {
+                self.warm_one(name, semibold(13.0, palette.text), *s, NAME_MAX_W);
+                self.warm_one(name, semibold(13.0, palette.on_selection), *s, NAME_MAX_W);
+                self.warm_one(&format!("for {name}"), semibold(12.5, palette.text3), *s, CAPTION_MAX_W);
             }
         }
+    }
+
+    fn warm_one(&mut self, text: &str, style: Style, scale: f64, max_w: f64) {
+        let fitted = self.labels.fit(text, style.face, style.size(), max_w);
+        let _ = self.labels.get(&fitted, style, scale, max_w + 1.0);
     }
 }
 
@@ -186,24 +204,35 @@ fn fixed_labels(p: &Palette) -> Vec<(&'static str, Style, f64)> {
         ("Recovery", bold(13.0, p.on_menu_title), 200.0),
         ("⌃⌥Del or esc closes", mono(11.0, p.on_menu_title), 220.0),
         ("APPS", mono(10.5, p.text3), 120.0),
-        ("CPU", mono(10.5, p.text3), 80.0),
-        ("MEMORY", mono(10.5, p.text3), 80.0),
+        ("CPU", mono(10.5, p.text3), RIGHT_MAX_W),
+        ("MEMORY", mono(10.5, p.text3), RIGHT_MAX_W),
+        ("Really Log Out?", semibold(12.5, p.on_selection), BUTTON_LABEL_MAX_W),
+        ("–", mono(12.0, p.text), RIGHT_MAX_W),
+        ("–", mono(12.0, p.on_selection), RIGHT_MAX_W),
         ("SYSTEM", mono(10.5, p.text3), 120.0),
         ("No apps are open", semibold(13.0, p.text3), 300.0),
         ("NOT RESPONDING", mono(10.5, p.red), 160.0),
         ("CRASHED", mono(10.5, p.red), 160.0),
         ("STOPPED", mono(10.5, p.amber), 160.0),
-        ("1 window", mono(11.0, p.text3), 120.0),
-        ("2 windows", mono(11.0, p.text3), 120.0),
-        ("3 windows", mono(11.0, p.text3), 120.0),
+        ("NOT RESPONDING", mono(10.5, p.on_selection), 160.0),
+        ("CRASHED", mono(10.5, p.on_selection), 160.0),
+        ("STOPPED", mono(10.5, p.on_selection), 160.0),
     ];
+    for n in ["1 window", "2 windows", "3 windows"] {
+        v.push((n, mono(11.0, p.text3), 120.0));
+        v.push((n, mono(11.0, p.on_selection), 120.0));
+    }
     for a in [Act::APP.as_slice(), Act::SYSTEM.as_slice()].concat() {
-        v.push((a.label(false), semibold(12.5, p.text), 160.0));
-        v.push((a.label(false), semibold(12.5, p.on_selection), 160.0));
+        v.push((a.label(false), semibold(12.5, p.text), BUTTON_LABEL_MAX_W));
+        v.push((a.label(false), semibold(12.5, p.on_selection), BUTTON_LABEL_MAX_W));
+        v.push((a.label(false), semibold(12.5, p.faint), BUTTON_LABEL_MAX_W));
+        v.push((a.key_cap(), mono(11.0, p.faint), 40.0));
         v.push((a.key_cap(), mono(11.0, p.text3), 40.0));
         v.push((a.key_cap(), mono(11.0, p.on_selection), 40.0));
     }
-    v.push((Act::ForceQuit.label(false), semibold(12.5, p.red), 160.0));
+    v.push((Act::ForceQuit.label(false), semibold(12.5, p.red), BUTTON_LABEL_MAX_W));
+    v.push((Act::RestartShell.label(true), semibold(12.5, p.text), BUTTON_LABEL_MAX_W));
+    v.push((Act::RestartShell.label(true), semibold(12.5, p.on_selection), BUTTON_LABEL_MAX_W));
     for (cap, what) in FOOTER {
         v.push((cap, mono(11.0, p.text2), 60.0));
         v.push((what, mono(11.0, p.text3), 160.0));
@@ -223,12 +252,15 @@ where
         return Vec::new();
     }
     let Some(mut view) = az.recovery.view.take() else { return Vec::new() };
+    let started = std::time::Instant::now();
+    let labels_before = view.labels.len();
     std::mem::swap(&mut az.labels, &mut view.labels);
     let out = draw(az, &mut view, renderer, output, scale);
     std::mem::swap(&mut az.labels, &mut view.labels);
+    let new_labels = view.labels.len() - labels_before;
     az.recovery.view = Some(view);
     if let Some(t) = az.recovery.opened_at.take() {
-        tracing::debug!(since_open = ?t.elapsed(), "recovery overlay's first frame built");
+        tracing::debug!(since_open = ?t.elapsed(), built_in = ?started.elapsed(), new_labels, "recovery overlay's first frame");
     }
     out
 }
@@ -242,8 +274,8 @@ where
     let origin = (geo.loc.x as f64, geo.loc.y as f64);
     let p = az.palette;
     let mut pt: Painter<R> = Painter::new(origin, scale, 1.0);
-    // Everything behind steps back.
-    pt.fill(Box2::new(origin.0, origin.1, geo.size.w as f64, geo.size.h as f64), p.desktop.with_alpha(0.62));
+    // Nothing behind shows (or costs anything to draw).
+    pt.fill(Box2::new(origin.0, origin.1, geo.size.w as f64, geo.size.h as f64), p.desktop);
     let on_panel = az.recovery.output.as_ref().is_none_or(|o| o == output);
     if on_panel {
         panel(az, &mut pt, renderer, output, &p);
@@ -353,7 +385,7 @@ where
         button(az, pt, renderer, b, label, act.key_cap(), focused, hovered, enabled, act == Act::ForceQuit, p);
     }
     if let (Some((x, y)), Some(row)) = (l.app_caption, app_selected.as_ref()) {
-        let max = l.panel.right() - PAD - x;
+        let max = (l.panel.right() - PAD - x).min(CAPTION_MAX_W);
         let text = format!("for {}", row.name);
         pt.text_mid(az, renderer, &text, semibold(12.5, p.text3), x, y, BUTTON_H, max);
     }
@@ -411,7 +443,7 @@ where
         name_x,
         b.y,
         b.h,
-        (status_x - name_x - 90.0).max(60.0),
+        (status_x - name_x - 90.0).clamp(60.0, NAME_MAX_W),
     );
     let n = row.windows.len();
     let count = if n == 1 { "1 window".to_string() } else { format!("{n} windows") };
@@ -472,7 +504,16 @@ fn button<R>(
         (ink, if enabled { p.text3 } else { p.faint })
     };
     let cw = az.labels.measure(cap, Face::Mono, 11.0).0;
-    pt.text_mid(az, renderer, label, semibold(12.5, ink), b.x + 10.0, b.y, b.h, (b.w - cw - 30.0).max(20.0));
+    pt.text_mid(
+        az,
+        renderer,
+        label,
+        semibold(12.5, ink),
+        b.x + 10.0,
+        b.y,
+        b.h,
+        (b.w - cw - 30.0).clamp(20.0, BUTTON_LABEL_MAX_W),
+    );
     pt.text_mid(az, renderer, cap, mono(11.0, sub), b.right() - 10.0 - cw, b.y, b.h, 40.0);
 }
 
@@ -492,7 +533,7 @@ fn right_text<R>(
     R::TextureId: Clone + Send + 'static,
 {
     let w = az.labels.measure(text, style.face, style.size()).0.ceil();
-    pt.text_mid(az, renderer, text, style, right - w, y, h, w + 1.0);
+    pt.text_mid(az, renderer, text, style, right - w, y, h, RIGHT_MAX_W);
 }
 
 fn fmt_cpu(c: f64) -> String {

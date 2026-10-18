@@ -209,6 +209,8 @@ pub struct Recovery {
     /// After Reset Input, this surface's constraints stay off until it is
     /// clicked: a hung game can't lock the pointer again at once.
     pub unconstrained: Option<WlSurface>,
+    /// The scales and palette its textures were last drawn offscreen for.
+    gpu_warm: Option<(Vec<u32>, aizome_theme::Palette)>,
 }
 
 impl Default for Recovery {
@@ -235,6 +237,7 @@ impl Default for Recovery {
             view: Some(Box::default()),
             held_constraint: None,
             unconstrained: None,
+            gpu_warm: None,
         }
     }
 }
@@ -261,6 +264,13 @@ impl Recovery {
 /// Starts the process thread and the ping timer.
 pub fn start(state: &mut State) {
     state.az.recovery.procinfo = ProcInfo::start(&state.az.lh, on_report);
+    // Its labels now, and their textures once there is something to draw
+    // with, so even the first Ctrl+Alt+Del draws nothing new.
+    warm(state);
+    let _ = state.az.lh.insert_source(Timer::from_duration(Duration::from_millis(300)), |_, _, state| {
+        prewarm_gpu(state);
+        TimeoutAction::Drop
+    });
     if let Some(notice) = crate::watchdog::previous_stall() {
         state.az.recovery.notice = Some(notice);
         // Say it as soon as there is something to show it on.
@@ -288,6 +298,7 @@ fn tick(state: &mut State) {
         ping_all(state);
     }
     warm(state);
+    prewarm_gpu(state);
     if state.az.recovery.open {
         let before = rows_signature(&state.az.recovery.rows);
         refresh_rows(state);
@@ -319,10 +330,38 @@ fn warm(state: &mut State) {
             let _ = state.az.icons.texture(&app, view::ICON, s.ceil().max(1.0) as u32, crate::icons::Tint::Color);
         }
     }
+    let names: Vec<String> = state.az.recovery.names.values().cloned().collect();
     if let Some(mut v) = state.az.recovery.view.take() {
-        v.warm(&state.az.palette, &scales);
+        v.warm(&state.az.palette, &scales, &names);
         state.az.recovery.view = Some(v);
     }
+}
+
+/// Draws the overlay once offscreen, as a screenshot does, so its labels'
+/// textures are already on the GPU when it first opens (uploading them
+/// then cost the first frame several milliseconds). Again when the scale
+/// or the theme changes.
+fn prewarm_gpu(state: &mut State) {
+    let scales: Vec<u32> =
+        state.az.outputs.iter().map(|o| (o.current_scale().fractional_scale() * 4.0).round() as u32).collect();
+    let key = (scales, state.az.palette);
+    if state.az.recovery.open || state.az.outputs.is_empty() || state.az.recovery.gpu_warm.as_ref() == Some(&key) {
+        return;
+    }
+    state.az.recovery.gpu_warm = Some(key);
+    let started = Instant::now();
+    let outputs = state.az.outputs.clone();
+    refresh_rows(state);
+    state.az.recovery.open = true;
+    for o in &outputs {
+        state.az.recovery.output = Some(o.clone());
+        if let Err(e) = state.backend.capture(&mut state.az, o, false) {
+            tracing::debug!("warming the recovery overlay on {}: {e}", o.name());
+        }
+    }
+    state.az.recovery.open = false;
+    state.az.recovery.output = None;
+    tracing::debug!(took = ?started.elapsed(), "recovery overlay warmed");
 }
 
 fn short_name(app_id: &str) -> String {

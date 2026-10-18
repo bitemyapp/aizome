@@ -111,16 +111,14 @@ fn ctrl_alt_del_opens_over_a_full_screen_client_that_inhibits_shortcuts() {
     game.wait("the keyboard leaving the game", |s| !s.keyboard_focus);
     let keys = game.seen().keys.len();
 
-    // Drawn above the full-screen surface: the title strip on top, the
-    // game dimmed behind.
+    // Drawn above the full-screen surface: the title strip on top, and
+    // instead of the game the desktop's colour (nothing below is drawn).
     let panel = st.panel.expect("the panel's place");
     c.settle();
     let img = c.screenshot();
     keep(&img, "recovery-over-fullscreen");
     assert_px(&img, panel.x + panel.w / 2, panel.y + 6, rgb(0x0b0c12), "the title strip");
-    let dim = |v: f64, d: f64| (0.62 * d + 0.38 * v).round() as u8;
-    let scrim = [dim(255.0, 0x16 as f64), dim(0.0, 0x16 as f64), dim(255.0, 0x1e as f64)];
-    assert_px(&img, 20, 20, scrim, "the game behind the scrim");
+    assert_px(&img, 20, 20, rgb(0x16161e), "the backdrop over the game");
 
     // Keys are the overlay's while it shows.
     tap(&c, "down");
@@ -380,6 +378,7 @@ fn a_late_move_request_starts_no_grab() {
     let app = Probe::spawn(&c, ProbeSpec::new("org.example.Slow", 0x2a2e44).csd());
     let w = c.wait_window("org.example.Slow");
     app.send(PCmd::MoveAfterRelease);
+    app.wait("armed", |s| s.armed);
     motion(&c, w.geometry.x + 30, w.geometry.y + 10);
     synth(&c, vec![Synthetic::Click { button: "left".into() }]);
     app.wait("its late move", |s| s.moved_with.is_some());
@@ -477,6 +476,8 @@ struct PSeen {
     inhibited: bool,
     fullscreen: bool,
     moved_with: Option<u32>,
+    /// It has taken MoveAfterRelease.
+    armed: bool,
 }
 
 enum PCmd {
@@ -614,7 +615,10 @@ fn run_probe(stream: UnixStream, spec: ProbeSpec, rx: Receiver<PCmd>, seen: Arc<
                         app.surface.commit();
                     }
                 }
-                PCmd::MoveAfterRelease => app.move_after_release = true,
+                PCmd::MoveAfterRelease => {
+                    app.move_after_release = true;
+                    app.seen.lock().unwrap().armed = true;
+                }
                 PCmd::Quit => app.quit = true,
             }
         }
