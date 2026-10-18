@@ -333,10 +333,18 @@ impl Dev {
         if let Some(t) = &self.target_dir {
             return t.clone();
         }
+        // The checkout's own target directory (its .cargo/config.toml may
+        // name one), as the dev shell's cargo sees it.
+        let env = self.cargo_env().ok();
         let t = std::env::var_os("AIZOME_DEV_TARGET_DIR").map(PathBuf::from).unwrap_or_else(|| {
-            let out = Command::new("cargo")
+            let mut cmd = Command::new("cargo");
+            if let Some(env) = &env {
+                cmd.env_clear().envs(env);
+            }
+            let out = cmd
                 .args(["metadata", "--format-version", "1", "--no-deps", "--manifest-path"])
                 .arg(self.checkout.join("Cargo.toml"))
+                .current_dir(&self.checkout)
                 .stderr(Stdio::null())
                 .output()
                 .ok()
@@ -493,7 +501,7 @@ impl Dev {
         let std_dir = Path::new(&sysroot).join("lib/rustlib").join(self.core_str("target")).join("lib");
         let out = Command::new(dir.join("aizome"))
             .arg("--build-info")
-            .env("LD_LIBRARY_PATH", std::env::join_paths([dir.clone(), std_dir]).ok()?)
+            .env("LD_LIBRARY_PATH", std::env::join_paths([dir.clone(), dir.join("deps"), std_dir]).ok()?)
             .output()
             .ok()?;
         let v: Value = serde_json::from_slice(&out.stdout).ok()?;

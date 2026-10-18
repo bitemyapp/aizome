@@ -241,10 +241,16 @@ fn declares(dir: &Path, name: &str) -> bool {
         .unwrap_or(false)
 }
 
+/// Every file under a package's `src/`, but its programs' (`src/main.rs`,
+/// `src/bin/`): they aren't part of the library the core links.
 fn collect(dir: &Path, out: &mut Vec<PathBuf>) {
     let Ok(entries) = std::fs::read_dir(dir) else { return };
+    let top = dir.file_name().is_some_and(|n| n == "src");
     for e in entries.flatten() {
         let p = e.path();
+        if top && (p.file_name().is_some_and(|n| n == "bin" || n == "main.rs")) {
+            continue;
+        }
         if p.is_dir() {
             collect(&p, out);
         } else {
