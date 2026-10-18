@@ -75,6 +75,8 @@ pub struct TestPlatform {
     pub drags: Vec<(WinId, sidestep_ui::DragSource)>,
     /// Each window's last frame as [`Harness::check_frame`] composed it.
     frames: HashMap<WinId, (u32, u32, Vec<u8>)>,
+    /// Each window's pixels as [`Harness::render_damage`] keeps them.
+    kept: HashMap<WinId, Vec<u32>>,
 }
 
 impl TestPlatform {
@@ -102,6 +104,7 @@ impl TestPlatform {
             scrolls: HashMap::new(),
             drags: Vec::new(),
             frames: HashMap::new(),
+            kept: HashMap::new(),
         }
     }
 
@@ -891,21 +894,23 @@ impl<P: Program> Harness<P> {
         })
     }
 
-    /// Draw only `damage` of the window (rectangles, as a frame redrawing
-    /// it would: drawn once, each rectangle rasterized and nothing between
-    /// them), in an image the size of the rectangle around them: what a
-    /// frame costs a window. `None` for no damage.
-    pub fn render_damage(&mut self, key: WindowKey, damage: &[Rect], scale: f64) -> Option<Image> {
-        let bounds = damage.iter().copied().reduce(|a, b| a.union(b))?;
+    /// Draw the window's `damage` at `scale` as its next frame would: the
+    /// rectangles gathered as a window gathers them, drawn once and
+    /// rasterized each alone (nothing between them), into pixels kept for
+    /// the window from one frame to the next, as a window's buffer is.
+    /// What a frame costs a window; `None` for no damage.
+    pub fn render_damage(&mut self, key: WindowKey, damage: &[Rect], scale: f64) -> Option<()> {
+        let size = self.size(key);
+        let damage = sidestep_ui::gather_damage(size, damage);
+        if damage.is_empty() {
+            return None;
+        }
         let win = self.win(key);
         let look = self.look();
         let core = &mut self.rt.core;
-        let offset = bounds.origin().to_vec2();
-        let local: Vec<Rect> = damage.iter().map(|r| *r - offset).collect();
-        Some(sidestep_ui::offscreen::render_damage(bounds.size(), scale, look, &local, |c| {
-            c.translate(-offset);
-            core.paint(win, c);
-        }))
+        let px = self.platform.kept.entry(win).or_default();
+        sidestep_ui::offscreen::paint_damage(px, size, scale, look, &damage, |c| core.paint(win, c));
+        Some(())
     }
 
     /// The window with its popups composited where they'd show, as RGBA.
