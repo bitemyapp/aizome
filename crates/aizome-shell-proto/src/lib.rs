@@ -319,13 +319,21 @@ mod tests {
         let line = encode(&hello);
         assert_eq!(line, "{\"type\":\"hello\",\"app_id\":\"org.aizome.Soroban\",\"pid\":7,\"name\":\"Soroban\"}\n");
         assert_eq!(decode::<AppMessage>(&line).unwrap(), hello);
-        assert_eq!(decode::<ShellMessage>("{\"type\":\"about-to-show\",\"menu\":3}").unwrap(), ShellMessage::AboutToShow { menu: 3 });
-        assert_eq!(decode::<ShellMessage>("{\"type\":\"activate\",\"id\":12}\n").unwrap(), ShellMessage::Activate { id: 12 });
+        assert_eq!(
+            decode::<ShellMessage>("{\"type\":\"about-to-show\",\"menu\":3}").unwrap(),
+            ShellMessage::AboutToShow { menu: 3 }
+        );
+        assert_eq!(
+            decode::<ShellMessage>("{\"type\":\"activate\",\"id\":12}\n").unwrap(),
+            ShellMessage::Activate { id: 12 }
+        );
     }
 
     #[test]
     fn requests_and_replies_are_flat_lines() {
-        let r = AppMessage::Request { request: ShellRequest::Palette { scope: Some("files".into()), query: String::new() } };
+        let r = AppMessage::Request {
+            request: ShellRequest::Palette { scope: Some("files".into()), query: String::new() },
+        };
         let line = encode(&r);
         assert_eq!(line, "{\"type\":\"request\",\"request\":\"palette\",\"scope\":\"files\"}\n");
         assert_eq!(decode::<AppMessage>(&line).unwrap(), r);
@@ -350,7 +358,10 @@ mod tests {
             ..Default::default()
         };
         let json = serde_json::to_string(&item).unwrap();
-        assert_eq!(json, r#"{"id":4,"kind":"action","label":"Copy","shortcut":{"key":"C","command":true},"enabled":true,"role":"copy"}"#);
+        assert_eq!(
+            json,
+            r#"{"id":4,"kind":"action","label":"Copy","shortcut":{"key":"C","command":true},"enabled":true,"role":"copy"}"#
+        );
         let back: Item = serde_json::from_str(r#"{"id":4,"label":"Copy"}"#).unwrap();
         assert!(back.enabled && !back.checked && back.kind == ItemKind::Action);
         assert_eq!(item.shortcut.unwrap().label(), "❖C");
@@ -373,7 +384,11 @@ mod tests {
             (hello, menus)
         });
         let mut c = Client::hello(&path, "org.aizome.Test", "Test").unwrap();
-        let menu = Menu { id: 1, title: "File".into(), items: vec![Item { id: 9, label: "New".into(), enabled: true, ..Default::default() }] };
+        let menu = Menu {
+            id: 1,
+            title: "File".into(),
+            items: vec![Item { id: 9, label: "New".into(), enabled: true, ..Default::default() }],
+        };
         c.send(&AppMessage::Menus { menus: vec![menu.clone()] }).unwrap();
         assert_eq!(c.recv().unwrap(), Some(ShellMessage::Activate { id: 9 }));
         let (hello, menus) = shell.join().unwrap();
