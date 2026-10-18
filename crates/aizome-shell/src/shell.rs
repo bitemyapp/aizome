@@ -989,6 +989,10 @@ impl Shell {
             "surfaces": surfaces,
             "focused": self.wm.focused,
             "apps": self.registry.apps().map(|a| a.app_id.clone()).collect::<Vec<_>>(),
+            // The bar's open menu, the palette's query, the panel open.
+            "menu": self.bar_menu.map(|m| format!("{:?}", m.slot)),
+            "palette": self.palette.as_ref().map(|p| p.query.clone()),
+            "panel": self.panel.as_ref().map(|p| p.widget.name()),
         })
         .to_string()
     }
