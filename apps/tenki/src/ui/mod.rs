@@ -241,19 +241,18 @@ fn location_banner() -> Element<Msg> {
         .size(12.0)
         .role(Role::Text2)
         .wrap(),
-    ]
-    .spacing(4.0)
-    .width(Fill);
-    container(
+        // The buttons under the words, so the words keep the width at any
+        // size of the window (beside them they were squeezed to a letter
+        // a line in a narrow one).
         row![
-            icon(Icon::LocateFixed).size(22.0).role(Role::Warning),
-            words,
-            button("Not Now").on_press(Msg::DeclineLocation),
             button("Use My Location").primary().on_press(Msg::AllowLocation),
+            button("Not Now").on_press(Msg::DeclineLocation),
         ]
-        .spacing(12.0)
-        .width(Fill),
-    )
+        .spacing(8.0),
+    ]
+    .spacing(6.0)
+    .width(Fill);
+    container(row![icon(Icon::LocateFixed).size(22.0).role(Role::Warning), words].spacing(12.0).width(Fill))
     .padding([12.0, 14.0])
     .fill(Tone::Raised)
     .border(Edge::Line2)

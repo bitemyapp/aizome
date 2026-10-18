@@ -114,8 +114,14 @@ fn the_first_launch_keeps_the_time_zone_city_and_asks_about_location() {
     // Kept on disk: the place, and the forecast in the cache.
     assert_eq!(s.load_places().map(|p| p.len()), Some(1));
     assert!(s.load_forecast("41.85_-87.65").is_some());
-    // Not now: the question goes, and stays gone.
+    // At the narrowest the window goes, the question's words keep their
+    // width (the buttons go under them).
     let w = h.window();
+    h.resize(w, Size::new(640.0, 460.0));
+    let words = h.find(w, "See the weather where you are?").expect("the question");
+    assert!(words.width() > 200.0, "the question is squeezed: {words:?}");
+    h.resize(w, Size::new(980.0, 720.0));
+    // Not now: the question goes, and stays gone.
     assert!(h.click_text(w, "Not Now"));
     assert_eq!(h.program().settings.location, Consent::Declined);
     assert!(!texts_has(&h, "See the weather where you are?"));
