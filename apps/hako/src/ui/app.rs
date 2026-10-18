@@ -502,6 +502,8 @@ impl Hako {
     pub(crate) fn update_watch(&mut self) {
         let Some(watcher) = &self.watcher else { return };
         let mut dirs: Vec<PathBuf> = self.windows.values().flat_map(Browser::folders).collect();
+        // The home Trash always, for the sidebar's Empty Trash.
+        dirs.push(self.opts.trash.home_can().files());
         for b in self.windows.values() {
             if b.columns.iter().any(|c| c.loc == Loc::Trash) {
                 dirs.extend(self.opts.trash.cans().iter().map(|c| c.files()));
