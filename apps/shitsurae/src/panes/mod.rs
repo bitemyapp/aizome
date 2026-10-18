@@ -44,20 +44,20 @@ pub fn all() -> Vec<Box<dyn AnyPane>> {
         // System.
         pane(general::General::default()),
         pane(appearance::Appearance::default()),
-        pane(accessibility::Accessibility::default()),
+        pane(accessibility::Accessibility),
         pane(desktop::Desktop::default()),
-        pane(menubar::MenuBar::default()),
+        pane(menubar::MenuBar),
         pane(displays::Displays::default()),
         pane(battery::Battery::default()),
         pane(performance::Performance::default()),
         pane(search::Search::default()),
         // Security.
-        pane(lock::Lock::default()),
+        pane(lock::Lock),
         pane(users::Users::default()),
         // Devices.
         pane(keyboard::Keyboard::default()),
-        pane(mouse::Mouse::default()),
-        pane(trackpad::Trackpad::default()),
+        pane(mouse::Mouse),
+        pane(trackpad::Trackpad),
         pane(printers::Printers::default()),
     ]
 }

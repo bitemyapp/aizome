@@ -355,7 +355,7 @@ impl State {
             form::row(
                 "Computer name",
                 text_field(&pretty)
-                    .on_change(|s| Msg::Name(s))
+                    .on_change(Msg::Name)
                     .on_submit(Msg::SaveName)
                     .placeholder("A name people see")
                     .width(240.0),
@@ -369,7 +369,7 @@ impl State {
         } else {
             form::row(
                 "Host name",
-                text_field(self.host_draft.as_deref().unwrap_or(&host)).mono().on_change(|s| Msg::HostName(s)).on_submit(Msg::SaveHostName).width(240.0),
+                text_field(self.host_draft.as_deref().unwrap_or(&host)).mono().on_change(Msg::HostName).on_submit(Msg::SaveHostName).width(240.0),
             )
             .help("The computer's name on the network: letters, digits and hyphens.")
         }

@@ -142,7 +142,7 @@ pub fn clock_text(h: u32, m: u32, s: u32, h24: bool, seconds: bool) -> String {
     let (hh, suffix) = if h24 {
         (format!("{h:02}"), "")
     } else {
-        let h12 = if h % 12 == 0 { 12 } else { h % 12 };
+        let h12 = if h.is_multiple_of(12) { 12 } else { h % 12 };
         (format!("{h12}"), if h < 12 { " AM" } else { " PM" })
     };
     if seconds { format!("{hh}:{m:02}:{s:02}{suffix}") } else { format!("{hh}:{m:02}{suffix}") }

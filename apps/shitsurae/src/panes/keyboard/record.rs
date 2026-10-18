@@ -13,9 +13,9 @@ use aizome_kit::FontSpec;
 
 use super::keys::{self, Chord};
 
-pub fn recorder<Msg: Send + 'static>(on_chord: impl Fn(Chord) -> Msg + 'static, cancel: Msg, clear: Msg) -> Element<Msg>
+pub fn recorder<Msg>(on_chord: impl Fn(Chord) -> Msg + 'static, cancel: Msg, clear: Msg) -> Element<Msg>
 where
-    Msg: Clone,
+    Msg: Clone + Send + 'static,
 {
     Element::new(
         Recorder { on_chord: MsgMap::new(on_chord), cancel: MsgFn::new(cancel), clear: MsgFn::new(clear), held: Modifiers::NONE },

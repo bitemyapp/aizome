@@ -49,7 +49,7 @@ pub fn tilde(path: &str) -> String {
     let home = aizome_config::home_dir();
     let home = home.to_string_lossy();
     match path.strip_prefix(home.as_ref()) {
-        Some(rest) if rest.is_empty() => "~".into(),
+        Some("") => "~".into(),
         Some(rest) if rest.starts_with('/') => format!("~{rest}"),
         _ => path.to_owned(),
     }

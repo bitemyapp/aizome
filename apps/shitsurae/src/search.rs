@@ -73,7 +73,7 @@ fn by_words(words: &[String], panes: &[PaneInfo]) -> Vec<Hit> {
                 Some(EntryHit { id: e.id.clone(), title: e.title.clone(), ranges: ranges(words, &e.title), score: s })
             })
             .collect();
-        entries.sort_by(|a, b| b.score.cmp(&a.score));
+        entries.sort_by_key(|e| std::cmp::Reverse(e.score));
         // An option found only through its pane's title says nothing more
         // than the pane: keep those out when the pane itself matched.
         if pane_score.is_some() {
@@ -102,9 +102,7 @@ fn score(words: &[String], title: &str, keywords: &[&str], context: &[&str]) -> 
     for w in words {
         let s = if starts_word(&title_l, w) {
             if title_l.starts_with(w.as_str()) { 6 } else { 4 }
-        } else if w.len() >= 3 && title_l.contains(w.as_str()) {
-            2
-        } else if keywords.iter().any(|k| starts_word(&k.to_lowercase(), w)) {
+        } else if (w.len() >= 3 && title_l.contains(w.as_str())) || keywords.iter().any(|k| starts_word(&k.to_lowercase(), w)) {
             2
         } else if context.iter().any(|c| starts_word(&c.to_lowercase(), w)) {
             1
@@ -163,7 +161,7 @@ fn fuzzy(query: &str, panes: &[PaneInfo]) -> Vec<Hit> {
                 Some(EntryHit { id: e.id.clone(), title: e.title.clone(), ranges: m.ranges, score: i64::from(m.score) })
             })
             .collect();
-        entries.sort_by(|a, b| b.score.cmp(&a.score));
+        entries.sort_by_key(|e| std::cmp::Reverse(e.score));
         entries.truncate(ENTRIES_PER_PANE);
         if pane.is_none() && entries.is_empty() {
             continue;

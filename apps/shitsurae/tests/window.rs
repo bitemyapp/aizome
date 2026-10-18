@@ -42,7 +42,7 @@ fn every_option_listed_is_on_its_pane() {
     assert_eq!(before, ids.len(), "ids are unique");
     let mut missing = Vec::new();
     for item in items.iter().filter(|i| i.kind == "option" && MINE.contains(&i.pane.as_str())) {
-        let (mut h, _) = common::open("entries", &item.id);
+        let (h, _) = common::open("entries", &item.id);
         let w = h.window();
         let name = shitsurae::pane::entry_name(&item.pane, item.entry.as_deref().unwrap_or(""));
         if h.find_id(w, &name).is_none() {

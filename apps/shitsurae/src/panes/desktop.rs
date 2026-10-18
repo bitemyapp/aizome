@@ -46,6 +46,9 @@ pub enum Msg {
     CommandKey(bool),
 }
 
+/// A change to the Desks, made inside a settings change.
+type DeskEdit = Box<dyn FnOnce(&mut Vec<DeskConfig>)>;
+
 pub const DOUBLE_CLICK: [(&str, &str); 3] = [("fill", "Fill the screen"), ("minimise", "Minimise"), ("nothing", "Nothing")];
 
 fn sample_apps() -> Vec<(String, String)> {
@@ -114,7 +117,7 @@ impl Pane for Desktop {
     }
 
     fn update(&mut self, msg: Msg, cx: &mut PaneCx<Msg>) {
-        let desks = |cx: &mut PaneCx<Msg>, f: Box<dyn FnOnce(&mut Vec<DeskConfig>)>| {
+        let desks = |cx: &mut PaneCx<Msg>, f: DeskEdit| {
             cx.change(move |s| {
                 let mut d = s.desks_or_default();
                 f(&mut d);

@@ -70,7 +70,10 @@ fn device(path: &Path) -> Option<u64> {
 
 /// What Kura's index says fills `root`'s filesystem: the Nix store and the
 /// kinds of files, largest first.
-pub fn kura_parts(index: &Path) -> Option<(String, Vec<(String, u64)>, String)> {
+/// The root Kura scanned, what fills it, and when it looked.
+pub type KuraParts = (String, Vec<(String, u64)>, String);
+
+pub fn kura_parts(index: &Path) -> Option<KuraParts> {
     let text = std::fs::read_to_string(index).ok()?;
     let v: serde_json::Value = serde_json::from_str(&text).ok()?;
     let root = v.get("root")?.as_str()?.to_owned();
@@ -83,7 +86,7 @@ pub fn kura_parts(index: &Path) -> Option<(String, Vec<(String, u64)>, String)> 
         let bytes = k.get("allocated_bytes").and_then(|b| b.as_u64()).unwrap_or(0);
         parts.push((title, bytes));
     }
-    parts.sort_by(|a, b| b.1.cmp(&a.1));
+    parts.sort_by_key(|p| std::cmp::Reverse(p.1));
     let scanned = v.get("scanned_at").and_then(|s| s.as_str()).unwrap_or("").to_owned();
     Some((root, parts, scanned))
 }
