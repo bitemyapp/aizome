@@ -51,10 +51,12 @@ dependencies = [
  "aizome-ipc",
  "libc",
  "png 0.18.1",
+ "serde_json",
  "sidestep-ui",
  "wayland-client",
  "wayland-protocols",
  "wayland-protocols-wlr",
+ "zbus",
 ]
 
 [[package]]

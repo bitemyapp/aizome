@@ -3,7 +3,9 @@
 //! logic is swapped for a variant built from the same sources (the focus
 //! colour drawn pure red), a panic in the variant rolls it back, and a
 //! session that starts without any logic shows its windows and takes a
-//! logic in later.
+//! logic in later. And restarting the shell: the apps stay, a kit app
+//! finds the new shell, and notifications (on a D-Bus of the test's own)
+//! carry over.
 //!
 //! The variant is built here, in a target directory of its own
 //! (`target/reload-test`, kept between runs), with the compositor it is
@@ -372,4 +374,312 @@ fn a_library_built_against_another_core_is_refused() {
     let s = stats(&c);
     assert!(s.logic.healthy, "the running logic stays");
     assert_eq!(s.logic.reloads, 0);
+}
+
+/// The shell and a kit app, built from this checkout into the same
+/// target directory as [`build`].
+struct ShellBuild {
+    shell: PathBuf,
+    app: PathBuf,
+}
+
+fn shell_build() -> &'static ShellBuild {
+    static BUILD: OnceLock<ShellBuild> = OnceLock::new();
+    BUILD.get_or_init(|| {
+        let workspace = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let base_target =
+            std::env::var_os("CARGO_TARGET_DIR").map(PathBuf::from).unwrap_or_else(|| workspace.join("target"));
+        let target = base_target.join("reload-test");
+        let cargo = std::env::var("CARGO").unwrap_or_else(|_| env!("CARGO").to_string());
+        let status = Command::new(&cargo)
+            .args(["build", "-p", "aizome-shell", "-p", "aizome-tokei", "--manifest-path"])
+            .arg(workspace.join("Cargo.toml"))
+            .env("CARGO_TARGET_DIR", &target)
+            .status()
+            .expect("run cargo");
+        assert!(status.success(), "building the shell failed");
+        ShellBuild { shell: target.join("debug/aizome-shell"), app: target.join("debug/aizome-tokei") }
+    })
+}
+
+/// A D-Bus daemon of the test's own, with no services to start: the
+/// session bus (and the system bus, so the shell's logind, polkit and
+/// NetworkManager parts reach nothing of the machine's).
+struct Bus {
+    _daemon: Proc,
+    dir: PathBuf,
+    address: String,
+}
+
+impl Drop for Bus {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.dir);
+    }
+}
+
+fn private_bus() -> Option<Bus> {
+    use std::io::BufRead;
+    let daemon = which("dbus-daemon")?;
+    let dir = PathBuf::from(format!("/tmp/aizome-test-{}-bus", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let conf = dir.join("bus.conf");
+    std::fs::write(
+        &conf,
+        format!(
+            r#"<!DOCTYPE busconfig PUBLIC "-//freedesktop//DTD D-Bus Bus Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd">
+<busconfig>
+  <type>session</type>
+  <listen>unix:dir={}</listen>
+  <auth>EXTERNAL</auth>
+  <policy context="default">
+    <allow send_destination="*" eavesdrop="true"/>
+    <allow eavesdrop="true"/>
+    <allow own="*"/>
+  </policy>
+</busconfig>
+"#,
+            dir.display()
+        ),
+    )
+    .unwrap();
+    let mut child = Command::new(daemon)
+        .arg(format!("--config-file={}", conf.display()))
+        .args(["--nofork", "--nopidfile", "--print-address=1"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .ok()?;
+    let mut line = String::new();
+    std::io::BufReader::new(child.stdout.take().unwrap()).read_line(&mut line).ok()?;
+    let address = line.trim().to_string();
+    assert!(!address.is_empty(), "dbus-daemon printed no address");
+    Some(Bus { _daemon: Proc(child), dir, address })
+}
+
+/// The test's connection to that bus.
+fn bus_connection(address: &str) -> zbus::blocking::Connection {
+    zbus::blocking::connection::Builder::address(address).unwrap().build().unwrap()
+}
+
+/// Posts a notification as an app would; its id.
+fn notify(bus: &zbus::blocking::Connection, summary: &str) -> u32 {
+    let hints: std::collections::HashMap<&str, zbus::zvariant::Value> = Default::default();
+    let reply = bus
+        .call_method(
+            Some("org.freedesktop.Notifications"),
+            "/org/freedesktop/Notifications",
+            Some("org.freedesktop.Notifications"),
+            "Notify",
+            &("reload-test", 0u32, "", summary, "From the reload test", Vec::<&str>::new(), hints, -1i32),
+        )
+        .unwrap_or_else(|e| panic!("Notify({summary}): {e}"));
+    reply.body().deserialize::<u32>().unwrap()
+}
+
+/// The pid of whoever holds the notifications' bus name.
+fn notifications_owner(bus: &zbus::blocking::Connection) -> Option<u32> {
+    let dbus = zbus::blocking::fdo::DBusProxy::new(bus).ok()?;
+    let name = zbus::names::BusName::try_from("org.freedesktop.Notifications").ok()?;
+    dbus.get_connection_unix_process_id(name).ok()
+}
+
+/// What the shell says it shows (`aizome-shell msg state`).
+fn shell_state(shell: &Path, c: &Compositor) -> Option<serde_json::Value> {
+    let out = Command::new(shell)
+        .args(["msg", "state"])
+        .env("AIZOME_SHELL_SOCKET", shell_socket(c))
+        .env("XDG_RUNTIME_DIR", &c.dir)
+        .env("WAYLAND_DISPLAY", &c.socket)
+        .stderr(Stdio::null())
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    serde_json::from_slice(&out.stdout).ok()
+}
+
+fn shell_socket(c: &Compositor) -> PathBuf {
+    c.dir.join(format!("aizome-shell.{}.sock", c.socket))
+}
+
+fn strings(v: &serde_json::Value, key: &str) -> Vec<String> {
+    v[key].as_array().map(|a| a.iter().filter_map(|s| s.as_str().map(str::to_owned)).collect()).unwrap_or_default()
+}
+
+fn pid_alive(pid: u32) -> bool {
+    Path::new(&format!("/proc/{pid}")).exists()
+}
+
+#[test]
+fn restarting_the_shell_keeps_apps_and_notifications() {
+    let Some(bus) = private_bus() else {
+        eprintln!("no dbus-daemon; skipping the shell restart test");
+        return;
+    };
+    let sb = shell_build();
+    let shell_bin = sb.shell.to_string_lossy().into_owned();
+    let env = [
+        ("AIZOME_SHELL_BIN", shell_bin.as_str()),
+        ("DBUS_SESSION_BUS_ADDRESS", bus.address.as_str()),
+        ("DBUS_SYSTEM_BUS_ADDRESS", bus.address.as_str()),
+        ("AIZOME_LOG", "info,smithay=warn"),
+    ];
+    let c = Compositor::start(Options { args: &["--shell"], env: &env, settings: "", ..Default::default() });
+    let conn = bus_connection(&bus.address);
+
+    // The shell is up: its surfaces drawn, the notifications' name held.
+    let mut first = None;
+    wait_for("the shell", 60, || {
+        first = shell_state(&sb.shell, &c).filter(|s| !strings(s, "surfaces").is_empty());
+        first.is_some() && notifications_owner(&conn).is_some()
+    });
+    let first = first.unwrap();
+    let old_pid = first["pid"].as_u64().unwrap() as u32;
+    assert_eq!(notifications_owner(&conn), Some(old_pid));
+    let outputs_before = c.request(Request::Outputs);
+
+    // Apps: a test client, foot, and a kit app talking to the shell.
+    let a = c.client(Spec::new("org.example.a", 0x2266cc).size(420, 300));
+    c.wait_window("org.example.a");
+    let mut foot = which("foot").map(|f| spawn(&c, &[&f.to_string_lossy(), "--app-id", "foot", "sh"]));
+    if foot.is_some() {
+        c.wait_windows("foot's window", |ws| ws.iter().any(|w| w.app_id == "foot"));
+    }
+    let mut app = {
+        let child = Command::new(&sb.app)
+            .env_remove("DISPLAY")
+            .env("WAYLAND_DISPLAY", &c.socket)
+            .env("XDG_RUNTIME_DIR", &c.dir)
+            .env("HOME", c.dir.join("home"))
+            .env("XDG_CONFIG_HOME", c.dir.join("config"))
+            .env("AIZOME_SOCKET", &c.ipc)
+            .env("AIZOME_SHELL_SOCKET", shell_socket(&c))
+            .env("DBUS_SESSION_BUS_ADDRESS", &bus.address)
+            .env("DBUS_SYSTEM_BUS_ADDRESS", &bus.address)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(std::fs::File::create(c.dir.join("tokei.log")).unwrap())
+            .spawn()
+            .expect("start the kit app");
+        Proc(child)
+    };
+    let app_id = "org.aizome.Tokei";
+    wait_for("the kit app to say hello to the shell", 60, || {
+        shell_state(&sb.shell, &c).is_some_and(|s| strings(&s, "apps").iter().any(|a| a == app_id))
+    });
+    c.wait_windows("the kit app's window", |ws| ws.iter().any(|w| w.app_id == app_id));
+    c.settle();
+    let windows_before = desktop(&c.windows());
+
+    let n1 = notify(&conn, "Before the restart");
+    wait_for("the shell to keep it", 10, || {
+        shell_state(&sb.shell, &c).is_some_and(|s| strings(&s, "notes").contains(&"Before the restart".into()))
+    });
+
+    // Where the bar and the desktop show (not a window, not a banner).
+    let before = c.screenshot();
+    keep(&before, "shell-before-restart");
+    let points = shell_points(&c, &before);
+    let colours: Vec<_> = points.iter().map(|&(x, y)| before.px(x, y)).collect();
+
+    // Restart it.
+    let report = match c.request(Request::Reload { logic: false, shell: true, from: None, check: false }) {
+        Response::Reload { report } => report,
+        r => panic!("{r:?}"),
+    };
+    assert_eq!(report.shell.action, "restarted", "{report:?}\n{}", c.log_text());
+    assert_eq!(report.logic.action, "skipped", "{report:?}");
+    // One comes in while the two shells overlap.
+    let n2 = notify(&conn, "During the restart");
+    // The bar and the desktop never leave the screen: every frame through
+    // the overlap shows one shell's or the other's.
+    let mut frames = 0;
+    while !c.log_text().contains("shell restart finished") {
+        let img = c.screenshot();
+        for (&(x, y), &want) in points.iter().zip(&colours) {
+            if !near(img.px(x, y), want) {
+                keep(&img, "shell-during-restart");
+                panic!("at ({x}, {y}) the shell's {want:?} became {:?} mid-restart", img.px(x, y));
+            }
+        }
+        frames += 1;
+        assert!(frames < 400, "the restart didn't finish:\n{}", c.log_text());
+    }
+    eprintln!("{frames} screenshots through the restart, the bar and desktop at {points:?} in each");
+
+    let mut new_pid = 0;
+    wait_for("the new shell to take over", 30, || {
+        let Some(owner) = notifications_owner(&conn) else { return false };
+        new_pid = owner;
+        owner != old_pid && !pid_alive(old_pid)
+    });
+    let mut state = None;
+    wait_for("the new shell to hold every notification", 20, || {
+        state = shell_state(&sb.shell, &c);
+        state.as_ref().is_some_and(|s| {
+            let notes = strings(s, "notes");
+            s["pid"].as_u64() == Some(new_pid as u64)
+                && notes.contains(&"Before the restart".into())
+                && notes.contains(&"During the restart".into())
+                && !strings(s, "surfaces").is_empty()
+        })
+    });
+    let n3 = notify(&conn, "After the restart");
+    assert!(n3 > n1 && n3 > n2, "ids go on: {n1} {n2} {n3}");
+    wait_for("the new shell to keep a new one", 10, || {
+        shell_state(&sb.shell, &c).is_some_and(|s| strings(&s, "notes").contains(&"After the restart".into()))
+    });
+
+    // The apps never noticed; the kit app found the new shell.
+    assert!(a.connected(), "the test client is still connected");
+    if let Some(f) = &mut foot {
+        assert!(f.running(), "foot is still running");
+    }
+    assert!(app.running(), "the kit app is still running");
+    wait_for("the kit app to say hello to the new shell", 10, || {
+        shell_state(&sb.shell, &c).is_some_and(|s| strings(&s, "apps").iter().any(|a| a == app_id))
+    });
+    c.settle();
+    assert_eq!(desktop(&c.windows()), windows_before, "windows keep their places");
+    assert_eq!(c.request(Request::Outputs), outputs_before, "the bar's area is the same");
+    let log = c.log_text();
+    assert!(log.contains("shell restart finished"), "{log}");
+}
+
+/// Points where the shell's bar and desktop show: the bar's top row, in
+/// the middle, and a spot of the desktop's icons (the desktop's own
+/// colour is also the compositor's backdrop, so that wouldn't tell).
+fn shell_points(c: &Compositor, img: &Image) -> Vec<(i32, i32)> {
+    let Response::Outputs { outputs } = c.request(Request::Outputs) else { panic!("no outputs") };
+    let o = &outputs[0];
+    let (l, u) = (&o.logical, &o.usable);
+    assert!(u.y > l.y, "the bar keeps the top of the screen: {o:?}");
+    let ws = c.windows();
+    let covered = |x: i32, y: i32| {
+        ws.iter().any(|w| {
+            let g = &w.geometry;
+            // With room for decorations.
+            x >= g.x - 60 && x <= g.x + g.w + 60 && y >= g.y - 60 && y <= g.y + g.h + 60
+        })
+    };
+    let backdrop = img.px(l.x + l.w - 2, l.y + l.h - 2);
+    let mut desk = None;
+    'search: for y in u.y + 4..u.y + 160 {
+        for x in u.x + 4..u.x + 160 {
+            let p = img.px(x, y);
+            let even = (-1..=1).all(|dy| (-1..=1).all(|dx| img.px(x + dx, y + dy) == p));
+            if even && !near(p, backdrop) && !covered(x, y) {
+                desk = Some((x, y));
+                break 'search;
+            }
+        }
+    }
+    let desk = desk.expect("the desktop's icons");
+    let bar = (l.x + l.w / 2, l.y + 1);
+    assert!(!near(img.px(bar.0, bar.1), backdrop), "the bar shows");
+    vec![bar, desk]
 }

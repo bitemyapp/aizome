@@ -366,7 +366,8 @@ impl State {
         self.az.children.handover = None;
         for s in &mut self.az.children.supervised {
             if let Some(mut c) = s.retiring.take() {
-                // SIGTERM: it saves its state and lets its bus name go.
+                // SIGTERM: it saved its state on every change, and its last
+                // word as the new shell took its bus name.
                 // Safety: kill() with a valid pid and signal.
                 unsafe {
                     libc::kill(c.id() as i32, libc::SIGTERM);

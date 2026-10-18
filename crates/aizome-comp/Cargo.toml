@@ -26,3 +26,5 @@ wayland-protocols = { version = "0.32", features = ["client", "staging", "unstab
 wayland-protocols-wlr = { version = "0.3", features = ["client"] }
 png = "0.18"
 libc = "0.2"
+serde_json.workspace = true
+zbus = { version = "5.19", default-features = false, features = ["async-io", "blocking-api"] }

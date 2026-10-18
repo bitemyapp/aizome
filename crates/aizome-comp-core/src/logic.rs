@@ -597,7 +597,22 @@ fn open(path: &Path, generation: u64) -> Result<&'static LogicVTable, String> {
             libloading::os::unix::RTLD_NOW | libloading::os::unix::RTLD_LOCAL,
         )
     }
-    .map_err(|e| format!("{}: {e}", path.display()))?;
+    .map_err(|e| {
+        let e = e.to_string();
+        if e.contains("undefined symbol") {
+            // Same sources and toolchain, but not the same build of them:
+            // Cargo resolved the core's dependencies with other features
+            // (another set of packages built together), or another profile.
+            format!(
+                "{} doesn't fit this compositor's core: it was built against another build of the same \
+                 sources (other packages or features built together, or another profile). Build it as \
+                 aizome-dev does ({e})",
+                path.display()
+            )
+        } else {
+            format!("{}: {e}", path.display())
+        }
+    })?;
     // Safety: the symbol's type is the logic's entry point, checked by the
     // fingerprint (same core, same types).
     let entry: fn() -> &'static LogicVTable = unsafe {

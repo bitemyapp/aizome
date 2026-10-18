@@ -936,6 +936,19 @@ impl Shell {
                 Err(e) => log::warn!("the notifications server: {e}"),
             }
         }
+        // In a restart, take in what the old shell got after this one read
+        // its state: it writes its last word as it loses the bus name to
+        // this one (or, without a bus, as it stops).
+        if let Some(previous) = previous {
+            let tx = tx.clone();
+            std::thread::Builder::new()
+                .name("carry".into())
+                .spawn(move || {
+                    let c = crate::carry::wait_for_last(previous).unwrap_or_default();
+                    tx.send(Msg::Carried(Box::new(c)));
+                })
+                .ok();
+        }
         let tx2 = tx.clone();
         self.sys = crate::sys::Sys::start(move || {
             tx2.send(Msg::Sys);
@@ -1140,6 +1153,9 @@ impl Shell {
             "menu": self.bar_menu.map(|m| format!("{:?}", m.slot)),
             "palette": self.palette.as_ref().map(|p| p.query.clone()),
             "panel": self.panel.as_ref().map(|p| p.widget.name()),
+            "pid": std::process::id(),
+            // The notifications it keeps (summaries).
+            "notes": self.notes.list.iter().map(|n| n.summary.clone()).collect::<Vec<_>>(),
         })
         .to_string()
     }
@@ -1226,7 +1242,9 @@ impl Program for Shell {
                 self.desktop.items = items;
                 self.trash_full = full;
             }
-            Msg::Note(crate::notifications::server::NoteEvent::NameAcquired) => self.name_acquired(),
+            Msg::Note(crate::notifications::server::NoteEvent::NameAcquired) => {
+                log::info!("the notifications are this shell's")
+            }
             Msg::Note(crate::notifications::server::NoteEvent::NameLost) => {
                 // A new shell has the notifications now: its turn.
                 log::info!("another shell took over the notifications; saving and stepping down");
@@ -1448,23 +1466,6 @@ impl Shell {
             folded,
             notes_open: self.notes_open.clone(),
         });
-    }
-
-    /// The notifications' bus name is this shell's: in a restart, take in
-    /// what the old shell got since this one read its state.
-    fn name_acquired(&mut self) {
-        let Some(previous) = crate::carry::previous_shell() else { return };
-        if self.carry_ready {
-            return;
-        }
-        let Some(tx) = self.stream.clone() else { return };
-        std::thread::Builder::new()
-            .name("carry".into())
-            .spawn(move || {
-                let c = crate::carry::wait_for_last(previous).unwrap_or_default();
-                tx.send(Msg::Carried(Box::new(c)));
-            })
-            .ok();
     }
 
     /// About an app: its name, generic name and description, in the bar's

@@ -74,9 +74,10 @@ pub fn previous_shell() -> Option<u32> {
 }
 
 /// Waits (on a thread) for the shell this one replaces to write its last
-/// state, or to be gone, or a few seconds: then what it wrote.
+/// state, or to be gone, or eight seconds (the compositor stops it by
+/// then): then what it wrote.
 pub fn wait_for_last(previous: u32) -> Option<Carried> {
-    let deadline = Instant::now() + Duration::from_secs(4);
+    let deadline = Instant::now() + Duration::from_secs(8);
     loop {
         if let Some(c) = load()
             && c.pid == previous

@@ -86,6 +86,16 @@ impl Compositor {
         if let Some(l) = opts.logic {
             cmd.arg("--logic").arg(l);
         }
+        if let Some(exe) = opts.exe {
+            // Its own core before the one `cargo test` built (cargo's
+            // LD_LIBRARY_PATH beats the binary's rpath, and the tests'
+            // dev-dependencies can resolve the core's dependencies with
+            // other features, so its symbols differ).
+            let dir = exe.parent().unwrap();
+            let mut paths = vec![dir.to_path_buf(), dir.join("deps")];
+            paths.extend(std::env::split_paths(&std::env::var_os("LD_LIBRARY_PATH").unwrap_or_default()));
+            cmd.env("LD_LIBRARY_PATH", std::env::join_paths(paths).unwrap());
+        }
         cmd.envs(opts.env.iter().copied());
         for o in opts.outputs {
             cmd.args(["--headless-output", o]);
