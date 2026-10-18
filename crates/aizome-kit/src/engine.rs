@@ -78,6 +78,8 @@ pub(crate) enum WinKind {
     Popup { owner: WinId, kind: PopupKind },
 }
 
+// Few at a time: a menu's size doesn't matter.
+#[allow(clippy::large_enum_variant)]
 pub(crate) enum PopupKind {
     /// A menu (a pop-up button's, a context menu, a bar menu, a submenu).
     Menu { spec: MenuSpec, look: MenuLook, bar: Option<usize> },
@@ -475,8 +477,13 @@ impl Core {
         let mut tree = Tree::new(root, base);
         let mut env = Env { focus: w.active_focus(), theme: &self.theme, text: &mut self.text, states: &mut w.states, now: Instant::now(), on_selection: false };
         tree.layout_window(w.size, &mut env);
-        let mut damage = if w.built { tree.diff(&w.snapshot) } else { vec![Rect::from_origin_size(Point::ZERO, w.size)] };
-        damage.extend(tree.take_local_damage());
+        let damage = if w.built {
+            settle(&mut tree, &w.snapshot, w.focused, win, platform)
+        } else {
+            tree.scrolls.clear();
+            tree.local_damage.clear();
+            vec![Rect::from_origin_size(Point::ZERO, w.size)]
+        };
         w.snapshot = tree.snapshot();
         let ticks = std::mem::take(&mut tree.ticks);
         w.tree = tree;
@@ -541,8 +548,7 @@ impl Core {
         if dead > 256 && dead > w.tree.nodes.len() / 2 {
             w.tree.compact();
         }
-        let mut damage = w.tree.diff(&w.snapshot);
-        damage.extend(w.tree.take_local_damage());
+        let damage = settle(&mut w.tree, &w.snapshot, w.focused, win, platform);
         w.snapshot = w.tree.snapshot();
         let ticks = std::mem::take(&mut w.tree.ticks);
         let live = &w.tree.by_id;
@@ -572,12 +578,12 @@ impl Core {
         let size = tree.layout_free(Size::new(1200.0, 900.0), &mut env);
         let size = Size::new(size.width.ceil(), size.height.ceil());
         if w.built && size == w.size {
-            let mut damage = tree.diff(&w.snapshot);
-            damage.extend(tree.take_local_damage());
-            for r in damage {
+            for r in settle(&mut tree, &w.snapshot, w.focused, win, platform) {
                 platform.invalidate(win, r);
             }
         } else {
+            tree.scrolls.clear();
+            tree.local_damage.clear();
             platform.invalidate_all(win);
         }
         w.size = size;
@@ -619,13 +625,13 @@ impl Core {
         let size = Size::new(natural.width.ceil().max(w.size.width), natural.height.ceil());
         tree.layout_window(size, &mut env);
         if size == w.size {
-            let mut damage = tree.diff(&w.snapshot);
-            damage.extend(tree.take_local_damage());
-            for r in damage {
+            for r in settle(&mut tree, &w.snapshot, w.focused, win, platform) {
                 platform.invalidate(win, r);
             }
         } else {
             w.size = size;
+            tree.scrolls.clear();
+            tree.local_damage.clear();
             platform.request_size(win, size);
             platform.invalidate_all(win);
         }
@@ -1948,6 +1954,23 @@ impl Core {
 }
 
 /// An event in a widget's own coordinates.
+/// The damage of `tree` laid out anew since `before`: content that
+/// scrolled moves as pixels (the platform hears that first), and the
+/// rest is drawn again.
+fn settle(tree: &mut Tree, before: &Snapshot, focus: Option<NodeId>, win: WinId, platform: &mut dyn Platform) -> Vec<Rect> {
+    // `AIZOME_NO_PIXEL_SCROLL=1` draws what scrolled again instead (to
+    // compare, or where moving pixels misbehaves).
+    static DRAW_SCROLLS: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    let draw = *DRAW_SCROLLS.get_or_init(|| std::env::var_os("AIZOME_NO_PIXEL_SCROLL").is_some_and(|v| v != "0"));
+    let (moved, mut damage) = tree.take_scrolls(before, !draw);
+    for m in &moved {
+        platform.scroll(win, m.rect, m.delta);
+    }
+    damage.extend(tree.diff_moved(before, &moved, focus));
+    damage.extend(tree.take_local_damage());
+    damage
+}
+
 fn localize(ev: &Event, origin: Vec2) -> Event {
     match ev {
         Event::PointerMove { pos, mods } => Event::PointerMove { pos: *pos - origin, mods: *mods },

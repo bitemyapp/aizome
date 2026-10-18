@@ -405,6 +405,15 @@ impl Widget for TableWidget {
             st.reveal_once(r as u64, r as f64 * rh, (r + 1) as f64 * rh);
         }
         let (offx, offy) = (st.offset.x, st.offset.y);
+        let (moved, bars) = (st.moved_since_laid(), st.bar_tracks());
+        if let Some(d) = moved {
+            // The header goes sideways with the rows; the rows under it.
+            let header = self.header();
+            if d.x != 0.0 {
+                cx.scrolled(Rect::new(0.0, 0.0, size.width, header), Vec2::new(d.x, 0.0), &bars);
+            }
+            cx.scrolled(Rect::new(0.0, header, size.width, size.height), d, &bars);
+        }
         let first = ((offy / rh).floor().max(0.0) as usize).min(self.count);
         let last = (((offy + body_h) / rh).ceil().max(0.0) as usize).min(self.count);
         self.shown = first..last;
@@ -475,7 +484,8 @@ impl Widget for TableWidget {
         for w in &self.widths {
             h.f64(*w);
         }
-        h.add(&(self.sort, self.count, self.shown.start));
+        // Not where it's scrolled to: its rows move as pixels.
+        h.add(&(self.sort, self.count));
     }
 
     fn clips(&self) -> bool {
@@ -765,6 +775,7 @@ impl<Msg> From<TreeView<Msg>> for Element<Msg> {
             context: t.context,
             reveal: t.reveal,
             rows: Vec::new(),
+            shape: 0,
             selected_rows: Vec::new(),
             shown: 0..0,
             width: 0.0,
@@ -801,6 +812,8 @@ struct TreeWidget {
     context: Option<Rc<dyn Fn(u64) -> MenuSpec>>,
     reveal: Option<u64>,
     rows: Vec<Row>,
+    /// The rows' ids, depths and openness, hashed.
+    shape: u64,
     selected_rows: Vec<usize>,
     shown: std::ops::Range<usize>,
     width: f64,
@@ -840,6 +853,11 @@ impl TreeWidget {
             }
         }
         walk(self, &self.roots, &mut Vec::new(), 0, own, &mut rows);
+        let mut fx = crate::hash::Fx::default();
+        for r in &rows {
+            std::hash::Hash::hash(&(r.id, r.open, r.depth), &mut fx);
+        }
+        self.shape = std::hash::Hasher::finish(&fx);
         self.selected_rows = rows.iter().enumerate().filter(|(_, r)| self.selected.contains(&r.id)).map(|(i, _)| i).collect();
         self.rows = rows;
     }
@@ -920,6 +938,10 @@ impl Widget for TreeWidget {
             st.reveal_once(id, r as f64 * rh, (r + 1) as f64 * rh);
         }
         let off = st.offset.y;
+        let (moved, bars) = (st.moved_since_laid(), st.bar_tracks());
+        if let Some(d) = moved {
+            cx.scrolled(Rect::from_origin_size(Point::ZERO, size), d, &bars);
+        }
         let first = ((off / rh).floor().max(0.0) as usize).min(self.rows.len());
         let last = (((off + size.height) / rh).ceil().max(0.0) as usize).min(self.rows.len());
         self.shown = first..last;
@@ -964,10 +986,9 @@ impl Widget for TreeWidget {
     }
 
     fn hash(&self, h: &mut PaintHasher) {
-        for r in &self.rows[self.shown.clone()] {
-            h.add(&(r.id, r.open, r.depth));
-        }
-        h.add(&self.shown.start);
+        // Its rows' disclosure triangles, all of them (not where it's
+        // scrolled to: its rows move as pixels).
+        h.add(&self.shape);
     }
 
     fn clips(&self) -> bool {

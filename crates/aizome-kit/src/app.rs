@@ -532,6 +532,12 @@ impl Platform for SidestepPlatform<'_> {
         }
     }
 
+    fn scroll(&mut self, id: WinId, rect: Rect, delta: Vec2) {
+        if let Some(mut w) = self.maps.to_side.get(&id).and_then(|s| self.sx.window(*s)) {
+            w.scroll(rect, delta);
+        }
+    }
+
     fn outputs(&self) -> Vec<crate::program::Output> {
         self.sx.outputs()
     }

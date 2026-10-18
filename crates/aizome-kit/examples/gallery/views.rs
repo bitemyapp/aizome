@@ -75,6 +75,8 @@ pub struct Gallery {
     pub presses: u32,
     pub popover: bool,
     pub window: Option<WindowKey>,
+    /// A row the lists scroll to show (the scrolling benchmark).
+    pub reveal: Option<usize>,
 }
 
 impl Default for Gallery {
@@ -102,6 +104,7 @@ impl Default for Gallery {
             presses: 0,
             popover: false,
             window: None,
+            reveal: None,
         }
     }
 }
@@ -283,6 +286,7 @@ impl Gallery {
                     .on_select(Msg::Select)
                     .multiple()
                     .type_select(move |i| names[i].0.clone())
+                    .reveal(self.reveal.unwrap_or(0))
             )
             .border(Edge::Line)
             .padding(1.0)
@@ -296,6 +300,7 @@ impl Gallery {
                 .on_select(Msg::Select)
                 .on_sort(Msg::Sort)
                 .sorted(self.sort.0, self.sort.1)
+                .reveal(self.reveal.unwrap_or(0))
             )
             .border(Edge::Line)
             .padding(1.0)
@@ -407,6 +412,26 @@ impl Program for Gallery {
                     self.page = Page::Lists;
                     let next = self.selected.first().map_or(0, |s| (s + 1) % 30);
                     self.selected = vec![next];
+                    cx.after(std::time::Duration::from_millis(20), Msg::Demo);
+                }
+                // Scroll the list and the table two rows at a time, and
+                // the editor a line at a time through a long text (its caret on the
+                // last line).
+                Ok("bench-scroll") => {
+                    self.page = Page::Lists;
+                    self.reveal = Some((self.reveal.unwrap_or(40) + 2) % 10_000);
+                    cx.after(std::time::Duration::from_millis(20), Msg::Demo);
+                }
+                Ok("bench-scroll-editor") => {
+                    if self.page != Page::Editor {
+                        self.page = Page::Editor;
+                        let line = "Operations stay in points; each window renders at its output's scale.\n";
+                        self.content.set_text(&line.repeat(4000));
+                    }
+                    let rope = self.content.rope();
+                    let next = (rope.char_to_line(self.content.selection().head) + 1).max(60) % rope.len_lines();
+                    let at = rope.line_to_char(next);
+                    self.content.set_selection(aizome_kit::Selection::caret(at));
                     cx.after(std::time::Duration::from_millis(20), Msg::Demo);
                 }
                 Ok("bench-type") => {

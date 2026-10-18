@@ -59,9 +59,25 @@ pub(crate) struct ScrollState {
     hover_bar: bool,
     /// What a program last asked to show (`.reveal(..)`).
     revealed: Option<u64>,
+    /// The offset the content was last laid out at.
+    laid: Option<Vec2>,
 }
 
 impl ScrollState {
+    /// How far the content moved since it was last laid out (the offset's
+    /// change, the other way), noting this layout's offset.
+    pub fn moved_since_laid(&mut self) -> Option<Vec2> {
+        let moved = self.laid.map(|l| l - self.offset).filter(|d| *d != Vec2::ZERO);
+        self.laid = Some(self.offset);
+        moved
+    }
+
+    /// Where the bars draw (at their widest), to draw again when the
+    /// content under them moves.
+    pub fn bar_tracks(&self) -> Vec<Rect> {
+        [self.v_bar(true), self.h_bar(true)].into_iter().flatten().map(|(t, _)| t.inflate(2.0, 2.0)).collect()
+    }
+
     /// Scroll so `top..bottom` (down the content) shows, if `what` isn't
     /// what was shown so before.
     pub fn reveal_once(&mut self, what: u64, top: f64, bottom: f64) {
@@ -141,8 +157,10 @@ impl Scroller {
         }
         st.shown_until = Some(now + LINGER);
         cx.request_tick(LINGER + Duration::from_millis(20));
+        // The content moves as pixels (the widget's layout says so); the
+        // bars are drawn again.
         cx.relayout();
-        cx.invalidate();
+        self.invalidate_bars(cx);
         true
     }
 
@@ -377,8 +395,13 @@ impl Widget for ScrollWidget {
         st.content = content;
         st.clamp();
         let offset = st.offset;
+        let moved = st.moved_since_laid();
+        let bars = st.bar_tracks();
         if cx.child_count() > 0 {
             cx.place_child(0, Point::new(-offset.x, -offset.y));
+        }
+        if let Some(d) = moved {
+            cx.scrolled(Rect::from_origin_size(Point::ZERO, size), d, &bars);
         }
         size
     }
@@ -689,6 +712,10 @@ impl Widget for ListWidget {
             st.reveal_once(r as u64, r as f64 * rh, (r + 1) as f64 * rh);
         }
         let off = st.offset.y;
+        let (moved, bars) = (st.moved_since_laid(), st.bar_tracks());
+        if let Some(d) = moved {
+            cx.scrolled(Rect::from_origin_size(Point::ZERO, size), d, &bars);
+        }
         let first = ((off / rh).floor().max(0.0) as usize).min(n);
         let last = (((off + size.height) / rh).ceil().max(0.0) as usize).min(n);
         self.shown = first..last;
@@ -740,7 +767,8 @@ impl Widget for ListWidget {
     }
 
     fn hash(&self, h: &mut PaintHasher) {
-        h.add(&(self.count(), self.shown.start)).f64(self.row_height).f64(self.inset);
+        // Not where it's scrolled to: its rows move as pixels.
+        h.add(&self.count()).f64(self.row_height).f64(self.inset);
     }
 
     fn clips(&self) -> bool {

@@ -442,6 +442,17 @@ impl LayoutCx<'_, '_> {
         self.env.focus.is_some_and(|f| f == self.tree.nodes[self.node].id)
     }
 
+    /// This widget's content in `rect` (its coordinates) moved by `delta`
+    /// since it was last laid out: it scrolled. The kit moves those pixels
+    /// on screen rather than drawing them again, where it can, and draws
+    /// `fixed` (what stays put over the content: bars, a header) again.
+    /// Lay the content out where it now is; what changed in it is damaged
+    /// as always. A widget that calls this leaves its scroll offset out of
+    /// its hash.
+    pub fn scrolled(&mut self, rect: Rect, delta: Vec2, fixed: &[Rect]) {
+        self.tree.scrolls.push(crate::tree::Scrolled { node: self.node, rect, delta, fixed: fixed.to_vec() });
+    }
+
     /// Whether this is laid out in a selected row.
     pub fn on_selection(&self) -> bool {
         self.env.on_selection

@@ -68,6 +68,10 @@ pub struct TestPlatform {
     pub activation_requests: Vec<(u64, Option<String>)>,
     /// Full screen as last asked, by window.
     pub fullscreen: HashMap<WinId, bool>,
+    /// Regions moved since the test last took them, by window.
+    pub scrolls: HashMap<WinId, Vec<(Rect, Vec2)>>,
+    /// Each window's last frame as [`Harness::check_frame`] composed it.
+    frames: HashMap<WinId, (u32, u32, Vec<u8>)>,
 }
 
 impl TestPlatform {
@@ -92,6 +96,8 @@ impl TestPlatform {
             lock_asked: false,
             activation_requests: Vec::new(),
             fullscreen: HashMap::new(),
+            scrolls: HashMap::new(),
+            frames: HashMap::new(),
         }
     }
 
@@ -195,6 +201,40 @@ impl Platform for TestPlatform {
 
     fn set_opaque_region(&mut self, id: WinId, region: Option<Vec<Rect>>) {
         self.opaque_regions.insert(id, region);
+    }
+
+    fn scroll(&mut self, id: WinId, rect: Rect, delta: Vec2) {
+        // As Sidestep does: what waits to be drawn in it moves along, and
+        // the strips it uncovers are drawn; a move out of it all draws it.
+        let damage = self.damage.entry(id).or_default();
+        if delta.x.abs() >= rect.width() || delta.y.abs() >= rect.height() {
+            damage.push(rect);
+            return;
+        }
+        self.scrolls.entry(id).or_default().push((rect, delta));
+        let moved: Vec<Rect> = damage
+            .iter()
+            .filter_map(|d| {
+                let r = d.intersect(rect);
+                (r.area() > 0.0).then(|| (r + delta).intersect(rect))
+            })
+            .collect();
+        let rows = if delta.y > 0.0 { (rect.y0, rect.y0 + delta.y) } else { (rect.y1 + delta.y, rect.y1) };
+        let columns = if delta.x > 0.0 { (rect.x0, rect.x0 + delta.x) } else { (rect.x1 + delta.x, rect.x1) };
+        let strips = [Rect::new(rect.x0, rows.0, rect.x1, rows.1), Rect::new(columns.0, rect.y0, columns.1, rect.y1)];
+        // Kept as Sidestep keeps it: nothing inside another, and a few
+        // dozen rectangles at most (else their union).
+        for r in moved.into_iter().chain(strips).filter(|r| r.area() > 0.0) {
+            if damage.iter().any(|d| d.contains_rect(r)) {
+                continue;
+            }
+            damage.retain(|d| !r.contains_rect(*d));
+            damage.push(r);
+        }
+        if damage.len() > 32 {
+            let all = damage.iter().copied().reduce(|a, b| a.union(b)).unwrap_or(rect);
+            *damage = vec![all];
+        }
     }
 
     fn set_popup_anchor(&mut self, id: WinId, to: Rect) {
@@ -729,6 +769,68 @@ impl<P: Program> Harness<P> {
         sidestep_ui::offscreen::render(size, scale, look, |c| core.paint(win, c))
     }
 
+    /// Make the window's next frame as a buffer the compositor shows gets
+    /// it (the last frame's pixels moved as scrolls asked, then the damage
+    /// drawn), taking the damage, and compare it with the window drawn
+    /// whole: it differs nowhere when the damage was right.
+    pub fn check_frame(&mut self, key: WindowKey) -> FrameCheck {
+        let win = self.win(key);
+        let (w, h, fresh) = {
+            let img = self.render_win(win, 1.0);
+            let (w, h) = img.pixel_size();
+            (w, h, img.to_rgba8().expect("pixels"))
+        };
+        let damage = self.platform.damage.remove(&win).unwrap_or_default();
+        let scrolls = self.platform.scrolls.remove(&win).unwrap_or_default();
+        let at = |x: i64, y: i64| (y as usize * w as usize + x as usize) * 4;
+        let bound = |r: Rect| (r.x0.floor().max(0.0) as i64, r.y0.floor().max(0.0) as i64, (r.x1.ceil() as i64).min(w as i64), (r.y1.ceil() as i64).min(h as i64));
+        // The area drawn: the damage's union.
+        let mut mask = vec![false; w as usize * h as usize];
+        for r in &damage {
+            let (x0, y0, x1, y1) = bound(*r);
+            for y in y0..y1 {
+                for x in x0..x1 {
+                    mask[at(x, y) / 4] = true;
+                }
+            }
+        }
+        let damaged = mask.iter().filter(|m| **m).count() as f64;
+        let check = FrameCheck { differs: 0.0, damaged, moves: scrolls.len() };
+        let Some((pw, ph, mut px)) = self.platform.frames.remove(&win).filter(|(pw, ph, _)| (*pw, *ph) == (w, h)) else {
+            self.platform.frames.insert(win, (w, h, fresh));
+            return check;
+        };
+        let _ = (pw, ph);
+        for (rect, delta) in scrolls {
+            let (x0, y0, x1, y1) = bound(rect);
+            let (dx, dy) = (delta.x.round() as i64, delta.y.round() as i64);
+            let old = px.clone();
+            for y in y0..y1 {
+                for x in x0..x1 {
+                    let (sx, sy) = (x - dx, y - dy);
+                    if sx >= x0 && sx < x1 && sy >= y0 && sy < y1 {
+                        px[at(x, y)..at(x, y) + 4].copy_from_slice(&old[at(sx, sy)..at(sx, sy) + 4]);
+                    }
+                }
+            }
+        }
+        for r in damage {
+            let (x0, y0, x1, y1) = bound(r);
+            for y in y0..y1 {
+                if x1 > x0 {
+                    px[at(x0, y)..at(x1, y)].copy_from_slice(&fresh[at(x0, y)..at(x1, y)]);
+                }
+            }
+        }
+        let differs = difference(&px, &fresh, 2);
+        if differs > 0.0 {
+            let _ = write_png(&std::env::temp_dir().join("aizome-frame-composed.png"), w, h, &px);
+            let _ = write_png(&std::env::temp_dir().join("aizome-frame-whole.png"), w, h, &fresh);
+        }
+        self.platform.frames.insert(win, (w, h, fresh));
+        FrameCheck { differs, ..check }
+    }
+
     /// Draw only `rect` of the window (as a frame redrawing that damage
     /// would): what a frame costs.
     pub fn render_rect(&mut self, key: WindowKey, rect: Rect, scale: f64) -> Image {
@@ -789,6 +891,17 @@ fn blend(d: &mut [u8], s: &[u8]) {
 }
 
 /// Write straight RGBA pixels to a PNG.
+/// A frame [`Harness::check_frame`] made.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct FrameCheck {
+    /// The share of its pixels that differ from the window drawn whole.
+    pub differs: f64,
+    /// The area drawn (points²: the damage's union).
+    pub damaged: f64,
+    /// Regions moved as pixels.
+    pub moves: usize,
+}
+
 pub fn write_png(path: &Path, width: u32, height: u32, rgba: &[u8]) -> std::io::Result<()> {
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir)?;

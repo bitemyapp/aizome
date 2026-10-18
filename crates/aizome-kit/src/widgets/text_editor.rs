@@ -279,6 +279,8 @@ pub(crate) struct EditorState {
     reveal: bool,
     /// The lines drawn last: line, y, height, key.
     drawn: Vec<(usize, f64, f64, u64)>,
+    /// How far sideways the lines drawn last were scrolled.
+    drawn_x: f64,
     caret: Option<Rect>,
     width: f64,
     /// The selection the last layout showed.
@@ -614,6 +616,11 @@ impl EditorWidget {
         true
     }
 
+    /// Where the position bar shows, along the right edge.
+    fn bar_strip(&self) -> Rect {
+        Rect::new(self.size.width - 8.0, 0.0, self.size.width, self.size.height)
+    }
+
     fn scroll_by(&self, cx: &mut EventCx, delta: Vec2) -> bool {
         let t = cx.theme().clone();
         let width = self.wrap_width(&t, self.size.width);
@@ -650,8 +657,9 @@ impl EditorWidget {
         if moved {
             st.bar_until = Some(now + BAR_LINGER);
             cx.request_tick(BAR_LINGER + Duration::from_millis(20));
+            // The lines move as pixels (see layout); the bar is drawn again.
             cx.relayout();
-            cx.invalidate();
+            cx.invalidate_rect(self.bar_strip());
         }
         moved
     }
@@ -851,8 +859,9 @@ impl Widget for EditorWidget {
         // What changed since the last layout: the lines whose look or
         // place moved, and the caret.
         let st = cx.state::<EditorState>();
-        let old = std::mem::take(&mut st.drawn);
-        let old_caret = st.caret;
+        let mut old = std::mem::take(&mut st.drawn);
+        let mut old_caret = st.caret;
+        let old_x = std::mem::replace(&mut st.drawn_x, scroll_x);
         st.top_line = top;
         st.top_offset = off;
         st.scroll_x = scroll_x;
@@ -862,8 +871,24 @@ impl Widget for EditorWidget {
         st.drawn = drawn.clone();
         st.caret = self.caret;
         let full = width_changed || old.is_empty();
-        let mut damage = Vec::new();
         if !full {
+            // Scrolled: the lines still showing move as pixels (sideways
+            // only the text, past the gutter), and are compared where
+            // they went.
+            let bar = [self.bar_strip()];
+            let dx = old_x - scroll_x;
+            if dx != 0.0 {
+                cx.scrolled(Rect::new(self.gutter, 0.0, size.width, size.height), Vec2::new(dx, 0.0), &bar);
+            }
+            let dy = drawn.iter().find_map(|d| old.iter().find(|o| o.0 == d.0).map(|o| d.1 - o.1)).unwrap_or(0.0);
+            if dy != 0.0 {
+                cx.scrolled(Rect::from_origin_size(Point::ZERO, size), Vec2::new(0.0, dy), &bar);
+                for o in &mut old {
+                    o.1 += dy;
+                }
+            }
+            old_caret = old_caret.map(|c| c + Vec2::new(if c.x0 >= self.gutter { dx } else { 0.0 }, dy));
+            let mut damage = Vec::new();
             for d in &drawn {
                 if !old.contains(d) {
                     damage.push(Rect::new(0.0, d.1, size.width, d.1 + d.2));
@@ -987,9 +1012,9 @@ impl Widget for EditorWidget {
     }
 
     fn hash(&self, h: &mut PaintHasher) {
-        // The lines diff themselves; the editor as a whole is redrawn when
-        // it scrolls or its gutter changes.
-        h.add(&(self.top.0, self.opts.line_numbers, self.opts.wrap)).f64(self.top.1).f64(self.scroll_x).f64(self.gutter);
+        // The lines diff themselves, and move as pixels as it scrolls; the
+        // editor as a whole is redrawn when its gutter changes.
+        h.add(&(self.opts.line_numbers, self.opts.wrap)).f64(self.gutter);
     }
 
     fn hit(&self) -> bool {
@@ -1129,7 +1154,7 @@ impl Widget for EditorWidget {
                 let st = cx.state::<EditorState>();
                 if st.bar_until.is_some_and(|t| now >= t) {
                     st.bar_until = None;
-                    cx.invalidate_rect(Rect::new(self.size.width - 8.0, 0.0, self.size.width, self.size.height));
+                    cx.invalidate_rect(self.bar_strip());
                 }
                 // The caret blinks on its own ticks, not the bar's.
                 let st = cx.state::<EditorState>();

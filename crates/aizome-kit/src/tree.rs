@@ -10,7 +10,7 @@ use sidestep_ui::Canvas;
 
 use crate::element::{Common, RawElement};
 use crate::hash::{Fx, FxHashMap, PaintHasher, hash_of};
-use crate::layout::{Constraints, Length, Point, Rect, Size};
+use crate::layout::{Constraints, Length, Point, Rect, Size, Vec2};
 use crate::widget::{Env, Focusable, PaintCx, PopoverContent, StateMap, Vacant, Widget};
 
 /// A node's identity: the hash of its key path (each ancestor's key, or
@@ -52,6 +52,9 @@ pub(crate) struct Node {
     pub clip: Rect,
     /// Where it and its children draw, clipped: what painting skips by.
     pub bounds: Rect,
+    /// Where it and its children surely draw, clipped (their rectangles
+    /// and overflow, not the room kept for a focus ring).
+    pub covers: Rect,
     /// Its own drawing's hash.
     pub hash: u64,
     pub dead: bool,
@@ -86,11 +89,39 @@ pub(crate) struct Tree {
     /// What widgets found changed while laid out (their own coordinates):
     /// an editor's lines.
     pub local_damage: Vec<(usize, Rect)>,
+    /// Content widgets scrolled while laid out.
+    pub scrolls: Vec<Scrolled>,
 }
 
-/// A node's place and drawing, kept from one build to the next for the
-/// diff.
-pub(crate) type Snapshot = FxHashMap<NodeId, (Rect, u64)>;
+/// A node as last drawn, kept from one build to the next for the diff:
+/// what its drawing covered (clipped), its hash, and its rectangle.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Drawn {
+    pub clip: Rect,
+    pub hash: u64,
+    pub rect: Rect,
+}
+
+pub(crate) type Snapshot = FxHashMap<NodeId, Drawn>;
+
+/// Content a widget moved while laid out (a scroll): what was in `rect`
+/// (its coordinates) is now `delta` away, and `fixed` (bars, a header:
+/// what stays put over the content) wants drawing again.
+pub(crate) struct Scrolled {
+    pub node: usize,
+    pub rect: Rect,
+    pub delta: Vec2,
+    pub fixed: Vec<Rect>,
+}
+
+/// A region of the window whose pixels move: `node`'s content in `rect`
+/// (window coordinates), by `delta`.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Moved {
+    pub node: usize,
+    pub rect: Rect,
+    pub delta: Vec2,
+}
 
 impl Tree {
     /// A tree of `root`, under the id `base`.
@@ -136,6 +167,7 @@ impl Tree {
             rect: Rect::ZERO,
             clip: Rect::ZERO,
             bounds: Rect::ZERO,
+            covers: Rect::ZERO,
             hash: 0,
             dead: false,
             cache: None,
@@ -241,6 +273,66 @@ impl Tree {
         self.finish(root, Point::ZERO, window, env.theme.generation);
     }
 
+    /// The content widgets scrolled since `before` was taken, split into
+    /// regions whose pixels can move (window coordinates) and damage: the
+    /// regions that can't move (the widget moved, something else draws
+    /// over them, a scroll inside a scroll; all, unless `can_move`), and
+    /// what stays put over each.
+    pub fn take_scrolls(&mut self, before: &Snapshot, can_move: bool) -> (Vec<Moved>, Vec<Rect>) {
+        let scrolls = std::mem::take(&mut self.scrolls);
+        let mut moved: Vec<Moved> = Vec::new();
+        let mut damage = Vec::new();
+        for s in scrolls {
+            let Some(n) = self.nodes.get(s.node).filter(|n| !n.dead) else { continue };
+            let origin = n.rect.origin().to_vec2();
+            for f in &s.fixed {
+                push_rect(&mut damage, (*f + origin).intersect(n.clip));
+            }
+            let rect = (s.rect + origin).intersect(n.rect).intersect(n.clip);
+            if rect.area() <= 0.0 || s.delta == Vec2::ZERO {
+                continue;
+            }
+            let same_place = before.get(&n.id).is_some_and(|d| d.rect == n.rect && d.clip == n.own_rect());
+            let nested = moved.iter().any(|m| self.is_ancestor(m.node, s.node) || self.is_ancestor(s.node, m.node));
+            if !can_move || !same_place || nested || self.covered(s.node, rect) {
+                push_rect(&mut damage, rect);
+                continue;
+            }
+            match moved.iter_mut().find(|m| m.node == s.node && m.rect == rect) {
+                Some(m) => m.delta += s.delta,
+                None => moved.push(Moved { node: s.node, rect, delta: s.delta }),
+            }
+        }
+        (moved, damage)
+    }
+
+    /// Whether `a` is an ancestor of `b`.
+    fn is_ancestor(&self, a: usize, b: usize) -> bool {
+        let mut at = self.nodes[b].parent;
+        while let Some(p) = at {
+            if p == a {
+                return true;
+            }
+            at = self.nodes[p].parent;
+        }
+        false
+    }
+
+    /// Whether anything painted after `idx` and its children (a later
+    /// sibling of it or of an ancestor: an overlay, a sheet) draws in `r`.
+    fn covered(&self, idx: usize, r: Rect) -> bool {
+        let mut child = idx;
+        while let Some(p) = self.nodes[child].parent {
+            let kids = &self.nodes[p].children;
+            let after = kids.iter().position(|k| *k == child).map_or(kids.len(), |i| i + 1);
+            if kids[after..].iter().any(|&k| !self.nodes[k].dead && self.nodes[k].covers.intersect(r).area() > 0.0) {
+                return true;
+            }
+            child = p;
+        }
+        false
+    }
+
     /// Lay out content that picks its own size (a popup's), up to `max`.
     pub fn layout_free(&mut self, max: Size, env: &mut Env) -> Size {
         let root = self.root();
@@ -252,7 +344,7 @@ impl Tree {
 
     /// Absolute rectangles, clips, hashes and paint bounds, from `idx`
     /// down.
-    fn finish(&mut self, idx: usize, origin: Point, clip: Rect, generation: u64) -> Rect {
+    fn finish(&mut self, idx: usize, origin: Point, clip: Rect, generation: u64) -> (Rect, Rect) {
         let node = &mut self.nodes[idx];
         let at = origin + node.local.to_vec2();
         node.rect = Rect::from_origin_size(at, node.size);
@@ -265,47 +357,88 @@ impl Tree {
         node.hash = fx.finish();
         let inner = if node.widget.clips() { clip.intersect(node.rect) } else { clip };
         let mut bounds = node.own_rect();
+        let reach = node.widget.overflow();
+        let mut covers = node.rect.inflate(reach, reach).intersect(clip);
+        let join = |a: Rect, b: Rect| if b.area() <= 0.0 { a } else if a.area() <= 0.0 { b } else { a.union(b) };
         for k in node.children.clone() {
-            let b = self.finish(k, at, inner, generation);
-            if b.area() > 0.0 {
-                bounds = if bounds.area() > 0.0 { bounds.union(b) } else { b };
-            }
+            let (b, c) = self.finish(k, at, inner, generation);
+            bounds = join(bounds, b);
+            covers = join(covers, c);
         }
         self.nodes[idx].bounds = bounds;
-        bounds
+        self.nodes[idx].covers = covers;
+        (bounds, covers)
     }
 
     /// Every live node's place and drawing.
     pub fn snapshot(&self) -> Snapshot {
         let mut s = Snapshot::with_capacity_and_hasher(self.nodes.len(), Default::default());
         for n in self.nodes.iter().filter(|n| !n.dead) {
-            s.insert(n.id, (n.own_rect(), n.hash));
+            s.insert(n.id, Drawn { clip: n.own_rect(), hash: n.hash, rect: n.rect });
         }
         s
     }
 
-    /// What changed since `before`: the rectangles of nodes that moved,
-    /// resized, drew differently, came or went.
-    pub fn diff(&self, before: &Snapshot) -> Vec<Rect> {
+    /// What changed since `before` (the rectangles of nodes that moved,
+    /// resized, drew differently, came or went), where the pixels of `moved` regions
+    /// have moved: what moved with them needs nothing, and what changed
+    /// there is drawn where it is now and where its old pixels went. The
+    /// focused node (`focus`), whose ring reaches outside, is drawn again
+    /// if it moved.
+    pub fn diff_moved(&self, before: &Snapshot, moved: &[Moved], focus: Option<NodeId>) -> Vec<Rect> {
         let mut damage = Vec::new();
+        // Which region each node's pixels were in.
+        let mut region: Vec<Option<usize>> = Vec::new();
+        if !moved.is_empty() {
+            region = vec![None; self.nodes.len()];
+            for (m, mv) in moved.iter().enumerate() {
+                let mut stack: Vec<usize> = self.nodes[mv.node].children.clone();
+                while let Some(i) = stack.pop() {
+                    region[i] = Some(m);
+                    stack.extend(self.nodes[i].children.iter().copied());
+                }
+            }
+        }
         let mut seen = 0usize;
-        for n in self.nodes.iter().filter(|n| !n.dead) {
+        for (i, n) in self.nodes.iter().enumerate().filter(|(_, n)| !n.dead) {
             let now = n.own_rect();
-            match before.get(&n.id) {
-                Some(&(rect, hash)) => {
-                    seen += 1;
-                    if rect != now || hash != n.hash {
-                        push_rect(&mut damage, rect);
+            let Some(was) = before.get(&n.id) else {
+                push_rect(&mut damage, now);
+                continue;
+            };
+            seen += 1;
+            match region.get(i).copied().flatten().map(|m| moved[m]) {
+                Some(m) => {
+                    let along = was.hash == n.hash && n.rect == was.rect + m.delta && Some(n.id) != focus;
+                    if !along {
+                        push_rect(&mut damage, m.carried(was.clip));
+                        push_rect(&mut damage, now);
+                    }
+                    // Pixels outside the region didn't move.
+                    for r in outside(was.clip, m.rect).into_iter().chain(outside(now, m.rect)) {
+                        push_rect(&mut damage, r);
+                    }
+                }
+                None => {
+                    if was.clip != now || was.hash != n.hash {
+                        push_rect(&mut damage, was.clip);
                         push_rect(&mut damage, now);
                     }
                 }
-                None => push_rect(&mut damage, now),
             }
         }
         if seen < before.len() {
-            for (id, (rect, _)) in before {
+            for (id, was) in before {
                 if !self.by_id.get(id).is_some_and(|&i| !self.nodes[i].dead) {
-                    push_rect(&mut damage, *rect);
+                    match moved.iter().find(|m| m.rect.intersect(was.clip).area() > 0.0) {
+                        Some(m) => {
+                            push_rect(&mut damage, m.carried(was.clip));
+                            for r in outside(was.clip, m.rect) {
+                                push_rect(&mut damage, r);
+                            }
+                        }
+                        None => push_rect(&mut damage, was.clip),
+                    }
                 }
             }
         }
@@ -454,6 +587,28 @@ pub(crate) struct PaintEnv<'a> {
 }
 
 /// Damage, skipping what's empty or already covered.
+impl Moved {
+    /// Where the pixels of `r` that were in the region are now.
+    fn carried(&self, r: Rect) -> Rect {
+        let inside = r.intersect(self.rect);
+        if inside.area() <= 0.0 { Rect::ZERO } else { (inside + self.delta).intersect(self.rect) }
+    }
+}
+
+/// The parts of `a` outside `r`: bands above and below, and beside.
+fn outside(a: Rect, r: Rect) -> Vec<Rect> {
+    let i = a.intersect(r);
+    if i.area() <= 0.0 {
+        return vec![a];
+    }
+    vec![
+        Rect::new(a.x0, a.y0, a.x1, i.y0),
+        Rect::new(a.x0, i.y1, a.x1, a.y1),
+        Rect::new(a.x0, i.y0, i.x0, i.y1),
+        Rect::new(i.x1, i.y0, a.x1, i.y1),
+    ]
+}
+
 fn push_rect(damage: &mut Vec<Rect>, r: Rect) {
     if r.width() <= 0.0 || r.height() <= 0.0 {
         return;

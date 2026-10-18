@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use sidestep_ui::{Color, Cursor};
 
-use crate::layout::{Rect, Size};
+use crate::layout::{Rect, Size, Vec2};
 use crate::program::Output;
 use sidestep_ui::layer_shell::{Anchors, KeyboardInteractivity, Layer, LayerOptions, Margins};
 
@@ -93,6 +93,10 @@ pub trait Platform {
     fn set_opaque_region(&mut self, id: WinId, region: Option<Vec<Rect>>);
     /// Place popup `id` against another rectangle of its parent (points).
     fn set_popup_anchor(&mut self, id: WinId, anchor: Rect);
+    /// Move the pixels of `rect` (points) by `delta` at the next frame,
+    /// before drawing the damage (which the move takes along): what a
+    /// scroll does. Uncovered strips are damaged.
+    fn scroll(&mut self, id: WinId, rect: Rect, delta: Vec2);
     fn outputs(&self) -> Vec<Output>;
     fn lock_session(&mut self);
     fn unlock_session(&mut self);

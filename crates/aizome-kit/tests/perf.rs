@@ -1,7 +1,9 @@
 //! What typical interactions cost, from the event to the frame drawn:
 //! handling it (the program's update, view, layout and the diff), then
 //! recording and rasterizing the damage at scale 2, in a 1440 × 900
-//! point window (2880 × 1800 pixels).
+//! point window (2880 × 1800 pixels). Each rectangle of damage is drawn
+//! offscreen by itself; pixels a scroll moves are the render thread's to
+//! move (not counted here: see `SIDESTEP_FRAME_STATS` on a live window).
 //!
 //! `cargo test --release -p aizome-kit --test perf -- --ignored --nocapture`
 
@@ -125,26 +127,42 @@ impl Bench {
 /// Run `act` `RUNS` times, each followed by drawing its damage: the
 /// times, in microseconds, sorted.
 fn measure(h: &mut Harness<Bench>, w: WindowKey, mut act: impl FnMut(&mut Harness<Bench>, usize)) -> Vec<f64> {
+    use aizome_kit::sidestep_ui::offscreen;
     let mut times = Vec::with_capacity(RUNS);
     let (mut handling, mut drawing, mut area) = (0.0, 0.0, 0.0);
     h.take_damage(w);
+    h.platform.scrolls.clear();
+    // Sidestep's own measure of the renders, as of a window's frames.
+    offscreen::set_frame_stats(Some(Duration::from_millis(100)));
+    let window = Rect::new(0.0, 0.0, 1440.0, 900.0);
     for i in 0..RUNS {
         let started = Instant::now();
         act(h, i);
         let handled = started.elapsed().as_secs_f64() * 1e6;
-        let damage = h.take_damage(w);
-        if let Some(u) = damage.iter().copied().reduce(|a, b| a.union(b)) {
-            let u = u.intersect(Rect::new(0.0, 0.0, 1440.0, 900.0));
-            area += u.area();
-            let _ = h.render_rect(w, u, SCALE);
+        // The damage as a window keeps it: each rectangle not inside another.
+        let mut damage: Vec<Rect> = Vec::new();
+        for r in h.take_damage(w).into_iter().map(|r| r.intersect(window)).filter(|r| r.area() > 0.0) {
+            if !damage.iter().any(|d| d.contains_rect(r)) {
+                damage.retain(|d| !r.contains_rect(*d));
+                damage.push(r);
+            }
+        }
+        h.platform.scrolls.clear();
+        for r in damage {
+            area += r.area();
+            let _ = h.render_rect(w, r, SCALE);
         }
         let total = started.elapsed().as_secs_f64() * 1e6;
         handling += handled;
         drawing += total - handled;
         times.push(total);
     }
+    let renders = offscreen::frame_stats()
+        .map(|s| format!("; Sidestep: record {}/{} µs, rasterize {}/{} µs (p50/p95)", s.record.p50.as_micros(), s.record.p95.as_micros(), s.rasterize.p50.as_micros(), s.rasterize.p95.as_micros()))
+        .unwrap_or_default();
+    offscreen::set_frame_stats(None);
     eprintln!(
-        "    handling {:.0} µs, drawing {:.0} µs, damage {:.0} pt² a frame (means)",
+        "    handling {:.0} µs, drawing {:.0} µs, damage {:.0} pt² a frame (means){renders}",
         handling / RUNS as f64,
         drawing / RUNS as f64,
         area / RUNS as f64
@@ -202,7 +220,7 @@ fn interactions_stay_within_four_milliseconds() {
         let d = if (i / 50) % 2 == 0 { 40.0 } else { -40.0 };
         h.scroll(w, Point::new(700.0, 450.0), Vec2::new(0.0, d));
     });
-    report("Scroll a 10,000-row list one notch (whole view redrawn)", &scrolling);
+    report("Scroll a 10,000-row list one notch (rows moved, the strip drawn)", &scrolling);
 
     h.focus_window(w, true);
     h.click(w, Point::new(300.0, 12.0));
