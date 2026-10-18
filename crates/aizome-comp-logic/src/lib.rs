@@ -41,7 +41,6 @@ pub mod requests;
 pub mod wm;
 
 use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
 
 use aizome_comp_core::logic::LogicHost;
 use serde::{Deserialize, Serialize};
@@ -82,7 +81,7 @@ pub struct Logic {
     /// The action a key decided on, run once the key is through.
     pub pending_action: Option<bindings::Action>,
     /// What was last published to the core ([`hooks::publish`]).
-    published: Option<(u64, bool, bool, Option<PathBuf>)>,
+    published: Option<(u64, bool, bool)>,
 }
 
 /// Per window, beside the model.

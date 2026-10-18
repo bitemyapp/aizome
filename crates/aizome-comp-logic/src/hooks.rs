@@ -104,15 +104,18 @@ pub fn publish(st: &mut State) {
     let l = st.lg.m();
     let grabs = l.overlays.grabs_keyboard();
     let animating = l.anims.active() || l.overlays.animating();
+    // Called on every commit and frame: only the model's generation and two
+    // flags are looked at until something changed (the Desk's folder is
+    // the model's too).
+    let now = (l.wm.generation(), grabs, animating);
+    if l.published == Some(now) {
+        return;
+    }
+    l.published = Some(now);
     let folder =
         l.wm.desk(l.wm.current_desk())
             .and_then(|d| d.folder.clone())
             .map(|f| aizome_comp_core::aizome_config::expand_home(&f));
-    let now = (l.wm.generation(), grabs, animating, folder.clone());
-    if l.published.as_ref() == Some(&now) {
-        return;
-    }
-    l.published = Some(now);
     let view = View {
         focused: l.wm.focused(),
         stacking: l.wm.shown_stacking(),
