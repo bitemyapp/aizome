@@ -42,6 +42,9 @@ pub struct Options {
     pub watch: bool,
     /// Where settings are kept (none: not kept).
     pub settings: Option<PathBuf>,
+    /// The present, for pictures that mustn't change with the day (none:
+    /// the clock's).
+    pub now: Option<i64>,
 }
 
 impl Options {
@@ -53,6 +56,7 @@ impl Options {
             services: true,
             watch: true,
             settings: Some(crate::xdg_dir("XDG_CONFIG_HOME", ".config").join("aizome/hako.toml")),
+            now: None,
         }
     }
 
@@ -65,6 +69,7 @@ impl Options {
             services: false,
             watch: false,
             settings: None,
+            now: None,
         }
     }
 }
@@ -745,6 +750,16 @@ impl Hako {
         self.trash_count = self.opts.trash.list().len();
     }
 
+    /// The present (or the test's).
+    pub fn now(&self) -> i64 {
+        self.opts.now.unwrap_or_else(crate::model::format::now)
+    }
+
+    /// Whether thumbnails are still being made or waited for.
+    pub fn thumbs_pending(&self) -> bool {
+        self.thumb_running > 0 || !self.thumb_wanted.is_empty()
+    }
+
     pub fn trash_is_empty(&self) -> bool {
         self.trash_count == 0
     }
@@ -752,6 +767,9 @@ impl Hako {
     /// The space free where `dir` is, asked of the system at most every
     /// ten seconds.
     pub fn free_space(&self, dir: &Path) -> Option<u64> {
+        if !self.opts.services {
+            return None;
+        }
         let mut cache = self.space.borrow_mut();
         if let Some((at, v)) = cache.get(dir)
             && at.elapsed() < Duration::from_secs(10)

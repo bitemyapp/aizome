@@ -147,6 +147,8 @@ pub struct FileView<Msg> {
     handlers: Rc<Handlers<Msg>>,
     now: i64,
     size: Size,
+    /// Paths under it show as `~/…`.
+    home: Option<Rc<PathBuf>>,
 }
 
 impl<Msg> Layoutable for FileView<Msg> {
@@ -177,6 +179,7 @@ pub fn file_view<Msg>(layout: Layout, rows: Rc<Vec<Entry>>, handlers: Rc<Handler
         handlers,
         now: format::now(),
         size: Size::ZERO,
+        home: None,
     }
     .width(aizome_kit::Length::Fill)
     .height(aizome_kit::Length::Fill)
@@ -223,6 +226,18 @@ impl<Msg> FileView<Msg> {
         self
     }
 
+    /// The present, for "Today" and "Yesterday".
+    pub fn now(mut self, now: i64) -> Self {
+        self.now = now;
+        self
+    }
+
+    /// Show paths under `home` as `~/…`.
+    pub fn home(mut self, home: Rc<PathBuf>) -> Self {
+        self.home = Some(home);
+        self
+    }
+
     /// Scroll so `row` shows, once per `generation`.
     pub fn scroll_to(mut self, row: usize, generation: u64) -> Self {
         self.scroll_to = Some((row, generation));
@@ -256,9 +271,9 @@ struct ViewWidget<Msg> {
 }
 
 const ICON: f64 = 16.0;
-const CELL_W: f64 = 104.0;
-const CELL_H: f64 = 100.0;
-const BIG_ICON: f64 = 48.0;
+const CELL_W: f64 = 112.0;
+const CELL_H: f64 = 112.0;
+const BIG_ICON: f64 = 60.0;
 const PAD: f64 = 8.0;
 const LINGER: Duration = Duration::from_millis(900);
 
@@ -1106,12 +1121,16 @@ impl<Msg: Clone + Send + 'static> ViewWidget<Msg> {
                 };
                 let w = cell.width() - 4.0;
                 let l = cx.layout_text(&e.display, &spec, Some(w));
+                // Centred lines in a box as wide as the cell: the box's left edge
+                // is where it's drawn, the widest line's extent what's filled.
                 let s = l.size();
-                let x = (cell.x0 + (cell.width() - s.width) / 2.0).round();
+                let x = (cell.x0 + 2.0).round();
                 let y = icon_rect.y1 + 6.0;
                 if selected {
                     let fill = if active { t.selection() } else { t.line2() };
-                    cx.canvas.fill_rect(Rect::new(x - 3.0, y - 1.0, x + s.width + 3.0, y + s.height + 1.0), fill);
+                    let mid = cell.x0 + cell.width() / 2.0;
+                    let half = s.width.min(w) / 2.0;
+                    cx.canvas.fill_rect(Rect::new((mid - half - 3.0).round(), y - 1.0, (mid + half + 3.0).round(), y + s.height + 1.0), fill);
                 }
                 cx.canvas.draw_text(&l, Point::new(x, y));
             }
@@ -1162,10 +1181,11 @@ impl<Msg: Clone + Send + 'static> ViewWidget<Msg> {
                                 cx.draw_text_in(&s, &small, cell, Align::Start);
                             }
                             Detail::Where => {
-                                let w = match &e.trashed {
-                                    Some(tr) => tr.original.as_ref().and_then(|o| o.parent()).map(|p| p.display().to_string()),
-                                    None => e.path.parent().map(|p| p.display().to_string()),
+                                let dir = match &e.trashed {
+                                    Some(tr) => tr.original.as_ref().and_then(|o| o.parent()),
+                                    None => e.path.parent(),
                                 };
+                                let w = dir.map(|p| tilde(p, self.v.home.as_deref()));
                                 cx.draw_text_in(&w.unwrap_or_else(|| "—".into()), &small, cell, Align::Start);
                             }
                             Detail::Trashed => {
@@ -1183,6 +1203,15 @@ impl<Msg: Clone + Send + 'static> ViewWidget<Msg> {
                 }
             }
         }
+    }
+}
+
+/// `p` with `home` written `~`.
+pub fn tilde(p: &std::path::Path, home: Option<&PathBuf>) -> String {
+    match home.and_then(|h| p.strip_prefix(h).ok()) {
+        Some(rest) if rest.as_os_str().is_empty() => "~".into(),
+        Some(rest) => format!("~/{}", rest.display()),
+        None => p.display().to_string(),
     }
 }
 

@@ -53,7 +53,7 @@ fn big_icon(h: &Hako, e: &Entry, size: f64) -> Element<Msg> {
 
 /// Get Info: what it is, where, how big, when, and who may do what.
 fn info(h: &Hako, key: WindowKey, e: &Entry) -> Element<Msg> {
-    let now = format::now();
+    let now = h.now();
     let size = if e.is_folder() {
         match h.sizes.get(&e.path) {
             Some((n, b)) => format!("{}, in {}", format::size_long(*b), format::items(*n as usize)),
@@ -109,7 +109,7 @@ fn info(h: &Hako, key: WindowKey, e: &Entry) -> Element<Msg> {
         .width(Length::Fill),
         divider(),
         aizome_kit::column(rows).spacing(6.0).width(Length::Fill),
-        caption("Sharing & Permissions"),
+        text("Sharing & Permissions").mono().size(10.5).letter_spacing(1.2).caps().role(Role::Text3),
         aizome_kit::column(perms).spacing(6.0).width(Length::Fill),
         row![spacer(), button("Done").default().cancel().id("sheet-default").on_press(Msg::CloseSheet(key))].width(Length::Fill),
     ]
@@ -151,15 +151,15 @@ fn quick_look(h: &Hako, key: WindowKey, e: &Entry) -> Element<Msg> {
     frame(body.into(), 620.0)
 }
 
-fn when(t: Option<std::time::SystemTime>) -> String {
-    t.and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| format::date(d.as_secs() as i64, format::now())).unwrap_or_else(|| "—".into())
+fn when(t: Option<std::time::SystemTime>, now: i64) -> String {
+    t.and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| format::date(d.as_secs() as i64, now)).unwrap_or_else(|| "—".into())
 }
 
-fn side(label: &str, is_dir: bool, size: u64, modified: Option<std::time::SystemTime>) -> Element<Msg> {
+fn side(label: &str, is_dir: bool, size: u64, modified: Option<std::time::SystemTime>, now: i64) -> Element<Msg> {
     let what = if is_dir { "Folder".to_owned() } else { format::size(size) };
     column![
         text(label.to_owned()).size(11.0).role(Role::Text3).caps().letter_spacing(0.8),
-        text(format!("{what}, modified {}", when(modified))).size(12.0).role(Role::Text2),
+        text(format!("{what}, modified {}", when(modified, now))).size(12.0).role(Role::Text2),
     ]
     .spacing(2.0)
     .width(Length::Fill)
@@ -172,7 +172,7 @@ fn ask(h: &Hako, job: u64, all: bool) -> Element<Msg> {
     let Some(q) = &j.question else { return text("").into() };
     let name = |p: &std::path::Path| p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| p.display().to_string());
     let body: Element<Msg> = match q {
-        Question::Conflict(c) => conflict(job, c, all, &name(&c.target), &j.title),
+        Question::Conflict(c) => conflict(job, c, all, &name(&c.target), &j.title, h.now()),
         Question::Failure(f) => {
             let mut buttons: Vec<Element<Msg>> = vec![
                 checkbox("Do the same for the rest", all).on_toggle(move |on| Msg::AskAll(job, on)).into(),
@@ -221,7 +221,7 @@ fn action_words(action: &str) -> String {
     }
 }
 
-fn conflict(job: u64, c: &Conflict, all: bool, name: &str, doing: &str) -> Element<Msg> {
+fn conflict(job: u64, c: &Conflict, all: bool, name: &str, doing: &str, now: i64) -> Element<Msg> {
     let folder = c.target.parent().and_then(|p| p.file_name()).map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "/".into());
     let what = if c.target_is_dir { "A folder" } else { "An item" };
     let answer = move |r: Resolution| Msg::Answer(job, Answer::Conflict(r, false));
@@ -258,7 +258,7 @@ fn conflict(job: u64, c: &Conflict, all: bool, name: &str, doing: &str) -> Eleme
         .spacing(12.0)
         .align(Align::Start)
         .width(Length::Fill),
-        row![side("Coming", c.source_is_dir, c.source_size, c.source_modified), side("There now", c.target_is_dir, c.target_size, c.target_modified)]
+        row![side("Coming", c.source_is_dir, c.source_size, c.source_modified, now), side("There now", c.target_is_dir, c.target_size, c.target_modified, now)]
             .spacing(16.0)
             .width(Length::Fill),
         aizome_kit::row(buttons).spacing(6.0).width(Length::Fill),

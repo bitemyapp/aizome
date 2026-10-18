@@ -273,6 +273,8 @@ fn content(h: &Hako, w: WindowKey, b: &Browser) -> Element<Msg> {
         });
         let message = if s.running && s.results.is_empty() { "Searching…".to_owned() } else { format!("Nothing under “{}” matches “{}”.", s.root.display(), s.query) };
         return file_view(Layout::List, s.results.clone(), handlers, b.spots.clone(), 0)
+            .home(Rc::new(h.opts.home.clone()))
+            .now(h.now())
             .selected(Rc::new((*s.selected).clone()))
             .details(vec![Detail::Name, Detail::Where, Detail::Modified, Detail::Size])
             .thumbs(h.thumbs.clone())
@@ -331,6 +333,8 @@ fn column_view(h: &Hako, w: WindowKey, b: &Browser, i: usize, c: &Column, layout
         Loc::Folder(_) => vec![Detail::Name, Detail::Size, Detail::Kind, Detail::Modified],
     };
     let mut v = file_view(layout, c.rows.clone(), handlers, b.spots.clone(), i as u64)
+        .home(Rc::new(h.opts.home.clone()))
+        .now(h.now())
         .selected(c.selected.clone())
         .lit(lit)
         .faded(Rc::new(faded))
@@ -343,7 +347,15 @@ fn column_view(h: &Hako, w: WindowKey, b: &Browser, i: usize, c: &Column, layout
         v = v.scroll_to(row, g);
     }
     if let Some(r) = b.rename.as_ref().filter(|r| r.column == i) {
-        let field = text_field(&r.text).id("rename").error(r.error.clone()).on_change(move |s| Msg::RenameText(w, s)).on_submit(Msg::RenameCommit(w));
+        let is_dir = c.rows.get(r.row).is_some_and(Entry::is_folder);
+        let stem = crate::fsops::names::split_ext(std::ffi::OsStr::new(&r.text), is_dir).0.len();
+        let field = text_field(&r.text)
+            .id("rename")
+            .key(("rename", r.path.clone()))
+            .select_on_focus(0..stem)
+            .error(r.error.clone())
+            .on_change(move |s| Msg::RenameText(w, s))
+            .on_submit(Msg::RenameCommit(w));
         v = v.rename(r.row, field.into());
     }
     v.id(format!("col-{i}")).key(("col", i, c.loc.clone())).into()
@@ -358,7 +370,7 @@ fn preview_column(h: &Hako, e: &Entry) -> Element<Msg> {
         Some(img) => image(img).fit(Fit::Contain).width(Length::Fill).height(180.0).into(),
         None => container(icon(ic).size(96.0).role(role)).center().width(Length::Fill).height(180.0).into(),
     };
-    let now = format::now();
+    let now = h.now();
     let mut facts: Vec<Element<Msg>> = vec![
         fact("Kind", e.kind_name.to_string()),
         fact("Size", if e.is_folder() { "—".into() } else { format::size_long(e.size) }),
