@@ -602,7 +602,7 @@ def language():
     S.quit()
 
 
-@part("Lock Screen: a minute's idleness locks; the password unlocks; Never stays")
+@part("Lock Screen: a minute's idleness locks, without the clock; the password unlocks; Never stays")
 def lock():
     S.open("lock")
     S.choose(S.control("lock", "lock-after", role="combobox"), "1 minute")
@@ -613,6 +613,14 @@ def lock():
     # Nobody touches anything for a minute.
     until("the screen to lock", locked, timeout=110, every=2)
     shot("lock-locked")
+    lock_texts = [
+        e["text"]
+        for d in shell_docs()
+        if any(x.get("role") == "passwordinput" for x in d["elements"])
+        for e in d["elements"]
+        if e.get("text")
+    ]
+    assert not any(re.fullmatch(r"\d{1,2}:\d{2}.*", t) for t in lock_texts), f"a clock on the lock screen: {lock_texts}"
     machine.send_chars("aizome\n")
     until("the screen to unlock", lambda: not locked(), timeout=20)
     S.open("lock")
@@ -653,13 +661,19 @@ def notifications():
     S.quit()
 
 
-@part("Accessibility: reduce motion, sticky keys and a larger pointer are kept")
+@part("Accessibility: sticky keys reach the compositor; reduce motion and a larger pointer are kept")
 def accessibility():
     S.open("accessibility")
     S.click(S.control("accessibility", "reduced-motion", role="switch"))
     until("reduced_motion = true", lambda: setting("appearance.reduced_motion") is True)
     S.click(S.control("accessibility", "sticky-keys", role="switch"))
     until("sticky_keys = true", lambda: setting("input.keyboard.sticky_keys") is True)
+    # Sticky keys in the compositor: Shift pressed and let go, then a, is A.
+    S.click(S.wait(name="search"))
+    key("shift")
+    key("a")
+    until("a sticky Shift", lambda: S.find(name="search").get("value") == "A")
+    key("escape")
     S.slide(S.control("accessibility", "cursor-size", role="slider"), 0.75)
     until("a larger pointer", lambda: (setting("appearance.cursor_size") or 24) > 24)
     reopen("accessibility")
@@ -896,10 +910,10 @@ def mouse():
     S.quit()
 
 
-@part("Trackpad: with none attached, its settings are still kept for when one is")
+@part("Trackpad: with none attached, the pane says so, and its settings are kept for when one is")
 def trackpad():
     S.open("trackpad")
-    print("the Trackpad pane says:", S.texts())
+    assert any("No trackpad is connected" in t for t in S.texts()), S.texts()
     S.click(S.control("trackpad", "tap", role="switch"))
     until("tap changed", lambda: setting("input.touchpad.tap") is not None)
     tap = setting("input.touchpad.tap")
