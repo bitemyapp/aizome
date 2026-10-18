@@ -77,6 +77,42 @@ fn torn_off_menus_stay_with_their_app() {
 }
 
 #[test]
+fn a_palette_follows_its_strip_and_stays_on_screen() {
+    use aizome_shell::widgets::drawn::DragPhase;
+    let mut h = scene(false);
+    h.send(Msg::TearOff {
+        app: "org.aizome.Sumi".into(),
+        path: vec!["Format".into()],
+        output: "eDP-1".into(),
+        at: Point::new(104.0, 412.0),
+    });
+    let at = |h: &aizome_kit::testing::Harness<aizome_shell::shell::Shell>| {
+        let t = &h.program().tearoffs[0];
+        (t.x, t.y)
+    };
+    // Through the drag the pointer's place comes relative to where the
+    // palette was at the press (the compositor keeps that surface's place
+    // for the press), however often it moves: the palette goes as far as
+    // the pointer has, once.
+    h.send(Msg::Tear(TearMsg::Drag(0, DragPhase::Start(Point::new(60.0, 10.0)))));
+    for y in [20.0, 40.0, 70.0, 100.0] {
+        h.send(Msg::Tear(TearMsg::Drag(0, DragPhase::Move(Point::new(60.0, y)))));
+    }
+    assert_eq!(at(&h), (104.0, 502.0));
+    h.send(Msg::Tear(TearMsg::Drag(0, DragPhase::End(Point::new(30.0, 100.0)))));
+    assert_eq!(at(&h), (74.0, 502.0));
+    // Far past the screen's edges, it stops at them, whole.
+    h.send(Msg::Tear(TearMsg::Drag(0, DragPhase::Start(Point::new(60.0, 10.0)))));
+    h.send(Msg::Tear(TearMsg::Drag(0, DragPhase::End(Point::new(5000.0, 5000.0)))));
+    let (x, y) = at(&h);
+    let size = h.size(window_titled(&h, "Palette (torn off)"));
+    assert_eq!((x + size.width, y + size.height), (W, H), "the palette sits in the bottom right corner");
+    h.send(Msg::Tear(TearMsg::Drag(0, DragPhase::Start(Point::new(60.0, 10.0)))));
+    h.send(Msg::Tear(TearMsg::Drag(0, DragPhase::End(Point::new(-5000.0, -5000.0)))));
+    assert_eq!(at(&h), (0.0, 24.0), "below the bar");
+}
+
+#[test]
 fn pictures_of_menus() {
     for day in [false, true] {
         let mut h = scene(day);

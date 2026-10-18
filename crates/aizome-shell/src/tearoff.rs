@@ -43,8 +43,9 @@ pub struct TearOff {
 pub struct Shown {
     pub window: WindowKey,
     pub size: Size,
-    /// Where a strip drag started, in the window.
-    pub grab: Option<Point>,
+    /// Where a strip drag started, in the window, and where the palette
+    /// was then.
+    pub grab: Option<(Point, Point)>,
 }
 
 /// What a palette's strip and buttons say.
@@ -277,19 +278,35 @@ impl Shell {
                 }
             }
             TearMsg::Drag(i, phase) => {
+                let Some(t) = self.tearoffs.get(i) else { return };
+                let at = Point::new(t.x, t.y);
+                // The palette stays on its output, whole and below the bar
+                // (a layer surface pushed past the output's edge would be
+                // configured with a negative size).
+                let output = self.screen_named(&t.output).or(self.primary()).map(|s| s.output.frame);
                 let Some(shown) = self.tear_shown.get_mut(&i) else { return };
                 match phase {
-                    DragPhase::Start(p) => shown.grab = Some(p),
+                    DragPhase::Start(p) => shown.grab = Some((p, at)),
                     DragPhase::Move(p) | DragPhase::End(p) => {
-                        let Some(g) = shown.grab else { return };
-                        let w = shown.window;
+                        let Some((g, from)) = shown.grab else { return };
+                        let (w, size) = (shown.window, shown.size);
+                        // The pointer's place comes relative to where the
+                        // palette was when the button went down (the press
+                        // keeps its surface's place through the drag), so the
+                        // palette goes where it was plus how far the pointer
+                        // has come, not that again on every move.
+                        let (max_x, max_y) = output.map_or((f64::MAX, f64::MAX), |o| {
+                            ((o.width() - size.width).max(0.0), (o.height() - size.height).max(crate::menubar::HEIGHT))
+                        });
                         if let Some(t) = self.tearoffs.get_mut(i) {
-                            t.x = (t.x + p.x - g.x).max(0.0);
-                            t.y = (t.y + p.y - g.y).max(crate::menubar::HEIGHT);
+                            t.x = (from.x + p.x - g.x).clamp(0.0, max_x).round();
+                            t.y = (from.y + p.y - g.y).clamp(crate::menubar::HEIGHT, max_y).round();
                             cx.set_layer_margins(w, Margins::new(t.y as i32, 0, 0, t.x as i32));
                         }
                         if let DragPhase::End(_) = phase {
-                            shown.grab = None;
+                            if let Some(s) = self.tear_shown.get_mut(&i) {
+                                s.grab = None;
+                            }
                             self.save_tearoffs();
                         }
                     }
