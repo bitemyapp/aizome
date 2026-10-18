@@ -720,8 +720,14 @@ pub fn index_key(roots: &[PathBuf], skip: &[PathBuf]) -> String {
 
 impl Shell {
     /// At idle after starting: lay out what the palette sets, so its first
-    /// opening finds the faces loaded and the shaping warm.
-    pub fn warm_palette(&mut self, theme: &aizome_kit::Theme) {
+    /// opening finds the faces loaded and the shaping warm; and draw it
+    /// offscreen on a thread of its own at each output's scale, so its
+    /// glyphs are rasterized (into the glyph cache every thread shares)
+    /// before the render thread first draws them. The palette sets text in
+    /// some seventeen sizes and weights, each glyph rasterized at four
+    /// quarter-pixel offsets: on its first opening, rasterizing them was
+    /// most of the frame. The thread drawing them, if it started.
+    pub fn warm_palette(&mut self, theme: &aizome_kit::Theme) -> Option<std::thread::JoinHandle<()>> {
         let started = std::time::Instant::now();
         let mut titles: Vec<String> = Vec::new();
         for i in self.palette_items().into_iter().take(80) {
@@ -730,9 +736,36 @@ impl Shell {
                 titles.push(i.trail);
             }
         }
-        for (text, spec) in view::warm_texts(theme, &titles) {
-            let _ = self.text.layout(theme, &text, &spec, None);
-        }
+        let layouts: Vec<aizome_kit::sidestep_ui::TextLayout> = view::warm_texts(theme, &titles)
+            .into_iter()
+            .map(|(text, spec)| self.text.layout(theme, &text, &spec, None))
+            .collect();
         log::debug!("the palette's text laid out ahead in {:?}", started.elapsed());
+        let mut scales: Vec<f64> = self.screens.iter().map(|s| s.output.scale).collect();
+        scales.sort_by(f64::total_cmp);
+        scales.dedup();
+        let spawned = std::thread::Builder::new().name("aizome-palette-glyphs".into()).spawn(move || {
+            let started = std::time::Instant::now();
+            for &scale in &scales {
+                rasterize_ahead(&layouts, scale);
+            }
+            log::debug!("the palette's glyphs rasterized ahead at {scales:?} in {:?}", started.elapsed());
+        });
+        spawned.map_err(|e| log::warn!("couldn't rasterize the palette's glyphs ahead: {e}")).ok()
+    }
+}
+
+/// Draw `layouts` offscreen at `scale`, each at the four quarter-pixel
+/// offsets a glyph is rasterized at, for the glyph cache threads share.
+pub fn rasterize_ahead(layouts: &[aizome_kit::sidestep_ui::TextLayout], scale: f64) {
+    use aizome_kit::sidestep_ui::{Appearance, offscreen};
+    for layout in layouts {
+        let size = layout.size();
+        let room = aizome_kit::Size::new(size.width + 1.0, size.height.max(1.0));
+        let _ = offscreen::render(room, scale, Appearance::DARK, |c| {
+            for quarter in 0..4 {
+                c.draw_text(layout, aizome_kit::Point::new(f64::from(quarter) * 0.25 / scale, 0.0));
+            }
+        });
     }
 }

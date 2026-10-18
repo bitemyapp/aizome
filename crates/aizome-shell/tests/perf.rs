@@ -130,14 +130,18 @@ fn typical_frames_fit_the_budget() {
 
 #[test]
 fn the_palettes_first_opening_after_warming() {
-    // A fresh shell, its palette's text laid out ahead at idle as the live
-    // shell does two seconds after starting; then the first opening:
-    // update, view, layout and the whole surface rasterised at 2×.
+    // A fresh shell, its palette's text laid out (and its glyphs rasterized,
+    // on a thread of their own) ahead at idle as the live shell does two
+    // seconds after starting; then the first opening: update, view, layout
+    // and the whole surface rasterised at 2×.
     let mut h = scene(false);
     let theme = h.theme().clone();
     let t = Instant::now();
-    h.program_mut().warm_palette(&theme);
+    let glyphs = h.program_mut().warm_palette(&theme);
     let warming = t.elapsed();
+    if let Some(glyphs) = glyphs {
+        let _ = glyphs.join();
+    }
     let t = Instant::now();
     h.send(Msg::Run(aizome_shell::actions::Action::Palette { scope: None, query: String::new() }));
     let p = window_titled(&h, "Palette");
