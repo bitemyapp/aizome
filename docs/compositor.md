@@ -57,6 +57,28 @@ without one). Once its Wayland socket and IPC are up the compositor:
 Every program it starts (`spawn`, ❖Return, the shell) gets that
 environment.
 
+Under `aizome.service` it feeds systemd's watchdog (`WatchdogSec=10s`)
+from its main loop; a loop stalled that long is stopped (SIGABRT, with a
+core dump) and `aizome-session` starts it again, and a watcher thread logs
+the main thread's backtrace to `~/.local/state/aizome/stall.log` first.
+The service weighs `CPUWeight=1000`/`IOWeight=1000` within
+`session.slice`. See `docs/recovery.md`.
+
+## Recovery
+
+**Ctrl+Alt+Del** opens the recovery overlay, checked before every other
+key handling (bindings, grabs, shortcut inhibitors, the lock): the apps
+with CPU, memory and whether they answer pings, Force Quit, Close, Reset
+Input, Restart Shell, Reload Aizome, Lock, Log Out and Text Console. It
+shows over full-screen clients and the lock screen (safe actions only
+there) and has the keyboard and pointer while open. `docs/recovery.md`
+has the details, the stall watchdog and the SysRq last resort.
+
+Grabs end on release: the compositor gives the seat the release of every
+press it gave it, whatever overlay came up between, and its own grabs
+(moves, resizes, tab slides, the boxes) end when their button comes up or
+is pressed again, whatever else is held and whatever any client does.
+
 ## What clients get
 
 Globals: wl_compositor (6), wl_subcompositor, wl_shm, linux-dmabuf (GLES;
@@ -179,6 +201,9 @@ Notes for client authors:
 | `backend/` | headless (GLES on a render node or pixman, 60 Hz pacing only while damaged), winit, udev (DRM/KMS, multi-GPU GLES or pixman dumb buffers). |
 | `ipc.rs`, `requests.rs` | The IPC socket and its requests. |
 | `session.rs`, `idle.rs`, `config.rs` | Start-up, supervision, idle events, live settings. |
+| `recovery/` | Ctrl+Alt+Del's overlay: state, keys and actions (`mod.rs`), drawing (`view.rs`, with the overlays' painter), apps' processes on a thread (`procinfo.rs`, `x11.rs`), pings (`ping.rs`), Reset Input (`reset.rs`). It reaches the rest through a few hooks: the first check in `decide_key` and `pointer_button`, `pointer_moved` and `scroll` in input, `may_constrain` (pointer constraints), the first elements in `render::output_elements`, `frame_flags` (udev), `exclusive_keyboard_target`, `handle_request`, `client_pong` and `constraint_requested`, and `start` in `main`. With live reload it belongs in the stable core. |
+| `watchdog.rs` | systemd's watchdog keepalive and the stall watcher (backtrace, `stall.log`, the notice after a restart). |
+| `reload.rs` | `reload_compositor`, Reload Aizome's entry point (live reload fills it in). |
 
 ## Tests
 
@@ -216,6 +241,12 @@ nix develop --command cargo test -p aizome-comp
 - `tests/sidestep.rs`: a sidestep-ui client (`examples/sidestep_client`):
   server-side decorations, frame callbacks on the content subsurface, a
   layer-shell panel's exclusive zone, the session lock.
+- `tests/recovery.rs`: Ctrl+Alt+Del over a full-screen client holding a
+  keyboard-shortcuts inhibitor, Force Quit killing a client in a process
+  of its own (and never the compositor's parent), Not responding, the
+  lock screen's safe actions, Reset Input ending a stuck grab and freeing
+  a locked pointer, and drags that end on release (after an overlay took
+  a release, with a frozen client, and a client's late move request).
 
 Screenshots the tests keep are in `target/tmp/aizome-shots/`; examples
 are in `docs/screenshots/`. Frame times: `docs/performance.md`.

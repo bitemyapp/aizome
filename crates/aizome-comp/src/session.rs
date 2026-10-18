@@ -36,6 +36,13 @@ pub struct Children {
     pub env: Vec<(String, String)>,
 }
 
+impl Children {
+    /// The process of a supervised helper, while it runs.
+    pub fn pid_of(&self, name: &str) -> Option<u32> {
+        self.supervised.iter().find(|s| s.name == name)?.child.as_ref().map(|c| c.id())
+    }
+}
+
 /// The variables the session shares with everything it starts.
 pub fn session_env(az: &Aizome) -> Vec<(String, String)> {
     let mut env = vec![

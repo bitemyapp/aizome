@@ -43,10 +43,10 @@ const FOOTER_H: f64 = 30.0;
 /// Right edges of the CPU and memory columns, from the panel's right.
 const CPU_RIGHT: f64 = 118.0;
 const MEM_RIGHT: f64 = 24.0;
-const STATUS_RIGHT: f64 = 190.0;
+const STATUS_RIGHT: f64 = 170.0;
 /// Widths labels are fitted to (fixed, so warmed labels are the ones
 /// drawn).
-const NAME_MAX_W: f64 = 300.0;
+const NAME_MAX_W: f64 = 220.0;
 const CAPTION_MAX_W: f64 = 360.0;
 const BUTTON_LABEL_MAX_W: f64 = 140.0;
 const RIGHT_MAX_W: f64 = 160.0;
@@ -424,14 +424,19 @@ where
         pt.fill(Box2::new(b.x, b.y, 2.0, b.h), p.focus);
         (p.on_selection, p.on_selection)
     } else {
-        if hovered {
+        // The app Close and Force Quit act on, while one of them has the
+        // keys.
+        let target = matches!(az.recovery.sel, Some(Sel::Act(a)) if a.per_app())
+            && az.recovery.last_app.as_deref() == Some(row.app_id.as_str());
+        if target {
+            pt.fill(b, p.sunk);
+            pt.fill(Box2::new(b.x, b.y, 2.0, b.h), p.focus);
+        } else if hovered {
             pt.fill(b, p.sunk);
         }
         (p.text, p.text3)
     };
     let x = b.x + PAD - 1.0;
-    let scale = pt.scale;
-    let _ = scale;
     pt.icon(az, renderer, &row.app_id, crate::icons::Tint::Color, x, b.y + (b.h - ICON as f64) / 2.0, ICON, 1.0);
     let name_x = x + ICON as f64 + 10.0;
     let status_x = panel.right() - STATUS_RIGHT;
@@ -443,7 +448,7 @@ where
         name_x,
         b.y,
         b.h,
-        (status_x - name_x - 90.0).clamp(60.0, NAME_MAX_W),
+        (status_x - 180.0 - name_x).clamp(60.0, NAME_MAX_W),
     );
     let n = row.windows.len();
     let count = if n == 1 { "1 window".to_string() } else { format!("{n} windows") };
@@ -459,7 +464,7 @@ where
     };
     if let Some((text, c)) = status {
         let c = if selected { p.on_selection } else { c };
-        right_text(az, pt, renderer, text, mono(10.5, c), status_x + 50.0, b.y, b.h);
+        right_text(az, pt, renderer, text, mono(10.5, c), status_x, b.y, b.h);
     }
     let sample = az.recovery.samples.get(&row.app_id).cloned();
     let cpu = sample.as_ref().and_then(|s| s.cpu_percent).map(fmt_cpu).unwrap_or_else(|| "–".into());

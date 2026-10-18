@@ -22,6 +22,7 @@ pub mod ping;
 pub mod procinfo;
 pub mod reset;
 mod view;
+mod x11;
 
 use std::collections::{HashMap, HashSet};
 use std::time::{Duration, Instant};
@@ -426,11 +427,22 @@ fn rows_signature(rows: &[Row]) -> Vec<(String, usize, bool, bool, bool)> {
     rows.iter().map(|r| (r.app_id.clone(), r.windows.len(), r.not_responding, r.crashed, r.stopped)).collect()
 }
 
+/// xwayland-satellite's process and display, while it runs.
+fn x11_info(state: &State) -> Option<procinfo::X11> {
+    let satellite = state.az.children.pid_of("xwayland-satellite")? as i32;
+    let display = state.az.children.env.iter().find(|(k, _)| k == "DISPLAY").map(|(_, v)| v.clone())?;
+    Some(procinfo::X11 { satellite, display })
+}
+
 fn request_sample(state: &mut State) {
+    let x11 = x11_info(state);
     let r = &mut state.az.recovery;
     r.last_sample = Some(Instant::now());
-    let apps: Vec<AppProcs> =
-        r.rows.iter().map(|row| AppProcs { key: row.app_id.clone(), pids: row.pids.clone() }).collect();
+    let apps: Vec<AppProcs> = r
+        .rows
+        .iter()
+        .map(|row| AppProcs { key: row.app_id.clone(), pids: row.pids.clone(), x11: x11.clone() })
+        .collect();
     if let Some(p) = &r.procinfo {
         p.send(procinfo::Request::Sample(apps));
     }
@@ -736,8 +748,16 @@ pub fn default_act(row: &Row) -> Act {
     if row.in_trouble() { Act::ForceQuit } else { Act::Close }
 }
 
+/// A client asked for a new pointer constraint: Reset Input's hold on its
+/// surface's constraints ends.
+pub fn constraint_requested(az: &mut crate::state::Aizome, surface: &WlSurface) {
+    if az.recovery.unconstrained.as_ref() == Some(surface) {
+        az.recovery.unconstrained = None;
+    }
+}
+
 /// Whether a surface's pointer constraint may come on (not after Reset
-/// Input, until the surface is clicked).
+/// Input, until the surface is clicked or asks for a new one).
 pub fn may_constrain(az: &crate::state::Aizome, surface: &WlSurface) -> bool {
     az.recovery.unconstrained.as_ref() != Some(surface)
 }
@@ -930,8 +950,12 @@ fn force_quit(state: &mut State, app: &str) -> Result<String, String> {
     if pids.is_empty() {
         return Err(format!("{app} has no process to stop"));
     }
+    let x11 = x11_info(state);
     let Some(procinfo) = &state.az.recovery.procinfo else { return Err("the process thread isn't running".into()) };
-    procinfo.send(procinfo::Request::Kill(AppProcs { key: app.to_string(), pids: pids.clone() }));
+    procinfo.send(procinfo::Request::Kill(AppProcs { key: app.to_string(), pids: pids.clone(), x11: x11.clone() }));
+    // Satellite's connection carries every X11 app: never cut it (it closes
+    // a dead X client's windows itself).
+    let pids: Vec<i32> = pids.into_iter().filter(|p| x11.as_ref().is_none_or(|x| x.satellite != *p)).collect();
     let app = app.to_string();
     let name = state.az.recovery.names.get(&app).cloned().unwrap_or(app.clone());
     let _ = state.az.lh.insert_source(Timer::from_duration(LINGER), move |_, _, state: &mut State| {

@@ -61,6 +61,14 @@ pkgs.testers.runNixOSTest {
 
   testScript = ''
     import json
+    import time
+
+    def until(what, f, timeout=60):
+        deadline = time.monotonic() + timeout
+        while not f():
+            if time.monotonic() > deadline:
+                raise Exception(f"timed out waiting for {what}")
+            time.sleep(0.5)
 
     def as_alice(command):
         return machine.succeed(
@@ -144,7 +152,67 @@ pkgs.testers.runNixOSTest {
         machine.succeed("hostnamectl set-hostname --pretty 'Aizome Test'")
         assert "Aizome Test" in machine.succeed("hostnamectl --pretty")
 
+    with subtest("Ctrl+Alt+Del force quits a full-screen terminal"):
+        def windows():
+            return ipc("windows")["windows"]
+
+        foot = next(w for w in windows() if w["app_id"] == "foot")
+        assert foot["pid"], foot
+        machine.succeed(f"kill -0 {foot['pid']}")
+        as_alice(f"aizomectl fullscreen {foot['id']} on")
+        as_alice(f"aizomectl focus {foot['id']}")
+        until("foot full screen", lambda: any(w["id"] == foot["id"] and w["fullscreen"] for w in windows()))
+        as_alice("aizomectl input chord ctrl+alt+delete")
+        state = ipc("recovery status")["state"]
+        print(state)
+        assert state["open"], state
+        # The focused app is selected, unless another isn't answering.
+        if state["selected"] != "foot":
+            as_alice("aizomectl input key home")
+            for _ in range([a["app_id"] for a in state["apps"]].index("foot")):
+                as_alice("aizomectl input key down")
+        assert ipc("recovery status")["state"]["selected"] == "foot"
+        capture("06-recovery")
+        # Delete is Force Quit for the selected app.
+        as_alice("aizomectl input key delete")
+        machine.wait_until_fails(f"kill -0 {foot['pid']}", timeout=30)
+        until("foot's window gone", lambda: not any(w["app_id"] == "foot" for w in windows()))
+        state = ipc("recovery status")["state"]
+        assert not any(a["app_id"] == "foot" for a in state["apps"]), state
+        assert state["message"].startswith("Force quit"), state
+        capture("07-force-quit")
+        as_alice("aizomectl input key escape")
+        assert not ipc("recovery status")["state"]["open"]
+
     with subtest("frame times stay inside the budget"):
         print(as_alice("aizomectl stats"))
+
+    with subtest("a stalled compositor is restarted, and says so"):
+        def main_pid():
+            return machine.succeed(
+                "su - alice -c 'XDG_RUNTIME_DIR=/run/user/1000 systemctl --user show -p MainPID --value aizome.service'"
+            ).strip()
+
+        before = main_pid()
+        # Its main loop blocks: systemd's watchdog stops it after 10 s and
+        # aizome-session starts another.
+        as_alice("(aizomectl debug-stall 60 >/dev/null 2>&1 &)")
+        machine.wait_until_fails(f"kill -0 {before}", timeout=60)
+        until("another compositor", lambda: main_pid() not in ("", "0", before))
+        machine.wait_until_succeeds(
+            "su - alice -c 'XDG_RUNTIME_DIR=/run/user/1000 systemctl --user is-active aizome.service'", timeout=60
+        )
+        machine.wait_until_succeeds("ls /run/user/1000/ | grep -q '^aizome\\..*\\.sock$'", timeout=60)
+        machine.succeed("grep -q 'stalled for' /home/alice/.local/state/aizome/stall.log")
+        machine.succeed("grep -q 'backtrace' /home/alice/.local/state/aizome/stall.log")
+        print(machine.succeed("cat /home/alice/.local/state/aizome/stall.log"))
+        machine.wait_until_succeeds(
+            "su - alice -c 'export XDG_RUNTIME_DIR=/run/user/1000 AIZOME_SOCKET=$(ls /run/user/1000/aizome.wayland-*.sock); "
+            "aizomectl recovery status' | grep -q 'stopped responding'",
+            timeout=30,
+        )
+        machine.wait_until_succeeds("pgrep -u alice -x aizome-shell", timeout=60)
+        machine.sleep(2)
+        capture("08-restarted")
   '';
 }
