@@ -92,6 +92,8 @@ The compositor (for its key bindings) and `aizomectl` send
 | `open` | `what` | Open a systray panel (`network`, `sound`, `bluetooth`, `display`, `battery`, `clock`) or a bar menu by its title. |
 | `dismiss` | | Close whatever transient surface is open. |
 | `state` | | What the shell shows, as JSON in the reply's `message`. |
+| `menu-bar` | `output` | The menu bar takes the keyboard (F10, ❖⌥M): the focused app's menu opens with its first row lit; ← → go across the titles. |
+| `bell` | `output` | The system bell rang: the screen's edge flashes if `[sound] visual_alert` is on. |
 
 ## The client
 

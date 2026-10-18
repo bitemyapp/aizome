@@ -87,6 +87,18 @@ pub enum ShellRequest {
     Dismiss,
     /// What the shell shows now, as JSON in the reply's message.
     State,
+    /// The menu bar takes the keyboard (F10, ❖⌥M): the focused app's menu
+    /// opens with its first row lit, and ← → go across the titles.
+    MenuBar {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        output: Option<String>,
+    },
+    /// The system bell rang (xdg-system-bell): the screen's edge flashes
+    /// where `[sound] visual_alert` asks for it.
+    Bell {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        output: Option<String>,
+    },
 }
 
 /// What the shell sends.
