@@ -25,11 +25,11 @@
     "sidestep": {
       "flake": false,
       "locked": {
-        "lastModified": 1792360240,
-        "narHash": "sha256-FHA6UeH7xcWUClxAAszyIO3+0dc7EPVcJx/WDdcBMS8=",
+        "lastModified": 1792361853,
+        "narHash": "sha256-fksyU6Zxaya7wRi5XMLFTgb9R7nL92xYm0bHADqlU6o=",
         "owner": "bitemyapp",
         "repo": "sidestep",
-        "rev": "84353c15c621bff4770d697896257856ef9217be",
+        "rev": "c037b0de99883920e0e8cb21a7fa9d544638a781",
         "type": "github"
       },
       "original": {
