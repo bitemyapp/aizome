@@ -54,7 +54,11 @@ pkgs.testers.runNixOSTest {
       };
       # No bluetooth controller or printers in the VM; their services still
       # run and report nothing, which is what the widgets must handle.
-      environment.systemPackages = [ pkgs.wtype ];
+      environment.systemPackages = [
+        pkgs.wtype
+        # ffprobe, for the screen recording.
+        pkgs.ffmpeg
+      ];
     };
 
   enableOCR = false;
@@ -143,6 +147,58 @@ pkgs.testers.runNixOSTest {
         machine.succeed("readlink /etc/localtime | grep -q Asia/Tokyo")
         machine.succeed("hostnamectl set-hostname --pretty 'Aizome Test'")
         assert "Aizome Test" in machine.succeed("hostnamectl --pretty")
+
+    with subtest("a screen recording starts, shows, stops and leaves a video"):
+        # gpu-screen-recorder can't run here (virtio-gpu has no hardware
+        # OpenGL), so this is the fallback: wf-recorder through the
+        # compositor's screencopy (wl_shm under pixman), x264.
+        import shlex
+
+        def alice(command):
+            env = (
+                "export XDG_RUNTIME_DIR=/run/user/1000; "
+                "export WAYLAND_DISPLAY=$(ls /run/user/1000 | grep -m1 '^wayland-[0-9]*$'); "
+                "export AIZOME_SOCKET=/run/user/1000/aizome.$WAYLAND_DISPLAY.sock; "
+            )
+            return "su - alice -c " + shlex.quote(env + command)
+
+        def recording():
+            return json.loads(machine.succeed(alice("aizome-shell msg state")))["recording"]
+
+        record_screen = alice("aizome-shell msg '{\"request\":\"record\",\"target\":\"screen\"}'")
+        # Something moving, so frames keep coming.
+        machine.succeed(alice("aizomectl spawn -- foot sh -c 'while :; do date +%T.%N; sleep 0.05; done'"))
+        # What the palette's Record Screen does.
+        machine.succeed(record_screen)
+        machine.wait_until_succeeds(alice("aizome-shell msg state | grep -q '\"phase\":\"recording\"'"), timeout=30)
+        # One at a time.
+        machine.fail(record_screen)
+        machine.sleep(4)
+        going = recording()
+        print(going)
+        # gpu-screen-recorder refuses software OpenGL, so wf-recorder.
+        print("recording with", going["recorder"])
+        assert going["recorder"] in ["gpu-screen-recorder", "wf-recorder (VA-API)", "wf-recorder"], going
+        capture("06-recording")
+        machine.sleep(2)
+        machine.succeed(alice("aizome-shell msg stop-recording"))
+        machine.wait_until_succeeds(alice("aizome-shell msg state | grep -q '\"recording\":null'"), timeout=30)
+        video = going["path"]
+        assert video.startswith("/home/alice/Videos/Recordings/screenrecording-"), video
+        probe = json.loads(machine.succeed(
+            "ffprobe -v error -select_streams v:0 -count_frames -show_entries "
+            "stream=codec_name,width,height,r_frame_rate,nb_read_frames:format=duration "
+            f"-of json '{video}'"
+        ))
+        print(probe)
+        stream = probe["streams"][0]
+        mode = ipc("outputs")["outputs"][0]["current_mode"]
+        assert stream["codec_name"] == "h264", stream
+        assert (stream["width"], stream["height"]) == (mode["width"], mode["height"]), stream
+        assert stream["r_frame_rate"] == "60/1", stream
+        assert float(probe["format"]["duration"]) >= 4, probe
+        assert int(stream["nb_read_frames"]) >= 100, stream
+        capture("07-recording-saved")
 
     with subtest("frame times stay inside the budget"):
         print(as_alice("aizomectl stats"))
