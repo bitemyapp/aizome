@@ -278,14 +278,14 @@ impl FileIndex {
                 FileHit { path, folder: e.folder, score, name_ranges: Vec::new(), modified: e.modified as u64 }
             })
             .collect();
-        hits.sort_by(|a, b| b.score.cmp(&a.score));
+        hits.sort_by_key(|h| std::cmp::Reverse(h.score));
         hits.truncate(limit);
         let mut name_q = Query::new(query);
         for hit in &mut hits {
-            if let Some(name) = hit.path.file_name().and_then(|n| n.to_str()) {
-                if let Some(m) = name_q.matches(name) {
-                    hit.name_ranges = m.ranges;
-                }
+            if let Some(name) = hit.path.file_name().and_then(|n| n.to_str())
+                && let Some(m) = name_q.matches(name)
+            {
+                hit.name_ranges = m.ranges;
             }
         }
         hits
@@ -386,7 +386,7 @@ mod tests {
     #[test]
     fn walks_honouring_ignores_and_skips() {
         let root = fixture("walk");
-        let index = FileIndex::build(&[root.clone()], &Limits { folders: false, ..Default::default() });
+        let index = FileIndex::build(std::slice::from_ref(&root), &Limits { folders: false, ..Default::default() });
         let mut rels: Vec<&str> = index.entries.iter().map(|e| index.rel(e)).collect();
         rels.sort_unstable();
         assert_eq!(
@@ -400,11 +400,13 @@ mod tests {
         );
         // Folders the user skips aren't walked, nor what's in them.
         let skip = vec![root.join("work"), root.join("Pictures/")];
-        let index = FileIndex::build(&[root.clone()], &Limits { folders: false, skip, ..Default::default() });
+        let index =
+            FileIndex::build(std::slice::from_ref(&root), &Limits { folders: false, skip, ..Default::default() });
         let mut rels: Vec<&str> = index.entries.iter().map(|e| index.rel(e)).collect();
         rels.sort_unstable();
         assert_eq!(rels, ["Documents/replay notes.md", "naïve/résumé.md"]);
-        let none = FileIndex::build(&[root.clone()], &Limits { skip: vec![root.clone()], ..Default::default() });
+        let none =
+            FileIndex::build(std::slice::from_ref(&root), &Limits { skip: vec![root.clone()], ..Default::default() });
         assert!(none.entries.is_empty(), "a skipped root isn't walked");
         let _ = fs::remove_dir_all(root);
     }
@@ -412,13 +414,13 @@ mod tests {
     #[test]
     fn names_outrank_paths_and_narrowing_agrees() {
         let root = fixture("rank");
-        let index = FileIndex::build(&[root.clone()], &Limits::default());
+        let index = FileIndex::build(std::slice::from_ref(&root), &Limits::default());
         let none = |_: &Path| 0;
         let hits = index.search("repla", 10, &none);
         assert!(hits.len() >= 2, "{hits:?}");
         assert!(hits[0].path.ends_with("replay.rs") || hits[0].path.ends_with("replay notes.md"));
         let narrowed = index.search("replay", 10, &none);
-        let fresh = FileIndex::build(&[root.clone()], &Limits::default()).search("replay", 10, &none);
+        let fresh = FileIndex::build(std::slice::from_ref(&root), &Limits::default()).search("replay", 10, &none);
         assert_eq!(narrowed, fresh);
         assert!(index.search("한글", 10, &none).is_empty());
         assert_eq!(index.search("resume", 10, &none).len(), 1);
@@ -430,7 +432,7 @@ mod tests {
     #[test]
     fn saves_and_loads() {
         let root = fixture("save");
-        let index = FileIndex::build(&[root.clone()], &Limits::default());
+        let index = FileIndex::build(std::slice::from_ref(&root), &Limits::default());
         let path = root.join("idx");
         index.save(&path).unwrap();
         let loaded = FileIndex::load(&path).unwrap();

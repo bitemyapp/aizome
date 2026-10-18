@@ -47,7 +47,7 @@ pub fn parse(text: &str) -> Vec<RecentFile> {
             .unwrap_or(0);
         out.push(RecentFile { path: PathBuf::from(unescape_xml(&path)), at });
     }
-    out.sort_by(|a, b| b.at.cmp(&a.at));
+    out.sort_by_key(|r| std::cmp::Reverse(r.at));
     out.dedup_by(|a, b| a.path == b.path);
     out
 }
@@ -64,12 +64,13 @@ fn percent_decode(s: &str) -> String {
     let mut out = Vec::with_capacity(bytes.len());
     let mut i = 0;
     while i < bytes.len() {
-        if bytes[i] == b'%' && i + 2 < bytes.len() {
-            if let Ok(b) = u8::from_str_radix(&s[i + 1..i + 3], 16) {
-                out.push(b);
-                i += 3;
-                continue;
-            }
+        if bytes[i] == b'%'
+            && i + 2 < bytes.len()
+            && let Ok(b) = u8::from_str_radix(&s[i + 1..i + 3], 16)
+        {
+            out.push(b);
+            i += 3;
+            continue;
         }
         out.push(bytes[i]);
         i += 1;
