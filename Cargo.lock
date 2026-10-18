@@ -76,6 +76,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "aizome-fusen"
+version = "0.1.0"
+dependencies = [
+ "aizome-ipc",
+ "aizome-kit",
+ "aizome-sumi",
+ "env_logger",
+ "libc",
+ "log",
+ "ropey",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "aizome-hako"
 version = "0.1.0"
 dependencies = [
@@ -91,6 +106,7 @@ dependencies = [
  "png 0.18.1",
  "serde",
  "serde_json",
+ "sidestep-engine",
  "toml",
 ]
 
