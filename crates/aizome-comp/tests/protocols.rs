@@ -538,8 +538,9 @@ fn frames_keep_their_colours(renderer_name: &str) {
     let mut a = Client::new(&c, "org.example.formats");
     let w = c.window("org.example.formats").unwrap();
     let (x0, y0) = (w.geometry.x, w.geometry.y);
-    // (format, colour, patch)
-    let steps: [(wl_shm::Format, u32, Option<(i32, i32, i32, i32)>); 6] = [
+    // (format, colour, patch: x, y, width, height)
+    type Patch = Option<(i32, i32, i32, i32)>;
+    let steps: [(wl_shm::Format, u32, Patch); 6] = [
         (Xbgr8888, 0xd02010, None),
         (Xbgr8888, 0x1040e0, Some((20, 20, 60, 40))),
         (Abgr8888, 0x20b040, Some((100, 20, 60, 40))),
@@ -547,7 +548,7 @@ fn frames_keep_their_colours(renderer_name: &str) {
         (Abgr8888, 0x9030c0, Some((20, 100, 60, 40))),
         (Xrgb8888, 0x30c0c0, Some((100, 100, 60, 40))),
     ];
-    let mut drawn: Vec<(u32, Option<(i32, i32, i32, i32)>)> = Vec::new();
+    let mut drawn: Vec<(u32, Patch)> = Vec::new();
     for (format, color, patch) in steps {
         // Every buffer holds the whole picture so far (as a client's would).
         let b = {

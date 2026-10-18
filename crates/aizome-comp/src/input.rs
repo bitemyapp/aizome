@@ -712,13 +712,10 @@ impl State {
                 self.az.access.slow.insert(code, (token,));
                 return;
             }
-            match self.az.access.slow.remove(&code) {
-                // Let go too soon: it never happened.
-                Some((Some(token),)) => {
-                    self.az.lh.remove(token);
-                    return;
-                }
-                Some((None,)) | None => {}
+            // Let go too soon: it never happened.
+            if let Some((Some(token),)) = self.az.access.slow.remove(&code) {
+                self.az.lh.remove(token);
+                return;
             }
         } else if !self.az.access.slow.is_empty() {
             for (_, (t,)) in self.az.access.slow.drain() {

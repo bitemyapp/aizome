@@ -37,7 +37,7 @@ fn the_window_manager_survives_churn() {
                 clients.push(
                     c.client(
                         Spec::new(&format!("churn.app{n}"), 0x203040 + (i as u32 * 7919) % 0xbfbfbf)
-                            .size(200 + (i as i32 % 7) * 40, 150 + (i as i32 % 5) * 30),
+                            .size(200 + (i % 7) * 40, 150 + (i % 5) * 30),
                     ),
                 );
                 continue;

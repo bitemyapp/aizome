@@ -400,10 +400,10 @@ impl State {
         let fifo = FifoManagerState::new::<State>(&dh);
         let commit_timing = CommitTimingManagerState::new::<State>(&dh);
         let foreign_toplevel_list = ForeignToplevelListState::new_with_filter::<State>(&dh, client_is_privileged);
-        let foreign_toplevel_mgmt = ForeignToplevelManagerState::new::<State, _>(&dh, client_is_privileged);
-        let screencopy = ScreencopyManagerState::new::<State, _>(&dh, client_is_privileged);
+        let foreign_toplevel_mgmt = ForeignToplevelManagerState::new(&dh, client_is_privileged);
+        let screencopy = ScreencopyManagerState::new(&dh, client_is_privileged);
         crate::protocols::gamma_control::create_global(&dh, client_is_privileged);
-        let output_management = OutputManagementState::new::<State, _>(&dh, client_is_privileged);
+        let output_management = OutputManagementState::new(&dh, client_is_privileged);
 
         let mut seat = seat_state.new_wl_seat(&dh, backend.seat_name());
         seat.add_pointer();

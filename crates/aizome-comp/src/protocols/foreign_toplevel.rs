@@ -50,7 +50,7 @@ struct Snapshot {
 }
 
 impl ForeignToplevelManagerState {
-    pub fn new<D, F>(dh: &DisplayHandle, filter: F) -> Self
+    pub fn new<F>(dh: &DisplayHandle, filter: F) -> Self
     where
         F: Fn(&Client) -> bool + Send + Sync + 'static,
     {

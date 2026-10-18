@@ -71,7 +71,7 @@ pub struct ConfigHeadData {
 }
 
 impl OutputManagementState {
-    pub fn new<D, F>(dh: &DisplayHandle, filter: F) -> Self
+    pub fn new<F>(dh: &DisplayHandle, filter: F) -> Self
     where
         F: Fn(&Client) -> bool + Send + Sync + 'static,
     {
@@ -375,10 +375,8 @@ impl Dispatch<ConfigurationHead, ConfigHeadData> for State {
                 hc.mode = Some((width, height, (refresh > 0).then_some(refresh)));
             }
             conf_head::Request::SetPosition { x, y } => hc.position = Some((x, y)),
-            conf_head::Request::SetTransform { transform } => {
-                if let WEnum::Value(t) = transform {
-                    hc.transform = Some(transform_from_wl(t));
-                }
+            conf_head::Request::SetTransform { transform: WEnum::Value(t) } => {
+                hc.transform = Some(transform_from_wl(t))
             }
             conf_head::Request::SetScale { scale } => {
                 if scale <= 0.0 {

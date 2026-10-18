@@ -96,10 +96,10 @@ fn main() {
     let windows = |n: usize| {
         let deadline = Instant::now() + Duration::from_secs(20);
         loop {
-            if let Response::Windows { windows } = req(Request::Windows) {
-                if windows.len() >= n {
-                    return windows;
-                }
+            if let Response::Windows { windows } = req(Request::Windows)
+                && windows.len() >= n
+            {
+                return windows;
             }
             assert!(Instant::now() < deadline, "windows didn't open");
             std::thread::sleep(Duration::from_millis(50));

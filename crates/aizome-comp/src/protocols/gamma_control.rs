@@ -126,12 +126,15 @@ fn release(state: &mut State, output: &Output) {
     }
 }
 
+/// Red, green and blue ramps, 16-bit entries each.
+type Ramps = (Vec<u16>, Vec<u16>, Vec<u16>);
+
 /// Red, green and blue ramps of `size` 16-bit entries each, from the
 /// client's file.
-fn read_ramps(fd: OwnedFd, size: usize) -> Result<(Vec<u16>, Vec<u16>, Vec<u16>), String> {
+fn read_ramps(fd: OwnedFd, size: usize) -> Result<Ramps, String> {
     let mut f = std::fs::File::from(fd);
     let mut bytes = vec![0u8; size * 3 * 2];
     f.read_exact(&mut bytes).map_err(|e| format!("reading the ramps: {e}"))?;
-    let all: Vec<u16> = bytes.chunks_exact(2).map(|c| u16::from_ne_bytes([c[0], c[1]])).collect();
+    let all: Vec<u16> = bytes.as_chunks::<2>().0.iter().map(|c| u16::from_ne_bytes([c[0], c[1]])).collect();
     Ok((all[..size].to_vec(), all[size..2 * size].to_vec(), all[2 * size..].to_vec()))
 }

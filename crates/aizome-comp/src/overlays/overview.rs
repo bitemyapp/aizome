@@ -28,11 +28,14 @@ pub struct Overview {
     pub cards: Vec<(Option<DeskId>, Box2)>,
     /// Window thumbnails: window, its Desk, its box.
     pub thumbs: Vec<(WinId, DeskId, Box2)>,
-    /// A thumbnail being dragged: window, where it was grabbed, where the
-    /// pointer is.
-    pub drag: Option<(WinId, (f64, f64), (f64, f64))>,
+    /// A thumbnail being dragged.
+    pub drag: Option<ThumbDrag>,
     pub pointer: (f64, f64),
 }
+
+/// A thumbnail being dragged: window, where it was grabbed, where the
+/// pointer is.
+pub type ThumbDrag = (WinId, (f64, f64), (f64, f64));
 
 pub fn toggle(state: &mut State) {
     if let Some(ov) = state.az.overlays.overview.take() {

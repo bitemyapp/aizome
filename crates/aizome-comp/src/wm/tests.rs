@@ -99,7 +99,7 @@ fn placement_avoids_the_deskbar() {
     let m = model();
     let deskbar = Rect::new(1440 - 232, 24, 232, 600);
     let r = m.place((400, 300), USABLE, &[deskbar], INSETS, None);
-    assert!(r.right() + 1 <= deskbar.x, "{r:?} overlaps the Deskbar");
+    assert!(r.right() < deskbar.x, "{r:?} overlaps the Deskbar");
     // Centred in what is left.
     let area_w = 1440 - 232;
     assert_eq!(r.x, (area_w - 402) / 2 + 1);

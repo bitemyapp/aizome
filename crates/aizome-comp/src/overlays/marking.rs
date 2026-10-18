@@ -481,23 +481,6 @@ where
     out
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn directions() {
-        assert_eq!(Verb::toward(0.0, -50.0), Verb::Fill);
-        assert_eq!(Verb::toward(0.0, 50.0), Verb::Park);
-        assert_eq!(Verb::toward(-50.0, 0.0), Verb::SplitLeft);
-        assert_eq!(Verb::toward(50.0, 0.0), Verb::SplitRight);
-        assert_eq!(Verb::toward(40.0, -40.0), Verb::ToDesk);
-        assert_eq!(Verb::toward(40.0, 40.0), Verb::Stack);
-        assert_eq!(Verb::toward(-40.0, 40.0), Verb::Close);
-        assert_eq!(Verb::toward(-40.0, -40.0), Verb::Float);
-    }
-}
-
 /// A click while a sticky menu (opened by a client's window-menu request)
 /// is up: picks what's under the pointer, or closes it.
 pub fn click(state: &mut State, x: f64, y: f64) {
@@ -536,4 +519,21 @@ fn keep_on_output(state: &mut State) {
         pointer.set_location(p);
     }
     state.az.queue_redraw(&o);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn directions() {
+        assert_eq!(Verb::toward(0.0, -50.0), Verb::Fill);
+        assert_eq!(Verb::toward(0.0, 50.0), Verb::Park);
+        assert_eq!(Verb::toward(-50.0, 0.0), Verb::SplitLeft);
+        assert_eq!(Verb::toward(50.0, 0.0), Verb::SplitRight);
+        assert_eq!(Verb::toward(40.0, -40.0), Verb::ToDesk);
+        assert_eq!(Verb::toward(40.0, 40.0), Verb::Stack);
+        assert_eq!(Verb::toward(-40.0, 40.0), Verb::Close);
+        assert_eq!(Verb::toward(-40.0, -40.0), Verb::Float);
+    }
 }

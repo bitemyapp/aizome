@@ -85,10 +85,10 @@ impl Compositor {
         let c = Compositor { child, dir, socket, ipc, log };
         let deadline = Instant::now() + Duration::from_secs(20);
         while Instant::now() < deadline {
-            if let Ok(mut client) = Client::connect_to(&c.ipc) {
-                if client.request(&Request::Version).is_ok() {
-                    return c;
-                }
+            if let Ok(mut client) = Client::connect_to(&c.ipc)
+                && client.request(&Request::Version).is_ok()
+            {
+                return c;
             }
             std::thread::sleep(Duration::from_millis(50));
         }
@@ -107,9 +107,8 @@ impl Compositor {
 
     /// A request that must succeed.
     pub fn ok(&self, req: Request) {
-        match self.request(req.clone()) {
-            Response::Error { message } => panic!("{req:?}: {message}"),
-            _ => {}
+        if let Response::Error { message } = self.request(req.clone()) {
+            panic!("{req:?}: {message}")
         }
     }
 
@@ -198,8 +197,10 @@ impl Image {
         buf.truncate(info.buffer_size());
         let rgba = match info.color_type {
             png::ColorType::Rgba => buf,
-            png::ColorType::Rgb => buf.chunks_exact(3).flat_map(|p| [p[0], p[1], p[2], 255]).collect(),
-            png::ColorType::GrayscaleAlpha => buf.chunks_exact(2).flat_map(|p| [p[0], p[0], p[0], p[1]]).collect(),
+            png::ColorType::Rgb => buf.as_chunks::<3>().0.iter().flat_map(|p| [p[0], p[1], p[2], 255]).collect(),
+            png::ColorType::GrayscaleAlpha => {
+                buf.as_chunks::<2>().0.iter().flat_map(|p| [p[0], p[0], p[0], p[1]]).collect()
+            }
             png::ColorType::Grayscale => buf.iter().flat_map(|g| [*g, *g, *g, 255]).collect(),
             png::ColorType::Indexed => unreachable!("expanded"),
         };
@@ -589,11 +590,13 @@ impl Dispatch<xdg_surface::XdgSurface, ()> for App {
     ) {
         if let xdg_surface::Event::Configure { serial } = event {
             xs.ack_configure(serial);
-            if let Some(s) = app.pending_size.take() {
-                if s.0 > 0 && s.1 > 0 && s != app.size {
-                    app.size = s;
-                    app.needs_draw = true;
-                }
+            if let Some(s) = app.pending_size.take()
+                && s.0 > 0
+                && s.1 > 0
+                && s != app.size
+            {
+                app.size = s;
+                app.needs_draw = true;
             }
             if !app.configured {
                 app.configured = true;
@@ -626,7 +629,7 @@ impl Dispatch<xdg_toplevel::XdgToplevel, ()> for App {
             xdg_toplevel::Event::Configure { width, height, states } => {
                 app.pending_size = Some((width, height));
                 let states: Vec<u32> =
-                    states.chunks_exact(4).map(|c| u32::from_ne_bytes([c[0], c[1], c[2], c[3]])).collect();
+                    states.as_chunks::<4>().0.iter().map(|c| u32::from_ne_bytes([c[0], c[1], c[2], c[3]])).collect();
                 let mut seen = app.seen.lock().unwrap();
                 seen.activated = states.contains(&(xdg_toplevel::State::Activated as u32));
                 seen.maximized = states.contains(&(xdg_toplevel::State::Maximized as u32));

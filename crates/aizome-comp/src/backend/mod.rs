@@ -29,7 +29,7 @@ use crate::state::Aizome;
 
 pub enum Backend {
     Headless(headless::Headless),
-    Winit(winit::WinitBackend),
+    Winit(Box<winit::WinitBackend>),
     Udev(Box<udev::Udev>),
 }
 
@@ -191,14 +191,14 @@ pub struct Frame {
 }
 
 /// Draws an output's elements through a damage tracker into a bound
-/// framebuffer, timing it.
+/// framebuffer, timing it from `started` (when collecting the elements
+/// began), and with `wait_gpu` the GPU's part too.
+#[allow(clippy::too_many_arguments)] // what the damage tracker renders with, and the timing
 pub fn render_frame<R>(
-    _az: &mut Aizome,
     renderer: &mut R,
     framebuffer: &mut R::Framebuffer<'_>,
     tracker: &mut OutputDamageTracker,
     age: usize,
-    output: &Output,
     elements: &[OutputElement<R>],
     clear: [f32; 4],
     started: Instant,
@@ -219,7 +219,6 @@ where
         None
     };
     let states = res.states;
-    let _ = output;
     Ok(Frame { damaged, states, cpu, gpu })
 }
 

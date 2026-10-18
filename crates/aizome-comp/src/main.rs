@@ -98,7 +98,7 @@ fn main() -> ExitCode {
             Backend::Headless(backend::headless::Headless::new(opts.renderer, opts.headless_outputs.clone()))
         }
         BackendKind::Winit => match backend::winit::WinitBackend::new(&event_loop) {
-            Ok(w) => Backend::Winit(w),
+            Ok(w) => Backend::Winit(Box::new(w)),
             Err(e) => {
                 error!("winit: {e}");
                 return ExitCode::FAILURE;

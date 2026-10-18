@@ -235,9 +235,7 @@ impl Headless {
                 let r = r.as_mut();
                 let (elements, clear) = scene_for::<_, GlesRenderbuffer>(r, az, output);
                 match r.bind(rb) {
-                    Ok(mut fb) => {
-                        render_frame(az, r, &mut fb, &mut hs.tracker, age, output, &elements, clear, started, true)
-                    }
+                    Ok(mut fb) => render_frame(r, &mut fb, &mut hs.tracker, age, &elements, clear, started, true),
                     Err(e) => Err(format!("bind: {e:?}")),
                 }
             }
@@ -245,9 +243,7 @@ impl Headless {
                 let (elements, clear) =
                     scene_for::<_, smithay::reexports::pixman::Image<'static, 'static>>(r, az, output);
                 match r.bind(img) {
-                    Ok(mut fb) => {
-                        render_frame(az, r, &mut fb, &mut hs.tracker, age, output, &elements, clear, started, false)
-                    }
+                    Ok(mut fb) => render_frame(r, &mut fb, &mut hs.tracker, age, &elements, clear, started, false),
                     Err(e) => Err(format!("bind: {e:?}")),
                 }
             }

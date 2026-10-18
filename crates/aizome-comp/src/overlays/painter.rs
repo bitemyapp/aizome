@@ -105,6 +105,7 @@ where
 
     /// Text with its top left at (x, y), shortened to `max_w`; returns its
     /// width.
+    #[allow(clippy::too_many_arguments)]
     pub fn text(
         &mut self,
         az: &mut Aizome,
@@ -166,6 +167,8 @@ where
         )
     }
 
+    /// An app's icon, `size` points square, with its top left at (x, y).
+    #[allow(clippy::too_many_arguments)]
     pub fn icon(
         &mut self,
         az: &mut Aizome,
