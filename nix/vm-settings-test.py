@@ -686,20 +686,66 @@ def search():
     S.quit()
 
 
-@part("Users & Groups: a new full name reaches AccountsService and the password file")
+def write_png(path, rgb, side=96):
+    """A picture of one colour, written as alice."""
+    import base64
+    import struct
+    import zlib
+
+    def chunk(kind, data):
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data) & 0xFFFFFFFF)
+
+    raw = b"".join(b"\x00" + bytes(rgb) * side for _ in range(side))
+    png = (
+        b"\x89PNG\r\n\x1a\n"
+        + chunk(b"IHDR", struct.pack(">IIBBBBB", side, side, 8, 2, 0, 0, 0))
+        + chunk(b"IDAT", zlib.compress(raw))
+        + chunk(b"IEND", b"")
+    )
+    data = base64.b64encode(png).decode()
+    alice(f"mkdir -p $(dirname {path}) && echo {data} | base64 -d > {path}")
+
+
+def icon_file():
+    out = machine.succeed(
+        "busctl get-property org.freedesktop.Accounts /org/freedesktop/Accounts/User1000 "
+        "org.freedesktop.Accounts.User IconFile"
+    )
+    return out.split('"')[1] if '"' in out else ""
+
+
+def choose_picture(name):
+    S.press("Choose…")
+    S.wait(text="Choose a Picture")
+    S.click(S.wait(text=name, role="label"))
+    S.press("Open")
+    S.gone("the panel to close", text="Choose a Picture")
+
+
+@part("Users & Groups: a new full name and picture reach AccountsService and the password file")
 def users():
+    write_png(f"{HOME}/Pictures/indigo.png", (61, 89, 161))
+    write_png(f"{HOME}/Pictures/amber.png", (224, 175, 104))
     S.open("users")
     S.field(S.control("users", "name", role="textinput"), "Alice Pleasance Liddell")
     until(
         "AccountsService's name",
-        lambda: (
-            "Alice Pleasance Liddell"
-            in machine.succeed(
-                "busctl get-property org.freedesktop.Accounts /org/freedesktop/Accounts/User1000 org.freedesktop.Accounts.User RealName"
-            )
+        lambda: "Alice Pleasance Liddell"
+        in machine.succeed(
+            "busctl get-property org.freedesktop.Accounts /org/freedesktop/Accounts/User1000 "
+            "org.freedesktop.Accounts.User RealName"
         ),
     )
     assert "Alice Pleasance Liddell" in machine.succeed("getent passwd alice")
+
+    choose_picture("indigo.png")
+    until("a picture in AccountsService", lambda: icon_file() and machine.execute(f"test -s {icon_file()}")[0] == 0)
+    first = machine.succeed(f"sha256sum {icon_file()}").split()[0]
+    # Another, which AccountsService keeps at the same path.
+    choose_picture("amber.png")
+    until("the new picture", lambda: machine.succeed(f"sha256sum {icon_file()}").split()[0] != first)
+    shot("users-picture")
+
     reopen("users")
     assert S.control("users", "name", role="textinput").get("value") == "Alice Pleasance Liddell"
     S.quit()
