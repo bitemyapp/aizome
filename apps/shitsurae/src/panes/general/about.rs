@@ -57,10 +57,20 @@ pub enum Msg {
 
 pub fn entries() -> Vec<SettingEntry> {
     vec![
-        SettingEntry::new("computer-name", "Computer name").under("About").keywords(&["rename", "pretty hostname", "name"]),
+        SettingEntry::new("computer-name", "Computer name").under("About").keywords(&[
+            "rename",
+            "pretty hostname",
+            "name",
+        ]),
         SettingEntry::new("hostname", "Host name").under("About").keywords(&["network name", "hostname"]),
-        SettingEntry::new("hardware", "Hardware").under("About").keywords(&["cpu", "memory", "ram", "graphics", "gpu", "disk", "model"]),
-        SettingEntry::new("displays-glance", "Displays and storage").under("About").keywords(&["specs", "screens", "free space"]),
+        SettingEntry::new("hardware", "Hardware")
+            .under("About")
+            .keywords(&["cpu", "memory", "ram", "graphics", "gpu", "disk", "model"]),
+        SettingEntry::new("displays-glance", "Displays and storage").under("About").keywords(&[
+            "specs",
+            "screens",
+            "free space",
+        ]),
     ]
 }
 
@@ -226,16 +236,25 @@ impl State {
         }
         // At a glance: the displays and the disk, read again each time.
         if cx.sample() {
-            self.displays = Some(vec!["Built-in display · 2880 × 1800 at 120 Hz".into(), "Dell U2723QE · 3840 × 2160 at 60 Hz".into()]);
+            self.displays = Some(vec![
+                "Built-in display · 2880 × 1800 at 120 Hz".into(),
+                "Dell U2723QE · 3840 × 2160 at 60 Hz".into(),
+            ]);
             self.disk = Some((412_000_000_000, 1_000_000_000_000));
         } else {
             cx.compositor(aizome_ipc::Request::Outputs, |r| {
                 G::About(Msg::Displays(match r {
-                    Ok(aizome_ipc::Response::Outputs { outputs }) => outputs.iter().filter(|o| o.enabled).map(display_line).collect(),
+                    Ok(aizome_ipc::Response::Outputs { outputs }) => {
+                        outputs.iter().filter(|o| o.enabled).map(display_line).collect()
+                    }
                     _ => Vec::new(),
                 }))
             });
-            cx.spawn(|| G::About(Msg::Disk(super::storage::statvfs(std::path::Path::new("/")).map(|(total, free)| (free, total)))));
+            cx.spawn(|| {
+                G::About(Msg::Disk(
+                    super::storage::statvfs(std::path::Path::new("/")).map(|(total, free)| (free, total)),
+                ))
+            });
         }
     }
 
@@ -289,7 +308,10 @@ impl State {
                     return;
                 }
                 if !aizome_sys::datetime::valid_hostname(&name) {
-                    cx.failed("Host name", "letters, digits and hyphens, up to 63 of them, not starting or ending with a hyphen");
+                    cx.failed(
+                        "Host name",
+                        "letters, digits and hyphens, up to 63 of them, not starting or ending with a hyphen",
+                    );
                     return;
                 }
                 cx.confirm(
@@ -334,12 +356,12 @@ impl State {
         let n = self.names();
         let hero = self.hero(true);
         let spec_rows: Vec<form::Row<Msg>> = match &self.hardware {
-            None => vec![form::whole(container(row![progress_indeterminate().width(120.0)]).padding([14.0, form::INSET]))],
+            None => {
+                vec![form::whole(container(row![progress_indeterminate().width(120.0)]).padding([14.0, form::INSET]))]
+            }
             Some(hw) => specs(hw)
                 .into_iter()
-                .map(|(k, v)| {
-                    form::row(k, text(v).mono().size(12.0).role(Role::Text).selectable()).compact()
-                })
+                .map(|(k, v)| form::row(k, text(v).mono().size(12.0).role(Role::Text).selectable()).compact())
                 .collect(),
         };
         let mut spec_rows = spec_rows;
@@ -350,7 +372,11 @@ impl State {
 
         let pretty = self.draft.clone().unwrap_or_else(|| self.computer_name());
         let name_row = if n.pretty_hostname_managed {
-            form::managed("Computer name", self.computer_name(), "Its file, /etc/machine-info, comes from the configuration.")
+            form::managed(
+                "Computer name",
+                self.computer_name(),
+                "Its file, /etc/machine-info, comes from the configuration.",
+            )
         } else {
             form::row(
                 "Computer name",
@@ -363,13 +389,21 @@ impl State {
             .help("What people see: in the menu bar's panels, on the network, in Bluetooth.")
         }
         .entry("computer-name");
-        let host = if n.static_hostname.is_empty() { self.hardware.as_ref().map(|h| h.hostname.clone()).unwrap_or_default() } else { n.static_hostname.clone() };
+        let host = if n.static_hostname.is_empty() {
+            self.hardware.as_ref().map(|h| h.hostname.clone()).unwrap_or_default()
+        } else {
+            n.static_hostname.clone()
+        };
         let host_row = if n.static_hostname_managed || !n.available {
             form::managed("Host name", host, "Change networking.hostName and rebuild.")
         } else {
             form::row(
                 "Host name",
-                text_field(self.host_draft.as_deref().unwrap_or(&host)).mono().on_change(Msg::HostName).on_submit(Msg::SaveHostName).width(240.0),
+                text_field(self.host_draft.as_deref().unwrap_or(&host))
+                    .mono()
+                    .on_change(Msg::HostName)
+                    .on_submit(Msg::SaveHostName)
+                    .width(240.0),
             )
             .help("The computer's name on the network: letters, digits and hyphens.")
         }
@@ -378,22 +412,33 @@ impl State {
         // At a glance, each with the pane that changes it.
         let mut glance: Vec<form::Row<Msg>> = Vec::new();
         let displays = self.displays.clone().unwrap_or_default();
-        let shown = if displays.is_empty() { vec!["Not known: the compositor didn't say".to_owned()] } else { displays };
-        let list = column(shown.into_iter().map(|d| text(d).mono().size(11.0).role(Role::Text2).into()).collect()).spacing(3.0);
+        let shown =
+            if displays.is_empty() { vec!["Not known: the compositor didn't say".to_owned()] } else { displays };
+        let list = column(shown.into_iter().map(|d| text(d).mono().size(11.0).role(Role::Text2).into()).collect())
+            .spacing(3.0);
         glance.push(
-            form::row("Displays", row![list, button("Displays…").compact().on_press(Msg::Open("displays", None))].spacing(12.0).align(Align::Center))
-                .leading(icon(Icon::Monitor).size(16.0).role(Role::Text2))
-                .entry("displays-glance"),
+            form::row(
+                "Displays",
+                row![list, button("Displays…").compact().on_press(Msg::Open("displays", None))]
+                    .spacing(12.0)
+                    .align(Align::Center),
+            )
+            .leading(icon(Icon::Monitor).size(16.0).role(Role::Text2))
+            .entry("displays-glance"),
         );
         if let Some((free, total)) = self.disk {
             let used = total.saturating_sub(free);
-            let bar = crate::widgets::bar(vec![(used as f64, crate::widgets::Segment::Ai)], total as f64, 8.0).width(120.0);
+            let bar =
+                crate::widgets::bar(vec![(used as f64, crate::widgets::Segment::Ai)], total as f64, 8.0).width(120.0);
             glance.push(
                 form::row(
                     "Storage",
                     row![
                         bar,
-                        text(format!("{} free of {}", super::storage::size(free), super::storage::size(total))).mono().size(11.0).role(Role::Text2),
+                        text(format!("{} free of {}", super::storage::size(free), super::storage::size(total)))
+                            .mono()
+                            .size(11.0)
+                            .role(Role::Text2),
                         button("Storage…").compact().on_press(Msg::Open("general", Some("storage"))),
                     ]
                     .spacing(12.0)
@@ -420,7 +465,9 @@ impl State {
         let mut col = column![
             crate::widgets::mark::<Msg>(module),
             space(if big { 10.0 } else { 4.0 }),
-            text(if name.is_empty() { "This computer".to_owned() } else { name }).size(if big { 22.0 } else { 17.0 }).weight(650.0),
+            text(if name.is_empty() { "This computer".to_owned() } else { name })
+                .size(if big { 22.0 } else { 17.0 })
+                .weight(650.0),
         ]
         .spacing(4.0)
         .align(Align::Center);
@@ -437,7 +484,12 @@ impl State {
 /// The main page's head: the mark, the name, the system.
 pub fn summary(state: &State, _vcx: &ViewCx) -> Element<G> {
     let hero = state.hero(false).map(G::About);
-    crate::widgets::press(hero).style(crate::widgets::PressStyle::Plain).on_press(G::Page(super::Page::About)).named("About").width(Fill).into()
+    crate::widgets::press(hero)
+        .style(crate::widgets::PressStyle::Plain)
+        .on_press(G::Page(super::Page::About))
+        .named("About")
+        .width(Fill)
+        .into()
 }
 
 /// "BOE NE135A1M · 2880 × 1800 at 120 Hz", or "Built-in display" for a

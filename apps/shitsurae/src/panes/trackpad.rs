@@ -52,21 +52,34 @@ impl Pane for Trackpad {
     fn entries(&self) -> Vec<SettingEntry> {
         vec![
             SettingEntry::new("tap", "Tap to click").keywords(&["touch", "tapping"]),
-            SettingEntry::new("right-click", "Secondary click").keywords(&["right click", "two finger", "corner", "context menu"]),
+            SettingEntry::new("right-click", "Secondary click").keywords(&[
+                "right click",
+                "two finger",
+                "corner",
+                "context menu",
+            ]),
             SettingEntry::new("speed", "Tracking speed").keywords(&["pointer speed", "sensitivity"]),
             SettingEntry::new("acceleration", "Pointer acceleration").keywords(&["accel", "flat", "adaptive"]),
-            SettingEntry::new("natural-scroll", "Natural scrolling").keywords(&["scroll direction", "reverse", "invert"]),
+            SettingEntry::new("natural-scroll", "Natural scrolling").keywords(&[
+                "scroll direction",
+                "reverse",
+                "invert",
+            ]),
             SettingEntry::new("scroll-speed", "Scrolling speed"),
-            SettingEntry::new("disable-while-typing", "Ignore the trackpad while typing").keywords(&["palm", "dwt", "disable while typing"]),
+            SettingEntry::new("disable-while-typing", "Ignore the trackpad while typing").keywords(&[
+                "palm",
+                "dwt",
+                "disable while typing",
+            ]),
         ]
     }
 
     fn update(&mut self, msg: Msg, cx: &mut PaneCx<Msg>) {
         match msg {
             Msg::Speed(v) => cx.change(|s| s.input.touchpad.speed = (v * 20.0).round() / 20.0),
-            Msg::Acceleration(on) => {
-                cx.change(|s| s.input.touchpad.accel_profile = if on { AccelProfile::Adaptive } else { AccelProfile::Flat })
-            }
+            Msg::Acceleration(on) => cx.change(|s| {
+                s.input.touchpad.accel_profile = if on { AccelProfile::Adaptive } else { AccelProfile::Flat }
+            }),
             Msg::Tap(on) => cx.change(|s| s.input.touchpad.tap = on),
             Msg::RightClick(m) => cx.change(|s| s.input.touchpad.click_method = m),
             Msg::Natural(on) => cx.change(|s| s.input.touchpad.natural_scroll = on),

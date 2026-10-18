@@ -100,7 +100,10 @@ pub fn rows_of(index: &AppIndex) -> Vec<RoleRow> {
                 .role_candidates(role)
                 .into_iter()
                 .map(|id| {
-                    let name = index.get(&id).map(|e| e.name.clone()).unwrap_or_else(|| id.trim_end_matches(".desktop").to_owned());
+                    let name = index
+                        .get(&id)
+                        .map(|e| e.name.clone())
+                        .unwrap_or_else(|| id.trim_end_matches(".desktop").to_owned());
                     (id, name)
                 })
                 .collect();
@@ -111,17 +114,37 @@ pub fn rows_of(index: &AppIndex) -> Vec<RoleRow> {
 
 pub fn sample_rows() -> Vec<RoleRow> {
     let c = |pairs: &[(&str, &str)]| pairs.iter().map(|(i, n)| ((*i).to_owned(), (*n).to_owned())).collect::<Vec<_>>();
-    let row = |role, current: &str, cands: Vec<(String, String)>| RoleRow { role, current: Some(current.into()), candidates: cands };
+    let row = |role, current: &str, cands: Vec<(String, String)>| RoleRow {
+        role,
+        current: Some(current.into()),
+        candidates: cands,
+    };
     vec![
-        row(DefaultRole::Browser, "firefox.desktop", c(&[("firefox.desktop", "Firefox"), ("chromium-browser.desktop", "Chromium")])),
+        row(
+            DefaultRole::Browser,
+            "firefox.desktop",
+            c(&[("firefox.desktop", "Firefox"), ("chromium-browser.desktop", "Chromium")]),
+        ),
         row(DefaultRole::Mail, "thunderbird.desktop", c(&[("thunderbird.desktop", "Thunderbird")])),
-        row(DefaultRole::Terminal, "foot.desktop", c(&[("foot.desktop", "Foot"), ("org.wezfurlong.wezterm.desktop", "WezTerm")])),
+        row(
+            DefaultRole::Terminal,
+            "foot.desktop",
+            c(&[("foot.desktop", "Foot"), ("org.wezfurlong.wezterm.desktop", "WezTerm")]),
+        ),
         row(DefaultRole::FileManager, "org.aizome.Hako.desktop", c(&[("org.aizome.Hako.desktop", "Hako")])),
-        row(DefaultRole::TextEditor, "org.aizome.Sumi.desktop", c(&[("org.aizome.Sumi.desktop", "Sumi"), ("helix.desktop", "Helix")])),
+        row(
+            DefaultRole::TextEditor,
+            "org.aizome.Sumi.desktop",
+            c(&[("org.aizome.Sumi.desktop", "Sumi"), ("helix.desktop", "Helix")]),
+        ),
         row(DefaultRole::ImageViewer, "imv.desktop", c(&[("imv.desktop", "imv"), ("firefox.desktop", "Firefox")])),
         row(DefaultRole::VideoPlayer, "mpv.desktop", c(&[("mpv.desktop", "mpv")])),
         row(DefaultRole::MusicPlayer, "mpv.desktop", c(&[("mpv.desktop", "mpv")])),
-        row(DefaultRole::PdfViewer, "org.pwmt.zathura.desktop", c(&[("org.pwmt.zathura.desktop", "Zathura"), ("firefox.desktop", "Firefox")])),
+        row(
+            DefaultRole::PdfViewer,
+            "org.pwmt.zathura.desktop",
+            c(&[("org.pwmt.zathura.desktop", "Zathura"), ("firefox.desktop", "Firefox")]),
+        ),
         row(DefaultRole::Calendar, "org.aizome.Koyomi.desktop", c(&[("org.aizome.Koyomi.desktop", "Koyomi")])),
         RoleRow { role: DefaultRole::ArchiveManager, current: None, candidates: Vec::new() },
     ]
@@ -185,9 +208,15 @@ impl State {
                     } else {
                         let names: Vec<String> = r.candidates.iter().map(|c| c.1.clone()).collect();
                         let sel = r.current.as_ref().and_then(|c| r.candidates.iter().position(|(id, _)| id == c));
-                        dropdown(names, sel).placeholder("Choose…").on_select(move |i| Msg::Set(role, i)).min_width(200.0).into()
+                        dropdown(names, sel)
+                            .placeholder("Choose…")
+                            .on_select(move |i| Msg::Set(role, i))
+                            .min_width(200.0)
+                            .into()
                     };
-                    form::row(r.role.label(), control).leading(icon(role_icon(role)).size(16.0).role(Role::Text2)).entry(role_id(role))
+                    form::row(r.role.label(), control)
+                        .leading(icon(role_icon(role)).size(16.0).role(Role::Text2))
+                        .entry(role_id(role))
                 })
                 .collect(),
         };

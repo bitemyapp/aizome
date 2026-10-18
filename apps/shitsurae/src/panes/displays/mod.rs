@@ -172,9 +172,10 @@ impl Displays {
         model::infer_mirrors(&mut ds);
         // A stable order: built-in first, then by connector.
         ds.sort_by(|a, b| b.is_builtin().cmp(&a.is_builtin()).then_with(|| a.name.cmp(&b.name)));
-        let kept = entries.iter().find(|e| model::is_primary(e)).and_then(|e| {
-            ds.iter().find(|d| d.config_key().matches(e)).map(|d| d.name.clone())
-        });
+        let kept = entries
+            .iter()
+            .find(|e| model::is_primary(e))
+            .and_then(|e| ds.iter().find(|d| d.config_key().matches(e)).map(|d| d.name.clone()));
         let settings: Vec<Settings> = ds.iter().map(|d| d.settings.clone()).collect();
         self.main = model::main_display(&settings, self.main.as_deref().or(kept.as_deref()));
         if !ds.iter().any(|d| d.name == self.selected) {
@@ -188,7 +189,12 @@ impl Displays {
     }
 
     /// Change the settings with `edit`; `confirm` asks to keep risky ones.
-    fn change(&mut self, cx: &mut PaneCx<Msg>, confirm: bool, edit: impl FnOnce(&mut Vec<Settings>, &mut Option<String>)) {
+    fn change(
+        &mut self,
+        cx: &mut PaneCx<Msg>,
+        confirm: bool,
+        edit: impl FnOnce(&mut Vec<Settings>, &mut Option<String>),
+    ) {
         if self.applying || self.keep.is_some() {
             cx.say("A display change is still in progress");
             return;
@@ -346,7 +352,9 @@ impl Displays {
                 let d = s.primary()?;
                 Some(self.brightness.shown.unwrap_or_else(|| d.fraction()))
             }
-            None if self.comp.as_ref().is_some_and(|c| matches!(c, Compositor::Sample(_))) => Some(self.brightness.sample),
+            None if self.comp.as_ref().is_some_and(|c| matches!(c, Compositor::Sample(_))) => {
+                Some(self.brightness.sample)
+            }
             None => None,
         }
     }
@@ -381,12 +389,33 @@ impl Pane for Displays {
 
     fn entries(&self) -> Vec<SettingEntry> {
         vec![
-            SettingEntry::new("arrangement", "Arrangement").keywords(&["arrange", "position", "layout", "drag", "left", "right"]),
-            SettingEntry::new("use-as", "Use as").keywords(&["main display", "primary", "extend", "mirror", "turn off", "disable"]),
-            SettingEntry::new("resolution", "Resolution").keywords(&["scale", "scaling", "larger text", "more space", "hidpi", "retina"]),
+            SettingEntry::new("arrangement", "Arrangement")
+                .keywords(&["arrange", "position", "layout", "drag", "left", "right"]),
+            SettingEntry::new("use-as", "Use as").keywords(&[
+                "main display",
+                "primary",
+                "extend",
+                "mirror",
+                "turn off",
+                "disable",
+            ]),
+            SettingEntry::new("resolution", "Resolution").keywords(&[
+                "scale",
+                "scaling",
+                "larger text",
+                "more space",
+                "hidpi",
+                "retina",
+            ]),
             SettingEntry::new("fractional", "Fractional scaling").keywords(&["1.5", "125%", "150%"]),
             SettingEntry::new("refresh-rate", "Refresh rate").keywords(&["hz", "120", "144", "frequency"]),
-            SettingEntry::new("rotation", "Rotation").keywords(&["rotate", "portrait", "landscape", "flip", "orientation"]),
+            SettingEntry::new("rotation", "Rotation").keywords(&[
+                "rotate",
+                "portrait",
+                "landscape",
+                "flip",
+                "orientation",
+            ]),
             SettingEntry::new("brightness", "Brightness").keywords(&["backlight", "dim"]),
         ]
     }
@@ -444,7 +473,9 @@ impl Pane for Displays {
                 self.selected = name.clone();
                 self.change(cx, false, move |settings, _| model::place(settings, &name, x, y));
             }
-            Msg::UseAs(name, used) => self.change(cx, true, move |settings, main| model::use_as(settings, main, &name, used)),
+            Msg::UseAs(name, used) => {
+                self.change(cx, true, move |settings, main| model::use_as(settings, main, &name, used))
+            }
             Msg::Resolution(name, (width, height)) => {
                 let modes = self.displays.iter().find(|d| d.name == name).map(|d| d.modes.clone()).unwrap_or_default();
                 self.edit(cx, &name, true, move |s| {
@@ -501,7 +532,8 @@ impl Pane for Displays {
                         match confirm {
                             Some((before, before_main)) => {
                                 let timer = cx.every(Duration::from_secs(1), Msg::Tick);
-                                self.keep = Some(Keep { before, before_main, names, left: KEEP_SECONDS, timer: Some(timer) });
+                                self.keep =
+                                    Some(Keep { before, before_main, names, left: KEEP_SECONDS, timer: Some(timer) });
                                 cx.open_sheet();
                             }
                             None if persist => self.persist(&names, cx),
@@ -588,5 +620,4 @@ impl Displays {
     pub(crate) fn fractional_now(&self) -> bool {
         self.fractional
     }
-
 }

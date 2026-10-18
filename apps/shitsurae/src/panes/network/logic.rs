@@ -7,7 +7,9 @@
 use std::net::{IpAddr, Ipv4Addr};
 
 use aizome_sys::Error;
-use aizome_sys::network::{ConnectionKind, Device, DeviceKind, DeviceState, NetworkState, SavedConnection, Security, WifiNetwork};
+use aizome_sys::network::{
+    ConnectionKind, Device, DeviceKind, DeviceState, NetworkState, SavedConnection, Security, WifiNetwork,
+};
 
 /// DNS providers, as in Tatami's network panel and Omarchy's Setup › DNS.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -234,7 +236,9 @@ pub fn in_range(state: &NetworkState) -> (Vec<&WifiNetwork>, Vec<&WifiNetwork>) 
     for n in state.networks.iter().filter(|n| !n.connected) {
         if n.known { known.push(n) } else { others.push(n) }
     }
-    let order = |a: &&WifiNetwork, b: &&WifiNetwork| b.bars().cmp(&a.bars()).then_with(|| a.ssid.to_lowercase().cmp(&b.ssid.to_lowercase()));
+    let order = |a: &&WifiNetwork, b: &&WifiNetwork| {
+        b.bars().cmp(&a.bars()).then_with(|| a.ssid.to_lowercase().cmp(&b.ssid.to_lowercase()))
+    };
     known.sort_by(order);
     others.sort_by(order);
     (known, others)

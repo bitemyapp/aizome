@@ -502,8 +502,20 @@ pub struct Confirm<Msg> {
 }
 
 impl<Msg> Confirm<Msg> {
-    pub fn new(title: impl Into<String>, message: impl Into<String>, action: impl Into<String>, on_confirm: Msg) -> Self {
-        Confirm { title: title.into(), message: message.into(), action: action.into(), on_confirm, on_cancel: None, destructive: false }
+    pub fn new(
+        title: impl Into<String>,
+        message: impl Into<String>,
+        action: impl Into<String>,
+        on_confirm: Msg,
+    ) -> Self {
+        Confirm {
+            title: title.into(),
+            message: message.into(),
+            action: action.into(),
+            on_confirm,
+            on_cancel: None,
+            destructive: false,
+        }
     }
 
     /// The action button in red: it removes or turns off something.
@@ -615,7 +627,11 @@ impl<'a, 'c, Msg: Clone + Send + Sync + 'static> PaneCx<'a, 'c, Msg> {
 
     /// Wait for an `aizome-sys` task on a thread of its own (it may wait
     /// for a polkit prompt), then send `f(result)`.
-    pub fn wait<T: Send + 'static>(&mut self, task: Task<T>, f: impl FnOnce(aizome_sys::Result<T>) -> Msg + Send + 'static) {
+    pub fn wait<T: Send + 'static>(
+        &mut self,
+        task: Task<T>,
+        f: impl FnOnce(aizome_sys::Result<T>) -> Msg + Send + 'static,
+    ) {
         let tx = self.stream();
         let spawned = std::thread::Builder::new().name("shitsurae-wait".into()).spawn(move || {
             tx.send(f(task.wait()));

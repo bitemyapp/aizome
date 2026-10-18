@@ -222,7 +222,11 @@ pub fn sample_users() -> UsersState {
     };
     UsersState {
         available: true,
-        users: vec![user(1000, "aiko", "Aiko Mori", true), user(1001, "ren", "Ren Ishida", false), user(1002, "guest", "Guest", false)],
+        users: vec![
+            user(1000, "aiko", "Aiko Mori", true),
+            user(1001, "ren", "Ren Ishida", false),
+            user(1002, "guest", "Guest", false),
+        ],
         current_uid: 1000,
         users_managed: false,
     }
@@ -243,6 +247,11 @@ fn passwd_me() -> Me {
             if p.is_null() { String::new() } else { std::ffi::CStr::from_ptr(p).to_string_lossy().into_owned() }
         };
         let gecos = s(pw.pw_gecos);
-        Me { login: s(pw.pw_name), real_name: gecos.split(',').next().unwrap_or("").to_owned(), picture: None, admin: false }
+        Me {
+            login: s(pw.pw_name),
+            real_name: gecos.split(',').next().unwrap_or("").to_owned(),
+            picture: None,
+            admin: false,
+        }
     }
 }

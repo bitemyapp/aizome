@@ -78,7 +78,8 @@ pub fn thumbnail(path: &Path) -> Option<Image> {
     }
     let k = (THUMB.width / s.width).max(THUMB.height / s.height);
     let (w, h) = (s.width * k, s.height * k);
-    let dst = Rect::new((THUMB.width - w) / 2.0, (THUMB.height - h) / 2.0, (THUMB.width + w) / 2.0, (THUMB.height + h) / 2.0);
+    let dst =
+        Rect::new((THUMB.width - w) / 2.0, (THUMB.height - h) / 2.0, (THUMB.width + w) / 2.0, (THUMB.height + h) / 2.0);
     Some(offscreen::render(THUMB, 2.0, Look::DARK, |c| c.draw_image(&image, dst)))
 }
 
@@ -112,10 +113,22 @@ pub fn sample() -> Vec<(PathBuf, Image)> {
         Image::from_rgba(w, h, &px).expect("pixels").with_scale(0.5)
     };
     vec![
-        (PathBuf::from("/run/current-system/sw/share/backgrounds/aizome/ai-dusk.png"), make(0x16161e, 0x3d59a1, 0xe0af68)),
-        (PathBuf::from("/run/current-system/sw/share/backgrounds/aizome/hanada-morning.png"), make(0xa9c4ff, 0xf4f5fa, 0xffffff)),
-        (PathBuf::from("/run/current-system/sw/share/backgrounds/aizome/kon-night.png"), make(0x0b0c12, 0x24283b, 0x7aa2f7)),
-        (PathBuf::from("/run/current-system/sw/share/backgrounds/aizome/kohaku.png"), make(0x24283b, 0x9a6a12, 0xf5c542)),
+        (
+            PathBuf::from("/run/current-system/sw/share/backgrounds/aizome/ai-dusk.png"),
+            make(0x16161e, 0x3d59a1, 0xe0af68),
+        ),
+        (
+            PathBuf::from("/run/current-system/sw/share/backgrounds/aizome/hanada-morning.png"),
+            make(0xa9c4ff, 0xf4f5fa, 0xffffff),
+        ),
+        (
+            PathBuf::from("/run/current-system/sw/share/backgrounds/aizome/kon-night.png"),
+            make(0x0b0c12, 0x24283b, 0x7aa2f7),
+        ),
+        (
+            PathBuf::from("/run/current-system/sw/share/backgrounds/aizome/kohaku.png"),
+            make(0x24283b, 0x9a6a12, 0xf5c542),
+        ),
         (PathBuf::from("/home/aiko/Pictures/kamenozoki.jpg"), make(0x7aa2f7, 0xdde0ec, 0xffffff)),
         (PathBuf::from("/home/aiko/Pictures/violet-hour.jpg"), make(0x1a1b26, 0x7247c9, 0xf7768e)),
     ]

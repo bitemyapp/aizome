@@ -28,7 +28,11 @@ fn dragging_a_display_puts_it_beside_the_other() {
     settle(&mut h, |h| has(h, "Use as"));
     let area = h.find_id(w, "entry:displays.arrangement").expect("the arrangement");
     let value = |h: &aizome_kit::testing::Harness<shitsurae::Shitsurae>| {
-        h.semantics(w).into_iter().find(|(s, _)| s.label.as_deref() == Some("Display arrangement")).and_then(|(s, _)| s.value).unwrap_or_default()
+        h.semantics(w)
+            .into_iter()
+            .find(|(s, _)| s.label.as_deref() == Some("Display arrangement"))
+            .and_then(|(s, _)| s.value)
+            .unwrap_or_default()
     };
     let before = value(&h);
     assert!(before.contains("Built-in Display at 0, 180"), "{before}");
@@ -44,7 +48,10 @@ fn dragging_a_display_puts_it_beside_the_other() {
 
 /// Let background work (sample tasks, the sample compositor) come back:
 /// flush the window until `until` holds, up to two seconds.
-fn settle(h: &mut aizome_kit::testing::Harness<shitsurae::Shitsurae>, until: impl Fn(&aizome_kit::testing::Harness<shitsurae::Shitsurae>) -> bool) {
+fn settle(
+    h: &mut aizome_kit::testing::Harness<shitsurae::Shitsurae>,
+    until: impl Fn(&aizome_kit::testing::Harness<shitsurae::Shitsurae>) -> bool,
+) {
     for _ in 0..400 {
         if until(h) {
             return;
@@ -77,6 +84,11 @@ fn turning_a_display_off_asks_to_keep_it() {
     settle(&mut h, |h| !has(h, "Keep these display settings?"));
     assert!(has(&h, "14-inch display · eDP-1 · off"), "{:?}", h.texts(w));
     // The other display is the main one now, alone in the arrangement.
-    let value = h.semantics(w).into_iter().find(|(s, _)| s.label.as_deref() == Some("Display arrangement")).and_then(|(s, _)| s.value).unwrap();
+    let value = h
+        .semantics(w)
+        .into_iter()
+        .find(|(s, _)| s.label.as_deref() == Some("Display arrangement"))
+        .and_then(|(s, _)| s.value)
+        .unwrap();
     assert_eq!(value, "ASUSTek PG27UCDM at 0, 0 (main)");
 }

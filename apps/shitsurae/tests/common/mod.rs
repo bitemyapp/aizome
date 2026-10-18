@@ -13,7 +13,11 @@ static N: AtomicU32 = AtomicU32::new(0);
 
 /// A fresh directory for a test's files.
 pub fn temp_dir(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("shitsurae-test-{}-{name}-{}", std::process::id(), N.fetch_add(1, Ordering::SeqCst)));
+    let dir = std::env::temp_dir().join(format!(
+        "shitsurae-test-{}-{name}-{}",
+        std::process::id(),
+        N.fetch_add(1, Ordering::SeqCst)
+    ));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).expect("a temporary directory");
     dir

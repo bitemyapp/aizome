@@ -4,8 +4,8 @@
 //! can be driven without touching the machine.
 
 use aizome_sys::network::{
-    AccessPoint, ActiveConnection, ActiveState, Band, ConnectionKind, Device, DeviceKind, DeviceState, IpConfig, Metered,
-    NetworkState, NmState, Profile, Proxy, SavedConnection, Security, WifiNetwork,
+    AccessPoint, ActiveConnection, ActiveState, Band, ConnectionKind, Device, DeviceKind, DeviceState, IpConfig,
+    Metered, NetworkState, NmState, Profile, Proxy, SavedConnection, Security, WifiNetwork,
 };
 
 const WLAN: &str = "/org/freedesktop/NetworkManager/Devices/3";
@@ -28,7 +28,14 @@ fn network(ssid: &str, strength: u8, security: Security, bands: &[Band], uuid: O
     }
 }
 
-fn saved(uuid: &str, id: &str, kind: ConnectionKind, ssid: Option<&str>, key_mgmt: Option<&str>, days_ago: u64) -> SavedConnection {
+fn saved(
+    uuid: &str,
+    id: &str,
+    kind: ConnectionKind,
+    ssid: Option<&str>,
+    key_mgmt: Option<&str>,
+    days_ago: u64,
+) -> SavedConnection {
     let now = super::logic::now_secs();
     SavedConnection {
         path: format!("/settings/{uuid}"),
@@ -202,7 +209,8 @@ pub fn join(state: &mut NetworkState, ssid: &str, password: Option<&str>) -> Res
     let Some(i) = state.networks.iter().position(|n| n.ssid == ssid) else {
         return Err(aizome_sys::Error::Failed("The network is out of range".into()));
     };
-    let uuid = state.networks[i].connection.clone().unwrap_or_else(|| format!("c-{}", ssid.to_lowercase().replace(' ', "-")));
+    let uuid =
+        state.networks[i].connection.clone().unwrap_or_else(|| format!("c-{}", ssid.to_lowercase().replace(' ', "-")));
     if state.connection(&uuid).is_none() {
         let security = state.networks[i].security;
         state.connections.insert(0, saved(&uuid, ssid, ConnectionKind::Wifi, Some(ssid), security.key_mgmt(), 0));

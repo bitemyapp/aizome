@@ -3,6 +3,7 @@
 //! rail, its hard shadow, and a sliver of the Deskbar. Appearance and
 //! Accessibility show one per theme, drawn with the kit's canvas.
 
+use aizome_kit::Image;
 use aizome_kit::draw;
 use aizome_kit::element::Element;
 use aizome_kit::hash::PaintHasher;
@@ -11,7 +12,6 @@ use aizome_kit::sidestep_ui::Canvas;
 use aizome_kit::sidestep_ui::kurbo::BezPath;
 use aizome_kit::theme::color;
 use aizome_kit::widget::{LayoutCx, PaintCx, SemanticRole, Semantics, Widget};
-use aizome_kit::Image;
 use aizome_theme::{Brand, Effects, FocusColor, Palette, Rgba, ThemeName};
 
 /// What a preview shows.
@@ -102,14 +102,17 @@ fn snap(r: Rect) -> Rect {
 /// The mini desktop in `p`, filling `r`.
 pub fn paint_desktop(c: &mut Canvas, r: Rect, p: &Palette, effects: Effects, wallpaper: Option<&Image>) {
     let (w, h) = (r.width(), r.height());
-    let at = |x: f64, y: f64, ww: f64, hh: f64| snap(Rect::new(r.x0 + x * w, r.y0 + y * h, r.x0 + (x + ww) * w, r.y0 + (y + hh) * h));
+    let at = |x: f64, y: f64, ww: f64, hh: f64| {
+        snap(Rect::new(r.x0 + x * w, r.y0 + y * h, r.x0 + (x + ww) * w, r.y0 + (y + hh) * h))
+    };
     match wallpaper {
         // The picture, covering the desktop.
         Some(img) => {
             let s = img.size();
             let k = (w / s.width).max(h / s.height);
             let (iw, ih) = (s.width * k, s.height * k);
-            let dst = Rect::new(r.x0 + (w - iw) / 2.0, r.y0 + (h - ih) / 2.0, r.x0 + (w + iw) / 2.0, r.y0 + (h + ih) / 2.0);
+            let dst =
+                Rect::new(r.x0 + (w - iw) / 2.0, r.y0 + (h - ih) / 2.0, r.x0 + (w + iw) / 2.0, r.y0 + (h + ih) / 2.0);
             c.save();
             c.clip_rect(r);
             c.draw_image(img, dst);
@@ -167,7 +170,10 @@ pub fn paint_desktop(c: &mut Canvas, r: Rect, p: &Palette, effects: Effects, wal
         if i == 1 {
             c.fill_rect(Rect::new(deskbar.x0 + 2.0, y - 1.0, deskbar.x0 + 4.0, y + 3.0), color(p.focus));
         }
-        c.fill_rect(Rect::new(deskbar.x0 + 6.0, y, deskbar.x0 + 6.0 + (deskbar.width() - 10.0) * ww, y + 2.0), color(col));
+        c.fill_rect(
+            Rect::new(deskbar.x0 + 6.0, y, deskbar.x0 + 6.0 + (deskbar.width() - 10.0) * ww, y + 2.0),
+            color(col),
+        );
         y += 6.0;
     }
 
@@ -177,7 +183,15 @@ pub fn paint_desktop(c: &mut Canvas, r: Rect, p: &Palette, effects: Effects, wal
     let back_tab = Rect::new(back.x0, back.y0 - tab_h, back.x0 + (back.width() * 0.5).round(), back.y0);
     shadow(c, back.union(back_tab));
     c.fill_rect(back_tab, color(p.tab_idle));
-    c.fill_rect(Rect::new(back_tab.x0 + 3.0, back_tab.y0 + (tab_h / 2.0).round() - 1.0, back_tab.x1 - 4.0, back_tab.y0 + (tab_h / 2.0).round() + 1.0), color(p.tab_idle_text.with_alpha(0.7)));
+    c.fill_rect(
+        Rect::new(
+            back_tab.x0 + 3.0,
+            back_tab.y0 + (tab_h / 2.0).round() - 1.0,
+            back_tab.x1 - 4.0,
+            back_tab.y0 + (tab_h / 2.0).round() + 1.0,
+        ),
+        color(p.tab_idle_text.with_alpha(0.7)),
+    );
     c.fill_rect(back, color(p.surface));
     draw::border(c, back, color(p.bevel_lo), 1.0);
     let mut y = back.y0 + 5.0;
@@ -193,8 +207,21 @@ pub fn paint_desktop(c: &mut Canvas, r: Rect, p: &Palette, effects: Effects, wal
     shadow(c, front.union(tab));
     c.fill_rect(tab, color(p.focus));
     let box_s = (tab_h - 3.0).max(2.0);
-    draw::border(c, Rect::new(tab.x0 + 2.0, tab.y0 + 1.5, tab.x0 + 2.0 + box_s, tab.y0 + 1.5 + box_s), color(p.on_focus), 1.0);
-    c.fill_rect(Rect::new(tab.x0 + box_s + 5.0, tab.y0 + (tab_h / 2.0).round() - 1.0, tab.x1 - 4.0, tab.y0 + (tab_h / 2.0).round() + 1.0), color(p.on_focus));
+    draw::border(
+        c,
+        Rect::new(tab.x0 + 2.0, tab.y0 + 1.5, tab.x0 + 2.0 + box_s, tab.y0 + 1.5 + box_s),
+        color(p.on_focus),
+        1.0,
+    );
+    c.fill_rect(
+        Rect::new(
+            tab.x0 + box_s + 5.0,
+            tab.y0 + (tab_h / 2.0).round() - 1.0,
+            tab.x1 - 4.0,
+            tab.y0 + (tab_h / 2.0).round() + 1.0,
+        ),
+        color(p.on_focus),
+    );
     c.fill_rect(front, color(p.surface));
     let side = Rect::new(front.x0, front.y0, front.x0 + (front.width() * 0.3).round(), front.y1);
     c.fill_rect(side, color(p.chrome));

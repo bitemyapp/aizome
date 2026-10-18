@@ -62,8 +62,18 @@ pub enum Msg {
 
 pub fn entries() -> Vec<SettingEntry> {
     vec![
-        SettingEntry::new("system-language", "Language").under("Language & Region").keywords(&["locale", "translation", "lang"]),
-        SettingEntry::new("region", "Region formats").under("Language & Region").keywords(&["date format", "number format", "currency", "units", "metric"]),
+        SettingEntry::new("system-language", "Language").under("Language & Region").keywords(&[
+            "locale",
+            "translation",
+            "lang",
+        ]),
+        SettingEntry::new("region", "Region formats").under("Language & Region").keywords(&[
+            "date format",
+            "number format",
+            "currency",
+            "units",
+            "metric",
+        ]),
     ]
 }
 
@@ -159,7 +169,9 @@ pub fn describe(locale: &str) -> String {
 /// `en_GB.utf8` → `en_GB.UTF-8`.
 pub fn normalize(locale: &str) -> String {
     match locale.split_once('.') {
-        Some((base, enc)) if enc.eq_ignore_ascii_case("utf8") || enc.eq_ignore_ascii_case("utf-8") => format!("{base}.UTF-8"),
+        Some((base, enc)) if enc.eq_ignore_ascii_case("utf8") || enc.eq_ignore_ascii_case("utf-8") => {
+            format!("{base}.UTF-8")
+        }
         _ => locale.to_owned(),
     }
 }
@@ -206,7 +218,8 @@ pub fn formats_of(locale: &str) -> Formats {
     }
     .to_owned();
     let first = run("locale", &["first_weekday"]).parse::<usize>().unwrap_or(1);
-    let first_day = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][(first + 6) % 7].to_owned();
+    let first_day =
+        ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][(first + 6) % 7].to_owned();
     let money = run("printf", &["%'.2f", "1234.56"]);
     Formats { date, long_date, time, number, currency: format!("{symbol}{money}"), measurement, first_day }
 }
@@ -223,15 +236,32 @@ pub fn sample_formats(locale: &str) -> Formats {
         first_day: w.into(),
     };
     match locale.split('.').next().unwrap_or("") {
-        "en_US" => f("10/17/2026", "Saturday 17 October 2026", "09:42:00 PM", "1,234,567.89", "$1,234.56", "US customary", "Sunday"),
-        "ja_JP" => f("2026年10月17日", "土曜日 17 10月 2026", "21時42分00秒", "1,234,567.89", "￥1,234.56", "Metric", "Sunday"),
-        "de_DE" => f("17.10.2026", "Samstag 17 Oktober 2026", "21:42:00", "1.234.567,89", "€1.234,56", "Metric", "Monday"),
+        "en_US" => f(
+            "10/17/2026",
+            "Saturday 17 October 2026",
+            "09:42:00 PM",
+            "1,234,567.89",
+            "$1,234.56",
+            "US customary",
+            "Sunday",
+        ),
+        "ja_JP" => {
+            f("2026年10月17日", "土曜日 17 10月 2026", "21時42分00秒", "1,234,567.89", "￥1,234.56", "Metric", "Sunday")
+        }
+        "de_DE" => {
+            f("17.10.2026", "Samstag 17 Oktober 2026", "21:42:00", "1.234.567,89", "€1.234,56", "Metric", "Monday")
+        }
         _ => f("17/10/26", "Saturday 17 October 2026", "21:42:00", "1,234,567.89", "£1,234.56", "Metric", "Monday"),
     }
 }
 
 fn sample_state() -> LocaleState {
-    LocaleState { available: true, locale: vec!["LANG=en_GB.UTF-8".into()], locale_managed: false, ..LocaleState::default() }
+    LocaleState {
+        available: true,
+        locale: vec!["LANG=en_GB.UTF-8".into()],
+        locale_managed: false,
+        ..LocaleState::default()
+    }
 }
 
 impl State {
@@ -250,11 +280,16 @@ impl State {
 
     pub fn shown(&mut self, cx: &mut PaneCx<G>) {
         if self.svc.is_none() {
-            self.svc = Some(if cx.sample() { Svc::Sample(Cell::new(sample_state(), cx.wake())) } else { Svc::Live(Locale::new(cx.wake())) });
+            self.svc = Some(if cx.sample() {
+                Svc::Sample(Cell::new(sample_state(), cx.wake()))
+            } else {
+                Svc::Live(Locale::new(cx.wake()))
+            });
         }
         if self.available.is_none() {
             if cx.sample() {
-                self.available = Some(vec!["de_DE.UTF-8".into(), "en_GB.UTF-8".into(), "en_US.UTF-8".into(), "ja_JP.UTF-8".into()]);
+                self.available =
+                    Some(vec!["de_DE.UTF-8".into(), "en_GB.UTF-8".into(), "en_US.UTF-8".into(), "ja_JP.UTF-8".into()]);
             } else {
                 cx.spawn(|| G::Language(Msg::Available(installed())));
             }
@@ -280,7 +315,9 @@ impl State {
             Some(Svc::Sample(c)) => c.update(move |s| s.locale = entries),
             None => return,
         };
-        cx.wait(task, |r| G::Language(Msg::Done("Language and formats apply when you next log in", r.map_err(|e| e.to_string()))));
+        cx.wait(task, |r| {
+            G::Language(Msg::Done("Language and formats apply when you next log in", r.map_err(|e| e.to_string())))
+        });
     }
 
     pub fn update(&mut self, msg: Msg, cx: &mut PaneCx<G>) {
@@ -289,7 +326,8 @@ impl State {
             Msg::Preview(l, f) => self.preview = Some((l, f)),
             Msg::Language(i) => {
                 let Some(l) = self.available.as_ref().and_then(|v| v.get(i)).cloned() else { return };
-                let mut entries: Vec<String> = self.snapshot().locale.iter().filter(|e| !e.starts_with("LANG=")).cloned().collect();
+                let mut entries: Vec<String> =
+                    self.snapshot().locale.iter().filter(|e| !e.starts_with("LANG=")).cloned().collect();
                 entries.insert(0, format!("LANG={l}"));
                 self.set(entries, cx);
             }
@@ -321,10 +359,17 @@ impl State {
         let available = self.available.clone().unwrap_or_default();
         let mut rows = Vec::new();
         if s.locale_managed {
-            rows.push(form::managed("Language", describe(&lang), "Change i18n.defaultLocale in the system configuration.").entry("system-language"));
             rows.push(
-                form::managed("Region formats", region.as_deref().map(describe).unwrap_or_else(|| "The language's own".into()), "Change i18n.extraLocaleSettings.")
-                    .entry("region"),
+                form::managed("Language", describe(&lang), "Change i18n.defaultLocale in the system configuration.")
+                    .entry("system-language"),
+            );
+            rows.push(
+                form::managed(
+                    "Region formats",
+                    region.as_deref().map(describe).unwrap_or_else(|| "The language's own".into()),
+                    "Change i18n.extraLocaleSettings.",
+                )
+                .entry("region"),
             );
         } else {
             let names: Vec<String> = available.iter().map(|l| describe(l)).collect();
@@ -332,7 +377,10 @@ impl State {
             rows.push(
                 form::row(
                     "Language",
-                    dropdown(names.clone(), lang_i).placeholder(describe(&lang)).on_select(Msg::Language).min_width(220.0),
+                    dropdown(names.clone(), lang_i)
+                        .placeholder(describe(&lang))
+                        .on_select(Msg::Language)
+                        .min_width(220.0),
                 )
                 .entry("system-language")
                 .help("Menus, messages and apps speak it, where they've been translated. Applies at the next login."),
@@ -353,9 +401,12 @@ impl State {
             None => progress_indeterminate().width(160.0).into(),
             Some((_, f)) => {
                 let line = |k: &str, v: &str| -> Element<Msg> {
-                    row![text(k.to_owned()).size(12.0).role(Role::Text3).width(120.0), text(v.to_owned()).mono().size(12.0).selectable()]
-                        .spacing(8.0)
-                        .into()
+                    row![
+                        text(k.to_owned()).size(12.0).role(Role::Text3).width(120.0),
+                        text(v.to_owned()).mono().size(12.0).selectable()
+                    ]
+                    .spacing(8.0)
+                    .into()
                 };
                 column![
                     line("Date", &f.date),

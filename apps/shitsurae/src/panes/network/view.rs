@@ -17,7 +17,9 @@ pub fn page(n: &Network, vcx: &ViewCx) -> Element<Msg> {
     if n.is_live() && !state.available {
         return form::page(vec![
             form::heading("NetworkManager isn't running", "Networks are joined and set up through NetworkManager."),
-            form::note("On NixOS it's turned on with networking.networkmanager.enable = true; your account needs the networkmanager group (or polkit's permission) to change connections."),
+            form::note(
+                "On NixOS it's turned on with networking.networkmanager.enable = true; your account needs the networkmanager group (or polkit's permission) to change connections.",
+            ),
         ]);
     }
     match n.page_now() {
@@ -30,7 +32,14 @@ pub fn page(n: &Network, vcx: &ViewCx) -> Element<Msg> {
 /// A row that's one pressable line in a card.
 fn line<Msg: Clone + Send + 'static>(content: impl Into<Element<Msg>>, msg: Option<Msg>, name: &str) -> Row<Msg> {
     let content = container(content).min_height(24.0).align_y(Align::Center).width(Fill);
-    form::whole(press(content).style(PressStyle::Plain).padding([8.0, 12.0]).on_press_maybe(msg).named(name.to_owned()).width(Fill))
+    form::whole(
+        press(content)
+            .style(PressStyle::Plain)
+            .padding([8.0, 12.0])
+            .on_press_maybe(msg)
+            .named(name.to_owned())
+            .width(Fill),
+    )
 }
 
 /// A row's leading glyph, in the room a form row's tile takes, so
@@ -91,7 +100,11 @@ fn main(n: &Network, vcx: &ViewCx, state: &NetworkState) -> Element<Msg> {
     top.push(
         form::row("Airplane Mode", toggle(state.airplane_mode).on_toggle(Msg::Airplane))
             .leading(tile(Icon::Plane, Tile::Kohaku, 24.0))
-            .detail(if state.airplane_mode { "Every radio is off".to_owned() } else { "Turns off Wi-Fi, Bluetooth and mobile radios".to_owned() })
+            .detail(if state.airplane_mode {
+                "Every radio is off".to_owned()
+            } else {
+                "Turns off Wi-Fi, Bluetooth and mobile radios".to_owned()
+            })
             .entry("airplane"),
     );
     sections.push(vcx.section("", top));
@@ -104,13 +117,21 @@ fn main(n: &Network, vcx: &ViewCx, state: &NetworkState) -> Element<Msg> {
         }
         let mut rows: Vec<Row<Msg>> = others.iter().map(|w| network_row(n, state, w)).collect();
         if state.networks.is_empty() {
-            rows.push(line(row![lead(spinner(14.0)), text("Looking for networks…").role(Role::Text3)].spacing(12.0), None, "Looking for networks"));
+            rows.push(line(
+                row![lead(spinner(14.0)), text("Looking for networks…").role(Role::Text3)].spacing(12.0),
+                None,
+                "Looking for networks",
+            ));
         }
         rows.push(
             line(
                 row![
                     lead(icon(Icon::CirclePlus).size(16.0).role(Role::Text2)),
-                    two_lines("Other Network…", Some("Join a hidden network by its name, or with an account".into()), false),
+                    two_lines(
+                        "Other Network…",
+                        Some("Join a hidden network by its name, or with an account".into()),
+                        false
+                    ),
                 ]
                 .spacing(12.0)
                 .align(Align::Center),
@@ -122,7 +143,13 @@ fn main(n: &Network, vcx: &ViewCx, state: &NetworkState) -> Element<Msg> {
         let tail: Element<Msg> = if n.is_scanning() {
             spinner(14.0)
         } else {
-            icon_button(Icon::RefreshCw).plain().compact().on_press(Msg::Scan).tooltip("Look for networks").label("Look for networks").into()
+            icon_button(Icon::RefreshCw)
+                .plain()
+                .compact()
+                .on_press(Msg::Scan)
+                .tooltip("Look for networks")
+                .label("Look for networks")
+                .into()
         };
         sections.push(section_with_tail(vcx, "Other Networks", tail, mark_first(rows, "networks")));
     }
@@ -181,20 +208,26 @@ fn main(n: &Network, vcx: &ViewCx, state: &NetworkState) -> Element<Msg> {
     let count = state.saved_wifi().count();
     if has_wifi && count > 0 {
         let words = if count == 1 { "1 network".to_owned() } else { format!("{count} networks") };
-        sections.push(vcx.section(
-            "",
-            vec![
-                line(
-                    row![lead(icon(Icon::Bookmark).size(16.0).role(Role::Text2)), two_lines("Saved Networks", Some(words), false), icon(Icon::ChevronRight).size(14.0).role(Role::Text3)]
+        sections.push(
+            vcx.section(
+                "",
+                vec![
+                    line(
+                        row![
+                            lead(icon(Icon::Bookmark).size(16.0).role(Role::Text2)),
+                            two_lines("Saved Networks", Some(words), false),
+                            icon(Icon::ChevronRight).size(14.0).role(Role::Text3)
+                        ]
                         .spacing(12.0)
                         .align(Align::Center)
                         .width(Fill),
-                    Some(Msg::Open(Page::Saved)),
-                    "Saved Networks",
-                )
-                .entry("saved"),
-            ],
-        ));
+                        Some(Msg::Open(Page::Saved)),
+                        "Saved Networks",
+                    )
+                    .entry("saved"),
+                ],
+            ),
+        );
     }
     form::page(sections)
 }
@@ -209,7 +242,13 @@ fn mark_first(mut rows: Vec<Row<Msg>>, entry: &str) -> Vec<Row<Msg>> {
 }
 
 fn details_button(uuid: &str) -> Element<Msg> {
-    icon_button(Icon::Info).plain().compact().on_press(Msg::Open(Page::Details(uuid.to_owned()))).tooltip("Details").label("Details").into()
+    icon_button(Icon::Info)
+        .plain()
+        .compact()
+        .on_press(Msg::Open(Page::Details(uuid.to_owned())))
+        .tooltip("Details")
+        .label("Details")
+        .into()
 }
 
 fn current_row(state: &NetworkState, w: &WifiNetwork) -> Row<Msg> {
@@ -266,7 +305,11 @@ fn vpn_row(n: &Network, state: &NetworkState, c: &SavedConnection) -> Row<Msg> {
     let up = matches!(words, "Connected" | "Connecting…");
     let busy = n.is_busy(&c.uuid) || words.ends_with('…');
     let mut r = row![
-        lead(icon(if up { Icon::ShieldCheck } else { Icon::Shield }).size(18.0).role(if up { Role::Success } else { Role::Text3 })),
+        lead(icon(if up { Icon::ShieldCheck } else { Icon::Shield }).size(18.0).role(if up {
+            Role::Success
+        } else {
+            Role::Text3
+        })),
         two_lines(c.id.clone(), Some(format!("{} · {words}", logic::vpn_kind(c))), up),
     ]
     .spacing(12.0)
@@ -304,16 +347,24 @@ fn saved(vcx: &ViewCx, state: &NetworkState) -> Element<Msg> {
                 None => icon(Icon::Wifi).size(16.0).role(Role::Faint).into(),
             };
             line(
-                row![lead(glyph), two_lines(c.id.clone(), Some(logic::saved_words(c, now)), c.active), icon(Icon::ChevronRight).size(14.0).role(Role::Text3)]
-                    .spacing(12.0)
-                    .align(Align::Center)
-                    .width(Fill),
+                row![
+                    lead(glyph),
+                    two_lines(c.id.clone(), Some(logic::saved_words(c, now)), c.active),
+                    icon(Icon::ChevronRight).size(14.0).role(Role::Text3)
+                ]
+                .spacing(12.0)
+                .align(Align::Center)
+                .width(Fill),
                 Some(Msg::Open(Page::Details(c.uuid.clone()))),
                 &c.id,
             )
         })
         .collect();
-    let mut sections = vec![back_heading("Network", "Saved Networks", "Networks this computer has joined. Open one to change how it joins, or to forget it.")];
+    let mut sections = vec![back_heading(
+        "Network",
+        "Saved Networks",
+        "Networks this computer has joined. Open one to change how it joins, or to forget it.",
+    )];
     if rows.is_empty() {
         sections.push(form::note("No saved networks."));
     } else {
@@ -388,7 +439,9 @@ fn details(n: &Network, vcx: &ViewCx, state: &NetworkState, uuid: &str) -> Eleme
             status.push(form::value_mono("Hardware address", d.hardware_address.clone()));
         }
         match (d.speed_mbps.filter(|s| *s > 0), d.frequency_mhz) {
-            (Some(s), Some(f)) => status.push(form::value("Link", format!("{} · {}", logic::speed_words(s), logic::band_words(f)))),
+            (Some(s), Some(f)) => {
+                status.push(form::value("Link", format!("{} · {}", logic::speed_words(s), logic::band_words(f))))
+            }
             (Some(s), None) => status.push(form::value("Link speed", logic::speed_words(s))),
             _ => {}
         }
@@ -412,15 +465,22 @@ fn details(n: &Network, vcx: &ViewCx, state: &NetworkState, uuid: &str) -> Eleme
     let mut joining: Vec<Row<Msg>> = Vec::new();
     let u = uuid.to_owned();
     joining.push(
-        form::row(if wifi { "Join automatically" } else { "Connect automatically" }, toggle(profile.autoconnect).on_toggle(move |on| Msg::Autoconnect(u.clone(), on)))
-            .entry("auto-join"),
+        form::row(
+            if wifi { "Join automatically" } else { "Connect automatically" },
+            toggle(profile.autoconnect).on_toggle(move |on| Msg::Autoconnect(u.clone(), on)),
+        )
+        .entry("auto-join"),
     );
     if profile.has_ip() {
         let u = uuid.to_owned();
         joining.push(
-            form::row("Metered connection", toggle(profile.metered == aizome_sys::network::Metered::Yes).on_toggle(move |on| Msg::Metered(u.clone(), on)))
-                .help("Apps may wait to download large updates on it")
-                .entry("metered"),
+            form::row(
+                "Metered connection",
+                toggle(profile.metered == aizome_sys::network::Metered::Yes)
+                    .on_toggle(move |on| Msg::Metered(u.clone(), on)),
+            )
+            .help("Apps may wait to download large updates on it")
+            .entry("metered"),
         );
     }
     if wifi {
@@ -443,7 +503,9 @@ fn details(n: &Network, vcx: &ViewCx, state: &NetworkState, uuid: &str) -> Eleme
                 Some(id) => format!("Signed in as {id}; kept by this computer"),
                 None => "Kept by this computer".to_owned(),
             };
-            joining.push(form::row("Password", button("Change…").on_press(Msg::ChangePassword(uuid.to_owned()))).help(help));
+            joining.push(
+                form::row("Password", button("Change…").on_press(Msg::ChangePassword(uuid.to_owned()))).help(help),
+            );
         }
     }
     sections.push(vcx.section("Joining", joining));
@@ -462,7 +524,16 @@ fn details(n: &Network, vcx: &ViewCx, state: &NetworkState, uuid: &str) -> Eleme
             Some(url) => format!("Automatic, from {url}"),
             None => "Automatic (WPAD)".to_owned(),
         };
-        sections.push(vcx.section("Proxy", vec![form::value("Proxy", words).help_maybe(profile.proxy.browser_only.then(|| "For web browsers only".to_owned())).entry("proxy")]));
+        sections.push(
+            vcx.section(
+                "Proxy",
+                vec![
+                    form::value("Proxy", words)
+                        .help_maybe(profile.proxy.browser_only.then(|| "For web browsers only".to_owned()))
+                        .entry("proxy"),
+                ],
+            ),
+        );
     }
 
     if wifi || vpn {
@@ -471,13 +542,16 @@ fn details(n: &Network, vcx: &ViewCx, state: &NetworkState, uuid: &str) -> Eleme
         } else {
             ("Remove This VPN…", "Its configuration is removed from this computer.")
         };
-        sections.push(vcx.section("", vec![form::row(help, button(label).destructive().on_press(Msg::Forget(uuid.to_owned())))]));
+        sections.push(
+            vcx.section("", vec![form::row(help, button(label).destructive().on_press(Msg::Forget(uuid.to_owned())))]),
+        );
     }
     form::page(sections)
 }
 
 fn ipv4_section(vcx: &ViewCx, uuid: &str, p: &Profile, edit: &super::Edit) -> Element<Msg> {
-    let mut methods: Vec<(String, String)> = vec![("auto".into(), "Automatically (DHCP)".into()), ("manual".into(), "Manually".into())];
+    let mut methods: Vec<(String, String)> =
+        vec![("auto".into(), "Automatically (DHCP)".into()), ("manual".into(), "Manually".into())];
     if !["auto", "manual"].contains(&p.ipv4_method.as_str()) {
         methods.push((p.ipv4_method.clone(), format!("Other ({})", p.ipv4_method)));
     }
@@ -486,22 +560,39 @@ fn ipv4_section(vcx: &ViewCx, uuid: &str, p: &Profile, edit: &super::Edit) -> El
     let labels: Vec<&str> = methods.iter().map(|(_, l)| l.as_str()).collect();
     let u = uuid.to_owned();
     let other = methods.len() > 2;
-    let mut rows = vec![form::row("Configure IPv4", form::choice(&labels, selected, move |i| {
-        // An unknown method chosen again changes nothing.
-        if other && i == 2 { Msg::Done(String::new(), Ok(())) } else { Msg::Ipv4(u.clone(), i) }
-    }))
-    .entry("ipv4")];
+    let mut rows = vec![
+        form::row(
+            "Configure IPv4",
+            form::choice(&labels, selected, move |i| {
+                // An unknown method chosen again changes nothing.
+                if other && i == 2 { Msg::Done(String::new(), Ok(())) } else { Msg::Ipv4(u.clone(), i) }
+            }),
+        )
+        .entry("ipv4"),
+    ];
     if manual {
         let u = uuid.to_owned();
         rows.push(form::row(
             "IP address",
-            text_field(&edit.address).placeholder("192.168.1.20/24").mono().on_change(Msg::AddressText).on_submit(Msg::ApplyAddress(u.clone())).id("network-address").width(200.0),
+            text_field(&edit.address)
+                .placeholder("192.168.1.20/24")
+                .mono()
+                .on_change(Msg::AddressText)
+                .on_submit(Msg::ApplyAddress(u.clone()))
+                .id("network-address")
+                .width(200.0),
         ));
         rows.push(
             form::row(
                 "Router",
                 row![
-                    text_field(&edit.router).placeholder("192.168.1.1").mono().on_change(Msg::RouterText).on_submit(Msg::ApplyAddress(u.clone())).id("network-router").width(140.0),
+                    text_field(&edit.router)
+                        .placeholder("192.168.1.1")
+                        .mono()
+                        .on_change(Msg::RouterText)
+                        .on_submit(Msg::ApplyAddress(u.clone()))
+                        .id("network-router")
+                        .width(140.0),
                     button("Apply").on_press(Msg::ApplyAddress(u)),
                 ]
                 .spacing(8.0),
@@ -522,16 +613,27 @@ fn dns_section(vcx: &ViewCx, uuid: &str, p: &Profile, edit: &super::Edit) -> Ele
         Dns::Custom => None,
         d => Some(d.servers().join(" · ")),
     };
-    let mut rows = vec![form::row("DNS servers", form::choice(&labels, selected, move |i| Msg::DnsChoice(u.clone(), Dns::ALL[i.min(Dns::ALL.len() - 1)])))
+    let mut rows = vec![
+        form::row(
+            "DNS servers",
+            form::choice(&labels, selected, move |i| Msg::DnsChoice(u.clone(), Dns::ALL[i.min(Dns::ALL.len() - 1)])),
+        )
         .help_maybe(help)
-        .entry("dns")];
+        .entry("dns"),
+    ];
     if current == Dns::Custom {
         let u = uuid.to_owned();
         rows.push(
             form::row(
                 "Servers",
                 row![
-                    text_field(&edit.dns).placeholder("9.9.9.9 2620:fe::fe").mono().on_change(Msg::DnsText).on_submit(Msg::ApplyDns(u.clone())).id("network-dns").width(220.0),
+                    text_field(&edit.dns)
+                        .placeholder("9.9.9.9 2620:fe::fe")
+                        .mono()
+                        .on_change(Msg::DnsText)
+                        .on_submit(Msg::ApplyDns(u.clone()))
+                        .id("network-dns")
+                        .width(220.0),
                     button("Apply").on_press(Msg::ApplyDns(u)),
                 ]
                 .spacing(8.0),
@@ -543,7 +645,8 @@ fn dns_section(vcx: &ViewCx, uuid: &str, p: &Profile, edit: &super::Edit) -> Ele
 }
 
 fn ipv6_section(vcx: &ViewCx, uuid: &str, p: &Profile) -> Element<Msg> {
-    let mut methods: Vec<(String, String)> = vec![("auto".into(), "Automatically".into()), ("disabled".into(), "Off".into())];
+    let mut methods: Vec<(String, String)> =
+        vec![("auto".into(), "Automatically".into()), ("disabled".into(), "Off".into())];
     if !["auto", "disabled"].contains(&p.ipv6_method.as_str()) {
         methods.push((p.ipv6_method.clone(), format!("Other ({})", p.ipv6_method)));
     }
@@ -551,8 +654,15 @@ fn ipv6_section(vcx: &ViewCx, uuid: &str, p: &Profile) -> Element<Msg> {
     let labels: Vec<&str> = methods.iter().map(|(_, l)| l.as_str()).collect();
     let values: Vec<String> = methods.iter().map(|(m, _)| m.clone()).collect();
     let u = uuid.to_owned();
-    let mut rows = vec![form::row("Configure IPv6", form::choice(&labels, selected, move |i| Msg::Ipv6(u.clone(), values.get(i).cloned().unwrap_or_else(|| "auto".into()))))
-        .entry("ipv6")];
+    let mut rows = vec![
+        form::row(
+            "Configure IPv6",
+            form::choice(&labels, selected, move |i| {
+                Msg::Ipv6(u.clone(), values.get(i).cloned().unwrap_or_else(|| "auto".into()))
+            }),
+        )
+        .entry("ipv6"),
+    ];
     if !p.ipv6_addresses.is_empty() {
         rows.push(form::value_mono("Fixed addresses", p.ipv6_addresses.join("\n")));
     }
@@ -625,39 +735,89 @@ fn form_sheet(f: &JoinForm) -> Element<Msg> {
     } else {
         "This network signs you in with an account from your organization."
     };
-    let mut col = column![text(title).size(15.0).weight(650.0), text(message).role(Role::Text2).wrap()].spacing(12.0).width(Fill);
+    let mut col =
+        column![text(title).size(15.0).weight(650.0), text(message).role(Role::Text2).wrap()].spacing(12.0).width(Fill);
     if f.hidden {
         let labels: Vec<&str> = FORM_SECURITY.iter().map(|(l, _)| *l).collect();
-        col = col.push(labelled("Network name", text_field(&f.name).on_change(|v| Msg::SheetField(Field::Name(v))).id("network-name").width(Fill)));
-        col = col.push(labelled("Security", dropdown(labels.iter().map(|s| (*s).to_owned()), f.security).on_select(|i| Msg::SheetField(Field::Security(i))).width(Fill)));
+        col = col.push(labelled(
+            "Network name",
+            text_field(&f.name).on_change(|v| Msg::SheetField(Field::Name(v))).id("network-name").width(Fill),
+        ));
+        col = col.push(labelled(
+            "Security",
+            dropdown(labels.iter().map(|s| (*s).to_owned()), f.security)
+                .on_select(|i| Msg::SheetField(Field::Security(i)))
+                .width(Fill),
+        ));
     }
     if f.enterprise() {
         let methods: Vec<String> = EAP_METHODS.iter().map(|(l, _)| (*l).to_owned()).collect();
         let inner: Vec<String> = EAP_INNER.iter().map(|(l, _)| (*l).to_owned()).collect();
         col = col.push(
             row![
-                labelled("Method", dropdown(methods, f.method).on_select(|i| Msg::SheetField(Field::Method(i))).width(Fill)).width(Fill),
-                labelled("Inner authentication", dropdown(inner, f.inner).on_select(|i| Msg::SheetField(Field::Inner(i))).width(Fill)).width(Fill),
+                labelled(
+                    "Method",
+                    dropdown(methods, f.method).on_select(|i| Msg::SheetField(Field::Method(i))).width(Fill)
+                )
+                .width(Fill),
+                labelled(
+                    "Inner authentication",
+                    dropdown(inner, f.inner).on_select(|i| Msg::SheetField(Field::Inner(i))).width(Fill)
+                )
+                .width(Fill),
             ]
             .spacing(12.0)
             .width(Fill),
         );
-        col = col.push(labelled("Username", text_field(&f.username).on_change(|v| Msg::SheetField(Field::Username(v))).id("network-username").width(Fill)));
-        col = col.push(labelled("Password", text_field(&f.password).password().on_change(|v| Msg::SheetField(Field::Password(v))).on_submit(Msg::SheetSubmit).width(Fill)));
-        col = col.push(checkbox("Check the server's certificate", f.validate).on_toggle(|v| Msg::SheetField(Field::Validate(v))));
+        col = col.push(labelled(
+            "Username",
+            text_field(&f.username)
+                .on_change(|v| Msg::SheetField(Field::Username(v)))
+                .id("network-username")
+                .width(Fill),
+        ));
+        col = col.push(labelled(
+            "Password",
+            text_field(&f.password)
+                .password()
+                .on_change(|v| Msg::SheetField(Field::Password(v)))
+                .on_submit(Msg::SheetSubmit)
+                .width(Fill),
+        ));
+        col = col.push(
+            checkbox("Check the server's certificate", f.validate).on_toggle(|v| Msg::SheetField(Field::Validate(v))),
+        );
         if f.validate {
-            col = col.push(labelled("Server domain", text_field(&f.domain).placeholder("radius.example.org").on_change(|v| Msg::SheetField(Field::Domain(v))).width(Fill)));
+            col = col.push(labelled(
+                "Server domain",
+                text_field(&f.domain)
+                    .placeholder("radius.example.org")
+                    .on_change(|v| Msg::SheetField(Field::Domain(v)))
+                    .width(Fill),
+            ));
         } else {
-            col = col.push(text("Without the check, a look-alike network could take your password.").size(11.0).role(Role::Warning).wrap());
+            col = col.push(
+                text("Without the check, a look-alike network could take your password.")
+                    .size(11.0)
+                    .role(Role::Warning)
+                    .wrap(),
+            );
         }
-        col = col.push(labelled("Anonymous identity (optional)", text_field(&f.anonymous).on_change(|v| Msg::SheetField(Field::Anonymous(v))).width(Fill)));
+        col = col.push(labelled(
+            "Anonymous identity (optional)",
+            text_field(&f.anonymous).on_change(|v| Msg::SheetField(Field::Anonymous(v))).width(Fill),
+        ));
     } else if let Some(s) = f.personal() {
         col = col.push(labelled(
             "Password",
-            text_field(&f.password).password().placeholder(format!("At least {} characters", logic::minimum_password(s))).on_change(|v| Msg::SheetField(Field::Password(v))).on_submit(Msg::SheetSubmit).width(Fill),
+            text_field(&f.password)
+                .password()
+                .placeholder(format!("At least {} characters", logic::minimum_password(s)))
+                .on_change(|v| Msg::SheetField(Field::Password(v)))
+                .on_submit(Msg::SheetSubmit)
+                .width(Fill),
         ));
     }
     col = col.push(buttons("Join", f.ready()));
     col.into()
 }
-

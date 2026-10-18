@@ -108,7 +108,8 @@ impl Pane for Notifications {
         vec![
             SettingEntry::new("dnd", "Do Not Disturb").keywords(&["quiet", "focus", "silence", "dnd"]),
             SettingEntry::new("schedule", "Quiet hours").keywords(&["schedule", "night", "do not disturb"]),
-            SettingEntry::new("banner-time", "How long notifications show").keywords(&["banner", "duration", "seconds"]),
+            SettingEntry::new("banner-time", "How long notifications show")
+                .keywords(&["banner", "duration", "seconds"]),
             SettingEntry::new("previews", "Show previews when locked").keywords(&["lock screen", "privacy"]),
             SettingEntry::new("apps", "Notifications by app").keywords(&["per app", "mute", "sounds", "allow"]),
         ]
@@ -203,7 +204,10 @@ impl Pane for Notifications {
         let silent = extra::get_list(&s.notifications, "silent_apps").unwrap_or_default();
         let mut app_rows: Vec<form::Row<Msg>> = match &self.apps {
             None => vec![form::whole(container(progress_indeterminate().width(160.0)).padding([16.0, form::INSET]))],
-            Some(apps) if apps.is_empty() => vec![form::whole(container(text("No app has said it sends notifications.").role(Role::Text3)).padding([12.0, form::INSET]))],
+            Some(apps) if apps.is_empty() => vec![form::whole(
+                container(text("No app has said it sends notifications.").role(Role::Text3))
+                    .padding([12.0, form::INSET]),
+            )],
             Some(apps) => apps
                 .iter()
                 .map(|(id, name)| {
@@ -225,7 +229,10 @@ impl Pane for Notifications {
                     } else {
                         "In the menu bar, then the Deskbar"
                     };
-                    form::row(name.clone(), controls).leading(icon(crate::widgets::app_glyph(id)).size(16.0).role(Role::Text2)).detail(detail).compact()
+                    form::row(name.clone(), controls)
+                        .leading(icon(crate::widgets::app_glyph(id)).size(16.0).role(Role::Text2))
+                        .detail(detail)
+                        .compact()
                 })
                 .collect(),
         };
@@ -238,12 +245,16 @@ impl Pane for Notifications {
             vcx.section(
                 "Showing",
                 vec![
-                    form::row("Show in the menu bar for", form::segments(&["3 s", "5 s", "8 s", "12 s", "20 s"], secs_i, Msg::Seconds))
-                        .entry("banner-time")
-                        .help("A notification takes the menu bar's line, then files itself under its app."),
+                    form::row(
+                        "Show in the menu bar for",
+                        form::segments(&["3 s", "5 s", "8 s", "12 s", "20 s"], secs_i, Msg::Seconds),
+                    )
+                    .entry("banner-time")
+                    .help("A notification takes the menu bar's line, then files itself under its app."),
                     form::row(
                         "Show previews when locked",
-                        toggle(extra::get_bool(&s.notifications, "previews_when_locked", false)).on_toggle(Msg::Previews),
+                        toggle(extra::get_bool(&s.notifications, "previews_when_locked", false))
+                            .on_toggle(Msg::Previews),
                     )
                     .entry("previews")
                     .help("Off, the lock screen says only which app has news."),

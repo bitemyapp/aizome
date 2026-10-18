@@ -30,7 +30,13 @@ fn frame(h: &mut Harness<Shitsurae>, act: impl FnOnce(&mut Harness<Shitsurae>)) 
 fn report(name: &str, mut frames: Vec<Duration>) -> Duration {
     frames.sort();
     let p = |q: f64| frames[((frames.len() - 1) as f64 * q) as usize];
-    eprintln!("shitsurae {name}: p50 {:?} p95 {:?} max {:?} (n={}, at 2x)", p(0.5), p(0.95), frames.last().unwrap(), frames.len());
+    eprintln!(
+        "shitsurae {name}: p50 {:?} p95 {:?} max {:?} (n={}, at 2x)",
+        p(0.5),
+        p(0.95),
+        frames.last().unwrap(),
+        frames.len()
+    );
     p(0.95)
 }
 
@@ -54,7 +60,9 @@ fn typical_interactions_fit_the_frame_budget() {
 
     // Moving between panes from the sidebar.
     let mut moves = Vec::new();
-    for (i, pane) in ["Keyboard", "Mouse", "Appearance", "General", "Trackpad", "Users & Groups"].iter().cycle().take(36).enumerate() {
+    for (i, pane) in
+        ["Keyboard", "Mouse", "Appearance", "General", "Trackpad", "Users & Groups"].iter().cycle().take(36).enumerate()
+    {
         let at = h.find(w, pane).expect("in the sidebar");
         let t = frame(&mut h, |h| h.click(w, at.center()));
         if i > 5 {

@@ -30,7 +30,11 @@ fn bluetooth_shows_devices_and_pairs_with_a_code() {
     let mut h = open("bluetooth", "bluetooth", "WH-1000XM5");
     let w = h.window();
     for want in ["My Devices", "MX Master 3S", "Connected · 14%", "JBL Flip 6", "Pixel Watch 2"] {
-        assert!(h.texts(w).iter().any(|t| t == want || t == &want.to_uppercase()), "{want} missing from {:?}", h.texts(w));
+        assert!(
+            h.texts(w).iter().any(|t| t == want || t == &want.to_uppercase()),
+            "{want} missing from {:?}",
+            h.texts(w)
+        );
     }
     shots(&mut h, "bluetooth");
     // Pairing a nearby speaker asks to compare a code.
@@ -38,8 +42,10 @@ fn bluetooth_shows_devices_and_pairs_with_a_code() {
     let jbl = h.find(w, "JBL Flip 6").expect("the speaker");
     let _ = texts;
     // Its Connect button is at the row's right.
-    let connects: Vec<_> = h.semantics(w).into_iter().filter(|(s, _)| s.label.as_deref() == Some("Connect")).map(|(_, r)| r).collect();
-    let button = connects.into_iter().find(|r| (r.center().y - jbl.center().y).abs() < 20.0).expect("its Connect button");
+    let connects: Vec<_> =
+        h.semantics(w).into_iter().filter(|(s, _)| s.label.as_deref() == Some("Connect")).map(|(_, r)| r).collect();
+    let button =
+        connects.into_iter().find(|r| (r.center().y - jbl.center().y).abs() < 20.0).expect("its Connect button");
     h.click(w, button.center());
     settle(&mut h, |h| has(h, "Pair with “JBL Flip 6”?"));
     assert!(has(&h, "482 913"), "{:?}", h.texts(w));
@@ -54,7 +60,16 @@ fn bluetooth_shows_devices_and_pairs_with_a_code() {
 fn sound_lists_devices_apps_and_meters_the_input() {
     let mut h = open("sound", "sound", "Built-in Speakers");
     let w = h.window();
-    for want in ["Built-in Speakers", "WH-1000XM5", "Built-in Microphone", "Output volume", "Balance", "Input level", "Spotify", "Alert volume"] {
+    for want in [
+        "Built-in Speakers",
+        "WH-1000XM5",
+        "Built-in Microphone",
+        "Output volume",
+        "Balance",
+        "Input level",
+        "Spotify",
+        "Alert volume",
+    ] {
         assert!(h.texts(w).iter().any(|t| t == want), "{want} missing from {:?}", h.texts(w));
     }
     // The meter moves with the sample's voice.

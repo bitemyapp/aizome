@@ -21,7 +21,17 @@ fn shows_wifi_networks_and_vpns() {
     let w = h.window();
     assert_eq!(h.program().pane_id(), "network");
     let texts = h.texts(w);
-    for want in ["Wi-Fi", "Kohaku", "Aizome Studio", "Hanada Café", "Other Network…", "Office", "Saved Networks", "Ethernet", "Cable unplugged"] {
+    for want in [
+        "Wi-Fi",
+        "Kohaku",
+        "Aizome Studio",
+        "Hanada Café",
+        "Other Network…",
+        "Office",
+        "Saved Networks",
+        "Ethernet",
+        "Cable unplugged",
+    ] {
         assert!(texts.iter().any(|t| t == want), "{want} missing from {texts:?}");
     }
     h.save_png(w, common::shots_dir().join("network-night.png"), 2.0);
@@ -69,7 +79,15 @@ fn details_show_addresses_and_settings() {
     assert!(h.click_text(w, "Details…"));
     settle(&mut h, |h| has(h, "Configure IPv4"));
     let texts = h.texts(w);
-    for want in ["Join automatically", "Metered connection", "Private address", "DNS servers", "Configure IPv6", "Forget This Network…", "192.168.10.42/24\nfd00:10::42/64"] {
+    for want in [
+        "Join automatically",
+        "Metered connection",
+        "Private address",
+        "DNS servers",
+        "Configure IPv6",
+        "Forget This Network…",
+        "192.168.10.42/24\nfd00:10::42/64",
+    ] {
         assert!(texts.iter().any(|t| t == want), "{want} missing from {texts:?}");
     }
     h.save_png(w, common::shots_dir().join("network-details.png"), 2.0);
@@ -113,7 +131,9 @@ fn a_vpn_switches_on_and_a_network_is_forgotten() {
     let switches: Vec<_> = h
         .semantics(w)
         .into_iter()
-        .filter(|(s, r)| s.role == aizome_kit::widget::SemanticRole::Switch && (r.center().y - office.center().y).abs() < 20.0)
+        .filter(|(s, r)| {
+            s.role == aizome_kit::widget::SemanticRole::Switch && (r.center().y - office.center().y).abs() < 20.0
+        })
         .map(|(_, r)| r)
         .collect();
     h.click(w, switches[0].center());

@@ -13,7 +13,9 @@ use aizome_kit::sidestep_ui::kurbo::BezPath;
 use aizome_kit::text::TextSpec;
 use aizome_kit::widget::{LayoutCx, PaintCx, SemanticRole, Semantics, Widget};
 use aizome_kit::{FontSpec, column, draw, row};
-use aizome_sys::power::{BatteryState, HistoryPoint, PowerDevice, PowerKind, PowerProfiles, Profile, ProfilesState, Upower, UpowerState};
+use aizome_sys::power::{
+    BatteryState, HistoryPoint, PowerDevice, PowerKind, PowerProfiles, Profile, ProfilesState, Upower, UpowerState,
+};
 
 use super::lock::{minutes_at, minutes_choice};
 use crate::extra;
@@ -62,24 +64,38 @@ pub enum Msg {
     Done(&'static str, Result<(), String>),
 }
 
-pub const POWER_KEY: [(&str, &str); 5] =
-    [("ask", "Ask what to do"), ("sleep", "Sleep"), ("lock", "Lock the screen"), ("off", "Shut down"), ("nothing", "Nothing")];
+pub const POWER_KEY: [(&str, &str); 5] = [
+    ("ask", "Ask what to do"),
+    ("sleep", "Sleep"),
+    ("lock", "Lock the screen"),
+    ("off", "Shut down"),
+    ("nothing", "Nothing"),
+];
 
 /// logind.conf's settings, from the file and its drop-ins (later wins).
 pub fn read_logind() -> Logind {
-    let mut l = Logind { power_key: "poweroff".into(), lid: "suspend".into(), lid_on_power: String::new(), lid_docked: "ignore".into(), managed: false };
+    let mut l = Logind {
+        power_key: "poweroff".into(),
+        lid: "suspend".into(),
+        lid_on_power: String::new(),
+        lid_docked: "ignore".into(),
+        managed: false,
+    };
     let main = std::path::Path::new("/etc/systemd/logind.conf");
     let mut files = vec![main.to_path_buf()];
     for dir in ["/etc/systemd/logind.conf.d", "/run/systemd/logind.conf.d"] {
         if let Ok(rd) = std::fs::read_dir(dir) {
-            let mut v: Vec<_> = rd.flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|e| e == "conf")).collect();
+            let mut v: Vec<_> =
+                rd.flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|e| e == "conf")).collect();
             v.sort();
             files.extend(v);
         }
     }
     for f in &files {
         let Ok(text) = std::fs::read_to_string(f) else { continue };
-        if std::fs::read_link(f).is_ok_and(|t| t.starts_with("/etc/static") || t.starts_with("/nix/store")) || f.starts_with("/etc/static") {
+        if std::fs::read_link(f).is_ok_and(|t| t.starts_with("/etc/static") || t.starts_with("/nix/store"))
+            || f.starts_with("/etc/static")
+        {
             l.managed = true;
         }
         for line in text.lines() {
@@ -164,12 +180,24 @@ fn sample_battery() -> UpowerState {
         state: BatteryState::Discharging,
         ..PowerDevice::default()
     };
-    UpowerState { available: true, on_battery: true, lid_present: true, display: Some(battery.clone()), devices: vec![battery, mouse], ..UpowerState::default() }
+    UpowerState {
+        available: true,
+        on_battery: true,
+        lid_present: true,
+        display: Some(battery.clone()),
+        devices: vec![battery, mouse],
+        ..UpowerState::default()
+    }
 }
 
 fn sample_profiles() -> ProfilesState {
     let p = |n: &str| Profile { name: n.into(), driver: "platform_profile".into() };
-    ProfilesState { available: true, active: "balanced".into(), profiles: vec![p("power-saver"), p("balanced"), p("performance")], ..ProfilesState::default() }
+    ProfilesState {
+        available: true,
+        active: "balanced".into(),
+        profiles: vec![p("power-saver"), p("balanced"), p("performance")],
+        ..ProfilesState::default()
+    }
 }
 
 /// The sample's last day: charged overnight, unplugged at nine, a top-up
@@ -255,7 +283,13 @@ impl Pane for Battery {
             SettingEntry::new("charge", "Battery charge").keywords(&["level", "time left", "percentage"]),
             SettingEntry::new("history", "Charge over the last day").keywords(&["usage", "graph"]),
             SettingEntry::new("health", "Battery health").keywords(&["capacity", "cycles", "condition", "wear"]),
-            SettingEntry::new("mode", "Power mode").keywords(&["power saver", "balanced", "performance", "profile", "low power"]),
+            SettingEntry::new("mode", "Power mode").keywords(&[
+                "power saver",
+                "balanced",
+                "performance",
+                "profile",
+                "low power",
+            ]),
             SettingEntry::new("screen-off", "Turn the screen off after").keywords(&["display sleep", "blank", "idle"]),
             SettingEntry::new("lock-after", "Lock after").keywords(&["idle", "screen lock"]),
             SettingEntry::new("power-key", "Power key").keywords(&["power button", "shutdown"]),
@@ -268,12 +302,26 @@ impl Pane for Battery {
     fn shown(&mut self, cx: &mut PaneCx<Msg>) {
         let sample = cx.sample();
         if self.batteries.is_none() {
-            self.batteries = Some(if sample { Batteries::Sample(Cell::new(sample_battery(), cx.wake())) } else { Batteries::Live(Upower::new(cx.wake())) });
-            self.modes = Some(if sample { Modes::Sample(Cell::new(sample_profiles(), cx.wake())) } else { Modes::Live(PowerProfiles::new(cx.wake())) });
+            self.batteries = Some(if sample {
+                Batteries::Sample(Cell::new(sample_battery(), cx.wake()))
+            } else {
+                Batteries::Live(Upower::new(cx.wake()))
+            });
+            self.modes = Some(if sample {
+                Modes::Sample(Cell::new(sample_profiles(), cx.wake()))
+            } else {
+                Modes::Live(PowerProfiles::new(cx.wake()))
+            });
         }
         if sample {
             self.history = Some(Arc::new(sample_history(1_792_273_320)));
-            self.logind = Some(Logind { power_key: "poweroff".into(), lid: "suspend".into(), lid_on_power: String::new(), lid_docked: "ignore".into(), managed: true });
+            self.logind = Some(Logind {
+                power_key: "poweroff".into(),
+                lid: "suspend".into(),
+                lid_on_power: String::new(),
+                lid_docked: "ignore".into(),
+                managed: true,
+            });
         } else {
             self.fetch_history(cx);
             cx.spawn(|| Msg::Logind(read_logind()));
@@ -302,9 +350,13 @@ impl Pane for Battery {
                 };
                 cx.wait(task, |r| Msg::Done("Power mode", r.map_err(|e| e.to_string())));
             }
-            Msg::ScreenOff(i) => cx.change(|s| s.idle.monitors_off_after_minutes = minutes_at(s.idle.monitors_off_after_minutes, i)),
+            Msg::ScreenOff(i) => {
+                cx.change(|s| s.idle.monitors_off_after_minutes = minutes_at(s.idle.monitors_off_after_minutes, i))
+            }
             Msg::LockAfter(i) => cx.change(|s| s.idle.lock_after_minutes = minutes_at(s.idle.lock_after_minutes, i)),
-            Msg::PowerKey(i) => cx.change(|s| extra::set(&mut s.power, "power_key", POWER_KEY[i.min(POWER_KEY.len() - 1)].0)),
+            Msg::PowerKey(i) => {
+                cx.change(|s| extra::set(&mut s.power, "power_key", POWER_KEY[i.min(POWER_KEY.len() - 1)].0))
+            }
             Msg::Percent(on) => cx.change(|s| {
                 let mut m = s.menubar_settings();
                 m.battery_percent = on;
@@ -322,14 +374,16 @@ impl Pane for Battery {
         if let Some(b) = st.batteries().next() {
             let (line, role) = match b.state {
                 BatteryState::Charging => (
-                    b.time_to_full.map_or_else(|| "Charging".to_owned(), |d| format!("Charging, full in {}", duration_words(d))),
+                    b.time_to_full
+                        .map_or_else(|| "Charging".to_owned(), |d| format!("Charging, full in {}", duration_words(d))),
                     Role::Success,
                 ),
                 BatteryState::FullyCharged => ("Charged".to_owned(), Role::Success),
                 BatteryState::PendingCharge => ("Plugged in, not charging".to_owned(), Role::Text2),
                 _ if st.plugged_in() => ("Plugged in".to_owned(), Role::Text2),
                 _ => (
-                    b.time_to_empty.map_or_else(|| "On battery".to_owned(), |d| format!("On battery, {} left", duration_words(d))),
+                    b.time_to_empty
+                        .map_or_else(|| "On battery".to_owned(), |d| format!("On battery, {} left", duration_words(d))),
                     Role::Text2,
                 ),
             };
@@ -338,7 +392,10 @@ impl Pane for Battery {
                 column![
                     text(format!("{:.0}%", b.percentage)).mono().size(30.0).weight(600.0).tabular(),
                     text(line).role(role),
-                    text(if b.energy_rate > 0.0 { format!("{:.1} W", b.energy_rate) } else { String::new() }).mono().size(11.0).role(Role::Text3),
+                    text(if b.energy_rate > 0.0 { format!("{:.1} W", b.energy_rate) } else { String::new() })
+                        .mono()
+                        .size(11.0)
+                        .role(Role::Text3),
                 ]
                 .spacing(3.0),
             ]
@@ -346,24 +403,39 @@ impl Pane for Battery {
             .align(Align::Center);
             let history: Element<Msg> = match &self.history {
                 Some(h) if h.len() > 1 => chart(h.clone(), if vcx.sample() { 1_792_273_320 } else { now() }),
-                _ => container(text("No history yet: UPower records it as the battery is used.").size(11.0).role(Role::Text3)).padding([8.0, 0.0]).into(),
+                _ => container(
+                    text("No history yet: UPower records it as the battery is used.").size(11.0).role(Role::Text3),
+                )
+                .padding([8.0, 0.0])
+                .into(),
             };
-            sections.push(vcx.section(
-                "Battery",
-                vec![
-                    form::whole(container(hero).padding([14.0, form::INSET]).width(Fill)).entry("charge"),
-                    form::whole(container(column![form::caption::<Msg>("Last 24 hours"), history].spacing(6.0)).padding([4.0, form::INSET, 12.0, form::INSET]).width(Fill))
+            sections.push(
+                vcx.section(
+                    "Battery",
+                    vec![
+                        form::whole(container(hero).padding([14.0, form::INSET]).width(Fill)).entry("charge"),
+                        form::whole(
+                            container(column![form::caption::<Msg>("Last 24 hours"), history].spacing(6.0))
+                                .padding([4.0, form::INSET, 12.0, form::INSET])
+                                .width(Fill),
+                        )
                         .entry("history"),
-                ],
-            ));
-            let mut health = vec![form::value("Maximum capacity", format!("{:.0}%", b.capacity))
-                .entry("health")
-                .help("How much it holds now, against what it held new. Under 80% it's worth replacing.")];
+                    ],
+                ),
+            );
+            let mut health = vec![
+                form::value("Maximum capacity", format!("{:.0}%", b.capacity))
+                    .entry("health")
+                    .help("How much it holds now, against what it held new. Under 80% it's worth replacing."),
+            ];
             if let Some(c) = b.charge_cycles {
                 health.push(form::value_mono("Charge cycles", c.to_string()));
             }
             if b.energy_full_design > 0.0 {
-                health.push(form::value_mono("Holds", format!("{:.1} Wh of {:.1} Wh", b.energy_full, b.energy_full_design)));
+                health.push(form::value_mono(
+                    "Holds",
+                    format!("{:.1} Wh of {:.1} Wh", b.energy_full, b.energy_full_design),
+                ));
             }
             if !b.model.is_empty() {
                 health.push(form::value_mono("Battery", format!("{} {}", b.vendor, b.model).trim().to_owned()));
@@ -386,35 +458,56 @@ impl Pane for Battery {
             for h in &p.holds {
                 help.push_str(&format!(" {} holds {} ({}).", h.application_id, profile_title(&h.profile), h.reason));
             }
-            sections.push(vcx.section("Power Mode", vec![form::row("Power mode", form::segments(&names, i, Msg::Mode)).entry("mode").help(help)]));
+            sections.push(vcx.section(
+                "Power Mode",
+                vec![form::row("Power mode", form::segments(&names, i, Msg::Mode)).entry("mode").help(help)],
+            ));
         }
 
         let (off, off_i) = minutes_choice(s.idle.monitors_off_after_minutes);
         let (lock, lock_i) = minutes_choice(s.idle.lock_after_minutes);
-        sections.push(vcx.section(
-            "Screen",
-            vec![
-                form::row("Turn the screen off after", dropdown(off, off_i).on_select(Msg::ScreenOff).min_width(150.0)).entry("screen-off"),
-                form::row("Lock after", dropdown(lock, lock_i).on_select(Msg::LockAfter).min_width(150.0)).entry("lock-after"),
-            ],
-        ));
+        sections.push(
+            vcx.section(
+                "Screen",
+                vec![
+                    form::row(
+                        "Turn the screen off after",
+                        dropdown(off, off_i).on_select(Msg::ScreenOff).min_width(150.0),
+                    )
+                    .entry("screen-off"),
+                    form::row("Lock after", dropdown(lock, lock_i).on_select(Msg::LockAfter).min_width(150.0))
+                        .entry("lock-after"),
+                ],
+            ),
+        );
 
         if let Some(l) = &self.logind {
             let mut rows = Vec::new();
             if l.power_key == "ignore" {
                 let cur = extra::get_str(&s.power, "power_key").unwrap_or("ask");
                 let i = POWER_KEY.iter().position(|(k, _)| *k == cur).unwrap_or(0);
-                rows.push(form::row("The power key", form::choice(&POWER_KEY.map(|k| k.1), i, Msg::PowerKey)).entry("power-key"));
+                rows.push(
+                    form::row("The power key", form::choice(&POWER_KEY.map(|k| k.1), i, Msg::PowerKey))
+                        .entry("power-key"),
+                );
             } else if l.managed {
                 rows.push(
-                    form::managed("The power key", logind_words(&l.power_key), "Set services.logind.settings.Login.HandlePowerKey = \"ignore\" to choose here.")
-                        .entry("power-key"),
+                    form::managed(
+                        "The power key",
+                        logind_words(&l.power_key),
+                        "Set services.logind.settings.Login.HandlePowerKey = \"ignore\" to choose here.",
+                    )
+                    .entry("power-key"),
                 );
             } else {
                 rows.push(form::value("The power key", logind_words(&l.power_key)).entry("power-key"));
             }
             let lid = if l.managed {
-                form::managed("When the lid closes", logind_words(&l.lid), "services.logind.settings.Login.HandleLidSwitch")
+                form::managed(
+                    "When the lid closes",
+                    logind_words(&l.lid),
+                    "services.logind.settings.Login.HandleLidSwitch",
+                )
             } else {
                 form::value("When the lid closes", logind_words(&l.lid))
             };
@@ -427,7 +520,10 @@ impl Pane for Battery {
         }
 
         let menubar = s.menubar_settings();
-        let mut more = vec![form::row("Show the percentage in the menu bar", toggle(menubar.battery_percent).on_toggle(Msg::Percent)).entry("percent")];
+        let mut more = vec![
+            form::row("Show the percentage in the menu bar", toggle(menubar.battery_percent).on_toggle(Msg::Percent))
+                .entry("percent"),
+        ];
         let peripherals: Vec<&PowerDevice> = st.peripherals().collect();
         for (i, d) in peripherals.iter().enumerate() {
             let glyph = match d.kind {
@@ -439,12 +535,15 @@ impl Pane for Battery {
                 PowerKind::Gamepad => Icon::Gamepad2,
                 _ => Icon::Battery,
             };
-            let mut r = form::row(format!("{} {}", d.vendor, d.model).trim().to_owned(), row![
-                progress(d.percentage / 100.0).width(80.0),
-                text(format!("{:.0}%", d.percentage)).mono().size(12.0).role(Role::Text2),
-            ]
-            .spacing(8.0)
-            .align(Align::Center))
+            let mut r = form::row(
+                format!("{} {}", d.vendor, d.model).trim().to_owned(),
+                row![
+                    progress(d.percentage / 100.0).width(80.0),
+                    text(format!("{:.0}%", d.percentage)).mono().size(12.0).role(Role::Text2),
+                ]
+                .spacing(8.0)
+                .align(Align::Center),
+            )
             .leading(icon(glyph).size(16.0).role(Role::Text2))
             .compact();
             if i == 0 {
@@ -490,7 +589,13 @@ impl Widget for Gauge {
         draw::sunken(cx.canvas, t, body, t.sunk(), t.line2());
         cx.canvas.fill_rect(Rect::new(78.0, 13.0, 84.0, 27.0), t.line2());
         let p = self.percent.clamp(0.0, 100.0) / 100.0;
-        let fill = if self.charging || p > 0.2 { t.role(Role::Success) } else if p > 0.1 { t.role(Role::Warning) } else { t.role(Role::Danger) };
+        let fill = if self.charging || p > 0.2 {
+            t.role(Role::Success)
+        } else if p > 0.1 {
+            t.role(Role::Warning)
+        } else {
+            t.role(Role::Danger)
+        };
         let inner = Rect::new(4.0, 4.0, 74.0, 36.0);
         cx.canvas.fill_rect(Rect::new(inner.x0, inner.y0, (inner.x0 + inner.width() * p).round(), inner.y1), fill);
         if self.charging {
@@ -538,13 +643,24 @@ impl Widget for Chart {
         for v in [0.0, 50.0, 100.0] {
             let yy = y(v).round();
             cx.canvas.fill_rect(Rect::new(plot.x0, yy, plot.x1, yy + 1.0), if v == 0.0 { t.line2() } else { t.line() });
-            cx.draw_text_in(&format!("{v:.0}%"), &label, Rect::new(plot.x1 + 4.0, yy - 7.0, size.width, yy + 7.0), Align::Start);
+            cx.draw_text_in(
+                &format!("{v:.0}%"),
+                &label,
+                Rect::new(plot.x1 + 4.0, yy - 7.0, size.width, yy + 7.0),
+                Align::Start,
+            );
         }
         for (i, h) in [24, 18, 12, 6, 0].iter().enumerate() {
             let xx = x(self.now - h * 3600).round();
             cx.canvas.fill_rect(Rect::new(xx, plot.y0, xx + 1.0, plot.y1), t.line().with_alpha(0.5));
             let text = if *h == 0 { "now".to_owned() } else { format!("−{h} h") };
-            let align = if i == 0 { Align::Start } else if *h == 0 { Align::End } else { Align::Center };
+            let align = if i == 0 {
+                Align::Start
+            } else if *h == 0 {
+                Align::End
+            } else {
+                Align::Center
+            };
             let r = match align {
                 Align::Start => Rect::new(xx, plot.y1 + 2.0, xx + 40.0, size.height),
                 Align::End => Rect::new(xx - 40.0, plot.y1 + 2.0, xx, size.height),
@@ -583,6 +699,10 @@ impl Widget for Chart {
     }
 
     fn semantics(&self) -> Option<Semantics> {
-        Some(Semantics { role: SemanticRole::Image, label: Some("Charge over the last day".into()), ..Default::default() })
+        Some(Semantics {
+            role: SemanticRole::Image,
+            label: Some("Charge over the last day".into()),
+            ..Default::default()
+        })
     }
 }

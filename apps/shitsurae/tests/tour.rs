@@ -27,9 +27,28 @@ fn every_pane() {
     }
     let only = std::env::var("SHITSURAE_TOUR").unwrap_or_default();
     let targets = [
-        "general", "general.about", "general.software-update", "general.storage", "general.datetime", "general.language",
-        "general.default-apps", "general.login-items", "appearance", "accessibility", "desktop", "menubar", "battery",
-        "performance", "search", "notifications", "lock", "users", "keyboard", "keyboard.shortcuts", "mouse", "trackpad",
+        "general",
+        "general.about",
+        "general.software-update",
+        "general.storage",
+        "general.datetime",
+        "general.language",
+        "general.default-apps",
+        "general.login-items",
+        "appearance",
+        "accessibility",
+        "desktop",
+        "menubar",
+        "battery",
+        "performance",
+        "search",
+        "notifications",
+        "lock",
+        "users",
+        "keyboard",
+        "keyboard.shortcuts",
+        "mouse",
+        "trackpad",
     ];
     for t in targets {
         if !only.is_empty() && !only.split(',').any(|o| t.starts_with(o)) {

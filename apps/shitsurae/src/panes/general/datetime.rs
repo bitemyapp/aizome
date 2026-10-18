@@ -66,10 +66,22 @@ pub enum Msg {
 
 pub fn entries() -> Vec<SettingEntry> {
     vec![
-        SettingEntry::new("auto-time", "Set the time automatically").under("Date & Time").keywords(&["ntp", "network time", "sync"]),
-        SettingEntry::new("timezone", "Time zone").under("Date & Time").keywords(&["timezone", "location", "city", "utc"]),
-        SettingEntry::new("clock-24h", "24-hour time").under("Date & Time").keywords(&["clock format", "am pm", "12-hour"]),
-        SettingEntry::new("clock-date", "Show the date in the menu bar").under("Date & Time").keywords(&["clock", "weekday"]),
+        SettingEntry::new("auto-time", "Set the time automatically").under("Date & Time").keywords(&[
+            "ntp",
+            "network time",
+            "sync",
+        ]),
+        SettingEntry::new("timezone", "Time zone")
+            .under("Date & Time")
+            .keywords(&["timezone", "location", "city", "utc"]),
+        SettingEntry::new("clock-24h", "24-hour time").under("Date & Time").keywords(&[
+            "clock format",
+            "am pm",
+            "12-hour",
+        ]),
+        SettingEntry::new("clock-date", "Show the date in the menu bar")
+            .under("Date & Time")
+            .keywords(&["clock", "weekday"]),
         SettingEntry::new("clock-seconds", "Show seconds").under("Date & Time").keywords(&["clock"]),
     ]
 }
@@ -124,8 +136,20 @@ fn fallback_zones() -> Vec<Zone> {
 }
 
 const WEEKDAYS: [&str; 7] = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-const MONTHS: [&str; 12] =
-    ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+const MONTHS: [&str; 12] = [
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
+];
 
 /// "Saturday 17 October 2026" and the hours, minutes and seconds of a
 /// local time (`now` plus the offset).
@@ -156,7 +180,11 @@ impl State {
     pub fn shown(&mut self, cx: &mut PaneCx<G>) {
         let sample = cx.sample();
         if self.svc.is_none() {
-            self.svc = Some(if sample { Svc::Sample(Cell::new(sample_state(), cx.wake())) } else { Svc::Live(TimeDate::new(cx.wake())) });
+            self.svc = Some(if sample {
+                Svc::Sample(Cell::new(sample_state(), cx.wake()))
+            } else {
+                Svc::Live(TimeDate::new(cx.wake()))
+            });
         }
         if self.zones.is_none() {
             cx.spawn(|| {
@@ -256,7 +284,8 @@ impl State {
         zones
             .iter()
             .filter(|z| {
-                let hay = format!("{} {} {} {}", z.city, z.id.replace('_', " "), z.country_names.join(" "), z.comment).to_lowercase();
+                let hay = format!("{} {} {} {}", z.city, z.id.replace('_', " "), z.country_names.join(" "), z.comment)
+                    .to_lowercase();
                 words.iter().all(|w| hay.contains(w.as_str()))
             })
             .take(8)
@@ -285,8 +314,8 @@ impl State {
         .spacing(4.0);
 
         let auto = if s.can_ntp || !s.available {
-            form::row("Set the time automatically", toggle(s.ntp).on_toggle(Msg::Ntp).enabled(s.available))
-                .help(if !s.available {
+            form::row("Set the time automatically", toggle(s.ntp).on_toggle(Msg::Ntp).enabled(s.available)).help(
+                if !s.available {
                     "systemd-timedated isn't answering.".to_owned()
                 } else if s.ntp && s.ntp_synchronized {
                     "From time servers on the network. In step now.".to_owned()
@@ -294,23 +323,41 @@ impl State {
                     "From time servers on the network. Not in step yet.".to_owned()
                 } else {
                     "The computer keeps time by itself, and drifts.".to_owned()
-                })
+                },
+            )
         } else {
-            form::managed("Set the time automatically", "Off", "No network time service is installed (services.timesyncd).")
+            form::managed(
+                "Set the time automatically",
+                "Off",
+                "No network time service is installed (services.timesyncd).",
+            )
         }
         .entry("auto-time");
 
-        let current = self.zones.as_ref().and_then(|zs| zs.iter().find(|z| z.id == s.timezone)).map(|z| (z.latitude, z.longitude));
-        let points: Vec<(f32, f32)> =
-            self.zones.as_ref().map(|zs| zs.iter().filter(|z| z.id != "UTC").map(|z| (z.latitude as f32, z.longitude as f32)).collect()).unwrap_or_default();
+        let current = self
+            .zones
+            .as_ref()
+            .and_then(|zs| zs.iter().find(|z| z.id == s.timezone))
+            .map(|z| (z.latitude, z.longitude));
+        let points: Vec<(f32, f32)> = self
+            .zones
+            .as_ref()
+            .map(|zs| zs.iter().filter(|z| z.id != "UTC").map(|z| (z.latitude as f32, z.longitude as f32)).collect())
+            .unwrap_or_default();
         let map_el = zone_map(points, current, !s.timezone_managed, |(lat, lon)| Msg::MapPick(lat, lon));
 
-        let mut zone_rows = vec![if s.timezone_managed {
-            form::managed("Time zone", s.timezone.clone(), "To choose it here, set time.timeZone = null in the system configuration.")
-        } else {
-            form::value("Time zone", s.timezone.clone()).detail(place.clone())
-        }
-        .entry("timezone")];
+        let mut zone_rows = vec![
+            if s.timezone_managed {
+                form::managed(
+                    "Time zone",
+                    s.timezone.clone(),
+                    "To choose it here, set time.timeZone = null in the system configuration.",
+                )
+            } else {
+                form::value("Time zone", s.timezone.clone()).detail(place.clone())
+            }
+            .entry("timezone"),
+        ];
         zone_rows.push(form::whole(container(map_el).padding([10.0, form::INSET]).width(Fill)));
         if !s.timezone_managed {
             zone_rows.push(form::row(
@@ -321,11 +368,18 @@ impl State {
                 let off = self.offset_of(&z.id).map(tz::describe).unwrap_or_default();
                 let country = z.country_names.join(", ");
                 let line = row![
-                    column![text(z.city.clone()), text(if country.is_empty() { z.id.clone() } else { country }).size(11.0).role(Role::Text3)]
-                        .spacing(2.0)
-                        .width(Fill),
+                    column![
+                        text(z.city.clone()),
+                        text(if country.is_empty() { z.id.clone() } else { country }).size(11.0).role(Role::Text3)
+                    ]
+                    .spacing(2.0)
+                    .width(Fill),
                     text(off).mono().size(11.0).role(Role::Text2),
-                    if z.id == s.timezone { icon(Icon::Check).size(14.0).role(Role::Focus).into() } else { space::<Msg>(14.0) },
+                    if z.id == s.timezone {
+                        icon(Icon::Check).size(14.0).role(Role::Focus).into()
+                    } else {
+                        space::<Msg>(14.0)
+                    },
                 ]
                 .spacing(10.0)
                 .align(Align::Center);
@@ -345,9 +399,16 @@ impl State {
             vcx.section(
                 "Menu Bar Clock",
                 vec![
-                    form::row("24-hour time", toggle(h24).on_toggle(Msg::Clock24)).entry("clock-24h").detail(if h24 { "21:42" } else { "9:42 PM" }),
-                    form::row("Show the date", toggle(menubar.clock_date).on_toggle(Msg::ShowDate)).entry("clock-date").detail("Sat 17"),
-                    form::row("Show seconds", toggle(menubar.clock_seconds).on_toggle(Msg::Seconds)).entry("clock-seconds"),
+                    form::row("24-hour time", toggle(h24).on_toggle(Msg::Clock24)).entry("clock-24h").detail(if h24 {
+                        "21:42"
+                    } else {
+                        "9:42 PM"
+                    }),
+                    form::row("Show the date", toggle(menubar.clock_date).on_toggle(Msg::ShowDate))
+                        .entry("clock-date")
+                        .detail("Sat 17"),
+                    form::row("Show seconds", toggle(menubar.clock_seconds).on_toggle(Msg::Seconds))
+                        .entry("clock-seconds"),
                 ],
             ),
         ])
@@ -407,7 +468,8 @@ impl Widget for ZoneMap {
         // Meridians and parallels every 30°.
         for lon in (-150..=150).step_by(30) {
             let p = self.at(s, 0.0, f64::from(lon));
-            cx.canvas.fill_rect(Rect::new(p.x.round(), 1.0, p.x.round() + 1.0, s.height - 1.0), t.line().with_alpha(0.6));
+            cx.canvas
+                .fill_rect(Rect::new(p.x.round(), 1.0, p.x.round() + 1.0, s.height - 1.0), t.line().with_alpha(0.6));
         }
         for lat in [-30, 0, 30, 60] {
             let p = self.at(s, f64::from(lat), 0.0);
@@ -417,7 +479,8 @@ impl Widget for ZoneMap {
         let dot = t.text3().with_alpha(0.75);
         for (lat, lon) in &self.points {
             let p = self.at(s, f64::from(*lat), f64::from(*lon));
-            cx.canvas.fill_rect(Rect::new(p.x.round() - 1.0, p.y.round() - 1.0, p.x.round() + 1.0, p.y.round() + 1.0), dot);
+            cx.canvas
+                .fill_rect(Rect::new(p.x.round() - 1.0, p.y.round() - 1.0, p.x.round() + 1.0, p.y.round() + 1.0), dot);
         }
         if let Some((lat, lon)) = self.current {
             let p = self.at(s, lat, lon);

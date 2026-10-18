@@ -47,7 +47,11 @@ fn has(h: &Harness<Shitsurae>, s: &str) -> bool {
 }
 
 fn arrangement(h: &Harness<Shitsurae>) -> String {
-    h.semantics(h.window()).into_iter().find(|(s, _)| s.label.as_deref() == Some("Display arrangement")).and_then(|(s, _)| s.value).unwrap_or_default()
+    h.semantics(h.window())
+        .into_iter()
+        .find(|(s, _)| s.label.as_deref() == Some("Display arrangement"))
+        .and_then(|(s, _)| s.value)
+        .unwrap_or_default()
 }
 
 #[test]
@@ -122,10 +126,16 @@ fn arranges_and_applies_on_a_headless_compositor() {
     assert_ne!(one.transform, aizome_ipc::Transform::Normal);
     h.save_png(w, common::shots_dir().join("displays-live-keep.png"), 2.0);
     h.advance(Duration::from_secs(16));
-    assert!(settle(&mut h, |_| outputs().iter().find(|o| o.name == first).is_some_and(|o| o.transform == aizome_ipc::Transform::Normal)));
+    assert!(settle(&mut h, |_| outputs()
+        .iter()
+        .find(|o| o.name == first)
+        .is_some_and(|o| o.transform == aizome_ipc::Transform::Normal)));
     assert!(!has(&h, "Keep these display settings?"));
     let back = outputs();
-    assert_eq!(back.iter().map(|o| o.logical).collect::<Vec<_>>(), arranged.iter().map(|o| o.logical).collect::<Vec<_>>());
+    assert_eq!(
+        back.iter().map(|o| o.logical).collect::<Vec<_>>(),
+        arranged.iter().map(|o| o.logical).collect::<Vec<_>>()
+    );
     // The file still says what was kept before the rotation.
     assert!(!std::fs::read_to_string(&path).unwrap().contains("transform = \"90\""));
 }

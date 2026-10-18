@@ -234,7 +234,15 @@ pub enum Page {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Sheet {
     /// A network's password, to join it.
-    Password { ssid: String, security: Security, title: String, message: String, password: String, show: bool, error: Option<String> },
+    Password {
+        ssid: String,
+        security: Security,
+        title: String,
+        message: String,
+        password: String,
+        show: bool,
+        error: Option<String>,
+    },
     /// A hidden network by name, or an organization's network.
     Form(JoinForm),
     /// Share this connection.
@@ -359,7 +367,11 @@ pub enum Msg {
     /// A network's row: join it (or open the one in use).
     Join(String),
     JoinOther,
-    Joined { ssid: String, retry: bool, result: Result<(), Error> },
+    Joined {
+        ssid: String,
+        retry: bool,
+        result: Result<(), Error>,
+    },
     Open(Page),
     Back,
     Vpn(String, bool),
@@ -389,7 +401,12 @@ pub enum Msg {
     Forgotten(String, String, Result<(), Error>),
     /// A change to a connection finished: say why it failed, read it again,
     /// apply it to the connection in use when asked.
-    Changed { uuid: String, what: String, reapply: bool, result: Result<(), Error> },
+    Changed {
+        uuid: String,
+        what: String,
+        reapply: bool,
+        result: Result<(), Error>,
+    },
     Reapplied(String, Result<bool, Error>),
     /// An action finished: say why it failed.
     Done(String, Result<(), Error>),
@@ -450,7 +467,19 @@ impl Network {
             return;
         }
         let wake: Wake = cx.wake();
-        self.net = if cx.sample() { Net::Sample(Cell::new(crate::panes::hw::live_snapshot(|| Nm::new(aizome_sys::Wake::none()), |n| n.available(), |n| n.snapshot()).unwrap_or_else(sample::state), wake)) } else { Net::Live(Nm::new(wake)) };
+        self.net = if cx.sample() {
+            Net::Sample(Cell::new(
+                crate::panes::hw::live_snapshot(
+                    || Nm::new(aizome_sys::Wake::none()),
+                    |n| n.available(),
+                    |n| n.snapshot(),
+                )
+                .unwrap_or_else(sample::state),
+                wake,
+            ))
+        } else {
+            Net::Live(Nm::new(wake))
+        };
     }
 
     fn scan(&mut self, cx: &mut PaneCx<Msg>) {
@@ -499,7 +528,11 @@ impl Network {
                 uuid: uuid.clone(),
                 address: p.ipv4_addresses.first().cloned().unwrap_or_default(),
                 router: p.ipv4_gateway.clone().unwrap_or_default(),
-                dns: if Dns::of(p.ipv4_ignore_auto_dns, &p.dns()) == Dns::Custom { p.dns().join(" ") } else { String::new() },
+                dns: if Dns::of(p.ipv4_ignore_auto_dns, &p.dns()) == Dns::Custom {
+                    p.dns().join(" ")
+                } else {
+                    String::new()
+                },
                 ..Edit::default()
             };
         }
@@ -532,7 +565,15 @@ impl Network {
 
     fn ask_password(&mut self, ssid: &str, security: Security, title: String, message: String, cx: &mut PaneCx<Msg>) {
         self.open_sheet(
-            Sheet::Password { ssid: ssid.to_owned(), security, title, message, password: String::new(), show: false, error: None },
+            Sheet::Password {
+                ssid: ssid.to_owned(),
+                security,
+                title,
+                message,
+                password: String::new(),
+                show: false,
+                error: None,
+            },
             cx,
         );
         cx.focus("network-password");
@@ -585,7 +626,13 @@ impl Network {
             }
             Security::Enterprise => self.open_sheet(Sheet::Form(JoinForm::new(Some(ssid.to_owned()), false)), cx),
             Security::Wep => cx.failed(&format!("{ssid} isn't offered"), "it uses WEP, which anyone nearby can break"),
-            security => self.ask_password(ssid, security, format!("Join “{ssid}”"), format!("Enter the password for “{ssid}”."), cx),
+            security => self.ask_password(
+                ssid,
+                security,
+                format!("Join “{ssid}”"),
+                format!("Enter the password for “{ssid}”."),
+                cx,
+            ),
         }
     }
 
@@ -739,7 +786,13 @@ impl Network {
                     return;
                 };
                 let security = n.security;
-                self.ask_password(&ssid, security, format!("New password for “{ssid}”"), "Joining with it replaces the saved password.".into(), cx);
+                self.ask_password(
+                    &ssid,
+                    security,
+                    format!("New password for “{ssid}”"),
+                    "Joining with it replaces the saved password.".into(),
+                    cx,
+                );
             }
             Msg::Ipv4(uuid, choice) => {
                 if choice == 1 {
@@ -770,7 +823,8 @@ impl Network {
             }
             Msg::ApplyAddress(uuid) => {
                 let Some((address, prefix)) = logic::address_with_prefix(&self.edit.address) else {
-                    self.edit.address_error = Some("Write the address with its prefix length, as 192.168.1.20/24".into());
+                    self.edit.address_error =
+                        Some("Write the address with its prefix length, as 192.168.1.20/24".into());
                     cx.focus("network-address");
                     return;
                 };
@@ -793,7 +847,9 @@ impl Network {
                 }
                 self.edit.manual = false;
                 let task = match &self.net {
-                    Net::Live(n) => n.set_ipv4(&uuid, Ipv4Method::Manual { addresses: vec![(address, prefix)], gateway }),
+                    Net::Live(n) => {
+                        n.set_ipv4(&uuid, Ipv4Method::Manual { addresses: vec![(address, prefix)], gateway })
+                    }
                     _ => self.sample_edit(&uuid, |p| {
                         p.ipv4_method = "manual".into();
                         p.ipv4_addresses = vec![format!("{address}/{prefix}")];
@@ -846,7 +902,12 @@ impl Network {
                         Msg::ForgetNow(uuid),
                     )
                 } else {
-                    Confirm::new(format!("Remove “{}”?", c.id), "Its configuration is removed from this computer.", "Remove", Msg::ForgetNow(uuid))
+                    Confirm::new(
+                        format!("Remove “{}”?", c.id),
+                        "Its configuration is removed from this computer.",
+                        "Remove",
+                        Msg::ForgetNow(uuid),
+                    )
                 };
                 cx.confirm(confirm.destructive());
             }
@@ -910,18 +971,45 @@ impl Pane for Network {
             SettingEntry::new("wifi", "Wi-Fi").keywords(&["wireless", "wlan", "turn off"]),
             SettingEntry::new("airplane", "Airplane Mode").keywords(&["flight", "radios", "rfkill"]),
             SettingEntry::new("networks", "Other networks").keywords(&["join", "scan", "ssid", "nearby"]),
-            SettingEntry::new("join-other", "Join a hidden network").keywords(&["other", "hidden", "ssid", "by name", "enterprise", "802.1x", "eduroam"]),
+            SettingEntry::new("join-other", "Join a hidden network").keywords(&[
+                "other",
+                "hidden",
+                "ssid",
+                "by name",
+                "enterprise",
+                "802.1x",
+                "eduroam",
+            ]),
             SettingEntry::new("known", "Known networks").keywords(&["saved", "remembered"]),
             SettingEntry::new("saved", "Saved networks").keywords(&["forget", "remove", "history", "remembered"]),
             SettingEntry::new("wired", "Ethernet").keywords(&["wired", "cable", "lan"]),
             SettingEntry::new("vpn", "VPN").keywords(&["wireguard", "openvpn", "tunnel"]),
             SettingEntry::new("add-vpn", "Add a VPN").keywords(&["import", "wireguard", "conf", "ovpn"]),
             SettingEntry::new("hotspot", "Hotspot").keywords(&["share", "tethering", "access point"]),
-            SettingEntry::new("auto-join", "Join automatically").under("Details").keywords(&["autoconnect", "auto-join"]),
+            SettingEntry::new("auto-join", "Join automatically")
+                .under("Details")
+                .keywords(&["autoconnect", "auto-join"]),
             SettingEntry::new("metered", "Metered connection").under("Details").keywords(&["data", "limited", "cost"]),
-            SettingEntry::new("private-address", "Private address").under("Details").keywords(&["mac", "random", "hardware address"]),
-            SettingEntry::new("ipv4", "Configure IPv4").under("Details").keywords(&["ip address", "static", "manual", "dhcp", "router", "gateway"]),
-            SettingEntry::new("dns", "DNS servers").under("Details").keywords(&["cloudflare", "google", "quad9", "resolver", "nameserver"]),
+            SettingEntry::new("private-address", "Private address").under("Details").keywords(&[
+                "mac",
+                "random",
+                "hardware address",
+            ]),
+            SettingEntry::new("ipv4", "Configure IPv4").under("Details").keywords(&[
+                "ip address",
+                "static",
+                "manual",
+                "dhcp",
+                "router",
+                "gateway",
+            ]),
+            SettingEntry::new("dns", "DNS servers").under("Details").keywords(&[
+                "cloudflare",
+                "google",
+                "quad9",
+                "resolver",
+                "nameserver",
+            ]),
             SettingEntry::new("ipv6", "Configure IPv6").under("Details"),
             SettingEntry::new("proxy", "Proxy").under("Details").keywords(&["pac"]),
         ]
@@ -950,7 +1038,8 @@ impl Pane for Network {
         if details.contains(&entry) {
             // The connection in use, or the first saved one.
             let state = self.state();
-            let uuid = state.primary().map(|a| a.uuid.clone()).or_else(|| state.connections.first().map(|c| c.uuid.clone()));
+            let uuid =
+                state.primary().map(|a| a.uuid.clone()).or_else(|| state.connections.first().map(|c| c.uuid.clone()));
             if let Some(uuid) = uuid {
                 self.open(Page::Details(uuid), cx);
             }
@@ -994,7 +1083,8 @@ impl Pane for Network {
                     Ok(()) => cx.say(format!("Connected to {ssid}")),
                     Err(Error::Rejected(_)) if retry => {
                         // A refused saved password: ask for it again.
-                        let security = self.state().network(&ssid).map(|n| n.security).unwrap_or(Security::Wpa2Personal);
+                        let security =
+                            self.state().network(&ssid).map(|n| n.security).unwrap_or(Security::Wpa2Personal);
                         self.ask_password(
                             &ssid,
                             security,

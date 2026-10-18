@@ -11,7 +11,8 @@ use std::sync::{Arc, Mutex};
 use aizome_kit::prelude::*;
 use aizome_kit::{column, row};
 use aizome_sys::bluetooth::{
-    Adapter, Bluetooth as Bluez, BluetoothState, Device, DeviceKind, PairingPrompt, PairingRequest, PairingResponse, Responder,
+    Adapter, Bluetooth as Bluez, BluetoothState, Device, DeviceKind, PairingPrompt, PairingRequest, PairingResponse,
+    Responder,
 };
 use aizome_sys::{Error, Task};
 
@@ -352,7 +353,13 @@ impl Pane for Bluetooth {
         vec![
             SettingEntry::new("bluetooth", "Bluetooth").keywords(&["turn off", "radio"]),
             SettingEntry::new("name", "Name").keywords(&["discoverable", "rename", "visible as"]),
-            SettingEntry::new("devices", "My Devices").keywords(&["paired", "connect", "disconnect", "forget", "battery"]),
+            SettingEntry::new("devices", "My Devices").keywords(&[
+                "paired",
+                "connect",
+                "disconnect",
+                "forget",
+                "battery",
+            ]),
             SettingEntry::new("nearby", "Nearby Devices").keywords(&["pair", "add", "discover", "scan"]),
         ]
     }
@@ -360,7 +367,19 @@ impl Pane for Bluetooth {
     fn shown(&mut self, cx: &mut PaneCx<Msg>) {
         if matches!(self.bt, Bt::None) {
             let wake = cx.wake();
-            self.bt = if cx.sample() { Bt::Sample(Cell::new(crate::panes::hw::live_snapshot(|| Bluez::new(aizome_sys::Wake::none()), |b| b.available(), |b| b.snapshot()).unwrap_or_else(sample), wake)) } else { Bt::Live(Bluez::new(wake)) };
+            self.bt = if cx.sample() {
+                Bt::Sample(Cell::new(
+                    crate::panes::hw::live_snapshot(
+                        || Bluez::new(aizome_sys::Wake::none()),
+                        |b| b.available(),
+                        |b| b.snapshot(),
+                    )
+                    .unwrap_or_else(sample),
+                    wake,
+                ))
+            } else {
+                Bt::Live(Bluez::new(wake))
+            };
         }
         if let Bt::Live(b) = &self.bt
             && !self.agent
@@ -371,7 +390,13 @@ impl Pane for Bluetooth {
             let registered = b.register_agent(move |p: PairingPrompt| {
                 let id = counter.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 responders.lock().unwrap_or_else(|e| e.into_inner()).insert(id, p.responder);
-                tx.send(Msg::Prompted(Prompt { id, device: p.device, name: p.name, request: p.request, typed: String::new() }));
+                tx.send(Msg::Prompted(Prompt {
+                    id,
+                    device: p.device,
+                    name: p.name,
+                    request: p.request,
+                    typed: String::new(),
+                }));
             });
             match registered {
                 Ok(()) => self.agent = true,
@@ -408,7 +433,9 @@ impl Pane for Bluetooth {
                 // On now: look for devices, and be found.
                 Ok(()) if on => self.look(cx, true),
                 Ok(()) => {}
-                Err(e) => cx.failed(if on { "Couldn't turn Bluetooth on" } else { "Couldn't turn Bluetooth off" }, reason(&e)),
+                Err(e) => {
+                    cx.failed(if on { "Couldn't turn Bluetooth on" } else { "Couldn't turn Bluetooth off" }, reason(&e))
+                }
             },
             Msg::NameText(t) => self.name = Some(t),
             Msg::Rename => {
@@ -442,13 +469,20 @@ impl Pane for Bluetooth {
                         let name = c.get().device(&d).map(|x| x.name.clone()).unwrap_or_default();
                         let id = self.next_prompt;
                         self.next_prompt += 1;
-                        cx.send(Msg::Prompted(Prompt { id, device: d, name, request: PairingRequest::Confirm(482_913), typed: String::new() }));
+                        cx.send(Msg::Prompted(Prompt {
+                            id,
+                            device: d,
+                            name,
+                            request: PairingRequest::Confirm(482_913),
+                            typed: String::new(),
+                        }));
                     }
                     Bt::None => {}
                 }
             }
             Msg::Expand(d) => {
-                self.device_name = d.as_deref().and_then(|p| self.bt.snapshot().device(p).map(|x| x.name.clone())).unwrap_or_default();
+                self.device_name =
+                    d.as_deref().and_then(|p| self.bt.snapshot().device(p).map(|x| x.name.clone())).unwrap_or_default();
                 self.expanded = if self.expanded == d { None } else { d };
             }
             Msg::Trusted(d, on) => {
@@ -531,7 +565,10 @@ impl Pane for Bluetooth {
             ]);
         }
         let Some(adapter) = state.default_adapter().cloned() else {
-            return form::page(vec![form::heading("No Bluetooth", "This computer has no Bluetooth adapter, or it's switched off in the firmware.")]);
+            return form::page(vec![form::heading(
+                "No Bluetooth",
+                "This computer has no Bluetooth adapter, or it's switched off in the firmware.",
+            )]);
         };
         let on = adapter.powered;
         let mut sections: Vec<Element<Msg>> = Vec::new();
@@ -545,21 +582,36 @@ impl Pane for Bluetooth {
             format!("On, as “{}”", adapter.alias)
         };
         let name = self.name.clone().unwrap_or_else(|| adapter.alias.clone());
-        sections.push(vcx.section(
-            "",
-            vec![
-                form::row("Bluetooth", toggle(on).on_toggle(Msg::Power)).leading(tile(Icon::Bluetooth, Tile::Ai, 24.0)).detail(detail).entry("bluetooth"),
-                form::row("Name", text_field(&name).on_change(Msg::NameText).on_submit(Msg::Rename).width(200.0).id("bluetooth-name"))
+        sections.push(
+            vcx.section(
+                "",
+                vec![
+                    form::row("Bluetooth", toggle(on).on_toggle(Msg::Power))
+                        .leading(tile(Icon::Bluetooth, Tile::Ai, 24.0))
+                        .detail(detail)
+                        .entry("bluetooth"),
+                    form::row(
+                        "Name",
+                        text_field(&name)
+                            .on_change(Msg::NameText)
+                            .on_submit(Msg::Rename)
+                            .width(200.0)
+                            .id("bluetooth-name"),
+                    )
                     .help("What other devices see when they look for this computer")
                     .entry("name"),
-            ],
-        ));
+                ],
+            ),
+        );
         if !on {
             return form::page(sections);
         }
         let paired: Vec<&Device> = state.paired().collect();
         if paired.is_empty() {
-            sections.push(vcx.section("My Devices", vec![form::row("No devices yet", space(0.0)).help("Devices you pair show here.").entry("devices")]));
+            sections.push(vcx.section(
+                "My Devices",
+                vec![form::row("No devices yet", space(0.0)).help("Devices you pair show here.").entry("devices")],
+            ));
         } else {
             let mut rows: Vec<Row<Msg>> = Vec::new();
             for (i, d) in paired.iter().enumerate() {
@@ -578,9 +630,15 @@ impl Pane for Bluetooth {
         let mut rows: Vec<Row<Msg>> = nearby.iter().map(|d| nearby_row(self, d)).collect();
         if rows.is_empty() {
             rows.push(form::whole(
-                container(row![spinner(14.0), text("Looking for devices… Make sure the device is in pairing mode.").role(Role::Text3).wrap()].spacing(10.0))
-                    .padding([10.0, 12.0])
-                    .width(Fill),
+                container(
+                    row![
+                        spinner(14.0),
+                        text("Looking for devices… Make sure the device is in pairing mode.").role(Role::Text3).wrap()
+                    ]
+                    .spacing(10.0),
+                )
+                .padding([10.0, 12.0])
+                .width(Fill),
             ));
         }
         if !rows.is_empty() {
@@ -589,10 +647,13 @@ impl Pane for Bluetooth {
         }
         let tail: Element<Msg> = if adapter.discovering { spinner(14.0) } else { space(0.0) };
         sections.push(
-            column![row![form::caption("Nearby Devices"), spacer(), tail].align(Align::Center).width(Fill).height(16.0), vcx.section("", rows)]
-                .spacing(6.0)
-                .width(Fill)
-                .into(),
+            column![
+                row![form::caption("Nearby Devices"), spacer(), tail].align(Align::Center).width(Fill).height(16.0),
+                vcx.section("", rows)
+            ]
+            .spacing(6.0)
+            .width(Fill)
+            .into(),
         );
         form::page(sections)
     }
@@ -618,7 +679,9 @@ fn reason(e: &Error) -> String {
         Error::Rejected(_) => "the device refused, or the codes didn't match".into(),
         Error::Timeout => "the device didn't answer; is it on and nearby?".into(),
         Error::Unavailable(_) => "Bluetooth isn't running".into(),
-        Error::DBus { name, message } if name.ends_with("AuthenticationFailed") || name.ends_with("AuthenticationRejected") => {
+        Error::DBus { name, message }
+            if name.ends_with("AuthenticationFailed") || name.ends_with("AuthenticationRejected") =>
+        {
             if message.is_empty() { "pairing was refused".into() } else { message.clone() }
         }
         Error::DBus { name, .. } if name.ends_with("AuthenticationCanceled") => "pairing was cancelled".into(),
@@ -641,13 +704,23 @@ fn device_row(p: &Bluetooth, d: &Device) -> Row<Msg> {
     let busy = p.busy.contains(&d.path);
     let mut line = row![
         tile(glyph(d.kind), if d.connected { Tile::Ai } else { Tile::Slate }, 28.0),
-        column![text(d.name.clone()).weight(if d.connected { 600.0 } else { 400.0 }), text(status(d)).size(11.0).role(Role::Text3)].spacing(2.0).width(Fill),
+        column![
+            text(d.name.clone()).weight(if d.connected { 600.0 } else { 400.0 }),
+            text(status(d)).size(11.0).role(Role::Text3)
+        ]
+        .spacing(2.0)
+        .width(Fill),
     ]
     .spacing(10.0)
     .align(Align::Center)
     .width(Fill);
     if let Some(b) = d.battery {
-        line = line.push(icon(battery_icon(b)).size(16.0).role(if b < 20 { Role::Danger } else { Role::Text3 }).tooltip(format!("Battery {b}%")));
+        line = line.push(
+            icon(battery_icon(b))
+                .size(16.0)
+                .role(if b < 20 { Role::Danger } else { Role::Text3 })
+                .tooltip(format!("Battery {b}%")),
+        );
     }
     if busy {
         line = line.push(spinner(14.0));
@@ -657,7 +730,14 @@ fn device_row(p: &Bluetooth, d: &Device) -> Row<Msg> {
         line = line.push(button("Connect").compact().on_press(Msg::Connect(d.path.clone())));
     }
     let open = p.expanded.as_deref() == Some(d.path.as_str());
-    line = line.push(icon_button(if open { Icon::ChevronUp } else { Icon::Info }).plain().compact().on_press(Msg::Expand(Some(d.path.clone()))).tooltip("Options").label(format!("Options for {}", d.name)));
+    line = line.push(
+        icon_button(if open { Icon::ChevronUp } else { Icon::Info })
+            .plain()
+            .compact()
+            .on_press(Msg::Expand(Some(d.path.clone())))
+            .tooltip("Options")
+            .label(format!("Options for {}", d.name)),
+    );
     form::whole(press(line).style(PressStyle::Plain).padding([8.0, 12.0]).named(d.name.clone()).width(Fill))
 }
 
@@ -666,10 +746,19 @@ fn device_options(p: &Bluetooth, d: &Device) -> Vec<Row<Msg>> {
     let path2 = d.path.clone();
     vec![
         form::value_mono("Address", d.address.clone()).detail(kind_words(d.kind)),
-        form::row("Name", text_field(&p.device_name).on_change(Msg::DeviceName).on_submit(Msg::RenameDevice(path.clone())).width(200.0)),
+        form::row(
+            "Name",
+            text_field(&p.device_name)
+                .on_change(Msg::DeviceName)
+                .on_submit(Msg::RenameDevice(path.clone()))
+                .width(200.0),
+        ),
         form::row("Connect automatically", toggle(d.trusted).on_toggle(move |on| Msg::Trusted(path2.clone(), on)))
             .help("It connects by itself when it's on and nearby"),
-        form::row("Unpair it from this computer", button("Forget This Device…").destructive().on_press(Msg::Forget(path))),
+        form::row(
+            "Unpair it from this computer",
+            button("Forget This Device…").destructive().on_press(Msg::Forget(path)),
+        ),
     ]
 }
 
@@ -685,12 +774,22 @@ fn nearby_row(p: &Bluetooth, d: &Device) -> Row<Msg> {
     if let Some(r) = d.rssi {
         line = line.push(signal(rssi_bars(r), 16.0, false).tooltip(format!("{r} dBm")));
     }
-    line = line.push(if busy { spinner(14.0) } else { button("Connect").compact().on_press(Msg::Pair(d.path.clone())).into() });
+    line = line.push(if busy {
+        spinner(14.0)
+    } else {
+        button("Connect").compact().on_press(Msg::Pair(d.path.clone())).into()
+    });
     form::whole(press(line).style(PressStyle::Plain).padding([8.0, 12.0]).named(d.name.clone()).width(Fill))
 }
 
 fn code(s: String) -> Element<Msg> {
-    container(text(s).mono().size(28.0).weight(600.0).letter_spacing(2.0).tabular()).padding([8.0, 16.0]).fill(Tone::Sunk).border(Edge::Line).center().width(Fill).into()
+    container(text(s).mono().size(28.0).weight(600.0).letter_spacing(2.0).tabular())
+        .padding([8.0, 16.0])
+        .fill(Tone::Sunk)
+        .border(Edge::Line)
+        .center()
+        .width(Fill)
+        .into()
 }
 
 fn six(n: u32) -> String {
@@ -700,7 +799,8 @@ fn six(n: u32) -> String {
 
 fn prompt_sheet(p: &Prompt) -> Element<Msg> {
     let name = &p.name;
-    let (title, body, middle, ok, cancel): (String, String, Option<Element<Msg>>, Option<&str>, &str) = match &p.request {
+    let (title, body, middle, ok, cancel): (String, String, Option<Element<Msg>>, Option<&str>, &str) = match &p.request
+    {
         PairingRequest::Confirm(n) => (
             format!("Pair with “{name}”?"),
             format!("Check that “{name}” shows this code, then pair."),
@@ -711,20 +811,41 @@ fn prompt_sheet(p: &Prompt) -> Element<Msg> {
         PairingRequest::Passkey => (
             format!("Pair with “{name}”"),
             format!("Type the 6-digit code “{name}” shows."),
-            Some(text_field(&p.typed).mono().placeholder("000000").on_change(Msg::PromptTyped).on_submit(Msg::Answer(true)).id("bluetooth-code").width(Fill).into()),
+            Some(
+                text_field(&p.typed)
+                    .mono()
+                    .placeholder("000000")
+                    .on_change(Msg::PromptTyped)
+                    .on_submit(Msg::Answer(true))
+                    .id("bluetooth-code")
+                    .width(Fill)
+                    .into(),
+            ),
             Some("Pair"),
             "Cancel",
         ),
         PairingRequest::PinCode => (
             format!("Pair with “{name}”"),
             format!("Type the PIN for “{name}” (often 0000 or 1234 for older devices)."),
-            Some(text_field(&p.typed).mono().placeholder("PIN").on_change(Msg::PromptTyped).on_submit(Msg::Answer(true)).id("bluetooth-code").width(Fill).into()),
+            Some(
+                text_field(&p.typed)
+                    .mono()
+                    .placeholder("PIN")
+                    .on_change(Msg::PromptTyped)
+                    .on_submit(Msg::Answer(true))
+                    .id("bluetooth-code")
+                    .width(Fill)
+                    .into(),
+            ),
             Some("Pair"),
             "Cancel",
         ),
         PairingRequest::DisplayPasskey { passkey, entered } => (
             format!("Pair with “{name}”"),
-            format!("Type this code on “{name}”, then press Return on it.{}", if *entered > 0 { format!(" {entered} typed so far.") } else { String::new() }),
+            format!(
+                "Type this code on “{name}”, then press Return on it.{}",
+                if *entered > 0 { format!(" {entered} typed so far.") } else { String::new() }
+            ),
             Some(code(six(*passkey))),
             None,
             "Cancel",
@@ -736,7 +857,13 @@ fn prompt_sheet(p: &Prompt) -> Element<Msg> {
             None,
             "Cancel",
         ),
-        PairingRequest::Authorize => (format!("Allow “{name}” to pair?"), "It asked to pair with this computer.".into(), None, Some("Allow"), "Don't Allow"),
+        PairingRequest::Authorize => (
+            format!("Allow “{name}” to pair?"),
+            "It asked to pair with this computer.".into(),
+            None,
+            Some("Allow"),
+            "Don't Allow",
+        ),
         PairingRequest::AuthorizeService(uuid) => (
             format!("Allow “{name}” to connect?"),
             format!("It asks to use a service of this computer ({uuid})."),
@@ -783,25 +910,28 @@ pub fn sample() -> BluetoothState {
         pairable: true,
         discovering: true,
     };
-    let dev = |n: u8, name: &str, kind: DeviceKind, paired: bool, connected: bool, battery: Option<u8>, rssi: Option<i16>| Device {
-        path: format!("/org/bluez/hci0/dev_{n:02X}"),
-        adapter: adapter.path.clone(),
-        address: format!("F4:4E:FD:2A:{n:02X}:{:02X}", n.wrapping_mul(37)),
-        name: name.into(),
-        has_name: true,
-        icon: String::new(),
-        kind,
-        paired,
-        bonded: paired,
-        trusted: paired,
-        blocked: false,
-        connected,
-        battery,
-        rssi,
-        services_resolved: connected,
-        legacy_pairing: false,
-        uuids: Vec::new(),
-    };
+    let dev =
+        |n: u8, name: &str, kind: DeviceKind, paired: bool, connected: bool, battery: Option<u8>, rssi: Option<i16>| {
+            Device {
+                path: format!("/org/bluez/hci0/dev_{n:02X}"),
+                adapter: adapter.path.clone(),
+                address: format!("F4:4E:FD:2A:{n:02X}:{:02X}", n.wrapping_mul(37)),
+                name: name.into(),
+                has_name: true,
+                icon: String::new(),
+                kind,
+                paired,
+                bonded: paired,
+                trusted: paired,
+                blocked: false,
+                connected,
+                battery,
+                rssi,
+                services_resolved: connected,
+                legacy_pairing: false,
+                uuids: Vec::new(),
+            }
+        };
     BluetoothState {
         available: true,
         adapters: vec![adapter.clone()],

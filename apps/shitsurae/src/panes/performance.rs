@@ -58,8 +58,22 @@ fn sample_stats() -> Stats {
         renderer: "gles".into(),
         backend: "udev".into(),
         outputs: vec![
-            aizome_ipc::OutputStats { name: "eDP-1".into(), frames_rendered: 48_211, frames_skipped: 3_904, cpu_us: p(610.0, 1_480.0), gpu_us: Some(p(820.0, 1_900.0)), samples: 4096 },
-            aizome_ipc::OutputStats { name: "DP-2".into(), frames_rendered: 12_007, frames_skipped: 811, cpu_us: p(940.0, 2_610.0), gpu_us: None, samples: 4096 },
+            aizome_ipc::OutputStats {
+                name: "eDP-1".into(),
+                frames_rendered: 48_211,
+                frames_skipped: 3_904,
+                cpu_us: p(610.0, 1_480.0),
+                gpu_us: Some(p(820.0, 1_900.0)),
+                samples: 4096,
+            },
+            aizome_ipc::OutputStats {
+                name: "DP-2".into(),
+                frames_rendered: 12_007,
+                frames_skipped: 811,
+                cpu_us: p(940.0, 2_610.0),
+                gpu_us: None,
+                samples: 4096,
+            },
         ],
         ..Stats::default()
     }
@@ -142,9 +156,21 @@ impl Pane for Performance {
 
     fn entries(&self) -> Vec<SettingEntry> {
         vec![
-            SettingEntry::new("renderer", "Renderer").keywords(&["gpu", "software rendering", "pixman", "gles", "opengl"]),
+            SettingEntry::new("renderer", "Renderer").keywords(&[
+                "gpu",
+                "software rendering",
+                "pixman",
+                "gles",
+                "opengl",
+            ]),
             SettingEntry::new("effects", "Effects").keywords(&["shadows", "frost", "animation", "austere", "lean"]),
-            SettingEntry::new("frames", "Frame times").keywords(&["stats", "budget", "lag", "smoothness", "aizomectl stats"]),
+            SettingEntry::new("frames", "Frame times").keywords(&[
+                "stats",
+                "budget",
+                "lag",
+                "smoothness",
+                "aizomectl stats",
+            ]),
             SettingEntry::new("refresh", "Refresh rate").keywords(&["hz", "fps"]),
         ]
     }
@@ -167,8 +193,12 @@ impl Pane for Performance {
             Msg::Tick => self.poll(cx),
             Msg::Stats(s) => self.stats = Some(s),
             Msg::Outputs(o) => self.outputs = o,
-            Msg::Renderer(i) => cx.change(|s| extra::set(extra::section(s, "performance"), "renderer", RENDERERS[i.min(2)].0)),
-            Msg::Effects(i) => cx.change(|s| s.appearance.effects = [Effects::Full, Effects::Lean, Effects::Austere][i.min(2)]),
+            Msg::Renderer(i) => {
+                cx.change(|s| extra::set(extra::section(s, "performance"), "renderer", RENDERERS[i.min(2)].0))
+            }
+            Msg::Effects(i) => {
+                cx.change(|s| s.appearance.effects = [Effects::Full, Effects::Lean, Effects::Austere][i.min(2)])
+            }
             Msg::OpenDisplays => cx.show_pane("displays", None),
             Msg::Reset => {
                 cx.compositor(Request::Stats { reset: true }, |_| Msg::Tick);
@@ -181,10 +211,20 @@ impl Pane for Performance {
         let chosen = extra::get_str(extra::section_ref(s, "performance"), "renderer").unwrap_or("auto");
         let chosen_i = RENDERERS.iter().position(|(k, _)| *k == chosen).unwrap_or(0);
         let (running, about, glyph) = match &self.stats {
-            Some(Ok(st)) if st.renderer == "gles" => ("Rendering on the GPU", "OpenGL ES, through smithay's GlesRenderer.", Icon::Microchip),
-            Some(Ok(st)) if st.renderer == "pixman" => ("Rendering in software", "pixman, on the processor: there's no usable GPU, or it was chosen.", Icon::Cpu),
+            Some(Ok(st)) if st.renderer == "gles" => {
+                ("Rendering on the GPU", "OpenGL ES, through smithay's GlesRenderer.", Icon::Microchip)
+            }
+            Some(Ok(st)) if st.renderer == "pixman" => (
+                "Rendering in software",
+                "pixman, on the processor: there's no usable GPU, or it was chosen.",
+                Icon::Cpu,
+            ),
             Some(Ok(st)) => (st.renderer.as_str(), "", Icon::Cpu),
-            Some(Err(_)) => ("Renderer unknown", "The compositor isn't answering: is this an Aizome session?", Icon::CircleQuestionMark),
+            Some(Err(_)) => (
+                "Renderer unknown",
+                "The compositor isn't answering: is this an Aizome session?",
+                Icon::CircleQuestionMark,
+            ),
             None => ("…", "", Icon::Gauge),
         };
         let backend = match &self.stats {
@@ -197,7 +237,12 @@ impl Pane for Performance {
             _ => "",
         };
         let hero = row![
-            container(icon(glyph).size(26.0).role(Role::Focus)).center().width(48.0).height(48.0).fill(Tone::Sunk).border(Edge::Line2),
+            container(icon(glyph).size(26.0).role(Role::Focus))
+                .center()
+                .width(48.0)
+                .height(48.0)
+                .fill(Tone::Sunk)
+                .border(Edge::Line2),
             column![
                 text(running.to_owned()).size(17.0).weight(650.0),
                 text(format!("{about} {backend}").trim().to_owned()).size(12.0).role(Role::Text3).wrap(),
@@ -212,35 +257,83 @@ impl Pane for Performance {
         match &self.stats {
             Some(Ok(st)) => {
                 for o in &st.outputs {
-                    let refresh = self.outputs.iter().find(|x| x.name == o.name).and_then(|x| x.current_mode.as_ref()).map(|m| f64::from(m.refresh) / 1000.0);
+                    let refresh = self
+                        .outputs
+                        .iter()
+                        .find(|x| x.name == o.name)
+                        .and_then(|x| x.current_mode.as_ref())
+                        .map(|m| f64::from(m.refresh) / 1000.0);
                     let detail = format!(
                         "{} frames drawn, {} found nothing to draw{}",
                         o.frames_rendered,
                         o.frames_skipped,
                         refresh.map_or(String::new(), |r| format!(" · {r:.0} Hz"))
                     );
-                    let mut r = form::whole(container(column![
-                        row![text(o.name.clone()).mono().weight(600.0), spacer(), verdict(o.cpu_us.p95)].align(Align::Center),
-                        meter_el(o.cpu_us.p50, o.cpu_us.p95, o.cpu_us.max),
-                        text(format!("CPU p50 {} · p95 {} · p99 {}{}", ms(o.cpu_us.p50), ms(o.cpu_us.p95), ms(o.cpu_us.p99), o.gpu_us.map_or(String::new(), |g| format!(" · GPU p95 {}", ms(g.p95))))).mono().size(11.0).role(Role::Text2),
-                        text(detail).size(11.0).role(Role::Text3),
-                    ].spacing(6.0)).padding([10.0, form::INSET]).width(Fill));
+                    let mut r = form::whole(
+                        container(
+                            column![
+                                row![text(o.name.clone()).mono().weight(600.0), spacer(), verdict(o.cpu_us.p95)]
+                                    .align(Align::Center),
+                                meter_el(o.cpu_us.p50, o.cpu_us.p95, o.cpu_us.max),
+                                text(format!(
+                                    "CPU p50 {} · p95 {} · p99 {}{}",
+                                    ms(o.cpu_us.p50),
+                                    ms(o.cpu_us.p95),
+                                    ms(o.cpu_us.p99),
+                                    o.gpu_us.map_or(String::new(), |g| format!(" · GPU p95 {}", ms(g.p95)))
+                                ))
+                                .mono()
+                                .size(11.0)
+                                .role(Role::Text2),
+                                text(detail).size(11.0).role(Role::Text3),
+                            ]
+                            .spacing(6.0),
+                        )
+                        .padding([10.0, form::INSET])
+                        .width(Fill),
+                    );
                     if frames.is_empty() {
                         r = r.entry("frames");
                     }
                     frames.push(r);
                 }
             }
-            Some(Err(e)) => frames.push(form::whole(container(text(format!("No frame times from the compositor: {e}")).size(12.0).role(Role::Text3).wrap()).padding([12.0, form::INSET])).entry("frames")),
-            None => frames.push(form::whole(container(progress_indeterminate().width(160.0)).padding([16.0, form::INSET])).entry("frames")),
+            Some(Err(e)) => frames.push(
+                form::whole(
+                    container(
+                        text(format!("No frame times from the compositor: {e}")).size(12.0).role(Role::Text3).wrap(),
+                    )
+                    .padding([12.0, form::INSET]),
+                )
+                .entry("frames"),
+            ),
+            None => frames.push(
+                form::whole(container(progress_indeterminate().width(160.0)).padding([16.0, form::INSET]))
+                    .entry("frames"),
+            ),
         }
         let own = self.own;
         let own_p95 = own.view_p95 + own.paint_p95;
-        frames.push(form::whole(container(column![
-            row![text("This window").weight(600.0), spacer(), verdict(own_p95)].align(Align::Center),
-            meter_el(own.view_p50 + own.paint_p50, own_p95, own_p95),
-            text(format!("view and layout p95 {} · drawing p95 {} · {} frames", ms(own.view_p95), ms(own.paint_p95), own.frames)).mono().size(11.0).role(Role::Text2),
-        ].spacing(6.0)).padding([10.0, form::INSET]).width(Fill)));
+        frames.push(form::whole(
+            container(
+                column![
+                    row![text("This window").weight(600.0), spacer(), verdict(own_p95)].align(Align::Center),
+                    meter_el(own.view_p50 + own.paint_p50, own_p95, own_p95),
+                    text(format!(
+                        "view and layout p95 {} · drawing p95 {} · {} frames",
+                        ms(own.view_p95),
+                        ms(own.paint_p95),
+                        own.frames
+                    ))
+                    .mono()
+                    .size(11.0)
+                    .role(Role::Text2),
+                ]
+                .spacing(6.0),
+            )
+            .padding([10.0, form::INSET])
+            .width(Fill),
+        ));
 
         let mut displays: Vec<form::Row<Msg>> = self
             .outputs
@@ -248,11 +341,20 @@ impl Pane for Performance {
             .filter_map(|o| {
                 let m = o.current_mode.as_ref()?;
                 let name = if o.make.is_empty() { o.name.clone() } else { format!("{} {}", o.make, o.model) };
-                Some(form::value_mono(name, format!("{} × {} at {:.0} Hz", m.width, m.height, f64::from(m.refresh) / 1000.0)).detail(o.name.clone()).compact())
+                Some(
+                    form::value_mono(
+                        name,
+                        format!("{} × {} at {:.0} Hz", m.width, m.height, f64::from(m.refresh) / 1000.0),
+                    )
+                    .detail(o.name.clone())
+                    .compact(),
+                )
             })
             .collect();
         if displays.is_empty() {
-            displays.push(form::whole(container(text("The compositor didn't say.").role(Role::Text3)).padding([10.0, form::INSET])));
+            displays.push(form::whole(
+                container(text("The compositor didn't say.").role(Role::Text3)).padding([10.0, form::INSET]),
+            ));
         }
         let first = displays.remove(0);
         displays.insert(0, first.entry("refresh"));
@@ -296,10 +398,13 @@ fn verdict<Msg: 'static>(p95: f64) -> Element<Msg> {
     } else {
         ("well over budget", Role::Danger)
     };
-    row![icon(if role == Role::Success { Icon::CircleCheck } else { Icon::CircleAlert }).size(12.0).role(role), text(t).size(11.0).role(role)]
-        .spacing(4.0)
-        .align(Align::Center)
-        .into()
+    row![
+        icon(if role == Role::Success { Icon::CircleCheck } else { Icon::CircleAlert }).size(12.0).role(role),
+        text(t).size(11.0).role(role)
+    ]
+    .spacing(4.0)
+    .align(Align::Center)
+    .into()
 }
 
 fn meter_el<Msg>(p50: f64, p95: f64, max: f64) -> Element<Msg> {
@@ -351,6 +456,10 @@ impl Widget for BudgetMeter {
     }
 
     fn semantics(&self) -> Option<Semantics> {
-        Some(Semantics { role: SemanticRole::Meter, range: Some((0.0, 2.0 * BUDGET_US, self.p95)), ..Default::default() })
+        Some(Semantics {
+            role: SemanticRole::Meter,
+            range: Some((0.0, 2.0 * BUDGET_US, self.p95)),
+            ..Default::default()
+        })
     }
 }

@@ -87,19 +87,32 @@ impl Pane for Mouse {
     fn entries(&self) -> Vec<SettingEntry> {
         vec![
             SettingEntry::new("speed", "Pointer speed").keywords(&["tracking", "sensitivity", "fast", "slow"]),
-            SettingEntry::new("acceleration", "Pointer acceleration").keywords(&["accel", "flat", "adaptive", "precision"]),
-            SettingEntry::new("natural-scroll", "Natural scrolling").keywords(&["scroll direction", "reverse", "invert"]),
+            SettingEntry::new("acceleration", "Pointer acceleration").keywords(&[
+                "accel",
+                "flat",
+                "adaptive",
+                "precision",
+            ]),
+            SettingEntry::new("natural-scroll", "Natural scrolling").keywords(&[
+                "scroll direction",
+                "reverse",
+                "invert",
+            ]),
             SettingEntry::new("scroll-speed", "Scrolling speed").keywords(&["wheel"]),
-            SettingEntry::new("primary-button", "Primary button").keywords(&["left handed", "left-handed", "swap buttons"]),
+            SettingEntry::new("primary-button", "Primary button").keywords(&[
+                "left handed",
+                "left-handed",
+                "swap buttons",
+            ]),
         ]
     }
 
     fn update(&mut self, msg: Msg, cx: &mut PaneCx<Msg>) {
         match msg {
             Msg::Speed(v) => cx.change(|s| s.input.pointer.speed = (v * 20.0).round() / 20.0),
-            Msg::Acceleration(on) => {
-                cx.change(|s| s.input.pointer.accel_profile = if on { AccelProfile::Adaptive } else { AccelProfile::Flat })
-            }
+            Msg::Acceleration(on) => cx.change(|s| {
+                s.input.pointer.accel_profile = if on { AccelProfile::Adaptive } else { AccelProfile::Flat }
+            }),
             Msg::Natural(on) => cx.change(|s| s.input.pointer.natural_scroll = on),
             Msg::LeftHanded(on) => cx.change(|s| s.input.pointer.left_handed = on),
             Msg::ScrollSpeed(v) => {

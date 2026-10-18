@@ -8,12 +8,12 @@ use aizome_kit::draw;
 use aizome_kit::element::{Common, Element, Layoutable, MsgFn};
 use aizome_kit::hash::PaintHasher;
 use aizome_kit::layout::{Constraints, Point, Rect, Size};
+use aizome_kit::sidestep_ui::{Cursor, PointerButton};
 use aizome_kit::theme::{Rgba, Theme, color};
 use aizome_kit::widget::{
     Event, EventCx, FocusRing, Focusable, LayoutCx, PaintCx, SemanticAction, SemanticRole, Semantics, Status, Widget,
 };
 use aizome_kit::{Color, Icon, Image};
-use aizome_kit::sidestep_ui::{Cursor, PointerButton};
 use aizome_theme::{Brand, Palette};
 
 use crate::pane::Tile;
@@ -265,7 +265,11 @@ impl Widget for PressWidget {
             role: if self.on_press.is_some() { SemanticRole::Button } else { SemanticRole::Group },
             label: self.label.as_deref().map(str::to_owned),
             selected: self.selected.then_some(true),
-            actions: if self.on_press.is_some() { vec![SemanticAction::Click, SemanticAction::Focus] } else { Vec::new() },
+            actions: if self.on_press.is_some() {
+                vec![SemanticAction::Click, SemanticAction::Focus]
+            } else {
+                Vec::new()
+            },
             ..Default::default()
         })
     }
@@ -301,7 +305,8 @@ impl Widget for TileWidget {
         let r = Rect::new(0.0, 0.0, self.size, self.size);
         cx.canvas.fill_rect(r, color(fill));
         // A 1pt edge keeps a tile apart from the selection behind it.
-        let edge = if self.selected { t.on_selection().with_alpha(0.45) } else { color(fill.mix(Rgba::hex(0x000000), 0.18)) };
+        let edge =
+            if self.selected { t.on_selection().with_alpha(0.45) } else { color(fill.mix(Rgba::hex(0x000000), 0.18)) };
         draw::border(cx.canvas, r, edge, 1.0);
         draw::top(cx.canvas, r.inset(-1.0), Color::rgba8(255, 255, 255, 40), 1.0);
         let g = (self.size * 0.68).round();
@@ -446,7 +451,12 @@ impl Widget for AvatarWidget {
                 let s = img.size();
                 let k = (self.size / s.width).max(self.size / s.height);
                 let (w, h) = (s.width * k, s.height * k);
-                let dst = Rect::new((self.size - w) / 2.0, (self.size - h) / 2.0, (self.size + w) / 2.0, (self.size + h) / 2.0);
+                let dst = Rect::new(
+                    (self.size - w) / 2.0,
+                    (self.size - h) / 2.0,
+                    (self.size + w) / 2.0,
+                    (self.size + h) / 2.0,
+                );
                 cx.canvas.save();
                 cx.canvas.clip_rect(r);
                 cx.canvas.draw_image(img, dst);
@@ -564,7 +574,12 @@ impl Widget for PictureWidget {
                 let s = img.size();
                 let k = (r.width() / s.width).max(r.height() / s.height);
                 let (w, h) = (s.width * k, s.height * k);
-                let dst = Rect::new((r.width() - w) / 2.0, (r.height() - h) / 2.0, (r.width() + w) / 2.0, (r.height() + h) / 2.0);
+                let dst = Rect::new(
+                    (r.width() - w) / 2.0,
+                    (r.height() - h) / 2.0,
+                    (r.width() + w) / 2.0,
+                    (r.height() + h) / 2.0,
+                );
                 cx.canvas.save();
                 cx.canvas.clip_rect(r);
                 cx.canvas.draw_image(img, dst);
@@ -573,7 +588,12 @@ impl Widget for PictureWidget {
             None => {
                 cx.canvas.fill_rect(r, t.sunk());
                 let g = 20.0;
-                Icon::Image.draw(cx.canvas, Point::new(((r.width() - g) / 2.0).round(), ((r.height() - g) / 2.0).round()), g, t.faint());
+                Icon::Image.draw(
+                    cx.canvas,
+                    Point::new(((r.width() - g) / 2.0).round(), ((r.height() - g) / 2.0).round()),
+                    g,
+                    t.faint(),
+                );
             }
         }
         draw::border(cx.canvas, r, t.bevel_lo().with_alpha(0.7), 1.0);
@@ -619,7 +639,12 @@ impl Widget for SwatchWidget {
             } else {
                 Color::rgba8(0xff, 0xff, 0xff, 0xff)
             };
-            Icon::Check.draw(cx.canvas, Point::new(((outer.width() - g) / 2.0).round(), ((outer.height() - g) / 2.0).round()), g, on);
+            Icon::Check.draw(
+                cx.canvas,
+                Point::new(((outer.width() - g) / 2.0).round(), ((outer.height() - g) / 2.0).round()),
+                g,
+                on,
+            );
         }
     }
 
@@ -650,7 +675,9 @@ impl Segment {
     pub fn color(self, t: &Theme) -> Color {
         let p = &t.palette;
         match self {
-            Segment::Ai => color(if p.name == aizome_theme::ThemeName::Day { Rgba::hex(0x3d59a1) } else { Rgba::hex(0x4a67b3) }),
+            Segment::Ai => {
+                color(if p.name == aizome_theme::ThemeName::Day { Rgba::hex(0x3d59a1) } else { Rgba::hex(0x4a67b3) })
+            }
             Segment::Hanada => color(p.blue),
             Segment::Violet => color(p.violet),
             Segment::Cyan => color(p.cyan),

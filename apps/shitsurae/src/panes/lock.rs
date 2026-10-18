@@ -125,10 +125,16 @@ impl Pane for Lock {
 
     fn entries(&self) -> Vec<SettingEntry> {
         vec![
-            SettingEntry::new("lock-after", "Lock the screen after").keywords(&["idle", "inactive", "timeout", "auto lock"]),
+            SettingEntry::new("lock-after", "Lock the screen after").keywords(&[
+                "idle",
+                "inactive",
+                "timeout",
+                "auto lock",
+            ]),
             SettingEntry::new("screen-off", "Turn the screen off after").keywords(&["display off", "blank", "dpms"]),
             SettingEntry::new("before-sleep", "Ask for the password after sleep").keywords(&["suspend", "wake"]),
-            SettingEntry::new("after-screen-off", "Ask for the password after the screen goes off").keywords(&["blank"]),
+            SettingEntry::new("after-screen-off", "Ask for the password after the screen goes off")
+                .keywords(&["blank"]),
             SettingEntry::new("show-clock", "Show the clock").keywords(&["time", "lock screen"]),
             SettingEntry::new("show-picture", "Show your picture").keywords(&["avatar"]),
         ]
@@ -137,7 +143,9 @@ impl Pane for Lock {
     fn update(&mut self, msg: Msg, cx: &mut PaneCx<Msg>) {
         match msg {
             Msg::After(i) => cx.change(|s| s.idle.lock_after_minutes = minutes_at(s.idle.lock_after_minutes, i)),
-            Msg::ScreenOff(i) => cx.change(|s| s.idle.monitors_off_after_minutes = minutes_at(s.idle.monitors_off_after_minutes, i)),
+            Msg::ScreenOff(i) => {
+                cx.change(|s| s.idle.monitors_off_after_minutes = minutes_at(s.idle.monitors_off_after_minutes, i))
+            }
             Msg::BeforeSleep(on) => cx.change(|s| {
                 let mut l: LockSettings = s.lock_settings();
                 l.before_sleep = on;
@@ -160,27 +168,44 @@ impl Pane for Lock {
         let after_off = extra::get_bool(&s.lock, "after_monitors_off", true);
         let (lock_opts, lock_i) = minutes_choice(s.idle.lock_after_minutes);
         let (off_opts, off_i) = minutes_choice(s.idle.monitors_off_after_minutes);
-        let warn = s.idle.lock_after_minutes == 0 || (s.idle.monitors_off_after_minutes != 0 && s.idle.lock_after_minutes > s.idle.monitors_off_after_minutes && !after_off);
+        let warn = s.idle.lock_after_minutes == 0
+            || (s.idle.monitors_off_after_minutes != 0
+                && s.idle.lock_after_minutes > s.idle.monitors_off_after_minutes
+                && !after_off);
         let mut when = vec![
             form::row("Lock the screen after", dropdown(lock_opts, lock_i).on_select(Msg::After).min_width(150.0))
                 .entry("lock-after")
                 .help("Without a key pressed or the pointer moved. ⌃❖Q locks at once."),
-            form::row("Turn the screen off after", dropdown(off_opts, off_i).on_select(Msg::ScreenOff).min_width(150.0)).entry("screen-off"),
-            form::row("Ask for the password after sleep", toggle(l.before_sleep).on_toggle(Msg::BeforeSleep)).entry("before-sleep"),
-            form::row("…and after the screen goes off", toggle(after_off).on_toggle(Msg::AfterScreenOff)).entry("after-screen-off"),
+            form::row(
+                "Turn the screen off after",
+                dropdown(off_opts, off_i).on_select(Msg::ScreenOff).min_width(150.0),
+            )
+            .entry("screen-off"),
+            form::row("Ask for the password after sleep", toggle(l.before_sleep).on_toggle(Msg::BeforeSleep))
+                .entry("before-sleep"),
+            form::row("…and after the screen goes off", toggle(after_off).on_toggle(Msg::AfterScreenOff))
+                .entry("after-screen-off"),
         ];
         if warn {
             when.push(form::whole(
                 container(
-                    row![icon(Icon::TriangleAlert).size(14.0).role(Role::Warning), text("Anyone can use this computer while you're away from it.").size(12.0).role(Role::Warning)]
-                        .spacing(8.0)
-                        .align(Align::Center),
+                    row![
+                        icon(Icon::TriangleAlert).size(14.0).role(Role::Warning),
+                        text("Anyone can use this computer while you're away from it.").size(12.0).role(Role::Warning)
+                    ]
+                    .spacing(8.0)
+                    .align(Align::Center),
                 )
                 .padding([8.0, form::INSET]),
             ));
         }
         form::page(vec![
-            vcx.section("", vec![form::whole(container(preview(vcx, clock, l.show_picture)).padding([12.0, form::INSET]).width(Fill))]),
+            vcx.section(
+                "",
+                vec![form::whole(
+                    container(preview(vcx, clock, l.show_picture)).padding([12.0, form::INSET]).width(Fill),
+                )],
+            ),
             vcx.section("When", when),
             vcx.section(
                 "Showing",

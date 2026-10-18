@@ -13,8 +13,8 @@ use crate::pane::{AnyPane, pane};
 
 mod accessibility;
 mod appearance;
-mod bluetooth;
 mod battery;
+mod bluetooth;
 mod desktop;
 mod displays;
 mod general;

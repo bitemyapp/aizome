@@ -137,8 +137,18 @@ impl Users {
             Sheet::Password { user, new, again, hint, error } => column![
                 text(format!("Change the password for {user}")).size(15.0).weight(650.0),
                 form::note("A long password is better than a clever one: a few words you'll remember."),
-                text_field(new).password().placeholder("New password").on_change(Msg::New).id("new-password").width(Fill),
-                text_field(again).password().placeholder("The same again").on_change(Msg::Again).error(error.clone()).width(Fill),
+                text_field(new)
+                    .password()
+                    .placeholder("New password")
+                    .on_change(Msg::New)
+                    .id("new-password")
+                    .width(Fill),
+                text_field(again)
+                    .password()
+                    .placeholder("The same again")
+                    .on_change(Msg::Again)
+                    .error(error.clone())
+                    .width(Fill),
                 text_field(hint).placeholder("A hint (optional)").on_change(Msg::Hint).width(Fill),
                 buttons("Change Password", !new.is_empty(), Msg::SavePassword, false),
             ]
@@ -149,8 +159,17 @@ impl Users {
                 text("Add a User").size(15.0).weight(650.0),
                 form::note("They'll have a home folder, settings and desktop of their own."),
                 text_field(full).placeholder("Full name").on_change(Msg::Full).id("full-name").width(Fill),
-                text_field(login).mono().placeholder("Account name").on_change(Msg::Login).error(error.clone()).width(Fill),
-                text_field(password).password().placeholder("Password, or they choose one at their first login").on_change(Msg::FirstPassword).width(Fill),
+                text_field(login)
+                    .mono()
+                    .placeholder("Account name")
+                    .on_change(Msg::Login)
+                    .error(error.clone())
+                    .width(Fill),
+                text_field(password)
+                    .password()
+                    .placeholder("Password, or they choose one at their first login")
+                    .on_change(Msg::FirstPassword)
+                    .width(Fill),
                 checkbox("Administrator: can change the system and manage users", *admin).on_toggle(Msg::Admin),
                 buttons("Add User", !full.trim().is_empty() && !login.is_empty(), Msg::Create, false),
             ]
@@ -160,7 +179,8 @@ impl Users {
             Sheet::Remove { user, delete_files } => column![
                 text(format!("Remove {user}?")).size(15.0).weight(650.0),
                 form::note("They won't be able to log in any more."),
-                checkbox(format!("Also delete /home/{user} and everything in it"), *delete_files).on_toggle(Msg::DeleteFiles),
+                checkbox(format!("Also delete /home/{user} and everything in it"), *delete_files)
+                    .on_toggle(Msg::DeleteFiles),
                 buttons("Remove User", true, Msg::RemoveConfirmed, true),
             ]
             .spacing(12.0)
@@ -203,8 +223,17 @@ impl Pane for Users {
             SettingEntry::new("picture", "Your picture").keywords(&["avatar", "photo", "icon"]),
             SettingEntry::new("password", "Change password").keywords(&["passphrase", "login password"]),
             SettingEntry::new("groups", "Groups").keywords(&["wheel", "membership"]),
-            SettingEntry::new("others", "Other users").keywords(&["add user", "remove user", "administrator", "standard"]),
-            SettingEntry::new("auto-login", "Log in automatically").keywords(&["automatic login", "autologin", "no password"]),
+            SettingEntry::new("others", "Other users").keywords(&[
+                "add user",
+                "remove user",
+                "administrator",
+                "standard",
+            ]),
+            SettingEntry::new("auto-login", "Log in automatically").keywords(&[
+                "automatic login",
+                "autologin",
+                "no password",
+            ]),
         ]
     }
 
@@ -231,7 +260,13 @@ impl Pane for Users {
             }
             Msg::Picture(None) => {}
             Msg::ChangePassword(user) => {
-                self.sheet = Some(Sheet::Password { user, new: String::new(), again: String::new(), hint: String::new(), error: None });
+                self.sheet = Some(Sheet::Password {
+                    user,
+                    new: String::new(),
+                    again: String::new(),
+                    hint: String::new(),
+                    error: None,
+                });
                 cx.open_sheet();
                 cx.focus("new-password");
             }
@@ -434,7 +469,9 @@ impl Pane for Users {
             ));
         }
         if !snap.available {
-            sections.push(form::note("AccountsService isn't running, so accounts can't be changed here (services.accounts-daemon.enable)."));
+            sections.push(form::note(
+                "AccountsService isn't running, so accounts can't be changed here (services.accounts-daemon.enable).",
+            ));
         }
         let me = snap.current().cloned();
         let fixed = snap.users_managed || !snap.available;
@@ -463,20 +500,38 @@ impl Pane for Users {
             } else {
                 groups_of(&me.name)
             };
-            sections.push(vcx.section(
-                "You",
-                vec![
-                    form::row("Name", text_field(&name).on_change(Msg::Name).on_submit(Msg::SaveName).enabled(!fixed).width(240.0))
+            sections.push(
+                vcx.section(
+                    "You",
+                    vec![
+                        form::row(
+                            "Name",
+                            text_field(&name)
+                                .on_change(Msg::Name)
+                                .on_submit(Msg::SaveName)
+                                .enabled(!fixed)
+                                .width(240.0),
+                        )
                         .entry("name")
                         .help("How you appear at login, on the lock screen and in the sidebar."),
-                    form::row("Picture", button("Choose…").enabled(!fixed).on_press(Msg::ChoosePicture)).entry("picture"),
-                    form::row("Password", button("Change Password…").enabled(snap.available).on_press(Msg::ChangePassword(me.name.clone())))
+                        form::row("Picture", button("Choose…").enabled(!fixed).on_press(Msg::ChoosePicture))
+                            .entry("picture"),
+                        form::row(
+                            "Password",
+                            button("Change Password…")
+                                .enabled(snap.available)
+                                .on_press(Msg::ChangePassword(me.name.clone())),
+                        )
                         .entry("password"),
-                    form::row("Groups", text(groups.join(", ")).mono().size(11.0).role(Role::Text3).wrap().max_width(300.0))
+                        form::row(
+                            "Groups",
+                            text(groups.join(", ")).mono().size(11.0).role(Role::Text3).wrap().max_width(300.0),
+                        )
                         .entry("groups")
                         .help("wheel can act as administrator; the others reach devices."),
-                ],
-            ));
+                    ],
+                ),
+            );
         }
 
         // Other people.
@@ -488,39 +543,53 @@ impl Pane for Users {
                 let name = u.name.clone();
                 let n2 = u.name.clone();
                 let controls = row![
-                    form::choice(&["Standard", "Administrator"], usize::from(u.account_type == AccountType::Administrator), move |i| {
-                        Msg::Type(name.clone(), i == 1)
-                    }),
+                    form::choice(
+                        &["Standard", "Administrator"],
+                        usize::from(u.account_type == AccountType::Administrator),
+                        move |i| { Msg::Type(name.clone(), i == 1) }
+                    ),
                     icon_button(Icon::Trash).toolbar().enabled(!fixed).on_press(Msg::Remove(n2)).tooltip("Remove"),
                 ]
                 .spacing(8.0)
                 .align(Align::Center);
-                form::row(u.display_name().to_owned(), controls).leading(avatar(pic, &u.initials(), &u.name, 32.0)).detail(u.name.clone())
+                form::row(u.display_name().to_owned(), controls)
+                    .leading(avatar(pic, &u.initials(), &u.name, 32.0))
+                    .detail(u.name.clone())
             })
             .collect();
         if rows.is_empty() {
-            rows.push(form::whole(container(text("Nobody else has an account here.").role(Role::Text3)).padding([12.0, form::INSET])));
+            rows.push(form::whole(
+                container(text("Nobody else has an account here.").role(Role::Text3)).padding([12.0, form::INSET]),
+            ));
         }
         let first = rows.remove(0);
         rows.insert(0, first.entry("others"));
         rows.push(form::whole(
-            container(row![button("Add User…").icon(Icon::UserPlus).enabled(!fixed).on_press(Msg::AddUser), spacer()].width(Fill))
-                .padding([8.0, form::INSET])
-                .width(Fill),
+            container(
+                row![button("Add User…").icon(Icon::UserPlus).enabled(!fixed).on_press(Msg::AddUser), spacer()]
+                    .width(Fill),
+            )
+            .padding([8.0, form::INSET])
+            .width(Fill),
         ));
         sections.push(vcx.section("Other Users", rows));
 
         let mut names = vec!["Off".to_owned()];
         names.extend(snap.users.iter().map(|u| u.display_name().to_owned()));
         let auto = snap.users.iter().position(|u| u.automatic_login).map_or(0, |i| i + 1);
-        sections.push(vcx.section(
-            "Login",
-            vec![
-                form::row("Log in automatically as", dropdown(names, auto).on_select(Msg::AutoLogin).enabled(!fixed).min_width(200.0))
+        sections.push(
+            vcx.section(
+                "Login",
+                vec![
+                    form::row(
+                        "Log in automatically as",
+                        dropdown(names, auto).on_select(Msg::AutoLogin).enabled(!fixed).min_width(200.0),
+                    )
                     .entry("auto-login")
                     .help("The computer starts straight into this account, without asking for a password."),
-            ],
-        ));
+                ],
+            ),
+        );
         form::page(sections)
     }
 

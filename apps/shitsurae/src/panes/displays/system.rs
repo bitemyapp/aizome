@@ -104,7 +104,11 @@ impl SampleOutputs {
         let o = self.on.iter_mut().find(|o| o.name == *name).ok_or_else(|| format!("no output {name}"))?;
         if let Some(m) = mode {
             let (w, h, r) = aizome_config::parse_mode(m).ok_or_else(|| format!("bad mode {m}"))?;
-            let found = o.modes.iter().find(|x| x.width == w && x.height == h && r.is_none_or(|r| (x.refresh - r).abs() < 10)).cloned();
+            let found = o
+                .modes
+                .iter()
+                .find(|x| x.width == w && x.height == h && r.is_none_or(|r| (x.refresh - r).abs() < 10))
+                .cloned();
             o.current_mode = Some(found.ok_or_else(|| format!("{name} has no mode {m}"))?);
         }
         if let Some(s) = scale {
@@ -121,7 +125,8 @@ impl SampleOutputs {
             o.logical.y = *y;
         }
         let m = o.current_mode.clone().unwrap_or_default();
-        let (w, h) = super::model::logical_size(&super::model::Mode::new(m.width, m.height, m.refresh), o.scale, o.transform);
+        let (w, h) =
+            super::model::logical_size(&super::model::Mode::new(m.width, m.height, m.refresh), o.scale, o.transform);
         o.logical.w = w;
         o.logical.h = h;
         o.usable = o.logical;
@@ -192,7 +197,13 @@ impl Compositor {
                                 }
                             }
                             Ok(_) => {}
-                            Err(e) if matches!(e.kind(), std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut | std::io::ErrorKind::InvalidData) => {}
+                            Err(e)
+                                if matches!(
+                                    e.kind(),
+                                    std::io::ErrorKind::WouldBlock
+                                        | std::io::ErrorKind::TimedOut
+                                        | std::io::ErrorKind::InvalidData
+                                ) => {}
                             Err(_) => break,
                         }
                     }

@@ -99,7 +99,9 @@ impl Pane for Accessibility {
             Msg::Flash(on) => cx.change(|s| extra::set(&mut s.sound, "visual_alert", on)),
             Msg::Sticky(on) => cx.change(|s| extra::set(&mut s.input.keyboard.extra, "sticky_keys", on)),
             Msg::Slow(on) => cx.change(|s| extra::set(&mut s.input.keyboard.extra, "slow_keys", on)),
-            Msg::SlowMs(v) => cx.change(|s| extra::set(&mut s.input.keyboard.extra, "slow_keys_ms", ((v / 50.0).round() * 50.0) as i64)),
+            Msg::SlowMs(v) => cx.change(|s| {
+                extra::set(&mut s.input.keyboard.extra, "slow_keys_ms", ((v / 50.0).round() * 50.0) as i64)
+            }),
         }
     }
 
@@ -132,8 +134,11 @@ impl Pane for Accessibility {
         ];
         if slow {
             typing.push(
-                form::row("Hold for", crate::panes::mouse::speed_slider(slow_ms, 100.0..=1000.0, "Short", "Long", Msg::SlowMs))
-                    .detail(format!("{} ms", slow_ms as i64)),
+                form::row(
+                    "Hold for",
+                    crate::panes::mouse::speed_slider(slow_ms, 100.0..=1000.0, "Short", "Long", Msg::SlowMs),
+                )
+                .detail(format!("{} ms", slow_ms as i64)),
             );
         }
         form::page(vec![
@@ -141,17 +146,23 @@ impl Pane for Accessibility {
                 "Seeing",
                 vec![
                     form::whole(container(contrast).padding([14.0, form::INSET]).width(Fill).align_x(Align::Center)),
-                    form::row("High Contrast", toggle(hc).on_toggle(Msg::HighContrast))
-                        .entry("high-contrast")
-                        .help("Stronger edges and text everywhere, every colour at least 7:1 against what's behind it."),
+                    form::row("High Contrast", toggle(hc).on_toggle(Msg::HighContrast)).entry("high-contrast").help(
+                        "Stronger edges and text everywhere, every colour at least 7:1 against what's behind it.",
+                    ),
                     form::row("Larger text", toggle(a.size == UiSize::Large).on_toggle(Msg::Larger))
                         .entry("larger-text")
                         .help("Text and controls a size up. Appearance has the sizes between."),
                     form::row(
                         "Pointer size",
                         row![
-                            slider(cursor_i as f64, 0.0..=(CURSOR_SIZES.len() - 1) as f64).step(1.0).ticks(CURSOR_SIZES.len()).on_change(Msg::Cursor).width(180.0),
-                            icon(Icon::MousePointer).size((a.cursor_size as f64 / 2.0).clamp(12.0, 32.0)).role(Role::Text),
+                            slider(cursor_i as f64, 0.0..=(CURSOR_SIZES.len() - 1) as f64)
+                                .step(1.0)
+                                .ticks(CURSOR_SIZES.len())
+                                .on_change(Msg::Cursor)
+                                .width(180.0),
+                            icon(Icon::MousePointer)
+                                .size((a.cursor_size as f64 / 2.0).clamp(12.0, 32.0))
+                                .role(Role::Text),
                         ]
                         .spacing(10.0)
                         .align(Align::Center),
@@ -166,9 +177,12 @@ impl Pane for Accessibility {
             vcx.section(
                 "Hearing",
                 vec![
-                    form::row("Flash the screen for alerts", toggle(extra::get_bool(&s.sound, "visual_alert", false)).on_toggle(Msg::Flash))
-                        .entry("flash")
-                        .help("The menu bar flashes when the alert sound plays, so it's seen as well as heard."),
+                    form::row(
+                        "Flash the screen for alerts",
+                        toggle(extra::get_bool(&s.sound, "visual_alert", false)).on_toggle(Msg::Flash),
+                    )
+                    .entry("flash")
+                    .help("The menu bar flashes when the alert sound plays, so it's seen as well as heard."),
                 ],
             ),
             vcx.section("Typing", typing),

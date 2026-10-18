@@ -12,8 +12,8 @@
 //! ])
 //! ```
 
-use aizome_kit::prelude::*;
 use aizome_kit::column;
+use aizome_kit::prelude::*;
 
 use crate::pane::ViewCx;
 use crate::widgets::{card, highlight};
@@ -65,7 +65,17 @@ pub fn value_mono<Msg: 'static>(label: impl Into<String>, value: impl Into<Strin
 
 /// A row that is one element, the whole width (a list, a preview).
 pub fn whole<Msg>(element: impl Into<Element<Msg>>) -> Row<Msg> {
-    Row { label: None, control: None, help: None, detail: None, leading: None, entry: None, whole: Some(element.into()), stacked: false, compact: false }
+    Row {
+        label: None,
+        control: None,
+        help: None,
+        detail: None,
+        leading: None,
+        entry: None,
+        whole: Some(element.into()),
+        stacked: false,
+        compact: false,
+    }
 }
 
 /// A setting the system configuration pins: its value, "Set by your
@@ -202,7 +212,8 @@ impl ViewCx<'_> {
         }
         col = col.push(card(column(items).width(Fill)));
         if let Some(note) = note {
-            col = col.push(container(text(note).size(11.0).role(Role::Text3).wrap().line_height(1.25)).padding([2.0, 2.0]));
+            col = col
+                .push(container(text(note).size(11.0).role(Role::Text3).wrap().line_height(1.25)).padding([2.0, 2.0]));
         }
         col.into()
     }
@@ -210,7 +221,9 @@ impl ViewCx<'_> {
 
 /// A section's caption: mono, uppercase, `text3`, as the Deskbar's SHELF.
 pub fn caption<Msg: 'static>(title: &str) -> Element<Msg> {
-    container(text(title.to_uppercase()).mono().size(10.5).letter_spacing(0.8).role(Role::Text3)).padding([0.0, 2.0]).into()
+    container(text(title.to_uppercase()).mono().size(10.5).letter_spacing(0.8).role(Role::Text3))
+        .padding([0.0, 2.0])
+        .into()
 }
 
 /// A page of sections, spaced.

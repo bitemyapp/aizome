@@ -61,7 +61,13 @@ fn preview(m: &MenubarSettings) -> Element<Msg> {
             continue;
         }
         bar = match w {
-            "cpu" => bar.push(meter(vec![0.3, 0.55, 0.2, 0.8, 0.4, 0.25, 0.6, 0.35]).role(Role::Accent).bar_width(3.0).gap(1.0).height(14.0)),
+            "cpu" => bar.push(
+                meter(vec![0.3, 0.55, 0.2, 0.8, 0.4, 0.25, 0.6, 0.35])
+                    .role(Role::Accent)
+                    .bar_width(3.0)
+                    .gap(1.0)
+                    .height(14.0),
+            ),
             "memory" => bar.push(meter(vec![0.62]).role(Role::Accent).bar_width(5.0).height(14.0)),
             "battery" => {
                 let b = bar.push(icon(Icon::BatteryMedium).size(15.0).role(Role::Text2));

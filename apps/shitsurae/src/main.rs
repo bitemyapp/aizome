@@ -44,11 +44,8 @@ fn main() {
             Instance::First(listener) => listener,
         }
     };
-    let mut app = if sample {
-        Shitsurae::sample(aizome_config::Settings::path(), start)
-    } else {
-        Shitsurae::live(start)
-    };
+    let mut app =
+        if sample { Shitsurae::sample(aizome_config::Settings::path(), start) } else { Shitsurae::live(start) };
     app.listener = listener;
     match aizome_kit::try_run(app) {
         // Every change in the file before going.

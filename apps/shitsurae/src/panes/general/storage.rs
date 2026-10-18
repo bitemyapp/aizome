@@ -43,8 +43,18 @@ pub enum Msg {
 
 pub fn entries() -> Vec<SettingEntry> {
     vec![
-        SettingEntry::new("disk-usage", "Disk usage").under("Storage").keywords(&["space", "full", "kura", "what fills"]),
-        SettingEntry::new("nix-store", "Nix store").under("Storage").keywords(&["garbage", "clean up", "generations", "nix-collect-garbage"]),
+        SettingEntry::new("disk-usage", "Disk usage").under("Storage").keywords(&[
+            "space",
+            "full",
+            "kura",
+            "what fills",
+        ]),
+        SettingEntry::new("nix-store", "Nix store").under("Storage").keywords(&[
+            "garbage",
+            "clean up",
+            "generations",
+            "nix-collect-garbage",
+        ]),
     ]
 }
 
@@ -221,7 +231,9 @@ impl State {
         );
         let mut col = column![head, bar(segments, v.total as f64, 14.0).width(Fill), keys].spacing(10.0).width(Fill);
         if let Some(s) = &v.scanned {
-            col = col.push(text(format!("From Kura's last look, {}", s.get(..10).unwrap_or(s))).size(11.0).role(Role::Text3));
+            col = col.push(
+                text(format!("From Kura's last look, {}", s.get(..10).unwrap_or(s))).size(11.0).role(Role::Text3),
+            );
         }
         container(col).padding([14.0, form::INSET]).width(Fill).into()
     }

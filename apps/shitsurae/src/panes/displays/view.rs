@@ -13,13 +13,19 @@ use crate::widgets::{PressStyle, press};
 pub fn page(p: &Displays, vcx: &ViewCx) -> Element<Msg> {
     let ds = p.displays_now();
     if !p.is_loaded() {
-        return form::page(vec![row![crate::panes::hw::spinner(14.0), text("Asking the compositor about the displays…").role(Role::Text3)].spacing(8.0).into()]);
+        return form::page(vec![
+            row![crate::panes::hw::spinner(14.0), text("Asking the compositor about the displays…").role(Role::Text3)]
+                .spacing(8.0)
+                .into(),
+        ]);
     }
     if ds.is_empty() {
         let why = p.error_now().unwrap_or("The compositor reports no displays.").to_owned();
         return form::page(vec![
             form::heading("No displays to arrange", why),
-            form::note("Displays are arranged by Aizome's compositor; run Shitsurae inside an Aizome session to change them."),
+            form::note(
+                "Displays are arranged by Aizome's compositor; run Shitsurae inside an Aizome session to change them.",
+            ),
         ]);
     }
     let mut sections: Vec<Element<Msg>> = vec![arrangement_section(p, vcx, ds)];
@@ -48,7 +54,11 @@ fn tiles(p: &Displays, ds: &[Display]) -> Vec<ArrTile> {
                 title: d.title(),
                 size: model::size_label(w, h),
                 main: p.main_now() == Some(d.name.as_str()),
-                mirrors: ds.iter().filter(|o| o.settings.enabled && o.settings.mirror.as_deref() == Some(d.name.as_str())).map(Display::title).collect(),
+                mirrors: ds
+                    .iter()
+                    .filter(|o| o.settings.enabled && o.settings.mirror.as_deref() == Some(d.name.as_str()))
+                    .map(Display::title)
+                    .collect(),
                 dye: names.iter().position(|n| *n == d.name).unwrap_or(0),
             }
         })
@@ -61,24 +71,26 @@ fn arrangement_section(p: &Displays, vcx: &ViewCx, ds: &[Display]) -> Element<Ms
     let mut col = column![
         form::caption("Arrangement"),
         arrangement(tiles, &selected, Msg::Select, Msg::Moved, !p.is_applying()).id(vcx.entry_name("arrangement")),
-        container(text("Drag displays to arrange them. Select one to change its settings.").size(11.0).role(Role::Text3)).center().width(Fill),
+        container(
+            text("Drag displays to arrange them. Select one to change its settings.").size(11.0).role(Role::Text3)
+        )
+        .center()
+        .width(Fill),
     ]
     .spacing(8.0)
     .width(Fill);
     if ds.len() > 1 {
         let labels: Vec<String> = ds
             .iter()
-            .map(|d| {
-                if d.settings.enabled {
-                    label(d, ds)
-                } else {
-                    format!("{} (Off)", label(d, ds))
-                }
-            })
+            .map(|d| if d.settings.enabled { label(d, ds) } else { format!("{} (Off)", label(d, ds)) })
             .collect();
         let index = ds.iter().position(|d| d.name == selected);
         let names: Vec<String> = ds.iter().map(|d| d.name.clone()).collect();
-        col = col.push(container(segmented(labels, index).on_select(move |i| Msg::Select(names[i.min(names.len() - 1)].clone()))).center().width(Fill));
+        col = col.push(
+            container(segmented(labels, index).on_select(move |i| Msg::Select(names[i.min(names.len() - 1)].clone())))
+                .center()
+                .width(Fill),
+        );
     }
     col.into()
 }
@@ -92,7 +104,11 @@ fn describe(d: &Display) -> String {
     parts.push(d.name.clone());
     let s = &d.settings;
     if s.enabled {
-        parts.push(format!("{} at {}", model::size_label(s.mode.width, s.mode.height), model::refresh_label(s.mode.refresh)));
+        parts.push(format!(
+            "{} at {}",
+            model::size_label(s.mode.width, s.mode.height),
+            model::refresh_label(s.mode.refresh)
+        ));
     } else {
         parts.push("off".into());
     }
@@ -136,14 +152,31 @@ fn display_sections(p: &Displays, vcx: &ViewCx, d: &Display) -> Vec<Element<Msg>
     };
     let values: Vec<Use> = uses.iter().map(|(_, u)| u.clone()).collect();
     let n = name.clone();
-    let mut rows: Vec<Row<Msg>> = vec![form::row("Use as", form::choice(&labels, selected, move |i| Msg::UseAs(n.clone(), values.get(i).cloned().unwrap_or(Use::Extended)))).help(help).entry("use-as")];
+    let mut rows: Vec<Row<Msg>> = vec![
+        form::row(
+            "Use as",
+            form::choice(&labels, selected, move |i| {
+                Msg::UseAs(n.clone(), values.get(i).cloned().unwrap_or(Use::Extended))
+            }),
+        )
+        .help(help)
+        .entry("use-as"),
+    ];
     if d.is_builtin()
         && s.enabled
         && let Some(level) = p.brightness_now()
     {
         rows.push(
-            form::row("Brightness", row![icon(Icon::SunDim).size(14.0).role(Role::Text3), slider(level as f64, 0.01..=1.0).step(0.01).on_change(|v| Msg::Brightness(v as f32)).width(200.0), icon(Icon::Sun).size(14.0).role(Role::Text3)].spacing(8.0))
-                .entry("brightness"),
+            form::row(
+                "Brightness",
+                row![
+                    icon(Icon::SunDim).size(14.0).role(Role::Text3),
+                    slider(level as f64, 0.01..=1.0).step(0.01).on_change(|v| Msg::Brightness(v as f32)).width(200.0),
+                    icon(Icon::Sun).size(14.0).role(Role::Text3)
+                ]
+                .spacing(8.0),
+            )
+            .entry("brightness"),
         );
     }
     out.push(vcx.section("", rows));
@@ -168,7 +201,13 @@ fn display_sections(p: &Displays, vcx: &ViewCx, d: &Display) -> Vec<Element<Msg>
         let labels: Vec<&str> = labels.iter().map(String::as_str).collect();
         let at = sizes.iter().position(|sz| *sz == (s.mode.width, s.mode.height)).unwrap_or(0);
         let n = name.clone();
-        res.push(form::row("Resolution", form::choice(&labels, at, move |i| Msg::Resolution(n.clone(), sizes.get(i).copied().unwrap_or((0, 0))))).entry("resolution"));
+        res.push(
+            form::row(
+                "Resolution",
+                form::choice(&labels, at, move |i| Msg::Resolution(n.clone(), sizes.get(i).copied().unwrap_or((0, 0)))),
+            )
+            .entry("resolution"),
+        );
         let mut scales = model::integer_scales(s.mode.width, s.mode.height, s.scale);
         if p.fractional_now() {
             scales.extend(model::fractional_scales(s.mode.width, s.mode.height, s.scale));
@@ -185,7 +224,10 @@ fn display_sections(p: &Displays, vcx: &ViewCx, d: &Display) -> Vec<Element<Msg>
         let labels: Vec<&str> = labels.iter().map(String::as_str).collect();
         let at = scales.iter().position(|sc| (sc - s.scale).abs() < 1e-6).unwrap_or(0);
         let n = name.clone();
-        res.push(form::row("Scale", form::choice(&labels, at, move |i| Msg::Scale(n.clone(), scales.get(i).copied().unwrap_or(1.0)))));
+        res.push(form::row(
+            "Scale",
+            form::choice(&labels, at, move |i| Msg::Scale(n.clone(), scales.get(i).copied().unwrap_or(1.0))),
+        ));
     } else {
         res.push(form::whole(scale_cards(p, d)).entry("resolution"));
     }
@@ -205,13 +247,25 @@ fn display_sections(p: &Displays, vcx: &ViewCx, d: &Display) -> Vec<Element<Msg>
     let n = name.clone();
     let mut picture: Vec<Row<Msg>> = Vec::new();
     if rates.len() > 1 {
-        picture.push(form::row("Refresh rate", form::choice(&labels, at, move |i| Msg::Refresh(n.clone(), rates.get(i).copied().unwrap_or(60_000)))).entry("refresh-rate"));
+        picture.push(
+            form::row(
+                "Refresh rate",
+                form::choice(&labels, at, move |i| Msg::Refresh(n.clone(), rates.get(i).copied().unwrap_or(60_000))),
+            )
+            .entry("refresh-rate"),
+        );
     } else {
         picture.push(form::value("Refresh rate", model::refresh_label(s.mode.refresh)).entry("refresh-rate"));
     }
     let labels: Vec<&str> = model::ROTATIONS.iter().map(|(_, l)| *l).collect();
     let n = name.clone();
-    picture.push(form::row("Rotation", form::choice(&labels, model::rotation_index(s.transform), move |i| Msg::Rotation(n.clone(), i))).entry("rotation"));
+    picture.push(
+        form::row(
+            "Rotation",
+            form::choice(&labels, model::rotation_index(s.transform), move |i| Msg::Rotation(n.clone(), i)),
+        )
+        .entry("rotation"),
+    );
     out.push(vcx.section("", picture));
     out
 }
@@ -227,7 +281,8 @@ fn scale_cards(p: &Displays, d: &Display) -> Element<Msg> {
     // Larger text first: the largest scale.
     scales.sort_by(|a, b| b.total_cmp(a));
     scales.dedup_by(|a, b| (*a - *b).abs() < 1e-6);
-    let sizes: Vec<(i32, i32)> = scales.iter().map(|sc| model::logical_size(&s.mode, *sc, aizome_ipc::Transform::Normal)).collect();
+    let sizes: Vec<(i32, i32)> =
+        scales.iter().map(|sc| model::logical_size(&s.mode, *sc, aizome_ipc::Transform::Normal)).collect();
     let widest = sizes.iter().map(|(w, _)| *w).max().unwrap_or(1).max(1) as f64;
     let narrowest = sizes.iter().map(|(w, _)| *w).min().unwrap_or(1).max(1) as f64;
     let mut cards: Vec<Element<Msg>> = Vec::new();
@@ -243,7 +298,10 @@ fn scale_cards(p: &Displays, d: &Display) -> Element<Msg> {
             })
             .width(gw)
             .height(gh),
-            container(text("Aa").size(aa).weight(600.0).color(Color::rgba8(238, 241, 255, 255))).width(gw).height(gh).center(),
+            container(text("Aa").size(aa).weight(600.0).color(Color::rgba8(238, 241, 255, 255)))
+                .width(gw)
+                .height(gh)
+                .center(),
         ];
         let current = (sc - s.scale).abs() < 1e-6;
         let face = column![
@@ -269,7 +327,12 @@ fn scale_cards(p: &Displays, d: &Display) -> Element<Msg> {
     }
     column![
         row(cards).spacing(8.0).width(Fill),
-        row![text("Larger Text").size(11.0).role(Role::Text3), spacer(), text("More Space").size(11.0).role(Role::Text3)].width(Fill),
+        row![
+            text("Larger Text").size(11.0).role(Role::Text3),
+            spacer(),
+            text("More Space").size(11.0).role(Role::Text3)
+        ]
+        .width(Fill),
     ]
     .spacing(6.0)
     .padding([12.0, 12.0])
@@ -287,10 +350,20 @@ fn countdown(seconds: u32) -> String {
 pub fn keep_sheet(k: &Keep) -> Element<Msg> {
     container(
         column![
-            row![icon(Icon::Monitor).size(28.0).role(Role::Accent), text("Keep these display settings?").size(15.0).weight(650.0)].spacing(12.0),
+            row![
+                icon(Icon::Monitor).size(28.0).role(Role::Accent),
+                text("Keep these display settings?").size(15.0).weight(650.0)
+            ]
+            .spacing(12.0),
             text(countdown(k.left)).role(Role::Text2).wrap(),
             progress(k.left as f64 / super::KEEP_SECONDS as f64),
-            row![spacer(), button("Revert").cancel().on_press(Msg::Revert), button("Keep Changes").primary().default().on_press(Msg::Keep)].spacing(8.0).width(Fill),
+            row![
+                spacer(),
+                button("Revert").cancel().on_press(Msg::Revert),
+                button("Keep Changes").primary().default().on_press(Msg::Keep)
+            ]
+            .spacing(8.0)
+            .width(Fill),
         ]
         .spacing(12.0),
     )

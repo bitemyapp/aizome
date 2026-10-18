@@ -40,7 +40,11 @@ impl Registry {
             .choices()
             .into_iter()
             .filter(|c| !c.extra)
-            .map(|c| Choice { description: c.description.to_owned(), layout: c.layout.to_owned(), variant: c.variant.map(str::to_owned) })
+            .map(|c| Choice {
+                description: c.description.to_owned(),
+                layout: c.layout.to_owned(),
+                variant: c.variant.map(str::to_owned),
+            })
             .collect();
         Registry { data, choices }
     }
@@ -137,8 +141,12 @@ pub enum Msg {
 }
 
 /// What Caps Lock can be, and the option that makes it so.
-pub const CAPS: [(&str, Option<&str>); 4] =
-    [("Caps Lock", None), ("Control", Some("ctrl:nocaps")), ("Escape", Some("caps:escape")), ("Compose", Some("compose:caps"))];
+pub const CAPS: [(&str, Option<&str>); 4] = [
+    ("Caps Lock", None),
+    ("Control", Some("ctrl:nocaps")),
+    ("Escape", Some("caps:escape")),
+    ("Compose", Some("compose:caps")),
+];
 
 /// Options a Caps Lock choice replaces.
 fn is_caps_option(o: &str) -> bool {
@@ -178,13 +186,21 @@ pub fn replace_options(s: &str, drop: impl Fn(&str) -> bool, add: Option<&str>) 
 /// The layouts and their variants, paired.
 pub fn layouts(k: &aizome_config::Keyboard) -> Vec<(String, String)> {
     let variants: Vec<&str> = k.variant.split(',').collect();
-    k.layouts.iter().enumerate().map(|(i, l)| (l.clone(), variants.get(i).map(|v| v.trim().to_owned()).unwrap_or_default())).collect()
+    k.layouts
+        .iter()
+        .enumerate()
+        .map(|(i, l)| (l.clone(), variants.get(i).map(|v| v.trim().to_owned()).unwrap_or_default()))
+        .collect()
 }
 
 /// Layouts and variants back into the settings.
 pub fn set_layouts(k: &mut aizome_config::Keyboard, list: &[(String, String)]) {
     k.layouts = list.iter().map(|(l, _)| l.clone()).collect();
-    k.variant = if list.iter().all(|(_, v)| v.is_empty()) { String::new() } else { list.iter().map(|(_, v)| v.as_str()).collect::<Vec<_>>().join(",") };
+    k.variant = if list.iter().all(|(_, v)| v.is_empty()) {
+        String::new()
+    } else {
+        list.iter().map(|(_, v)| v.as_str()).collect::<Vec<_>>().join(",")
+    };
 }
 
 /// The choices matching `query` (every word in the description or name).
@@ -205,7 +221,8 @@ impl Keyboard {
     }
 
     fn describe(&self, l: &str, v: &str) -> String {
-        self.registry().map_or_else(|| if v.is_empty() { l.to_owned() } else { format!("{l} ({v})") }, |r| r.describe(l, v))
+        self.registry()
+            .map_or_else(|| if v.is_empty() { l.to_owned() } else { format!("{l} ({v})") }, |r| r.describe(l, v))
     }
 
     fn typing(&self, vcx: &ViewCx) -> Vec<Element<Msg>> {
@@ -225,9 +242,12 @@ impl Keyboard {
                     .align_x(Align::Center);
                 let mut controls = row![].spacing(4.0).align(Align::Center);
                 if i > 0 {
-                    controls = controls.push(icon_button(Icon::ArrowUp).toolbar().on_press(Msg::MoveUp(i)).tooltip("Move up"));
+                    controls =
+                        controls.push(icon_button(Icon::ArrowUp).toolbar().on_press(Msg::MoveUp(i)).tooltip("Move up"));
                 }
-                controls = controls.push(icon_button(Icon::Minus).toolbar().enabled(n > 1).on_press(Msg::RemoveLayout(i)).tooltip("Remove"));
+                controls = controls.push(
+                    icon_button(Icon::Minus).toolbar().enabled(n > 1).on_press(Msg::RemoveLayout(i)).tooltip("Remove"),
+                );
                 let mut r = form::row(self.describe(l, v), controls).leading(badge_el);
                 if i == 0 {
                     r = r.detail("First: what the keyboard starts in");
@@ -250,7 +270,10 @@ impl Keyboard {
         rows.push(
             form::row(
                 "Switch layouts with",
-                dropdown(SWITCH.map(|s| s.0.to_owned()), switch_i).on_select(Msg::Switch).enabled(n > 1).min_width(160.0),
+                dropdown(SWITCH.map(|s| s.0.to_owned()), switch_i)
+                    .on_select(Msg::Switch)
+                    .enabled(n > 1)
+                    .min_width(160.0),
             )
             .entry("switch-layout")
             .help(if n > 1 {
@@ -269,13 +292,24 @@ impl Keyboard {
             vcx.section(
                 "Key Repeat",
                 vec![
-                    form::row("Delay until repeat", crate::panes::mouse::speed_slider(-delay, -1000.0..=-150.0, "Long", "Short", |v| Msg::Delay(-v)))
-                        .entry("repeat-delay")
-                        .detail(format!("{} ms", k.repeat_delay)),
-                    form::row("Repeat rate", crate::panes::mouse::speed_slider(rate, 5.0..=60.0, "Slow", "Fast", Msg::Rate))
-                        .entry("repeat-rate")
-                        .detail(format!("{} a second", k.repeat_rate)),
-                    form::row("Try it", text_field(&self.trial).placeholder("Hold a key down here").on_change(Msg::Trial).width(240.0)),
+                    form::row(
+                        "Delay until repeat",
+                        crate::panes::mouse::speed_slider(-delay, -1000.0..=-150.0, "Long", "Short", |v| {
+                            Msg::Delay(-v)
+                        }),
+                    )
+                    .entry("repeat-delay")
+                    .detail(format!("{} ms", k.repeat_delay)),
+                    form::row(
+                        "Repeat rate",
+                        crate::panes::mouse::speed_slider(rate, 5.0..=60.0, "Slow", "Fast", Msg::Rate),
+                    )
+                    .entry("repeat-rate")
+                    .detail(format!("{} a second", k.repeat_rate)),
+                    form::row(
+                        "Try it",
+                        text_field(&self.trial).placeholder("Hold a key down here").on_change(Msg::Trial).width(240.0),
+                    ),
                 ],
             ),
             vcx.section(
@@ -291,7 +325,9 @@ impl Keyboard {
                         }),
                     form::row("Compose key", form::choice(&COMPOSE.map(|c| c.0), compose_i, Msg::Compose))
                         .entry("compose")
-                        .help("Press it, then two keys, to type what the keyboard lacks: o and \" for ö, < and = for ≤."),
+                        .help(
+                            "Press it, then two keys, to type what the keyboard lacks: o and \" for ö, < and = for ≤.",
+                        ),
                     form::row("Num Lock on at start", toggle(k.numlock).on_toggle(Msg::NumLock)).entry("numlock"),
                 ],
             ),
@@ -336,12 +372,21 @@ impl Keyboard {
                             }
                         }
                         let mut r = row![
-                            crate::widgets::press(caps).style(crate::widgets::PressStyle::Plain).padding([3.0, 4.0]).on_press(Msg::Record(action.clone())).named(format!("Change {label}"))
+                            crate::widgets::press(caps)
+                                .style(crate::widgets::PressStyle::Plain)
+                                .padding([3.0, 4.0])
+                                .on_press(Msg::Record(action.clone()))
+                                .named(format!("Change {label}"))
                         ]
                         .spacing(4.0)
                         .align(Align::Center);
                         if changed {
-                            r = r.push(icon_button(Icon::RotateCcw).toolbar().on_press(Msg::Reset(action.clone())).tooltip("Back to the default"));
+                            r = r.push(
+                                icon_button(Icon::RotateCcw)
+                                    .toolbar()
+                                    .on_press(Msg::Reset(action.clone()))
+                                    .tooltip("Back to the default"),
+                            );
                         }
                         r.into()
                     };
@@ -350,7 +395,8 @@ impl Keyboard {
                 .collect();
             out.push(vcx.section(sec.title, rows));
         }
-        let custom: Vec<(Chord, String)> = map.iter().filter(|(_, a)| a.starts_with("spawn ")).map(|(c, a)| (c.clone(), a.clone())).collect();
+        let custom: Vec<(Chord, String)> =
+            map.iter().filter(|(_, a)| a.starts_with("spawn ")).map(|(c, a)| (c.clone(), a.clone())).collect();
         let mut rows: Vec<form::Row<Msg>> = custom
             .into_iter()
             .map(|(c, a)| {
@@ -358,19 +404,29 @@ impl Keyboard {
                 for g in c.glyphs() {
                     caps = caps.push(keycap(g));
                 }
-                caps = caps.push(space(6.0)).push(icon_button(Icon::Minus).toolbar().on_press(Msg::RemoveCommand(c.to_config())).tooltip("Remove"));
-                form::row(a.trim_start_matches("spawn ").to_owned(), caps).leading(icon(Icon::SquareTerminal).size(16.0).role(Role::Text3)).compact()
+                caps = caps.push(space(6.0)).push(
+                    icon_button(Icon::Minus).toolbar().on_press(Msg::RemoveCommand(c.to_config())).tooltip("Remove"),
+                );
+                form::row(a.trim_start_matches("spawn ").to_owned(), caps)
+                    .leading(icon(Icon::SquareTerminal).size(16.0).role(Role::Text3))
+                    .compact()
             })
             .collect();
         rows.push(
             form::whole(
-                container(row![button("Add a Command…").icon(Icon::Plus).on_press(Msg::AddCommand), spacer()].width(Fill))
-                    .padding([8.0, form::INSET])
-                    .width(Fill),
+                container(
+                    row![button("Add a Command…").icon(Icon::Plus).on_press(Msg::AddCommand), spacer()].width(Fill),
+                )
+                .padding([8.0, form::INSET])
+                .width(Fill),
             )
             .entry("commands"),
         );
-        out.push(vcx.section_with("Your Commands", rows, Some("Programs of your own on keys of their own: a terminal on ❖⌥T, a screenshot tool, a script.".into())));
+        out.push(vcx.section_with(
+            "Your Commands",
+            rows,
+            Some("Programs of your own on keys of their own: a terminal on ❖⌥T, a screenshot tool, a script.".into()),
+        ));
         out.push(
             row![
                 spacer(),
@@ -395,13 +451,24 @@ impl Keyboard {
         column![
             text("A Command on Keys of Its Own").size(15.0).weight(650.0),
             form::note("What to run, as you would type it in a terminal, and the keys that run it."),
-            text_field(&c.command).mono().placeholder("foot -e htop").on_change(Msg::CommandText).id("command-text").width(Fill),
-            row![record::recorder(Msg::CommandChord, Msg::CommandCancel, Msg::CommandClear).id("command-keys"), caps].spacing(10.0).align(Align::Center),
+            text_field(&c.command)
+                .mono()
+                .placeholder("foot -e htop")
+                .on_change(Msg::CommandText)
+                .id("command-text")
+                .width(Fill),
+            row![record::recorder(Msg::CommandChord, Msg::CommandCancel, Msg::CommandClear).id("command-keys"), caps]
+                .spacing(10.0)
+                .align(Align::Center),
             text(c.error.clone().unwrap_or_default()).size(11.0).role(Role::Danger),
             row![
                 spacer(),
                 button("Cancel").cancel().on_press(Msg::CommandCancel),
-                button("Add").primary().default().enabled(!c.command.trim().is_empty() && c.chord.is_some()).on_press(Msg::CommandSave),
+                button("Add")
+                    .primary()
+                    .default()
+                    .enabled(!c.command.trim().is_empty() && c.chord.is_some())
+                    .on_press(Msg::CommandSave),
             ]
             .spacing(8.0)
             .width(Fill),
@@ -413,7 +480,9 @@ impl Keyboard {
 
     fn picker_view(&self) -> Element<Msg> {
         let (query, selected) = self.picker.clone().unwrap_or_default();
-        let choices: Rc<Vec<Choice>> = Rc::new(self.registry().map(|r| filter(&r.choices, &query).into_iter().cloned().collect()).unwrap_or_default());
+        let choices: Rc<Vec<Choice>> = Rc::new(
+            self.registry().map(|r| filter(&r.choices, &query).into_iter().cloned().collect()).unwrap_or_default(),
+        );
         let count = choices.len();
         let c2 = choices.clone();
         let list = virtual_list(count, 26.0, move |i| {
@@ -442,12 +511,20 @@ impl Keyboard {
         .width(Fill);
         column![
             text("Add a Keyboard Layout").size(15.0).weight(650.0),
-            search_field(&query).placeholder("Language, country or layout").on_change(Msg::PickerQuery).id("layout-search").width(Fill),
+            search_field(&query)
+                .placeholder("Language, country or layout")
+                .on_change(Msg::PickerQuery)
+                .id("layout-search")
+                .width(Fill),
             container(list).border(Edge::Line).width(Fill),
             text(format!("{count} layouts")).size(11.0).role(Role::Text3),
-            row![spacer(), button("Cancel").cancel().on_press(Msg::PickerCancel), button("Add").primary().default().enabled(selected.is_some()).on_press(Msg::PickerAdd)]
-                .spacing(8.0)
-                .width(Fill),
+            row![
+                spacer(),
+                button("Cancel").cancel().on_press(Msg::PickerCancel),
+                button("Add").primary().default().enabled(selected.is_some()).on_press(Msg::PickerAdd)
+            ]
+            .spacing(8.0)
+            .width(Fill),
         ]
         .spacing(12.0)
         .width(420.0)
@@ -484,15 +561,32 @@ impl Pane for Keyboard {
 
     fn entries(&self) -> Vec<SettingEntry> {
         let mut v = vec![
-            SettingEntry::new("layouts", "Keyboard layouts").keywords(&["input sources", "language", "dvorak", "colemak", "us", "jp"]),
+            SettingEntry::new("layouts", "Keyboard layouts").keywords(&[
+                "input sources",
+                "language",
+                "dvorak",
+                "colemak",
+                "us",
+                "jp",
+            ]),
             SettingEntry::new("switch-layout", "Switch layouts with").keywords(&["input source", "toggle", "grp"]),
             SettingEntry::new("repeat-delay", "Delay until repeat").keywords(&["key repeat", "hold"]),
             SettingEntry::new("repeat-rate", "Repeat rate").keywords(&["key repeat", "speed"]),
-            SettingEntry::new("caps-lock", "Caps Lock key").keywords(&["remap caps lock", "control", "escape", "ctrl:nocaps"]),
+            SettingEntry::new("caps-lock", "Caps Lock key").keywords(&[
+                "remap caps lock",
+                "control",
+                "escape",
+                "ctrl:nocaps",
+            ]),
             SettingEntry::new("compose", "Compose key").keywords(&["accents", "special characters", "multi key"]),
             SettingEntry::new("numlock", "Num Lock on at start").keywords(&["numpad", "keypad"]),
             SettingEntry::new("shortcuts", "Keyboard shortcuts").keywords(&["hotkeys", "bindings", "keys"]),
-            SettingEntry::new("commands", "Commands on keys of your own").keywords(&["custom shortcut", "launch", "run a program", "spawn"]),
+            SettingEntry::new("commands", "Commands on keys of your own").keywords(&[
+                "custom shortcut",
+                "launch",
+                "run a program",
+                "spawn",
+            ]),
         ];
         for s in keys::sections(4) {
             for (a, label) in s.actions {
@@ -545,7 +639,10 @@ impl Pane for Keyboard {
             Msg::PickerAdd => {
                 let Some((q, Some(i))) = self.picker.take() else { return };
                 cx.close_sheet();
-                let Some(choice) = self.registry().and_then(|r| filter(&r.choices, &q).get(i).map(|c| (*c).clone())) else { return };
+                let Some(choice) = self.registry().and_then(|r| filter(&r.choices, &q).get(i).map(|c| (*c).clone()))
+                else {
+                    return;
+                };
                 let name = choice.description.clone();
                 cx.change(|s| {
                     let k = &mut s.input.keyboard;
@@ -582,7 +679,9 @@ impl Pane for Keyboard {
                 let k = &mut s.input.keyboard;
                 k.options = replace_options(&k.options, |o| o.starts_with("grp:"), SWITCH.get(i).and_then(|c| c.1));
             }),
-            Msg::Delay(v) => cx.change(|s| s.input.keyboard.repeat_delay = ((v / 25.0).round() * 25.0).clamp(150.0, 1000.0) as u32),
+            Msg::Delay(v) => {
+                cx.change(|s| s.input.keyboard.repeat_delay = ((v / 25.0).round() * 25.0).clamp(150.0, 1000.0) as u32)
+            }
             Msg::Rate(v) => cx.change(|s| s.input.keyboard.repeat_rate = v.round().clamp(5.0, 60.0) as u32),
             Msg::Trial(t) => self.trial = t,
             Msg::Caps(i) => cx.change(|s| {
@@ -591,7 +690,11 @@ impl Pane for Keyboard {
             }),
             Msg::Compose(i) => cx.change(|s| {
                 let k = &mut s.input.keyboard;
-                k.options = replace_options(&k.options, |o| o.starts_with("compose:") && o != "compose:caps", COMPOSE.get(i).and_then(|c| c.1));
+                k.options = replace_options(
+                    &k.options,
+                    |o| o.starts_with("compose:") && o != "compose:caps",
+                    COMPOSE.get(i).and_then(|c| c.1),
+                );
             }),
             Msg::NumLock(on) => cx.change(|s| s.input.keyboard.numlock = on),
             Msg::Record(action) => {
@@ -625,7 +728,9 @@ impl Pane for Keyboard {
                             .map_or_else(|| other.clone(), |(_, l)| l);
                         cx.confirm(Confirm::new(
                             format!("{} is “{other_label}”", chord.glyphs().concat()),
-                            format!("Use it for this instead? “{other_label}” will have no shortcut until you give it one."),
+                            format!(
+                                "Use it for this instead? “{other_label}” will have no shortcut until you give it one."
+                            ),
                             "Use It Here",
                             Msg::Rebind(action, chord.to_config()),
                         ));
@@ -727,7 +832,9 @@ impl Pane for Keyboard {
             Tab::Typing => 0,
             Tab::Shortcuts => 1,
         };
-        Some(form::segments(&["Typing", "Shortcuts"], i, |i| Msg::Tab(if i == 0 { Tab::Typing } else { Tab::Shortcuts })))
+        Some(form::segments(&["Typing", "Shortcuts"], i, |i| {
+            Msg::Tab(if i == 0 { Tab::Typing } else { Tab::Shortcuts })
+        }))
     }
 
     fn view(&self, vcx: &ViewCx) -> Element<Msg> {

@@ -51,7 +51,9 @@ pub const FOCUS_COLORS: [(FocusColor, &str); 4] =
 /// What each tier spends, as the pane says it.
 pub fn effects_text(e: Effects) -> (&'static str, &'static str) {
     match e {
-        Effects::Full => ("Full", "Translucent, frosted menus, panels and Deskbar, and slower, softer motion (120 ms)."),
+        Effects::Full => {
+            ("Full", "Translucent, frosted menus, panels and Deskbar, and slower, softer motion (120 ms).")
+        }
         Effects::Lean => ("Lean", "Hard shadows and quick motion (80 ms), no frost. The default."),
         Effects::Austere => ("Austere", "No shadows, no motion, nothing see-through: the least to draw."),
     }
@@ -97,11 +99,10 @@ impl Appearance {
             .padding([3.0, 3.0])
             .on_press(Msg::Theme(choice))
             .named(label.to_owned());
-        let caption = text(label.to_owned()).size(12.0).weight(if selected { 650.0 } else { 400.0 }).role(if selected {
-            Role::Text
-        } else {
-            Role::Text2
-        });
+        let caption = text(label.to_owned())
+            .size(12.0)
+            .weight(if selected { 650.0 } else { 400.0 })
+            .role(if selected { Role::Text } else { Role::Text2 });
         let caption = press(caption).style(PressStyle::Plain).padding([2.0, 6.0]).on_press(Msg::Theme(choice));
         column![pic, caption].spacing(6.0).align(Align::Center).into()
     }
@@ -125,7 +126,12 @@ impl Appearance {
                 let s = path.display().to_string();
                 let id = aizome_kit::hash::hash_of(&s);
                 let sel = current.as_deref() == Some(s.as_str());
-                tiles.push(self.tile(picture(thumb.clone(), id, tw, th), &wallpaper::name(path), sel, Msg::Wallpaper(Some(s))));
+                tiles.push(self.tile(
+                    picture(thumb.clone(), id, tw, th),
+                    &wallpaper::name(path),
+                    sel,
+                    Msg::Wallpaper(Some(s)),
+                ));
             }
             // A picture chosen from elsewhere.
             if let Some(c) = &current
@@ -133,7 +139,12 @@ impl Appearance {
             {
                 let path = PathBuf::from(c);
                 let id = aizome_kit::hash::hash_of(c);
-                tiles.push(self.tile(picture(None, id, tw, th), &wallpaper::name(&path), true, Msg::Wallpaper(Some(c.clone()))));
+                tiles.push(self.tile(
+                    picture(None, id, tw, th),
+                    &wallpaper::name(&path),
+                    true,
+                    Msg::Wallpaper(Some(c.clone())),
+                ));
             }
         }
         let choose = container(
@@ -160,17 +171,26 @@ impl Appearance {
         }
         if self.wallpapers.is_none() {
             rows = rows.push(
-                row![progress_indeterminate().width(120.0), text("Looking for pictures…").size(11.0).role(Role::Text3)].spacing(8.0),
+                row![progress_indeterminate().width(120.0), text("Looking for pictures…").size(11.0).role(Role::Text3)]
+                    .spacing(8.0),
             );
         }
         container(rows).padding([12.0, 12.0]).into()
     }
 
     fn tile(&self, content: Element<Msg>, label: &str, selected: bool, msg: Msg) -> Element<Msg> {
-        let pic = press(content).style(PressStyle::Card).selected(selected).padding([2.0, 2.0]).on_press(msg).named(label.to_owned());
+        let pic = press(content)
+            .style(PressStyle::Card)
+            .selected(selected)
+            .padding([2.0, 2.0])
+            .on_press(msg)
+            .named(label.to_owned());
         column![
             pic,
-            text(label.to_owned()).size(11.0).role(if selected { Role::Text } else { Role::Text3 }).max_width(wallpaper::THUMB.width)
+            text(label.to_owned())
+                .size(11.0)
+                .role(if selected { Role::Text } else { Role::Text3 })
+                .max_width(wallpaper::THUMB.width)
         ]
         .spacing(5.0)
         .into()
@@ -183,7 +203,8 @@ impl Appearance {
         }
         let tx = cx.stream();
         let a = &cx.settings().appearance;
-        let chosen: Vec<PathBuf> = [a.wallpaper_night.clone(), a.wallpaper_day.clone()].into_iter().flatten().map(PathBuf::from).collect();
+        let chosen: Vec<PathBuf> =
+            [a.wallpaper_night.clone(), a.wallpaper_day.clone()].into_iter().flatten().map(PathBuf::from).collect();
         let _ = std::thread::Builder::new().name("shitsurae-wallpapers".into()).spawn(move || {
             let mut found = wallpaper::find(&wallpaper::dirs(), 48);
             // Pictures chosen from elsewhere, so the previews show them too.
@@ -233,9 +254,29 @@ impl Pane for Appearance {
     fn entries(&self) -> Vec<SettingEntry> {
         vec![
             SettingEntry::new("theme", "Theme").keywords(&["night", "day", "dark", "light", "auto", "high contrast"]),
-            SettingEntry::new("follow-sunset", "Follow sunset and sunrise").keywords(&["auto", "automatic", "schedule"]),
-            SettingEntry::new("focus", "Focus colour").keywords(&["accent", "color", "highlight", "amber", "cyan", "rose", "lime"]),
-            SettingEntry::new("effects", "Effects").keywords(&["shadows", "frost", "blur", "animation", "full", "lean", "austere"]),
+            SettingEntry::new("follow-sunset", "Follow sunset and sunrise").keywords(&[
+                "auto",
+                "automatic",
+                "schedule",
+            ]),
+            SettingEntry::new("focus", "Focus colour").keywords(&[
+                "accent",
+                "color",
+                "highlight",
+                "amber",
+                "cyan",
+                "rose",
+                "lime",
+            ]),
+            SettingEntry::new("effects", "Effects").keywords(&[
+                "shadows",
+                "frost",
+                "blur",
+                "animation",
+                "full",
+                "lean",
+                "austere",
+            ]),
             SettingEntry::new("size", "Size").keywords(&["scale", "larger text", "zoom", "small", "large"]),
             SettingEntry::new("reduced-motion", "Reduce motion").keywords(&["animation", "accessibility"]),
             SettingEntry::new("wallpaper", "Wallpaper").keywords(&["background", "desktop picture"]),
@@ -282,8 +323,10 @@ impl Pane for Appearance {
             }
             Msg::Choose => {
                 let pictures = aizome_config::home_dir().join("Pictures");
-                let dialog =
-                    FileDialog::new().title("Choose a Wallpaper").directory(pictures).filter("Pictures", &["png", "jpg", "jpeg", "webp"]);
+                let dialog = FileDialog::new()
+                    .title("Choose a Wallpaper")
+                    .directory(pictures)
+                    .filter("Pictures", &["png", "jpg", "jpeg", "webp"]);
                 cx.open_panel(dialog, Msg::Chosen);
             }
             Msg::Chosen(Some(paths)) => {
@@ -313,8 +356,10 @@ impl Pane for Appearance {
             self.theme_card(vcx, ThemeChoice::HighContrast, "High Contrast"),
         ]
         .spacing(14.0);
-        let mut theme_rows =
-            vec![form::whole(container(themes).padding([14.0, 12.0, 12.0, 12.0]).width(Fill).align_x(Align::Center)).entry("theme")];
+        let mut theme_rows = vec![
+            form::whole(container(themes).padding([14.0, 12.0, 12.0, 12.0]).width(Fill).align_x(Align::Center))
+                .entry("theme"),
+        ];
         let auto = a.theme == ThemeChoice::Auto;
         theme_rows.push(
             form::row("Follow sunset and sunrise", toggle(a.follow_sunset).enabled(auto).on_toggle(Msg::FollowSunset))
@@ -333,7 +378,11 @@ impl Pane for Appearance {
                 .iter()
                 .map(|(f, name)| {
                     let fill = aizome_theme::focus_color(now, *f);
-                    press(swatch(fill, 22.0, a.focus == *f)).style(PressStyle::Plain).on_press(Msg::Focus(*f)).named(*name).into()
+                    press(swatch(fill, 22.0, a.focus == *f))
+                        .style(PressStyle::Plain)
+                        .on_press(Msg::Focus(*f))
+                        .named(*name)
+                        .into()
                 })
                 .collect(),
         )
@@ -347,7 +396,11 @@ impl Pane for Appearance {
                     let sel = a.effects == *e;
                     let body = column![
                         row![
-                            icon(if sel { Icon::CircleCheck } else { Icon::Circle }).size(14.0).role(if sel { Role::Focus } else { Role::Text3 }),
+                            icon(if sel { Icon::CircleCheck } else { Icon::Circle }).size(14.0).role(if sel {
+                                Role::Focus
+                            } else {
+                                Role::Text3
+                            }),
                             text(title).weight(650.0)
                         ]
                         .spacing(6.0)
@@ -385,7 +438,10 @@ impl Pane for Appearance {
                         .help("The focused window's tab and rail, focus rings, and whatever is current."),
                 ],
             ),
-            vcx.section("Effects", vec![form::whole(container(effects).padding([12.0, 12.0]).width(Fill)).entry("effects")]),
+            vcx.section(
+                "Effects",
+                vec![form::whole(container(effects).padding([12.0, 12.0]).width(Fill)).entry("effects")],
+            ),
             vcx.section(
                 "Size and Motion",
                 vec![

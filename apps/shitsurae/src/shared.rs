@@ -141,7 +141,9 @@ impl Shared {
         cx.spawn(|| {
             let r = aizome_ipc::Client::connect().and_then(|mut c| c.request(&aizome_ipc::Request::ReloadConfig));
             match r {
-                Ok(aizome_ipc::Response::Error { message }) => AppMsg::Said(format!("The compositor refused the settings: {message}"), true),
+                Ok(aizome_ipc::Response::Error { message }) => {
+                    AppMsg::Said(format!("The compositor refused the settings: {message}"), true)
+                }
                 Ok(_) => AppMsg::Nothing,
                 // No compositor (another desktop): the file is enough.
                 Err(e) => {
@@ -177,10 +179,7 @@ impl Shared {
             self.say(format!("Would open {}", argv.join(" ")), false, cx);
             return;
         }
-        let spawned = std::process::Command::new(&program)
-            .args(&argv[1..])
-            .stdin(std::process::Stdio::null())
-            .spawn();
+        let spawned = std::process::Command::new(&program).args(&argv[1..]).stdin(std::process::Stdio::null()).spawn();
         match spawned {
             Ok(mut child) => {
                 // Reap it when it exits.

@@ -102,7 +102,9 @@ fn score(words: &[String], title: &str, keywords: &[&str], context: &[&str]) -> 
     for w in words {
         let s = if starts_word(&title_l, w) {
             if title_l.starts_with(w.as_str()) { 6 } else { 4 }
-        } else if (w.len() >= 3 && title_l.contains(w.as_str())) || keywords.iter().any(|k| starts_word(&k.to_lowercase(), w)) {
+        } else if (w.len() >= 3 && title_l.contains(w.as_str()))
+            || keywords.iter().any(|k| starts_word(&k.to_lowercase(), w))
+        {
             2
         } else if context.iter().any(|c| starts_word(&c.to_lowercase(), w)) {
             1
@@ -168,7 +170,13 @@ fn fuzzy(query: &str, panes: &[PaneInfo]) -> Vec<Hit> {
         }
         let best = entries.first().map_or(0, |e| e.score);
         let score = pane.as_ref().map_or(0, |m| i64::from(m.score)).max(best);
-        hits.push(Hit { pane: i, pane_matched: pane.is_some(), ranges: pane.map(|m| m.ranges).unwrap_or_default(), entries, score });
+        hits.push(Hit {
+            pane: i,
+            pane_matched: pane.is_some(),
+            ranges: pane.map(|m| m.ranges).unwrap_or_default(),
+            entries,
+            score,
+        });
     }
     hits
 }
@@ -187,7 +195,11 @@ mod tests {
                     SettingEntry::new("repeat-rate", "Key repeat rate"),
                 ],
             ),
-            ("Appearance".into(), vec!["dark", "theme"], vec![SettingEntry::new("theme", "Theme").keywords(&["night", "day"])]),
+            (
+                "Appearance".into(),
+                vec!["dark", "theme"],
+                vec![SettingEntry::new("theme", "Theme").keywords(&["night", "day"])],
+            ),
             ("Network".into(), vec!["wifi", "ethernet"], vec![]),
         ]
     }

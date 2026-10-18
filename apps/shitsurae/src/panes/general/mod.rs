@@ -34,8 +34,15 @@ pub enum Page {
 }
 
 impl Page {
-    pub const PAGES: [Page; 7] =
-        [Page::About, Page::SoftwareUpdate, Page::Storage, Page::DateTime, Page::Language, Page::DefaultApps, Page::LoginItems];
+    pub const PAGES: [Page; 7] = [
+        Page::About,
+        Page::SoftwareUpdate,
+        Page::Storage,
+        Page::DateTime,
+        Page::Language,
+        Page::DefaultApps,
+        Page::LoginItems,
+    ];
 
     pub fn title(self) -> &'static str {
         match self {
@@ -201,11 +208,17 @@ impl Pane for General {
 
     fn entries(&self) -> Vec<SettingEntry> {
         let mut v = vec![
-            SettingEntry::new("about", "About").keywords(&["computer", "hardware", "version", "sekka", "nixos", "specs"]),
+            SettingEntry::new("about", "About")
+                .keywords(&["computer", "hardware", "version", "sekka", "nixos", "specs"]),
             SettingEntry::new("software-update", "Software Update").keywords(&["upgrade", "yukimi", "nixos-rebuild"]),
             SettingEntry::new("storage", "Storage").keywords(&["disk space", "free space", "kura", "full"]),
             SettingEntry::new("datetime", "Date & Time").keywords(&["clock", "time zone", "timezone"]),
-            SettingEntry::new("language", "Language & Region").keywords(&["locale", "formats", "region", "translation"]),
+            SettingEntry::new("language", "Language & Region").keywords(&[
+                "locale",
+                "formats",
+                "region",
+                "translation",
+            ]),
             SettingEntry::new("default-apps", "Default Apps").keywords(&["open with", "browser", "mail", "handlers"]),
             SettingEntry::new("login-items", "Login Items").keywords(&["autostart", "startup", "launch at login"]),
         ];
@@ -270,7 +283,13 @@ impl Pane for General {
             return self.main_view(vcx);
         }
         let (glyph, t) = self.page.icon();
-        let head = vcx.anchor(self.page.entry(), row![tile(glyph, t, 28.0), text(self.page.title()).size(20.0).weight(650.0)].spacing(10.0).align(Align::Center).width(Fill));
+        let head = vcx.anchor(
+            self.page.entry(),
+            row![tile(glyph, t, 28.0), text(self.page.title()).size(20.0).weight(650.0)]
+                .spacing(10.0)
+                .align(Align::Center)
+                .width(Fill),
+        );
         let body: Element<Msg> = match self.page {
             Page::Main => unreachable!(),
             Page::About => self.about.view(vcx).map(Msg::About),

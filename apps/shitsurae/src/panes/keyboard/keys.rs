@@ -74,7 +74,9 @@ impl Chord {
 
     /// A key that works without a modifier (function, media, Print).
     pub fn stands_alone(&self) -> bool {
-        self.key.starts_with("XF86") || self.key == "Print" || (self.key.starts_with('F') && self.key[1..].parse::<u8>().is_ok())
+        self.key.starts_with("XF86")
+            || self.key == "Print"
+            || (self.key.starts_with('F') && self.key[1..].parse::<u8>().is_ok())
     }
 }
 
@@ -232,7 +234,11 @@ pub fn sections(desks: usize) -> Vec<Section> {
         Section { title: "Desks", actions: desk_actions },
         s(
             "Screenshots",
-            &[("screenshot-screen", "The whole screen"), ("screenshot-area", "An area"), ("screenshot-tool", "Screenshot tools")],
+            &[
+                ("screenshot-screen", "The whole screen"),
+                ("screenshot-area", "An area"),
+                ("screenshot-tool", "Screenshot tools"),
+            ],
         ),
         s("Session", &[("terminal", "Open a terminal"), ("lock", "Lock the screen")]),
         s(

@@ -143,7 +143,12 @@ fn device_icon(d: &AudioDevice, io: Io) -> Icon {
         Icon::Headset
     } else if d.bus == "bluetooth" {
         Icon::Headphones
-    } else if f == "hdmi" || f == "tv" || d.name.contains("hdmi") || d.description.contains("HDMI") || d.description.contains("DisplayPort") {
+    } else if f == "hdmi"
+        || f == "tv"
+        || d.name.contains("hdmi")
+        || d.description.contains("HDMI")
+        || d.description.contains("DisplayPort")
+    {
         Icon::Tv
     } else if d.bus == "usb" {
         Icon::Usb
@@ -250,7 +255,12 @@ impl Pane for Sound {
 
     fn entries(&self) -> Vec<SettingEntry> {
         vec![
-            SettingEntry::new("output-device", "Output device").keywords(&["speakers", "headphones", "hdmi", "default"]),
+            SettingEntry::new("output-device", "Output device").keywords(&[
+                "speakers",
+                "headphones",
+                "hdmi",
+                "default",
+            ]),
             SettingEntry::new("output-volume", "Output volume").keywords(&["loud", "mute"]),
             SettingEntry::new("balance", "Balance").keywords(&["left", "right", "stereo"]),
             SettingEntry::new("port", "Port").keywords(&["jack", "headphones", "line out"]),
@@ -267,14 +277,29 @@ impl Pane for Sound {
     fn shown(&mut self, cx: &mut PaneCx<Msg>) {
         if matches!(self.snd, Snd::None) {
             let wake = cx.wake();
-            self.snd = if cx.sample() { Snd::Sample(Cell::new(crate::panes::hw::live_snapshot(|| Audio::new(aizome_sys::Wake::none()), |a| a.available() && !a.snapshot().sinks.is_empty(), |a| a.snapshot()).unwrap_or_else(sample), wake)) } else { Snd::Live(Audio::new(wake)) };
+            self.snd = if cx.sample() {
+                Snd::Sample(Cell::new(
+                    crate::panes::hw::live_snapshot(
+                        || Audio::new(aizome_sys::Wake::none()),
+                        |a| a.available() && !a.snapshot().sinks.is_empty(),
+                        |a| a.snapshot(),
+                    )
+                    .unwrap_or_else(sample),
+                    wake,
+                ))
+            } else {
+                Snd::Live(Audio::new(wake))
+            };
         }
         if self.sounds.is_empty() {
             // The sample's are the same everywhere (for golden images).
             self.sounds = if cx.sample() { Vec::new() } else { alert_sounds() };
             if self.sounds.is_empty() {
                 // The names the shell plays even without files of its own.
-                self.sounds = ["bell", "message", "complete", "dialog-information", "dialog-warning"].iter().map(|n| ((*n).to_owned(), String::new())).collect();
+                self.sounds = ["bell", "message", "complete", "dialog-information", "dialog-warning"]
+                    .iter()
+                    .map(|n| ((*n).to_owned(), String::new()))
+                    .collect();
             }
         }
         self.follow_input(cx);
@@ -455,7 +480,9 @@ impl Pane for Sound {
         if matches!(self.snd, Snd::Live(_)) && !state.available {
             return form::page(vec![
                 form::heading("No sound server", "Sound goes through PipeWire, which isn't answering."),
-                form::note("On NixOS it's turned on with services.pipewire.enable and services.pipewire.pulse.enable = true."),
+                form::note(
+                    "On NixOS it's turned on with services.pipewire.enable and services.pipewire.pulse.enable = true.",
+                ),
             ]);
         }
         let mut sections: Vec<Element<Msg>> = Vec::new();
@@ -476,7 +503,16 @@ impl Sound {
 }
 
 /// Words that say how many channels, at the end of a description.
-const LAYOUTS: [&str; 8] = ["Analog Stereo", "Digital Stereo", "Surround 4.0", "Surround 5.1", "Surround 7.1", "Multichannel", "Stereo", "Mono"];
+const LAYOUTS: [&str; 8] = [
+    "Analog Stereo",
+    "Digital Stereo",
+    "Surround 4.0",
+    "Surround 5.1",
+    "Surround 7.1",
+    "Multichannel",
+    "Stereo",
+    "Mono",
+];
 
 /// A device's name as people say it: a display's own name where HDMI
 /// gives one ("… Output [PG27UCDM] (Stereo)" is "PG27UCDM"), the sound
@@ -546,7 +582,12 @@ fn device_row(d: &AudioDevice, io: Io, all: &[&AudioDevice]) -> Row<Msg> {
     };
     let line = row![
         tile(device_icon(d, io), if d.is_default { Tile::Ai } else { Tile::Slate }, 26.0),
-        column![text(name.clone()).weight(if d.is_default { 600.0 } else { 400.0 }), text(detail).size(11.0).role(Role::Text3)].spacing(2.0).width(Fill),
+        column![
+            text(name.clone()).weight(if d.is_default { 600.0 } else { 400.0 }),
+            text(detail).size(11.0).role(Role::Text3)
+        ]
+        .spacing(2.0)
+        .width(Fill),
         if d.is_default { icon(Icon::Check).size(16.0).role(Role::Accent).into() } else { space::<Msg>(16.0) },
     ]
     .spacing(10.0)
@@ -570,9 +611,22 @@ fn volume_control(io: Io, d: &AudioDevice) -> Element<Msg> {
     };
     let max = if d.volume > 1.0 { MAX_VOLUME as f64 } else { 1.0 };
     row![
-        icon_button(glyph).plain().compact().on_press(Msg::Mute(io, index, !muted)).tooltip(if muted { "Unmute" } else { "Mute" }).label(if muted { "Unmute" } else { "Mute" }),
-        slider(d.volume as f64, 0.0..=max).step(0.01).on_change(move |v| Msg::Volume(io, index, v as f32)).enabled(!muted).width(220.0),
-        text(if muted { "Muted".to_owned() } else { percent(d.volume) }).mono().size(11.0).role(Role::Text3).width(44.0),
+        icon_button(glyph)
+            .plain()
+            .compact()
+            .on_press(Msg::Mute(io, index, !muted))
+            .tooltip(if muted { "Unmute" } else { "Mute" })
+            .label(if muted { "Unmute" } else { "Mute" }),
+        slider(d.volume as f64, 0.0..=max)
+            .step(0.01)
+            .on_change(move |v| Msg::Volume(io, index, v as f32))
+            .enabled(!muted)
+            .width(220.0),
+        text(if muted { "Muted".to_owned() } else { percent(d.volume) })
+            .mono()
+            .size(11.0)
+            .role(Role::Text3)
+            .width(44.0),
     ]
     .spacing(8.0)
     .align(Align::Center)
@@ -600,7 +654,8 @@ fn devices(vcx: &ViewCx, state: &AudioState, io: Io, (level, peak): (f32, f32)) 
     };
     let mut controls: Vec<Row<Msg>> = Vec::new();
     if let Some(d) = default {
-        let (label, entry) = if io == Io::Output { ("Output volume", "output-volume") } else { ("Input volume", "input-volume") };
+        let (label, entry) =
+            if io == Io::Output { ("Output volume", "output-volume") } else { ("Input volume", "input-volume") };
         controls.push(form::row(label, volume_control(io, d)).entry(entry));
         if d.channel_volumes.len() >= 2 {
             let index = d.index;
@@ -609,7 +664,10 @@ fn devices(vcx: &ViewCx, state: &AudioState, io: Io, (level, peak): (f32, f32)) 
                     "Balance",
                     row![
                         text("L").mono().size(11.0).role(Role::Text3),
-                        slider(d.balance as f64, -1.0..=1.0).step(0.02).on_change(move |v| Msg::Balance(io, index, v as f32)).width(200.0),
+                        slider(d.balance as f64, -1.0..=1.0)
+                            .step(0.02)
+                            .on_change(move |v| Msg::Balance(io, index, v as f32))
+                            .width(200.0),
                         text("R").mono().size(11.0).role(Role::Text3),
                     ]
                     .spacing(8.0)
@@ -618,16 +676,30 @@ fn devices(vcx: &ViewCx, state: &AudioState, io: Io, (level, peak): (f32, f32)) 
                 .entry("balance"),
             );
         }
-        let ports: Vec<&aizome_sys::audio::Port> = d.ports.iter().filter(|p| p.available != Some(false) || d.active_port.as_deref() == Some(p.name.as_str())).collect();
+        let ports: Vec<&aizome_sys::audio::Port> = d
+            .ports
+            .iter()
+            .filter(|p| p.available != Some(false) || d.active_port.as_deref() == Some(p.name.as_str()))
+            .collect();
         if ports.len() > 1 {
             let labels: Vec<&str> = ports.iter().map(|p| p.description.as_str()).collect();
             let at = ports.iter().position(|p| d.active_port.as_deref() == Some(p.name.as_str())).unwrap_or(0);
             let names: Vec<String> = ports.iter().map(|p| p.name.clone()).collect();
             let index = d.index;
-            controls.push(form::row("Port", form::choice(&labels, at, move |i| Msg::Port(io, index, names[i.min(names.len() - 1)].clone()))).entry("port"));
+            controls.push(
+                form::row(
+                    "Port",
+                    form::choice(&labels, at, move |i| Msg::Port(io, index, names[i.min(names.len() - 1)].clone())),
+                )
+                .entry("port"),
+            );
         }
         if io == Io::Input {
-            controls.push(form::row("Input level", level_meter::<Msg>(level, peak, SEGMENTS).width(268.0)).help("Speak to see the level move").entry("input-level"));
+            controls.push(
+                form::row("Input level", level_meter::<Msg>(level, peak, SEGMENTS).width(268.0))
+                    .help("Speak to see the level move")
+                    .entry("input-level"),
+            );
         }
     }
     column![vcx.section(title, rows), vcx.section("", controls)].spacing(8.0).width(Fill).into()
@@ -657,8 +729,8 @@ fn app_row(state: &AudioState, s: &AudioStream, rec: bool) -> Row<Msg> {
                 (false, true) => String::new(),
                 (false, false) => s.media_name.clone(),
             })
-                .size(11.0)
-                .role(Role::Text3),
+            .size(11.0)
+            .role(Role::Text3),
         ]
         .spacing(2.0)
         .width(Fill),
@@ -671,11 +743,29 @@ fn app_row(state: &AudioState, s: &AudioStream, rec: bool) -> Row<Msg> {
         let labels: Vec<String> = devices.iter().map(|d| device_name(d, &all)).collect();
         let at = devices.iter().position(|d| d.index == s.device).unwrap_or(0);
         let ids: Vec<u32> = devices.iter().map(|d| d.index).collect();
-        line = line.push(dropdown(labels, at).compact().on_select(move |i| Msg::AppDevice(rec, index, ids[i.min(ids.len() - 1)])).width(150.0));
+        line = line.push(
+            dropdown(labels, at)
+                .compact()
+                .on_select(move |i| Msg::AppDevice(rec, index, ids[i.min(ids.len() - 1)]))
+                .width(150.0),
+        );
     }
     let muted = s.muted;
-    line = line.push(icon_button(if muted { Icon::VolumeX } else { Icon::Volume2 }).plain().compact().on_press(Msg::AppMute(rec, index, !muted)).tooltip(if muted { "Unmute" } else { "Mute" }).label(if muted { "Unmute" } else { "Mute" }));
-    line = line.push(slider(s.volume as f64, 0.0..=1.0).step(0.01).on_change(move |v| Msg::AppVolume(rec, index, v as f32)).enabled(s.volume_writable && !muted).width(120.0));
+    line = line.push(
+        icon_button(if muted { Icon::VolumeX } else { Icon::Volume2 })
+            .plain()
+            .compact()
+            .on_press(Msg::AppMute(rec, index, !muted))
+            .tooltip(if muted { "Unmute" } else { "Mute" })
+            .label(if muted { "Unmute" } else { "Mute" }),
+    );
+    line = line.push(
+        slider(s.volume as f64, 0.0..=1.0)
+            .step(0.01)
+            .on_change(move |v| Msg::AppVolume(rec, index, v as f32))
+            .enabled(s.volume_writable && !muted)
+            .width(120.0),
+    );
     form::whole(container(line).padding([7.0, 12.0]).width(Fill))
 }
 
@@ -687,7 +777,11 @@ fn applications(vcx: &ViewCx, state: &AudioState) -> Option<Element<Msg>> {
     rows.extend(state.recording.iter().map(|s| app_row(state, s, true)));
     let first = rows.remove(0);
     rows.insert(0, first.entry("apps"));
-    Some(vcx.section_with("Applications", rows, Some("Each application's own volume and device, while it plays or records.".into())))
+    Some(vcx.section_with(
+        "Applications",
+        rows,
+        Some("Each application's own volume and device, while it plays or records.".into()),
+    ))
 }
 
 fn alerts(p: &Sound, vcx: &ViewCx) -> Element<Msg> {
@@ -700,7 +794,11 @@ fn alerts(p: &Sound, vcx: &ViewCx) -> Element<Msg> {
     let at = p.sounds.iter().position(|(n, _)| n == name).unwrap_or(0);
     let mut rows = Vec::new();
     if !labels.is_empty() {
-        rows.push(form::row("Alert sound", form::choice(&labels, at, Msg::AlertSound)).help("Plays when you choose it").entry("alert-sound"));
+        rows.push(
+            form::row("Alert sound", form::choice(&labels, at, Msg::AlertSound))
+                .help("Plays when you choose it")
+                .entry("alert-sound"),
+        );
     }
     rows.push(
         form::row(
@@ -715,7 +813,9 @@ fn alerts(p: &Sound, vcx: &ViewCx) -> Element<Msg> {
         )
         .entry("alert-volume"),
     );
-    rows.push(form::row("Play feedback when volume is changed", toggle(feedback).on_toggle(Msg::Feedback)).entry("feedback"));
+    rows.push(
+        form::row("Play feedback when volume is changed", toggle(feedback).on_toggle(Msg::Feedback)).entry("feedback"),
+    );
     vcx.section("Alerts", rows)
 }
 
@@ -723,7 +823,12 @@ fn alerts(p: &Sound, vcx: &ViewCx) -> Element<Msg> {
 /// over HDMI; the built-in microphone and the headphones'; music and a
 /// browser playing, and a call recording.
 pub fn sample() -> AudioState {
-    let port = |n: &str, d: &str, a: Option<bool>| aizome_sys::audio::Port { name: n.into(), description: d.into(), priority: 100, available: a };
+    let port = |n: &str, d: &str, a: Option<bool>| aizome_sys::audio::Port {
+        name: n.into(),
+        description: d.into(),
+        priority: 100,
+        available: a,
+    };
     let dev = |index: u32, name: &str, description: &str, volume: f32, form: &str, bus: &str| AudioDevice {
         index,
         name: name.into(),
@@ -741,8 +846,12 @@ pub fn sample() -> AudioState {
         state: DeviceState::Idle,
         is_monitor: false,
     };
-    let mut speakers = dev(41, "alsa_output.pci-0000_c1_00.6.analog-stereo", "Built-in Speakers", 0.62, "internal", "pci");
-    speakers.ports = vec![port("analog-output-speaker", "Speakers", Some(true)), port("analog-output-headphones", "Headphones jack", Some(false))];
+    let mut speakers =
+        dev(41, "alsa_output.pci-0000_c1_00.6.analog-stereo", "Built-in Speakers", 0.62, "internal", "pci");
+    speakers.ports = vec![
+        port("analog-output-speaker", "Speakers", Some(true)),
+        port("analog-output-headphones", "Headphones jack", Some(false)),
+    ];
     speakers.active_port = Some("analog-output-speaker".into());
     speakers.is_default = true;
     speakers.state = DeviceState::Running;
@@ -784,7 +893,6 @@ pub fn sample() -> AudioState {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -805,7 +913,10 @@ mod tests {
         ];
         let refs: Vec<&AudioDevice> = all.iter().collect();
         let names: Vec<String> = all.iter().map(|d| device_name(d, &refs)).collect();
-        assert_eq!(names, ["PG27UCDM", "HDMI / DisplayPort 2", "Speaker", "Microphones", "WH-1000XM5", "Built-in Audio"]);
+        assert_eq!(
+            names,
+            ["PG27UCDM", "HDMI / DisplayPort 2", "Speaker", "Microphones", "WH-1000XM5", "Built-in Audio"]
+        );
         assert_eq!(sound_label("dialog-warning"), "Dialog warning");
     }
 }

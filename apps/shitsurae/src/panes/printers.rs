@@ -12,8 +12,8 @@ use std::sync::Arc;
 use aizome_kit::prelude::*;
 use aizome_kit::{column, row};
 use aizome_sys::printers::{
-    Device, DeviceClass, Driver, DriverChoice, DriverFilter, Job, JobState, NewPrinter, Printer, PrinterState, Printers as Cups,
-    PrintersState, validate_name,
+    Device, DeviceClass, Driver, DriverChoice, DriverFilter, Job, JobState, NewPrinter, Printer, PrinterState,
+    Printers as Cups, PrintersState, validate_name,
 };
 use aizome_sys::{Error, Task};
 
@@ -45,7 +45,6 @@ impl Spool {
             _ => Task::ready(Err(Error::Unavailable("CUPS".into()))),
         }
     }
-
 }
 
 /// The sheet for adding a printer.
@@ -104,7 +103,10 @@ impl Add {
 
     fn ready(&self) -> bool {
         let target = if self.by_address { self.address_uri().is_some() } else { self.device().is_some() };
-        target && validate_name(self.name.trim()).is_ok() && !self.adding && (!self.needs_driver() || self.drivers.as_ref().is_some_and(|d| d.as_ref().is_ok_and(|d| !d.is_empty())))
+        target
+            && validate_name(self.name.trim()).is_ok()
+            && !self.adding
+            && (!self.needs_driver() || self.drivers.as_ref().is_some_and(|d| d.as_ref().is_ok_and(|d| !d.is_empty())))
     }
 }
 
@@ -165,7 +167,9 @@ pub fn state_words(p: &Printer, jobs: &[&Job]) -> String {
     });
     match p.state {
         PrinterState::Stopped if p.state_reasons.iter().any(|r| r == "paused") => "Paused".into(),
-        PrinterState::Stopped => reason.map(str::to_owned).or_else(|| p.state_message.clone()).unwrap_or_else(|| "Stopped".into()),
+        PrinterState::Stopped => {
+            reason.map(str::to_owned).or_else(|| p.state_message.clone()).unwrap_or_else(|| "Stopped".into())
+        }
         PrinterState::Printing => {
             let title = jobs.iter().find(|j| j.state == JobState::Processing).and_then(|j| j.title.clone());
             match title {
@@ -182,7 +186,11 @@ pub fn state_words(p: &Printer, jobs: &[&Job]) -> String {
 }
 
 fn size_words(bytes: u64) -> String {
-    if bytes >= 1 << 20 { format!("{:.1} MB", bytes as f64 / (1u64 << 20) as f64) } else { format!("{} KB", (bytes / 1024).max(1)) }
+    if bytes >= 1 << 20 {
+        format!("{:.1} MB", bytes as f64 / (1u64 << 20) as f64)
+    } else {
+        format!("{} KB", (bytes / 1024).max(1))
+    }
 }
 
 fn job_words(j: &Job) -> &'static str {
@@ -256,15 +264,40 @@ impl Pane for Printers {
     fn entries(&self) -> Vec<SettingEntry> {
         vec![
             SettingEntry::new("default-printer", "Default printer"),
-            SettingEntry::new("printers", "Printers").keywords(&["status", "queue", "jobs", "pause", "resume", "test page"]),
-            SettingEntry::new("add-printer", "Add Printer").keywords(&["new", "network printer", "usb", "address", "ip"]),
+            SettingEntry::new("printers", "Printers").keywords(&[
+                "status",
+                "queue",
+                "jobs",
+                "pause",
+                "resume",
+                "test page",
+            ]),
+            SettingEntry::new("add-printer", "Add Printer").keywords(&[
+                "new",
+                "network printer",
+                "usb",
+                "address",
+                "ip",
+            ]),
         ]
     }
 
     fn shown(&mut self, cx: &mut PaneCx<Msg>) {
         if matches!(self.spool, Spool::None) {
             let wake = cx.wake();
-            self.spool = if cx.sample() { Spool::Sample(Cell::new(crate::panes::hw::live_snapshot(|| Cups::new(aizome_sys::Wake::none()), |c| c.snapshot().loaded, |c| c.snapshot()).unwrap_or_else(sample), wake)) } else { Spool::Live(Cups::new(wake)) };
+            self.spool = if cx.sample() {
+                Spool::Sample(Cell::new(
+                    crate::panes::hw::live_snapshot(
+                        || Cups::new(aizome_sys::Wake::none()),
+                        |c| c.snapshot().loaded,
+                        |c| c.snapshot(),
+                    )
+                    .unwrap_or_else(sample),
+                    wake,
+                ))
+            } else {
+                Spool::Live(Cups::new(wake))
+            };
         } else if let Spool::Live(c) = &self.spool {
             let t = c.refresh();
             cx.wait(t, |_| Msg::Done(String::new(), Ok(())));
@@ -297,16 +330,14 @@ impl Pane for Printers {
                 self.act(cx, "Couldn't make it the default", "", t);
             }
             Msg::Expand(name) => self.expanded = if self.expanded == name { None } else { name },
-            Msg::TestPage(name) => {
-                match &self.spool {
-                    Spool::Live(c) => {
-                        self.busy.insert(name.clone());
-                        let t = c.print_test_page(&name);
-                        cx.wait(t, move |r| Msg::Printed(name, r));
-                    }
-                    _ => cx.send(Msg::Printed(name, Ok("sample-1".into()))),
+            Msg::TestPage(name) => match &self.spool {
+                Spool::Live(c) => {
+                    self.busy.insert(name.clone());
+                    let t = c.print_test_page(&name);
+                    cx.wait(t, move |r| Msg::Printed(name, r));
                 }
-            }
+                _ => cx.send(Msg::Printed(name, Ok("sample-1".into()))),
+            },
             Msg::Printed(name, result) => {
                 self.busy.remove(&name);
                 match result {
@@ -341,10 +372,20 @@ impl Pane for Printers {
                 self.act(cx, "Couldn't change sharing", &name, t);
             }
             Msg::Remove(name) => {
-                let shown = self.spool.snapshot().printer(&name).map(|p| p.display_name().to_owned()).unwrap_or_else(|| name.clone());
+                let shown = self
+                    .spool
+                    .snapshot()
+                    .printer(&name)
+                    .map(|p| p.display_name().to_owned())
+                    .unwrap_or_else(|| name.clone());
                 cx.confirm(
-                    Confirm::new(format!("Remove “{shown}”?"), "Its waiting jobs are cancelled. You can add it again later.", "Remove Printer", Msg::RemoveNow(name))
-                        .destructive(),
+                    Confirm::new(
+                        format!("Remove “{shown}”?"),
+                        "Its waiting jobs are cancelled. You can add it again later.",
+                        "Remove Printer",
+                        Msg::RemoveNow(name),
+                    )
+                    .destructive(),
                 );
             }
             Msg::RemoveNow(name) => {
@@ -385,13 +426,15 @@ impl Pane for Printers {
             }
             Msg::Found(r) => {
                 if let Some(a) = &mut self.add {
-                    a.devices = Some(r.map(|mut d| {
-                        // Network printers that need no driver first.
-                        d.retain(|x| x.class != DeviceClass::File);
-                        d.sort_by_key(|x| (x.is_manual(), !x.driverless, x.class != DeviceClass::Network));
-                        d
-                    })
-                    .map_err(|e| e.to_string()));
+                    a.devices = Some(
+                        r.map(|mut d| {
+                            // Network printers that need no driver first.
+                            d.retain(|x| x.class != DeviceClass::File);
+                            d.sort_by_key(|x| (x.is_manual(), !x.driverless, x.class != DeviceClass::Network));
+                            d
+                        })
+                        .map_err(|e| e.to_string()),
+                    );
                 }
             }
             Msg::Choose(i) => {
@@ -410,7 +453,11 @@ impl Pane for Printers {
                     if d.is_manual() {
                         a.by_address = true;
                     } else if !d.driverless {
-                        let filter = DriverFilter { device_id: d.device_id.clone(), make_and_model: d.make_and_model.clone(), language: None };
+                        let filter = DriverFilter {
+                            device_id: d.device_id.clone(),
+                            make_and_model: d.make_and_model.clone(),
+                            language: None,
+                        };
                         match &self.spool {
                             Spool::Live(c) => {
                                 let t = c.drivers(filter);
@@ -434,7 +481,8 @@ impl Pane for Printers {
             Msg::Address(t) => {
                 let state = self.spool.snapshot();
                 if let Some(a) = &mut self.add {
-                    let host = t.trim().split("://").last().unwrap_or("").split(['/', ':']).next().unwrap_or("").to_owned();
+                    let host =
+                        t.trim().split("://").last().unwrap_or("").split(['/', ':']).next().unwrap_or("").to_owned();
                     let suggested = state.suggest_name(&a.address);
                     if a.name.is_empty() || a.name == suggested {
                         a.name = if host.is_empty() { String::new() } else { state.suggest_name(&host) };
@@ -552,12 +600,16 @@ impl Pane for Printers {
         let state = self.spool.snapshot();
         if matches!(self.spool, Spool::Live(_)) {
             if !state.loaded {
-                return form::page(vec![row![spinner(14.0), text("Asking CUPS about the printers…").role(Role::Text3)].spacing(8.0).into()]);
+                return form::page(vec![
+                    row![spinner(14.0), text("Asking CUPS about the printers…").role(Role::Text3)].spacing(8.0).into(),
+                ]);
             }
             if !state.available {
                 return form::page(vec![
                     form::heading("Printing isn't set up", "Printers are managed by CUPS, which isn't running."),
-                    form::note("On NixOS it's turned on with services.printing.enable = true; services.avahi.enable finds network printers."),
+                    form::note(
+                        "On NixOS it's turned on with services.printing.enable = true; services.avahi.enable finds network printers.",
+                    ),
                 ]);
             }
         }
@@ -565,7 +617,8 @@ impl Pane for Printers {
         // The default printer.
         if !state.printers.is_empty() {
             let labels: Vec<&str> = state.printers.iter().map(|p| p.display_name()).collect();
-            let at = state.default_printer().and_then(|d| state.printers.iter().position(|p| p.name == d.name)).unwrap_or(0);
+            let at =
+                state.default_printer().and_then(|d| state.printers.iter().position(|p| p.name == d.name)).unwrap_or(0);
             let shown = |n: &str| state.printer(n).map(|p| p.display_name().to_owned()).unwrap_or_else(|| n.to_owned());
             let help = match (&state.user_default, &state.system_default) {
                 (None, Some(s)) => format!("Everyone's default is {}", shown(s)),
@@ -573,7 +626,16 @@ impl Pane for Printers {
                 (Some(_), Some(s)) => format!("Yours; everyone's is {}", shown(s)),
                 _ => "Where documents print unless you choose another".to_owned(),
             };
-            sections.push(vcx.section("", vec![form::row("Default printer", form::choice(&labels, at, Msg::Default)).help(help).entry("default-printer")]));
+            sections.push(
+                vcx.section(
+                    "",
+                    vec![
+                        form::row("Default printer", form::choice(&labels, at, Msg::Default))
+                            .help(help)
+                            .entry("default-printer"),
+                    ],
+                ),
+            );
         }
         // The printers.
         let mut rows: Vec<Row<Msg>> = Vec::new();
@@ -619,7 +681,11 @@ fn printer_row(p: &Printers, printer: &Printer, jobs: &[&Job]) -> Row<Msg> {
     let colour = match printer.state {
         PrinterState::Stopped => Tile::Red,
         PrinterState::Printing => Tile::Kohaku,
-        PrinterState::Idle if printer.state_reasons.iter().any(|r| r.ends_with("-warning") || r.ends_with("-report")) => Tile::Kohaku,
+        PrinterState::Idle
+            if printer.state_reasons.iter().any(|r| r.ends_with("-warning") || r.ends_with("-report")) =>
+        {
+            Tile::Kohaku
+        }
         PrinterState::Idle => Tile::Green,
     };
     let mut detail = words;
@@ -628,7 +694,9 @@ fn printer_row(p: &Printers, printer: &Printer, jobs: &[&Job]) -> Row<Msg> {
     }
     let mut line = row![
         tile(Icon::Printer, colour, 28.0),
-        column![text(printer.display_name().to_owned()).weight(500.0), text(detail).size(11.0).role(Role::Text3)].spacing(2.0).width(Fill),
+        column![text(printer.display_name().to_owned()).weight(500.0), text(detail).size(11.0).role(Role::Text3)]
+            .spacing(2.0)
+            .width(Fill),
     ]
     .spacing(10.0)
     .align(Align::Center)
@@ -637,7 +705,8 @@ fn printer_row(p: &Printers, printer: &Printer, jobs: &[&Job]) -> Row<Msg> {
         line = line.push(badge("Default").role(Role::Success));
     }
     if !jobs.is_empty() {
-        line = line.push(badge(format!("{} job{}", jobs.len(), if jobs.len() == 1 { "" } else { "s" })).role(Role::Accent));
+        line = line
+            .push(badge(format!("{} job{}", jobs.len(), if jobs.len() == 1 { "" } else { "s" })).role(Role::Accent));
     }
     if p.busy.contains(&printer.name) {
         line = line.push(spinner(14.0));
@@ -678,18 +747,27 @@ fn printer_details(p: &Printers, printer: &Printer, jobs: &[&Job]) -> Vec<Row<Ms
             "Stopped by a problem: jobs wait until it resumes"
         },
         row![
-            button(if paused { "Resume" } else { "Pause" }).compact().on_press(Msg::Pause(n1.clone(), !paused)).enabled(!busy),
+            button(if paused { "Resume" } else { "Pause" })
+                .compact()
+                .on_press(Msg::Pause(n1.clone(), !paused))
+                .enabled(!busy),
             button("Print Test Page").compact().on_press(Msg::TestPage(n1.clone())).enabled(!busy && !paused),
         ]
         .spacing(8.0),
     ));
     let n2 = name.clone();
-    rows.push(form::row("Take new jobs", toggle(printer.accepting).on_toggle(move |on| Msg::Accepting(n2.clone(), on))));
+    rows.push(form::row(
+        "Take new jobs",
+        toggle(printer.accepting).on_toggle(move |on| Msg::Accepting(n2.clone(), on)),
+    ));
     if !printer.remote {
         let n3 = name.clone();
         rows.push(
-            form::row("Share on the network", toggle(printer.shared.unwrap_or(false)).on_toggle(move |on| Msg::Shared(n3.clone(), on)))
-                .help("Other computers here can print to it"),
+            form::row(
+                "Share on the network",
+                toggle(printer.shared.unwrap_or(false)).on_toggle(move |on| Msg::Shared(n3.clone(), on)),
+            )
+            .help("Other computers here can print to it"),
         );
     }
     for j in jobs {
@@ -697,14 +775,21 @@ fn printer_details(p: &Printers, printer: &Printer, jobs: &[&Job]) -> Vec<Row<Ms
         let who = if j.owner.is_empty() || j.owner == "unknown" { String::new() } else { format!(" · {}", j.owner) };
         rows.push(
             form::row(title, button("Cancel").compact().on_press(Msg::Cancel(j.id.clone())))
-                .leading(icon(if j.state == JobState::Processing { Icon::Printer } else { Icon::Hourglass }).size(14.0).role(Role::Text3))
+                .leading(
+                    icon(if j.state == JobState::Processing { Icon::Printer } else { Icon::Hourglass })
+                        .size(14.0)
+                        .role(Role::Text3),
+                )
                 .detail(format!("{} · {}{who}", job_words(j), size_words(j.size))),
         );
     }
     if jobs.len() > 1 {
         rows.push(form::row("", button("Cancel All Jobs").compact().on_press(Msg::CancelAll(name.clone()))));
     }
-    rows.push(form::row("Remove it from this computer", button("Remove Printer…").destructive().compact().on_press(Msg::Remove(name))));
+    rows.push(form::row(
+        "Remove it from this computer",
+        button("Remove Printer…").destructive().compact().on_press(Msg::Remove(name)),
+    ));
     rows
 }
 
@@ -712,7 +797,9 @@ fn add_sheet(a: &Add) -> Element<Msg> {
     let mut col = column![text("Add a Printer").size(15.0).weight(650.0)].spacing(12.0).width(Fill);
     // What was found.
     let found: Element<Msg> = match &a.devices {
-        None => row![spinner(14.0), text("Looking for printers on the network and plugged in…").role(Role::Text3)].spacing(8.0).into(),
+        None => row![spinner(14.0), text("Looking for printers on the network and plugged in…").role(Role::Text3)]
+            .spacing(8.0)
+            .into(),
         Some(Err(e)) => text(format!("Couldn't look for printers: {e}")).role(Role::Danger).wrap().into(),
         Some(Ok(list)) => {
             let shown: Vec<(usize, &Device)> = list.iter().enumerate().filter(|(_, d)| !d.is_manual()).collect();
@@ -732,7 +819,9 @@ fn add_sheet(a: &Add) -> Element<Msg> {
                         press(
                             row![
                                 icon(if d.class == DeviceClass::Direct { Icon::Usb } else { Icon::Printer }).size(16.0),
-                                column![text(d.model_name()), text(kind).size(11.0).role(Role::Text3)].spacing(1.0).width(Fill),
+                                column![text(d.model_name()), text(kind).size(11.0).role(Role::Text3)]
+                                    .spacing(1.0)
+                                    .width(Fill),
                             ]
                             .spacing(10.0)
                             .align(Align::Center)
@@ -747,7 +836,13 @@ fn add_sheet(a: &Add) -> Element<Msg> {
                         .into()
                     })
                     .collect();
-                container(column(items).width(Fill)).fill(Tone::Sunk).border(Edge::Line).padding(1.0).width(Fill).max_height(200.0).into()
+                container(column(items).width(Fill))
+                    .fill(Tone::Sunk)
+                    .border(Edge::Line)
+                    .padding(1.0)
+                    .width(Fill)
+                    .max_height(200.0)
+                    .into()
             }
         }
     };
@@ -756,21 +851,42 @@ fn add_sheet(a: &Add) -> Element<Msg> {
     if a.by_address {
         col = col.push(labelled(
             "Address",
-            text_field(&a.address).placeholder("192.168.1.40, printer.local or ipp://…").mono().on_change(Msg::Address).id("printers-address").width(Fill),
+            text_field(&a.address)
+                .placeholder("192.168.1.40, printer.local or ipp://…")
+                .mono()
+                .on_change(Msg::Address)
+                .id("printers-address")
+                .width(Fill),
         ));
         if let Some(uri) = a.address_uri() {
             col = col.push(text(format!("Added as {uri}, with IPP Everywhere")).size(11.0).role(Role::Text3).wrap());
         }
     }
     if a.by_address || a.chosen.is_some() {
-        col = col.push(row![labelled("Name", text_field(&a.name).on_change(Msg::Name).width(Fill)).width(Fill), labelled("Location", text_field(&a.location).placeholder("Optional").on_change(Msg::Location).width(Fill)).width(Fill)].spacing(12.0).width(Fill));
+        col = col.push(
+            row![
+                labelled("Name", text_field(&a.name).on_change(Msg::Name).width(Fill)).width(Fill),
+                labelled(
+                    "Location",
+                    text_field(&a.location).placeholder("Optional").on_change(Msg::Location).width(Fill)
+                )
+                .width(Fill)
+            ]
+            .spacing(12.0)
+            .width(Fill),
+        );
     }
     if a.needs_driver() {
         let drivers: Element<Msg> = match &a.drivers {
             None => row![spinner(14.0), text("Finding drivers…").role(Role::Text3)].spacing(8.0).into(),
             Some(Err(e)) => text(format!("Couldn't list drivers: {e}")).role(Role::Danger).wrap().into(),
-            Some(Ok(list)) if list.is_empty() => text("CUPS has no driver for this printer.").role(Role::Danger).wrap().into(),
-            Some(Ok(list)) => dropdown(list.iter().map(|d| d.make_and_model.clone()), a.driver).on_select(Msg::Driver).width(Fill).into(),
+            Some(Ok(list)) if list.is_empty() => {
+                text("CUPS has no driver for this printer.").role(Role::Danger).wrap().into()
+            }
+            Some(Ok(list)) => dropdown(list.iter().map(|d| d.make_and_model.clone()), a.driver)
+                .on_select(Msg::Driver)
+                .width(Fill)
+                .into(),
         };
         col = col.push(labelled("Driver", drivers));
     }
@@ -806,13 +922,31 @@ pub fn sample() -> PrintersState {
         driverless: Some(true),
         ..Printer::default()
     };
-    let mut laser = printer("Brother_HL_L2390DW", "Brother HL-L2390DW", "Study", "Brother HL-L2390DW series - IPP Everywhere", "ipp://brother.local:631/ipp/print");
+    let mut laser = printer(
+        "Brother_HL_L2390DW",
+        "Brother HL-L2390DW",
+        "Study",
+        "Brother HL-L2390DW series - IPP Everywhere",
+        "ipp://brother.local:631/ipp/print",
+    );
     laser.is_user_default = true;
-    let mut inkjet = printer("Canon_TS8350", "Canon TS8350", "Living room", "Canon TS8300 series - IPP Everywhere", "ipp://canon-ts8350.local:631/ipp/print");
+    let mut inkjet = printer(
+        "Canon_TS8350",
+        "Canon TS8350",
+        "Living room",
+        "Canon TS8300 series - IPP Everywhere",
+        "ipp://canon-ts8350.local:631/ipp/print",
+    );
     inkjet.state = PrinterState::Stopped;
     inkjet.state_reasons = vec!["media-empty-error".into()];
     inkjet.state_message = Some("Media tray empty".into());
-    let mut labels = printer("DYMO_LabelWriter_450", "DYMO LabelWriter 450", "", "DYMO LabelWriter 450", "usb://DYMO/LabelWriter%20450?serial=01010112345600");
+    let mut labels = printer(
+        "DYMO_LabelWriter_450",
+        "DYMO LabelWriter 450",
+        "",
+        "DYMO LabelWriter 450",
+        "usb://DYMO/LabelWriter%20450?serial=01010112345600",
+    );
     labels.state = PrinterState::Stopped;
     labels.state_reasons = vec!["paused".into()];
     labels.driverless = Some(false);
@@ -856,13 +990,28 @@ fn sample_devices() -> Vec<Device> {
             location: None,
             driverless: false,
         },
-        Device { class: DeviceClass::Network, uri: "ipp".into(), info: "Internet Printing Protocol (ipp)".into(), ..Device::default() },
+        Device {
+            class: DeviceClass::Network,
+            uri: "ipp".into(),
+            info: "Internet Printing Protocol (ipp)".into(),
+            ..Device::default()
+        },
     ]
 }
 
 fn sample_drivers() -> Vec<Driver> {
     vec![
-        Driver { name: "drv:///hpcups.drv/hp-laserjet_professional_p1102.ppd".into(), make_and_model: "HP LaserJet Professional P1102, hpcups 3.25".into(), language: Some("en".into()), device_id: None },
-        Driver { name: "drv:///sample.drv/generic.ppd".into(), make_and_model: "Generic PCL Laser Printer".into(), language: Some("en".into()), device_id: None },
+        Driver {
+            name: "drv:///hpcups.drv/hp-laserjet_professional_p1102.ppd".into(),
+            make_and_model: "HP LaserJet Professional P1102, hpcups 3.25".into(),
+            language: Some("en".into()),
+            device_id: None,
+        },
+        Driver {
+            name: "drv:///sample.drv/generic.ppd".into(),
+            make_and_model: "Generic PCL Laser Printer".into(),
+            language: Some("en".into()),
+            device_id: None,
+        },
     ]
 }

@@ -118,8 +118,12 @@ fn typical_interactions_fit_the_frame_budget() {
     let w = h.window();
     let mut frames = Vec::new();
     for i in 0..30 {
-        let opts: Vec<Rect> =
-            h.semantics(w).into_iter().filter(|(s, _)| s.label.as_deref().is_some_and(|l| l.starts_with("Options for"))).map(|(_, r)| r).collect();
+        let opts: Vec<Rect> = h
+            .semantics(w)
+            .into_iter()
+            .filter(|(s, _)| s.label.as_deref().is_some_and(|l| l.starts_with("Options for")))
+            .map(|(_, r)| r)
+            .collect();
         let Some(r) = opts.first().copied() else { break };
         let f = frame(&mut h, |h| h.click(w, r.center()));
         if i > 1 {

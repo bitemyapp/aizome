@@ -17,7 +17,9 @@ use aizome_kit::sidestep_ui::kurbo::Line;
 use aizome_kit::sidestep_ui::{Cursor, Key, NamedKey, PointerButton, StrokeStyle};
 use aizome_kit::text::TextSpec;
 use aizome_kit::theme::{FontSpec, color};
-use aizome_kit::widget::{Event, EventCx, Focusable, LayoutCx, PaintCx, SemanticAction, SemanticRole, Semantics, Status, Widget};
+use aizome_kit::widget::{
+    Event, EventCx, Focusable, LayoutCx, PaintCx, SemanticAction, SemanticRole, Semantics, Status, Widget,
+};
 use aizome_kit::{Align, Color, Layoutable};
 use aizome_theme::Rgba;
 
@@ -86,7 +88,11 @@ impl Fit {
         let bottom = tiles.iter().map(|t| t.rect.y + t.rect.h).max().unwrap_or(1);
         let (sx, sy) = ((right - left).max(1) as f64, (bottom - top).max(1) as f64);
         let factor = ((size.width - 2.0 * PADDING) / sx).min((size.height - 2.0 * PADDING) / sy).min(0.15) * 0.85;
-        Fit { factor, origin: (left, top), offset: ((size.width - sx * factor) / 2.0, (size.height - sy * factor) / 2.0) }
+        Fit {
+            factor,
+            origin: (left, top),
+            offset: ((size.width - sx * factor) / 2.0, (size.height - sy * factor) / 2.0),
+        }
     }
 
     fn to_widget(self, r: LRect) -> Rect {
@@ -99,7 +105,10 @@ impl Fit {
 
     fn to_layout(self, p: Point) -> (i32, i32) {
         let f = self.factor.max(1e-6);
-        (((p.x - self.offset.0) / f).round() as i32 + self.origin.0, ((p.y - self.offset.1) / f).round() as i32 + self.origin.1)
+        (
+            ((p.x - self.offset.0) / f).round() as i32 + self.origin.0,
+            ((p.y - self.offset.1) / f).round() as i32 + self.origin.1,
+        )
     }
 }
 
@@ -189,7 +198,10 @@ impl Arrangement {
             cx.canvas.fill_rect(bar, t.bar());
             cx.canvas.fill_rect(Rect::new(bar.x0, bar.y1, bar.x1, bar.y1 + 1.0), t.bevel_lo());
             let tab = (bar_h - 2.0).max(2.0);
-            cx.canvas.fill_rect(Rect::new(bar.x0 + 3.0, bar.y0 + 1.0, bar.x0 + 3.0 + tab * 1.6, bar.y0 + 1.0 + tab), color(Rgba::hex(0xe0af68)));
+            cx.canvas.fill_rect(
+                Rect::new(bar.x0 + 3.0, bar.y0 + 1.0, bar.x0 + 3.0 + tab * 1.6, bar.y0 + 1.0 + tab),
+                color(Rgba::hex(0xe0af68)),
+            );
             top = bar.y1 + 1.0;
         }
         // The labels, as many as fit: name, connector, size.
@@ -302,7 +314,12 @@ impl Widget for Arrangement {
 
     fn hash(&self, h: &mut PaintHasher) {
         for tile in &self.tiles {
-            h.str(&tile.name).str(&tile.title).str(&tile.size).add(&(tile.rect, tile.main, tile.dye, tile.mirrors.len()));
+            h.str(&tile.name).str(&tile.title).str(&tile.size).add(&(
+                tile.rect,
+                tile.main,
+                tile.dye,
+                tile.mirrors.len(),
+            ));
         }
         h.str(&self.selected).add(&self.enabled);
     }
@@ -332,8 +349,15 @@ impl Widget for Arrangement {
             Event::PointerDown { pos, button: PointerButton::Left, .. } => {
                 let Some(tile) = self.hit(&fit, *pos).cloned() else { return Status::Handled };
                 let r = fit.to_widget(tile.rect);
-                cx.state::<State>().drag =
-                    Some(Drag { name: tile.name.clone(), grab: Point::new(pos.x - r.x0, pos.y - r.y0), at: r.origin(), from: *pos, moved: false, fit, shown: Vec::new() });
+                cx.state::<State>().drag = Some(Drag {
+                    name: tile.name.clone(),
+                    grab: Point::new(pos.x - r.x0, pos.y - r.y0),
+                    at: r.origin(),
+                    from: *pos,
+                    moved: false,
+                    fit,
+                    shown: Vec::new(),
+                });
                 cx.request_focus();
                 cx.capture_pointer();
                 cx.set_cursor(Cursor::Grabbing);
@@ -350,7 +374,8 @@ impl Widget for Arrangement {
                 if !d.moved && (pos.x - d.from.x).hypot(pos.y - d.from.y) < 4.0 {
                     return Status::Handled;
                 }
-                let home = self.tiles.iter().find(|t| t.name == d.name).map(|t| d.fit.to_widget(t.rect)).unwrap_or_default();
+                let home =
+                    self.tiles.iter().find(|t| t.name == d.name).map(|t| d.fit.to_widget(t.rect)).unwrap_or_default();
                 let mut old = std::mem::take(&mut d.shown);
                 if !d.moved {
                     // The tile leaves its place.
@@ -436,7 +461,15 @@ mod tests {
     use super::*;
 
     fn tile(name: &str, x: i32, w: i32) -> Tile {
-        Tile { name: name.into(), rect: LRect::new(x, 0, w, 900), title: name.into(), size: String::new(), main: false, mirrors: vec![], dye: 0 }
+        Tile {
+            name: name.into(),
+            rect: LRect::new(x, 0, w, 900),
+            title: name.into(),
+            size: String::new(),
+            main: false,
+            mirrors: vec![],
+            dye: 0,
+        }
     }
 
     #[test]

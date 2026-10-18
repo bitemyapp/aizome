@@ -32,7 +32,11 @@ pub fn offset_in(b: &[u8], now: i64) -> Option<i32> {
     let footer_at = data_at + h.data_len(tsize);
     let time = |i: usize| -> Option<i64> {
         let s = b.get(times_at + i * tsize..times_at + (i + 1) * tsize)?;
-        Some(if wide { i64::from_be_bytes(s.try_into().ok()?) } else { i64::from(i32::from_be_bytes(s.try_into().ok()?)) })
+        Some(if wide {
+            i64::from_be_bytes(s.try_into().ok()?)
+        } else {
+            i64::from(i32::from_be_bytes(s.try_into().ok()?))
+        })
     };
     let utoff = |t: usize| -> Option<i32> {
         let s = b.get(types_at + t * 6..types_at + t * 6 + 4)?;
@@ -79,7 +83,13 @@ struct Header {
 
 impl Header {
     fn data_len(&self, tsize: usize) -> usize {
-        self.timecnt * tsize + self.timecnt + self.typecnt * 6 + self.charcnt + self.leapcnt * (tsize + 4) + self.isstdcnt + self.isutcnt
+        self.timecnt * tsize
+            + self.timecnt
+            + self.typecnt * 6
+            + self.charcnt
+            + self.leapcnt * (tsize + 4)
+            + self.isstdcnt
+            + self.isutcnt
     }
 }
 
@@ -87,8 +97,18 @@ fn header(b: &[u8], at: usize) -> Option<Header> {
     if b.get(at..at + 4)? != b"TZif" {
         return None;
     }
-    let n = |i: usize| -> Option<usize> { Some(u32::from_be_bytes(b.get(at + 20 + i * 4..at + 24 + i * 4)?.try_into().ok()?) as usize) };
-    Some(Header { version: *b.get(at + 4)?, isutcnt: n(0)?, isstdcnt: n(1)?, leapcnt: n(2)?, timecnt: n(3)?, typecnt: n(4)?, charcnt: n(5)? })
+    let n = |i: usize| -> Option<usize> {
+        Some(u32::from_be_bytes(b.get(at + 20 + i * 4..at + 24 + i * 4)?.try_into().ok()?) as usize)
+    };
+    Some(Header {
+        version: *b.get(at + 4)?,
+        isutcnt: n(0)?,
+        isstdcnt: n(1)?,
+        leapcnt: n(2)?,
+        timecnt: n(3)?,
+        typecnt: n(4)?,
+        charcnt: n(5)?,
+    })
 }
 
 /// A POSIX TZ rule's offset east of UTC at `now`: `CST6CDT,M3.2.0,M11.1.0`.

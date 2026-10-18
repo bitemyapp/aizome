@@ -42,7 +42,11 @@ pub enum Msg {
 }
 
 pub fn entries() -> Vec<SettingEntry> {
-    vec![SettingEntry::new("startup-apps", "Open at login").under("Login Items").keywords(&["autostart", "startup", "background"])]
+    vec![SettingEntry::new("startup-apps", "Open at login").under("Login Items").keywords(&[
+        "autostart",
+        "startup",
+        "background",
+    ])]
 }
 
 fn user_dir() -> PathBuf {
@@ -96,7 +100,11 @@ pub fn read() -> Vec<Item> {
         let Ok(text) = std::fs::read_to_string(&path) else { continue };
         let Ok(entry) = DesktopEntry::parse(&text, &id, &locale) else { continue };
         // Entries for other desktops only (and never shown here) stay out.
-        if !entry.only_show_in.is_empty() && !entry.only_show_in.iter().any(|d| d == "Aizome") && !starts(&entry, &text) && system_file.is_some() {
+        if !entry.only_show_in.is_empty()
+            && !entry.only_show_in.iter().any(|d| d == "Aizome")
+            && !starts(&entry, &text)
+            && system_file.is_some()
+        {
             continue;
         }
         out.push(Item {
@@ -150,7 +158,11 @@ pub fn set_enabled(id: &str, on: bool) -> std::io::Result<()> {
     let text = match std::fs::read_to_string(&user) {
         Ok(t) => t,
         Err(_) => {
-            let sys = system_dirs().into_iter().map(|d| d.join(id)).find(|p| p.is_file()).ok_or(std::io::ErrorKind::NotFound)?;
+            let sys = system_dirs()
+                .into_iter()
+                .map(|d| d.join(id))
+                .find(|p| p.is_file())
+                .ok_or(std::io::ErrorKind::NotFound)?;
             std::fs::read_to_string(sys)?
         }
     };
@@ -179,7 +191,10 @@ impl State {
                     i("syncthing-start.desktop", "Syncthing", "File synchronisation", true, false),
                     i("1password.desktop", "1Password", "Password manager", true, true),
                 ]);
-                self.apps = vec![(PathBuf::from("/run/current-system/sw/share/applications/org.aizome.Tokei.desktop"), "Tokei".into())];
+                self.apps = vec![(
+                    PathBuf::from("/run/current-system/sw/share/applications/org.aizome.Tokei.desktop"),
+                    "Tokei".into(),
+                )];
             }
             return;
         }
@@ -211,7 +226,8 @@ impl State {
                 let Some((path, name)) = self.apps.get(i).cloned() else { return };
                 let id = path.file_name().and_then(|n| n.to_str()).unwrap_or("app.desktop").to_owned();
                 if !cx.sample() {
-                    let copied = std::fs::create_dir_all(user_dir()).and_then(|()| std::fs::copy(&path, user_dir().join(&id)).map(|_| ()));
+                    let copied = std::fs::create_dir_all(user_dir())
+                        .and_then(|()| std::fs::copy(&path, user_dir().join(&id)).map(|_| ()));
                     if let Err(e) = copied {
                         cx.failed("Add a login item", e);
                         return;
@@ -224,10 +240,20 @@ impl State {
                 cx.say(format!("{name} opens when you log in"));
             }
             Msg::Remove(id) => {
-                let name = self.items.as_ref().and_then(|v| v.iter().find(|i| i.id == id)).map(|i| i.name.clone()).unwrap_or_default();
+                let name = self
+                    .items
+                    .as_ref()
+                    .and_then(|v| v.iter().find(|i| i.id == id))
+                    .map(|i| i.name.clone())
+                    .unwrap_or_default();
                 cx.confirm(
-                    Confirm::new(format!("Stop opening {name} at login?"), "It stays installed; only its login item goes.", "Remove", G::Login(Msg::ConfirmRemove(id)))
-                        .destructive(),
+                    Confirm::new(
+                        format!("Stop opening {name} at login?"),
+                        "It stays installed; only its login item goes.",
+                        "Remove",
+                        G::Login(Msg::ConfirmRemove(id)),
+                    )
+                    .destructive(),
                 );
             }
             Msg::ConfirmRemove(id) => {
@@ -247,17 +273,22 @@ impl State {
     pub fn view(&self, vcx: &ViewCx) -> Element<Msg> {
         let mut rows: Vec<form::Row<Msg>> = match &self.items {
             None => vec![form::whole(container(progress_indeterminate().width(160.0)).padding([16.0, form::INSET]))],
-            Some(items) if items.is_empty() => vec![form::whole(container(text("Nothing opens at login.").role(Role::Text3)).padding([12.0, form::INSET]))],
+            Some(items) if items.is_empty() => vec![form::whole(
+                container(text("Nothing opens at login.").role(Role::Text3)).padding([12.0, form::INSET]),
+            )],
             Some(items) => items
                 .iter()
                 .map(|it| {
                     let id = it.id.clone();
                     let mut controls = row![].spacing(8.0).align(Align::Center);
                     if it.mine {
-                        controls = controls.push(icon_button(Icon::Trash).toolbar().on_press(Msg::Remove(id.clone())).tooltip("Remove"));
+                        controls = controls.push(
+                            icon_button(Icon::Trash).toolbar().on_press(Msg::Remove(id.clone())).tooltip("Remove"),
+                        );
                     }
                     controls = controls.push(toggle(it.enabled).on_toggle(move |on| Msg::Toggle(id.clone(), on)));
-                    let mut r = form::row(it.name.clone(), controls).leading(icon(crate::widgets::app_glyph(&it.id)).size(16.0).role(Role::Text2));
+                    let mut r = form::row(it.name.clone(), controls)
+                        .leading(icon(crate::widgets::app_glyph(&it.id)).size(16.0).role(Role::Text2));
                     if !it.comment.is_empty() {
                         r = r.detail(it.comment.clone());
                     }
@@ -270,13 +301,14 @@ impl State {
             rows.insert(0, first.entry("startup-apps"));
         }
         let names: Vec<String> = self.apps.iter().map(|a| a.1.clone()).collect();
-        rows.push(form::row("Add an app", dropdown(names, None).placeholder("Choose an app…").on_select(Msg::Add).min_width(200.0)));
-        form::page(vec![
-            vcx.section_with(
-                "Open at Login",
-                rows,
-                Some("Items the system starts can be turned off for you; ones you added can be removed.".into()),
-            ),
-        ])
+        rows.push(form::row(
+            "Add an app",
+            dropdown(names, None).placeholder("Choose an app…").on_select(Msg::Add).min_width(200.0),
+        ));
+        form::page(vec![vcx.section_with(
+            "Open at Login",
+            rows,
+            Some("Items the system starts can be turned off for you; ones you added can be removed.".into()),
+        )])
     }
 }

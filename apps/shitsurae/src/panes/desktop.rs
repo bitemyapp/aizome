@@ -49,13 +49,20 @@ pub enum Msg {
 /// A change to the Desks, made inside a settings change.
 type DeskEdit = Box<dyn FnOnce(&mut Vec<DeskConfig>)>;
 
-pub const DOUBLE_CLICK: [(&str, &str); 3] = [("fill", "Fill the screen"), ("minimise", "Minimise"), ("nothing", "Nothing")];
+pub const DOUBLE_CLICK: [(&str, &str); 3] =
+    [("fill", "Fill the screen"), ("minimise", "Minimise"), ("nothing", "Nothing")];
 
 fn sample_apps() -> Vec<(String, String)> {
-    [("org.aizome.Hako", "Hako"), ("org.aizome.Sumi", "Sumi"), ("foot", "Foot"), ("org.mozilla.firefox", "Firefox"), ("org.aizome.Fusen", "Fusen")]
-        .iter()
-        .map(|(a, n)| ((*a).to_owned(), (*n).to_owned()))
-        .collect()
+    [
+        ("org.aizome.Hako", "Hako"),
+        ("org.aizome.Sumi", "Sumi"),
+        ("foot", "Foot"),
+        ("org.mozilla.firefox", "Firefox"),
+        ("org.aizome.Fusen", "Fusen"),
+    ]
+    .iter()
+    .map(|(a, n)| ((*a).to_owned(), (*n).to_owned()))
+    .collect()
 }
 
 impl Pane for Desktop {
@@ -93,10 +100,24 @@ impl Pane for Desktop {
             SettingEntry::new("shelf", "Show the Shelf").keywords(&["drag", "park", "shelf"]),
             SettingEntry::new("desktop-icons", "Icons on the desktop").keywords(&["home", "disks", "trash"]),
             SettingEntry::new("stack-new", "Stack new windows of the same app").keywords(&["tabs", "tab groups"]),
-            SettingEntry::new("double-click", "Double-click a tab").keywords(&["zoom", "maximise", "minimise", "title bar"]),
-            SettingEntry::new("focus-follows", "Focus follows the pointer").keywords(&["sloppy focus", "mouse focus", "click to focus"]),
+            SettingEntry::new("double-click", "Double-click a tab").keywords(&[
+                "zoom",
+                "maximise",
+                "minimise",
+                "title bar",
+            ]),
+            SettingEntry::new("focus-follows", "Focus follows the pointer").keywords(&[
+                "sloppy focus",
+                "mouse focus",
+                "click to focus",
+            ]),
             SettingEntry::new("remember", "Reopen windows where they were").keywords(&["geometry", "position", "size"]),
-            SettingEntry::new("command-key", "Command key for all apps").keywords(&["super", "ctrl", "copy paste", "translate"]),
+            SettingEntry::new("command-key", "Command key for all apps").keywords(&[
+                "super",
+                "ctrl",
+                "copy paste",
+                "translate",
+            ]),
         ]
     }
 
@@ -109,7 +130,8 @@ impl Pane for Desktop {
         } else {
             cx.spawn(|| {
                 let index = AppIndex::load();
-                let mut v: Vec<(String, String)> = index.apps().into_iter().map(|a| (a.app_id().to_owned(), a.name.clone())).collect();
+                let mut v: Vec<(String, String)> =
+                    index.apps().into_iter().map(|a| (a.app_id().to_owned(), a.name.clone())).collect();
                 v.sort_by_key(|(_, n)| n.to_lowercase());
                 Msg::Apps(v)
             });
@@ -135,49 +157,70 @@ impl Pane for Desktop {
                 if name.is_empty() {
                     return;
                 }
-                desks(cx, Box::new(move |d| {
-                    if let Some(desk) = d.get_mut(i) {
-                        desk.name = name;
-                    }
-                }));
+                desks(
+                    cx,
+                    Box::new(move |d| {
+                        if let Some(desk) = d.get_mut(i) {
+                            desk.name = name;
+                        }
+                    }),
+                );
             }
             Msg::ChooseFolder(i) => {
-                let dialog = FileDialog::new().title("The Desk's Folder").directory(aizome_config::home_dir()).directories();
+                let dialog =
+                    FileDialog::new().title("The Desk's Folder").directory(aizome_config::home_dir()).directories();
                 cx.open_panel(dialog, move |p| Msg::Folder(i, p));
             }
             Msg::Folder(i, Some(paths)) => {
                 let Some(p) = paths.into_iter().next() else { return };
                 let p = super::search::tilde(&p.display().to_string());
-                desks(cx, Box::new(move |d| {
-                    if let Some(desk) = d.get_mut(i) {
-                        desk.folder = Some(p);
-                    }
-                }));
+                desks(
+                    cx,
+                    Box::new(move |d| {
+                        if let Some(desk) = d.get_mut(i) {
+                            desk.folder = Some(p);
+                        }
+                    }),
+                );
             }
             Msg::Folder(_, None) => {}
-            Msg::ClearFolder(i) => desks(cx, Box::new(move |d| {
-                if let Some(desk) = d.get_mut(i) {
-                    desk.folder = None;
-                }
-            })),
-            Msg::AddDesk => desks(cx, Box::new(|d| {
-                let n = d.len() + 1;
-                d.push(DeskConfig::named(n.to_string()));
-            })),
+            Msg::ClearFolder(i) => desks(
+                cx,
+                Box::new(move |d| {
+                    if let Some(desk) = d.get_mut(i) {
+                        desk.folder = None;
+                    }
+                }),
+            ),
+            Msg::AddDesk => desks(
+                cx,
+                Box::new(|d| {
+                    let n = d.len() + 1;
+                    d.push(DeskConfig::named(n.to_string()));
+                }),
+            ),
             Msg::RemoveDesk(i) => {
                 let name = cx.settings().desks_or_default().get(i).map(|d| d.name.clone()).unwrap_or_default();
                 cx.confirm(
-                    Confirm::new(format!("Remove the Desk “{name}”?"), "Its windows move to the Desk before it.", "Remove", Msg::RemoveConfirmed(i))
-                        .destructive(),
+                    Confirm::new(
+                        format!("Remove the Desk “{name}”?"),
+                        "Its windows move to the Desk before it.",
+                        "Remove",
+                        Msg::RemoveConfirmed(i),
+                    )
+                    .destructive(),
                 );
             }
             Msg::RemoveConfirmed(i) => {
                 self.drafts.clear();
-                desks(cx, Box::new(move |d| {
-                    if d.len() > 1 && i < d.len() {
-                        d.remove(i);
-                    }
-                }));
+                desks(
+                    cx,
+                    Box::new(move |d| {
+                        if d.len() > 1 && i < d.len() {
+                            d.remove(i);
+                        }
+                    }),
+                );
             }
             Msg::Collapsed(on) => cx.change(|s| {
                 let mut d = s.deskbar_settings();
@@ -202,8 +245,12 @@ impl Pane for Desktop {
             }),
             Msg::Icon(key, on) => cx.change(|s| extra::set(extra::section(s, "desktop"), key, on)),
             Msg::Stack(on) => cx.change(|s| s.windows.stack_new_windows_of_same_app = on),
-            Msg::DoubleClick(i) => cx.change(|s| extra::set(&mut s.windows.extra, "tab_double_click", DOUBLE_CLICK[i.min(2)].0)),
-            Msg::FocusFollows(on) => cx.change(|s| s.windows.focus_follows = if on { FocusFollows::Mouse } else { FocusFollows::Click }),
+            Msg::DoubleClick(i) => {
+                cx.change(|s| extra::set(&mut s.windows.extra, "tab_double_click", DOUBLE_CLICK[i.min(2)].0))
+            }
+            Msg::FocusFollows(on) => {
+                cx.change(|s| s.windows.focus_follows = if on { FocusFollows::Mouse } else { FocusFollows::Click })
+            }
             Msg::Remember(on) => cx.change(|s| s.windows.remember_geometry = on),
             Msg::CommandKey(on) => cx.change(|s| s.keys.command_key_for_all_apps = on),
         }
@@ -250,9 +297,11 @@ impl Pane for Desktop {
         let first = desk_rows.remove(0);
         desk_rows.insert(0, first.entry("desks"));
         desk_rows.push(form::whole(
-            container(row![button("Add a Desk").icon(Icon::Plus).enabled(n < 9).on_press(Msg::AddDesk), spacer()].width(Fill))
-                .padding([8.0, form::INSET])
-                .width(Fill),
+            container(
+                row![button("Add a Desk").icon(Icon::Plus).enabled(n < 9).on_press(Msg::AddDesk), spacer()].width(Fill),
+            )
+            .padding([8.0, form::INSET])
+            .width(Fill),
         ));
 
         let db = s.deskbar_settings();
@@ -266,8 +315,10 @@ impl Pane for Desktop {
                 .entry("shelf")
                 .help("A place to park what you're dragging: files, text, pictures."),
         ];
-        let pin_list: Vec<String> = names.iter().filter(|(id, _)| !db.pinned.contains(id)).map(|(_, n)| n.clone()).collect();
-        let unpinned: Vec<usize> = names.iter().enumerate().filter(|(_, (id, _))| !db.pinned.contains(id)).map(|(i, _)| i).collect();
+        let pin_list: Vec<String> =
+            names.iter().filter(|(id, _)| !db.pinned.contains(id)).map(|(_, n)| n.clone()).collect();
+        let unpinned: Vec<usize> =
+            names.iter().enumerate().filter(|(_, (id, _))| !db.pinned.contains(id)).map(|(i, _)| i).collect();
         let pins: Element<Msg> = {
             let mut col = aizome_kit::column![].spacing(4.0).width(Fill);
             for id in &db.pinned {
@@ -290,41 +341,67 @@ impl Pane for Desktop {
             );
             col.into()
         };
-        deskbar.push(form::row("Kept in the Deskbar", pins).entry("pinned").stacked().help("Pinned apps stay listed while closed, first, ready to open."));
+        deskbar.push(
+            form::row("Kept in the Deskbar", pins)
+                .entry("pinned")
+                .stacked()
+                .help("Pinned apps stay listed while closed, first, ready to open."),
+        );
 
         let desktop = extra::section_ref(s, "desktop");
         let icons = vec![
-            form::row("Home", toggle(extra::get_bool(desktop, "show_home", true)).on_toggle(|on| Msg::Icon("show_home", on)))
-                .leading(icon(Icon::House).size(16.0).role(Role::Accent))
-                .entry("desktop-icons")
-                .compact(),
-            form::row("Disks and disk images", toggle(extra::get_bool(desktop, "show_disks", true)).on_toggle(|on| Msg::Icon("show_disks", on)))
-                .leading(icon(Icon::HardDrive).size(16.0).role(Role::Accent))
-                .compact(),
-            form::row("Trash", toggle(extra::get_bool(desktop, "show_trash", true)).on_toggle(|on| Msg::Icon("show_trash", on)))
-                .leading(icon(Icon::Trash).size(16.0).role(Role::Accent))
-                .compact(),
+            form::row(
+                "Home",
+                toggle(extra::get_bool(desktop, "show_home", true)).on_toggle(|on| Msg::Icon("show_home", on)),
+            )
+            .leading(icon(Icon::House).size(16.0).role(Role::Accent))
+            .entry("desktop-icons")
+            .compact(),
+            form::row(
+                "Disks and disk images",
+                toggle(extra::get_bool(desktop, "show_disks", true)).on_toggle(|on| Msg::Icon("show_disks", on)),
+            )
+            .leading(icon(Icon::HardDrive).size(16.0).role(Role::Accent))
+            .compact(),
+            form::row(
+                "Trash",
+                toggle(extra::get_bool(desktop, "show_trash", true)).on_toggle(|on| Msg::Icon("show_trash", on)),
+            )
+            .leading(icon(Icon::Trash).size(16.0).role(Role::Accent))
+            .compact(),
         ];
 
         let w = &s.windows;
         let dc = extra::get_str(&w.extra, "tab_double_click").unwrap_or("fill");
         let dc_i = DOUBLE_CLICK.iter().position(|(k, _)| *k == dc).unwrap_or(0);
         let windows = vec![
-            form::row("Stack new windows of the same app", toggle(w.stack_new_windows_of_same_app).on_toggle(Msg::Stack))
-                .entry("stack-new")
-                .help("A new window joins the app's window as a tab, as in Haiku."),
-            form::row("Double-click a tab to", form::choice(&DOUBLE_CLICK.map(|d| d.1), dc_i, Msg::DoubleClick)).entry("double-click"),
-            form::row("Focus follows the pointer", toggle(w.focus_follows == FocusFollows::Mouse).on_toggle(Msg::FocusFollows))
-                .entry("focus-follows")
-                .help("The window under the pointer takes the keyboard, without coming to the front."),
-            form::row("Reopen windows where they were", toggle(w.remember_geometry).on_toggle(Msg::Remember)).entry("remember"),
+            form::row(
+                "Stack new windows of the same app",
+                toggle(w.stack_new_windows_of_same_app).on_toggle(Msg::Stack),
+            )
+            .entry("stack-new")
+            .help("A new window joins the app's window as a tab, as in Haiku."),
+            form::row("Double-click a tab to", form::choice(&DOUBLE_CLICK.map(|d| d.1), dc_i, Msg::DoubleClick))
+                .entry("double-click"),
+            form::row(
+                "Focus follows the pointer",
+                toggle(w.focus_follows == FocusFollows::Mouse).on_toggle(Msg::FocusFollows),
+            )
+            .entry("focus-follows")
+            .help("The window under the pointer takes the keyboard, without coming to the front."),
+            form::row("Reopen windows where they were", toggle(w.remember_geometry).on_toggle(Msg::Remember))
+                .entry("remember"),
             form::row("Command key for all apps", toggle(s.keys.command_key_for_all_apps).on_toggle(Msg::CommandKey))
                 .entry("command-key")
                 .help("❖C, ❖V and the rest work in apps that expect Ctrl too (Ctrl+Shift in terminals)."),
         ];
 
         form::page(vec![
-            vcx.section_with("Desks", desk_rows, Some("A Desk's folder is where ❖Return opens a terminal and where the palette looks first.".into())),
+            vcx.section_with(
+                "Desks",
+                desk_rows,
+                Some("A Desk's folder is where ❖Return opens a terminal and where the palette looks first.".into()),
+            ),
             vcx.section("Deskbar", deskbar),
             vcx.section("Desktop Icons", icons),
             vcx.section("Windows", windows),

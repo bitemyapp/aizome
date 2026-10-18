@@ -303,7 +303,8 @@ impl Shitsurae {
 
     fn pane_row(&self, i: usize, title: Element<AppMsg>, selected: bool) -> Element<AppMsg> {
         let p = &self.panes[i];
-        let line = row![tile(p.icon(), p.tile(), 20.0), title].spacing(10.0).align(Align::Center).height(28.0).width(Fill);
+        let line =
+            row![tile(p.icon(), p.tile(), 20.0), title].spacing(10.0).align(Align::Center).height(28.0).width(Fill);
         press(line).padding([0.0, 8.0]).selected(selected).on_press(AppMsg::Show(i)).named(p.title()).key(p.id()).into()
     }
 
@@ -332,14 +333,22 @@ impl Shitsurae {
 
     fn results(&self) -> Element<AppMsg> {
         if self.hits.is_empty() {
-            return container(text("No Results").role(Role::Text3)).padding([24.0, 8.0]).width(Fill).align_x(Align::Center).into();
+            return container(text("No Results").role(Role::Text3))
+                .padding([24.0, 8.0])
+                .width(Fill)
+                .align_x(Align::Center)
+                .into();
         }
         let mut col = column![].spacing(1.0).width(Fill);
         for h in &self.hits {
             let p = &self.panes[h.pane];
             col = col.push(self.pane_row(h.pane, highlighted(p.title(), &h.ranges, 13.0), h.pane == self.current));
             for e in &h.entries {
-                let line = container(highlighted(&e.title, &e.ranges, 12.0)).padding([0.0, 0.0, 0.0, 30.0]).height(24.0).align_y(Align::Center).width(Fill);
+                let line = container(highlighted(&e.title, &e.ranges, 12.0))
+                    .padding([0.0, 0.0, 0.0, 30.0])
+                    .height(24.0)
+                    .align_y(Align::Center)
+                    .width(Fill);
                 col = col.push(
                     press(line)
                         .padding([0.0, 8.0])
@@ -360,7 +369,11 @@ impl Shitsurae {
         let can_back = !self.back.is_empty() || crumb.is_some();
         let mut bar = row![
             icon_button(Icon::ChevronLeft).toolbar().enabled(can_back).on_press(AppMsg::Back).tooltip("Back"),
-            icon_button(Icon::ChevronRight).toolbar().enabled(!self.forward.is_empty()).on_press(AppMsg::Forward).tooltip("Forward"),
+            icon_button(Icon::ChevronRight)
+                .toolbar()
+                .enabled(!self.forward.is_empty())
+                .on_press(AppMsg::Forward)
+                .tooltip("Forward"),
             space(4.0),
             tile(p.icon(), p.tile(), 20.0),
         ]
@@ -387,15 +400,20 @@ impl Shitsurae {
         let mut line = row![].spacing(8.0).align(Align::Center).padding([0.0, 12.0]).height(24.0).width(Fill);
         match &self.shared.status {
             Some(s) => {
-                let (glyph, role) = if s.error { (Icon::CircleAlert, Role::Danger) } else { (Icon::CircleCheck, Role::Success) };
-                line = line.push(icon(glyph).size(12.0).role(role)).push(text(s.text.clone()).size(11.0).role(if s.error {
-                    Role::Danger
-                } else {
-                    Role::Text2
-                }));
+                let (glyph, role) =
+                    if s.error { (Icon::CircleAlert, Role::Danger) } else { (Icon::CircleCheck, Role::Success) };
+                line = line
+                    .push(icon(glyph).size(12.0).role(role))
+                    .push(text(s.text.clone()).size(11.0).role(if s.error { Role::Danger } else { Role::Text2 }));
             }
             None => {
-                line = line.push(text(short_path(&self.shared.settings_path)).mono().size(10.5).role(Role::Faint).tooltip(self.shared.settings_path.display().to_string()));
+                line = line.push(
+                    text(short_path(&self.shared.settings_path))
+                        .mono()
+                        .size(10.5)
+                        .role(Role::Faint)
+                        .tooltip(self.shared.settings_path.display().to_string()),
+                );
             }
         }
         line = line.push(spacer());
@@ -450,7 +468,9 @@ impl Program for Shitsurae {
     type Msg = AppMsg;
 
     fn info(&self) -> AppInfo {
-        AppInfo::new("org.aizome.Shitsurae", "Shitsurae", "Settings").icon(Icon::Settings2).version(env!("CARGO_PKG_VERSION"))
+        AppInfo::new("org.aizome.Shitsurae", "Shitsurae", "Settings")
+            .icon(Icon::Settings2)
+            .version(env!("CARGO_PKG_VERSION"))
     }
 
     fn launched(&mut self, cx: &mut Cx<AppMsg>) {
@@ -467,9 +487,13 @@ impl Program for Shitsurae {
             }),
         );
         let tx = cx.stream();
-        self.watcher = Some(aizome_config::Watcher::spawn_for(self.shared.settings_path.clone(), Duration::from_secs(1), move || {
-            tx.send(AppMsg::SettingsOnDisk);
-        }));
+        self.watcher = Some(aizome_config::Watcher::spawn_for(
+            self.shared.settings_path.clone(),
+            Duration::from_secs(1),
+            move || {
+                tx.send(AppMsg::SettingsOnDisk);
+            },
+        ));
         if let Some(listener) = self.listener.take() {
             let tx = cx.stream();
             crate::instance::listen(listener, move |args| tx.send(AppMsg::Launched(args)));
@@ -586,7 +610,11 @@ impl Program for Shitsurae {
     fn menus(&self) -> MenuBar<AppMsg> {
         let view = Menu::new("View")
             .item(MenuItem::new("Back", AppMsg::Back).shortcut(Shortcut::cmd('[')).enabled(!self.back.is_empty()))
-            .item(MenuItem::new("Forward", AppMsg::Forward).shortcut(Shortcut::cmd(']')).enabled(!self.forward.is_empty()))
+            .item(
+                MenuItem::new("Forward", AppMsg::Forward)
+                    .shortcut(Shortcut::cmd(']'))
+                    .enabled(!self.forward.is_empty()),
+            )
             .separator()
             .item(MenuItem::new("Search Settings", AppMsg::FocusSearch).shortcut(Shortcut::cmd('L')));
         let mut go = Menu::new("Panes");

@@ -34,7 +34,11 @@ pub enum Msg {
 }
 
 pub fn entries() -> Vec<SettingEntry> {
-    vec![SettingEntry::new("updates", "Check for updates").under("Software Update").keywords(&["upgrade", "yukimi", "new version"])]
+    vec![SettingEntry::new("updates", "Check for updates").under("Software Update").keywords(&[
+        "upgrade",
+        "yukimi",
+        "new version",
+    ])]
 }
 
 /// This system, read from `/etc/os-release` and the system profile.
@@ -83,7 +87,10 @@ impl State {
     pub fn view(&self, vcx: &ViewCx) -> Element<Msg> {
         let s = self.system.clone().unwrap_or_default();
         let now = if vcx.sample() { UNIX_EPOCH + Duration::from_secs(1_792_195_200) } else { SystemTime::now() };
-        let mut facts = column![text(if s.name.is_empty() { "This system".to_owned() } else { s.name.clone() }).size(15.0).weight(650.0)].spacing(4.0);
+        let mut facts = column![
+            text(if s.name.is_empty() { "This system".to_owned() } else { s.name.clone() }).size(15.0).weight(650.0)
+        ]
+        .spacing(4.0);
         if !s.build.is_empty() {
             facts = facts.push(text(s.build.clone()).mono().size(11.0).role(Role::Text3));
         }
@@ -97,7 +104,9 @@ impl State {
         if !line.is_empty() {
             facts = facts.push(text(line.join(", ")).size(12.0).role(Role::Text2));
         }
-        let hero = row![tile(Icon::Snowflake, crate::pane::Tile::Hanada, 44.0), facts.width(Fill)].spacing(14.0).align(Align::Center);
+        let hero = row![tile(Icon::Snowflake, crate::pane::Tile::Hanada, 44.0), facts.width(Fill)]
+            .spacing(14.0)
+            .align(Align::Center);
         form::page(vec![
             vcx.section(
                 "",

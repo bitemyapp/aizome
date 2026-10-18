@@ -98,7 +98,12 @@ impl Pane for Search {
             SettingEntry::new("folders", "Folders to search").keywords(&["file index", "locations", "roots"]),
             SettingEntry::new("exclude", "Folders to skip").keywords(&["exclusions", "privacy", "ignore"]),
             SettingEntry::new("rebuild", "Rebuild the file index").keywords(&["reindex", "refresh"]),
-            SettingEntry::new("forget", "Forget the palette's history").keywords(&["clear history", "frecency", "recent", "privacy"]),
+            SettingEntry::new("forget", "Forget the palette's history").keywords(&[
+                "clear history",
+                "frecency",
+                "recent",
+                "privacy",
+            ]),
         ]
     }
 
@@ -191,7 +196,8 @@ impl Pane for Search {
     fn view(&self, vcx: &ViewCx) -> Element<Msg> {
         let s = vcx.settings();
         let palette = extra::section_ref(s, "palette");
-        let on: Vec<String> = extra::get_list(palette, "scopes").unwrap_or_else(|| SCOPES.iter().map(|s| s.0.to_owned()).collect());
+        let on: Vec<String> =
+            extra::get_list(palette, "scopes").unwrap_or_else(|| SCOPES.iter().map(|s| s.0.to_owned()).collect());
         let scopes: Vec<form::Row<Msg>> = SCOPES
             .iter()
             .map(|(id, title, about, glyph)| {
@@ -211,20 +217,33 @@ impl Pane for Search {
                 .iter()
                 .map(|p| {
                     let p2 = p.clone();
-                    form::row(if p == "~" { "Home (~)".to_owned() } else { p.clone() }, icon_button(Icon::Minus).toolbar().on_press(Msg::RemoveFolder(skip, p2)).tooltip("Remove"))
-                        .leading(icon(if skip { Icon::EyeOff } else { Icon::Folder }).size(16.0).role(Role::Text3))
-                        .compact()
+                    form::row(
+                        if p == "~" { "Home (~)".to_owned() } else { p.clone() },
+                        icon_button(Icon::Minus).toolbar().on_press(Msg::RemoveFolder(skip, p2)).tooltip("Remove"),
+                    )
+                    .leading(icon(if skip { Icon::EyeOff } else { Icon::Folder }).size(16.0).role(Role::Text3))
+                    .compact()
                 })
                 .collect();
             if rows.is_empty() {
-                rows.push(form::whole(container(text(empty.to_owned()).role(Role::Text3)).padding([10.0, form::INSET])));
+                rows.push(form::whole(
+                    container(text(empty.to_owned()).role(Role::Text3)).padding([10.0, form::INSET]),
+                ));
             }
             let first = rows.remove(0);
             rows.insert(0, first.entry(entry.to_owned()));
             rows.push(form::whole(
-                container(row![button(if skip { "Skip a Folder…" } else { "Add a Folder…" }).icon(Icon::Plus).on_press(Msg::AddFolder(skip)), spacer()].width(Fill))
-                    .padding([8.0, form::INSET])
+                container(
+                    row![
+                        button(if skip { "Skip a Folder…" } else { "Add a Folder…" })
+                            .icon(Icon::Plus)
+                            .on_press(Msg::AddFolder(skip)),
+                        spacer()
+                    ]
                     .width(Fill),
+                )
+                .padding([8.0, form::INSET])
+                .width(Fill),
             ));
             rows
         };
@@ -239,8 +258,15 @@ impl Pane for Search {
         };
         form::page(vec![
             vcx.section("Find in the Palette", scopes),
-            vcx.section_with("Search These Folders", folder_rows(&roots, false, "folders", "No folders: Files finds nothing."), Some("Build outputs, caches and what .gitignore files name are skipped by themselves.".into())),
-            vcx.section("Skip These Folders", folder_rows(&exclude, true, "exclude", "Nothing skipped beyond the usual.")),
+            vcx.section_with(
+                "Search These Folders",
+                folder_rows(&roots, false, "folders", "No folders: Files finds nothing."),
+                Some("Build outputs, caches and what .gitignore files name are skipped by themselves.".into()),
+            ),
+            vcx.section(
+                "Skip These Folders",
+                folder_rows(&exclude, true, "exclude", "Nothing skipped beyond the usual."),
+            ),
             vcx.section(
                 "Index and History",
                 vec![

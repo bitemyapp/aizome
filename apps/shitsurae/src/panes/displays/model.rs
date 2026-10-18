@@ -117,7 +117,10 @@ impl Rect {
     }
 
     pub fn overlaps(&self, other: &Rect) -> bool {
-        self.x < other.x + other.w && other.x < self.x + self.w && self.y < other.y + other.h && other.y < self.y + self.h
+        self.x < other.x + other.w
+            && other.x < self.x + self.w
+            && self.y < other.y + other.h
+            && other.y < self.y + self.h
     }
 }
 
@@ -223,7 +226,10 @@ impl Display {
         }
         let make = self.make.split_whitespace().next().unwrap_or("").trim_end_matches([',', '.']);
         let model = self.model.trim();
-        match (make.is_empty() || make.eq_ignore_ascii_case("unknown"), model.is_empty() || model.eq_ignore_ascii_case("unknown")) {
+        match (
+            make.is_empty() || make.eq_ignore_ascii_case("unknown"),
+            model.is_empty() || model.eq_ignore_ascii_case("unknown"),
+        ) {
             (false, false) => format!("{make} {model}"),
             (true, false) => model.to_owned(),
             (false, true) => make.to_owned(),
@@ -257,7 +263,13 @@ impl Display {
     /// The key the settings file keeps it under: make, model and serial
     /// when it has them, else its connector.
     pub fn config_key(&self) -> ConfigKey {
-        ConfigKey { name: self.name.clone(), make: self.make.clone(), model: self.model.clone(), serial: self.serial.clone(), by_connector: false }
+        ConfigKey {
+            name: self.name.clone(),
+            make: self.make.clone(),
+            model: self.model.clone(),
+            serial: self.serial.clone(),
+            by_connector: false,
+        }
     }
 }
 
@@ -315,7 +327,10 @@ impl ConfigKey {
                 && entry.model.as_deref() == Some(self.model.as_str())
                 && entry.serial.as_deref().unwrap_or("") == self.serial
         } else {
-            entry.name.as_deref() == Some(self.name.as_str()) && entry.make.is_none() && entry.model.is_none() && entry.serial.is_none()
+            entry.name.as_deref() == Some(self.name.as_str())
+                && entry.make.is_none()
+                && entry.model.is_none()
+                && entry.serial.is_none()
         }
     }
 }
@@ -440,20 +455,30 @@ pub fn snap(dropped: Rect, others: &[Rect], tolerance: i32) -> (i32, i32) {
     }
     // The nearest of the edges and the middle within the tolerance.
     let line_up = |value: i32, targets: [i32; 3]| {
-        targets.into_iter().filter(|t| (t - value).abs() <= tolerance).min_by_key(|t| (t - value).abs()).unwrap_or(value)
+        targets
+            .into_iter()
+            .filter(|t| (t - value).abs() <= tolerance)
+            .min_by_key(|t| (t - value).abs())
+            .unwrap_or(value)
     };
     let mut candidates = Vec::new();
     for other in others {
         // Beside it: some of the height shared.
         let (low, high) = (other.y - dropped.h + 1, other.y + other.h - 1);
         for x in [other.x - dropped.w, other.x + other.w] {
-            let y = line_up(dropped.y.clamp(low, high), [other.y, other.y + other.h - dropped.h, other.y + (other.h - dropped.h) / 2]);
+            let y = line_up(
+                dropped.y.clamp(low, high),
+                [other.y, other.y + other.h - dropped.h, other.y + (other.h - dropped.h) / 2],
+            );
             candidates.push((x, y.clamp(low, high)));
         }
         // Above or below it: some of the width shared.
         let (low, high) = (other.x - dropped.w + 1, other.x + other.w - 1);
         for y in [other.y - dropped.h, other.y + other.h] {
-            let x = line_up(dropped.x.clamp(low, high), [other.x, other.x + other.w - dropped.w, other.x + (other.w - dropped.w) / 2]);
+            let x = line_up(
+                dropped.x.clamp(low, high),
+                [other.x, other.x + other.w - dropped.w, other.x + (other.w - dropped.w) / 2],
+            );
             candidates.push((x.clamp(low, high), y));
         }
     }
@@ -496,7 +521,8 @@ pub fn normalize(settings: &mut [Settings]) {
 
 /// Mirrors sit where their source is.
 pub fn follow_sources(settings: &mut [Settings]) {
-    let sources: Vec<(String, i32, i32)> = settings.iter().filter(|s| arranged(s)).map(|s| (s.name.clone(), s.x, s.y)).collect();
+    let sources: Vec<(String, i32, i32)> =
+        settings.iter().filter(|s| arranged(s)).map(|s| (s.name.clone(), s.x, s.y)).collect();
     for s in settings.iter_mut() {
         if let Some(src) = &s.mirror
             && let Some((_, x, y)) = sources.iter().find(|(n, _, _)| n == src)
@@ -593,7 +619,8 @@ pub fn use_as(settings: &mut [Settings], main: &mut Option<String>, name: &str, 
     if !arranged(&settings[i]) {
         // Displays that mirrored it show their own picture again, beside
         // the others.
-        let freed: Vec<String> = settings.iter().filter(|s| s.mirror.as_deref() == Some(name)).map(|s| s.name.clone()).collect();
+        let freed: Vec<String> =
+            settings.iter().filter(|s| s.mirror.as_deref() == Some(name)).map(|s| s.name.clone()).collect();
         for f in freed {
             if let Some(j) = settings.iter().position(|s| s.name == f) {
                 settings[j].mirror = None;
@@ -627,7 +654,11 @@ fn put_beside(settings: &mut [Settings], i: usize) {
 pub fn main_display(settings: &[Settings], kept: Option<&str>) -> Option<String> {
     let usable = |n: &str| settings.iter().any(|s| s.name == n && arranged(s));
     kept.filter(|m| usable(m)).map(str::to_owned).or_else(|| {
-        settings.iter().filter(|s| arranged(s)).min_by_key(|s| (s.y.max(0) + s.x.max(0), s.x, s.y)).map(|s| s.name.clone())
+        settings
+            .iter()
+            .filter(|s| arranged(s))
+            .min_by_key(|s| (s.y.max(0) + s.x.max(0), s.x, s.y))
+            .map(|s| s.name.clone())
     })
 }
 
@@ -772,14 +803,18 @@ pub fn known_off(outputs: &[OutputConfig], present: &[Display]) -> Vec<Display> 
 /// later one counts as mirroring the earlier, when the settings file
 /// didn't say.
 pub fn infer_mirrors(displays: &mut [Display]) {
-    let rects: Vec<(String, Rect, bool)> =
-        displays.iter().map(|d| (d.name.clone(), rect(&d.settings), d.settings.enabled && d.settings.mirror.is_none())).collect();
+    let rects: Vec<(String, Rect, bool)> = displays
+        .iter()
+        .map(|d| (d.name.clone(), rect(&d.settings), d.settings.enabled && d.settings.mirror.is_none()))
+        .collect();
     for (i, d) in displays.iter_mut().enumerate() {
         if d.settings.mirror.is_some() || !d.settings.enabled {
             continue;
         }
         let me = rects[i].1;
-        if let Some((src, _, _)) = rects[..i].iter().find(|(_, r, on)| *on && r.x == me.x && r.y == me.y && r.w == me.w && r.h == me.h) {
+        if let Some((src, _, _)) =
+            rects[..i].iter().find(|(_, r, on)| *on && r.x == me.x && r.y == me.y && r.w == me.w && r.h == me.h)
+        {
             d.settings.mirror = Some(src.clone());
         }
     }
@@ -807,7 +842,11 @@ mod tests {
             serial: "0x3F".into(),
             enabled: true,
             current_mode: Some(mode.clone()),
-            modes: vec![mode, IpcMode { width: w, height: h, refresh: 120_000, preferred: false }, IpcMode { width: 1920, height: 1080, refresh: 59_940, preferred: false }],
+            modes: vec![
+                mode,
+                IpcMode { width: w, height: h, refresh: 120_000, preferred: false },
+                IpcMode { width: 1920, height: 1080, refresh: 59_940, preferred: false },
+            ],
             scale,
             transform: Transform::Normal,
             logical: aizome_ipc::Rect::new(x, 0, lw, lh),
@@ -964,8 +1003,13 @@ mod tests {
         let keys = config_keys(&[a.clone(), b.clone()]);
         assert!(keys.iter().all(|k| k.by_connector && !k.identified()));
         // An old entry by make and model is shadowed by theirs.
-        let mut outputs = vec![OutputConfig { make: Some(a.make.clone()), model: Some(a.model.clone()), ..Default::default() }];
-        write_entries(&mut outputs, &[(keys[0].clone(), a.settings.clone()), (keys[1].clone(), b.settings.clone())], Some("HEADLESS-1"));
+        let mut outputs =
+            vec![OutputConfig { make: Some(a.make.clone()), model: Some(a.model.clone()), ..Default::default() }];
+        write_entries(
+            &mut outputs,
+            &[(keys[0].clone(), a.settings.clone()), (keys[1].clone(), b.settings.clone())],
+            Some("HEADLESS-1"),
+        );
         assert_eq!(outputs.len(), 3);
         let first = |name: &str| outputs.iter().find(|e| e.matches(name, &a.make, &a.model, "")).unwrap().clone();
         assert_eq!(first("HEADLESS-1").mode.as_deref(), Some("1920x1080@60"));

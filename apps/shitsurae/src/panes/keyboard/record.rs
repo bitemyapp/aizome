@@ -2,14 +2,16 @@
 //! modifiers held as they're pressed, and sends the chord typed. Escape
 //! alone cancels; Backspace alone leaves the action without a shortcut.
 
+use aizome_kit::FontSpec;
 use aizome_kit::draw;
 use aizome_kit::element::{Element, MsgFn, MsgMap};
 use aizome_kit::hash::PaintHasher;
 use aizome_kit::layout::{Align, Constraints, Size};
 use aizome_kit::sidestep_ui::{Key, Modifiers, NamedKey, PointerButton};
 use aizome_kit::text::TextSpec;
-use aizome_kit::widget::{Event, EventCx, FocusRing, Focusable, LayoutCx, PaintCx, SemanticRole, Semantics, Status, Widget};
-use aizome_kit::FontSpec;
+use aizome_kit::widget::{
+    Event, EventCx, FocusRing, Focusable, LayoutCx, PaintCx, SemanticRole, Semantics, Status, Widget,
+};
 
 use super::keys::{self, Chord};
 
@@ -18,7 +20,12 @@ where
     Msg: Clone + Send + 'static,
 {
     Element::new(
-        Recorder { on_chord: MsgMap::new(on_chord), cancel: MsgFn::new(cancel), clear: MsgFn::new(clear), held: Modifiers::NONE },
+        Recorder {
+            on_chord: MsgMap::new(on_chord),
+            cancel: MsgFn::new(cancel),
+            clear: MsgFn::new(clear),
+            held: Modifiers::NONE,
+        },
         Vec::new(),
     )
 }
@@ -53,12 +60,15 @@ impl Widget for Recorder {
         }
         let m = self.held;
         let mut s = String::new();
-        for (bit, g) in [(Modifiers::CONTROL, "⌃"), (Modifiers::ALT, "⌥"), (Modifiers::SHIFT, "⇧"), (Modifiers::SUPER, "❖")] {
+        for (bit, g) in
+            [(Modifiers::CONTROL, "⌃"), (Modifiers::ALT, "⌥"), (Modifiers::SHIFT, "⇧"), (Modifiers::SUPER, "❖")]
+        {
             if m.contains(bit) {
                 s.push_str(g);
             }
         }
-        let (label, color) = if s.is_empty() { ("Type the shortcut…".to_owned(), t.text3()) } else { (format!("{s} …"), t.text()) };
+        let (label, color) =
+            if s.is_empty() { ("Type the shortcut…".to_owned(), t.text3()) } else { (format!("{s} …"), t.text()) };
         let spec = TextSpec::new(FontSpec::ui(12.0), color);
         cx.draw_text_in(&label, &spec, r.inset((-8.0, 0.0)), Align::Start);
     }
@@ -95,7 +105,10 @@ impl Widget for Recorder {
                 if !k.pressed || k.repeat {
                     return Status::Handled;
                 }
-                let bare = !held.contains(Modifiers::CONTROL) && !held.contains(Modifiers::ALT) && !held.contains(Modifiers::SUPER) && !held.contains(Modifiers::SHIFT);
+                let bare = !held.contains(Modifiers::CONTROL)
+                    && !held.contains(Modifiers::ALT)
+                    && !held.contains(Modifiers::SUPER)
+                    && !held.contains(Modifiers::SHIFT);
                 match &k.key {
                     Key::Named(NamedKey::Escape) if bare => {
                         let m = self.cancel.clone();
@@ -126,4 +139,3 @@ impl Widget for Recorder {
         Some(Semantics { role: SemanticRole::TextInput, label: Some("New shortcut".into()), ..Default::default() })
     }
 }
-

@@ -27,8 +27,21 @@ fn appearance_shows_previews() {
 /// The panes this test holds to their entries (the hardware panes have
 /// tests of their own).
 const MINE: [&str; 15] = [
-    "general", "appearance", "accessibility", "desktop", "menubar", "battery", "performance", "search", "notifications", "lock", "users",
-    "keyboard", "mouse", "trackpad", "general",
+    "general",
+    "appearance",
+    "accessibility",
+    "desktop",
+    "menubar",
+    "battery",
+    "performance",
+    "search",
+    "notifications",
+    "lock",
+    "users",
+    "keyboard",
+    "mouse",
+    "trackpad",
+    "general",
 ];
 
 #[test]
@@ -57,7 +70,8 @@ fn search_finds_options_and_opens_them() {
     let (mut h, _) = common::open("search", "general");
     let w = h.window();
     h.send(shitsurae::AppMsg::Search("caps lock".into()));
-    let hit = h.program().hits.iter().find(|hit| h.program().panes[hit.pane].id() == "keyboard").expect("Keyboard found");
+    let hit =
+        h.program().hits.iter().find(|hit| h.program().panes[hit.pane].id() == "keyboard").expect("Keyboard found");
     assert_eq!(hit.entries[0].id, "caps-lock");
     assert_eq!(hit.entries[0].ranges, vec![0..4, 5..9], "both words highlighted");
     // The pane showing highlights its options that match: none here.
