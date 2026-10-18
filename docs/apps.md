@@ -206,6 +206,24 @@ a preview line; the editor is the kit's text editor with light Markdown
 styling. Any note can float as a sticky (a small always-on-top window in
 the note's colour). Takes "New Note with Selection" from the Services menu.
 
+As built (`apps/fusen`): `~/Notes` is made when the first note is
+written; a note's file is named after its title (and renamed with it,
+when Fusen named it), folders are its subdirectories, and pins and
+colours (amber, kamenozoki, hanada, green, rose) are kept in
+`~/Notes/.fusen.json`, keyed by path, so the notes stay plain. Files other
+programs (agents) change or add show within 3 s; deleting puts a note in
+the freedesktop Trash. A click on a task's `[ ]` ticks it; ❖-click opens a
+link. A sticky is a utility window on its colour's paper; under Aizome
+the compositor's IPC (`float`, `resize`, `move-to-desk`) keeps it above
+other windows and puts it back where it was, and Fusen asks where its
+stickies are every 4 s, keeping that in `$XDG_STATE_HOME/aizome/fusen/stickies.json`.
+While there are stickies, `$XDG_CONFIG_HOME/autostart/org.aizome.Fusen.Stickies.desktop`
+runs `aizome-fusen --stickies` at login (the stickies only). `aizome-fusen
+--new TEXT`, `--new-from-stdin` and a file (the shell's Services hand
+selected text over in one) make new notes; a second launch hands its
+request to the running Fusen. Quit keeps the stickies; closing one puts
+it away.
+
 ### Koyomi (Calendar)
 
 Month, week and day views; events with time, all-day, location, notes,
