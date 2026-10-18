@@ -119,7 +119,9 @@ pub enum Request {
     FocusedWindow,
     /// Focuses and raises a window, switching to its Desk and showing it
     /// if it was minimised or its app hidden.
-    Focus { id: WindowId },
+    Focus {
+        id: WindowId,
+    },
     /// Asks a window to close (the app may ask to save first).
     Close {
         #[serde(default)]
@@ -129,7 +131,9 @@ pub enum Request {
         #[serde(default)]
         id: Option<WindowId>,
     },
-    Unminimise { id: WindowId },
+    Unminimise {
+        id: WindowId,
+    },
     /// Hides every window of an app (❖H).
     HideApp {
         #[serde(default, flatten)]
@@ -184,7 +188,9 @@ pub enum Request {
         follow: bool,
     },
     /// Switches to a Desk.
-    SetDesk { desk: DeskSel },
+    SetDesk {
+        desk: DeskSel,
+    },
     AddDesk {
         name: String,
         #[serde(default)]
@@ -193,18 +199,29 @@ pub enum Request {
         #[serde(default)]
         index: Option<u32>,
     },
-    RenameDesk { desk: DeskSel, name: String },
+    RenameDesk {
+        desk: DeskSel,
+        name: String,
+    },
     SetDeskFolder {
         desk: DeskSel,
         #[serde(default)]
         folder: Option<String>,
     },
     /// Removes a Desk; its windows move to the Desk before it.
-    RemoveDesk { desk: DeskSel },
+    RemoveDesk {
+        desk: DeskSel,
+    },
     /// Moves a Desk to another position (1-based).
-    MoveDesk { desk: DeskSel, index: u32 },
+    MoveDesk {
+        desk: DeskSel,
+        index: u32,
+    },
     /// Stacks window `b` into window `a`'s tab group.
-    Stack { a: WindowId, b: WindowId },
+    Stack {
+        a: WindowId,
+        b: WindowId,
+    },
     /// Takes a window out of its tab group.
     Unstack {
         #[serde(default)]
@@ -295,10 +312,14 @@ pub enum Request {
     Subscribe,
     /// Performs a key-binding action by name, as if its keys were pressed
     /// (e.g. `"overview"`, `"stack-with-behind"`).
-    Action { action: String },
+    Action {
+        action: String,
+    },
     /// Feeds input through the compositor as if it came from a device:
     /// bindings, focus, grabs and all (tests and automation).
-    Synthesize { events: Vec<Synthetic> },
+    Synthesize {
+        events: Vec<Synthetic>,
+    },
     /// Shows another output's picture on this one, scaled to fit
     /// (letterboxed); `source: null` gives it a picture of its own again.
     /// For this session (Settings writes `mirror` in the file).
@@ -309,7 +330,9 @@ pub enum Request {
     },
     /// Makes an output the main one for this session (Settings writes
     /// `primary` in the file).
-    SetPrimaryOutput { name: String },
+    SetPrimaryOutput {
+        name: String,
+    },
     /// Night Light: changes what's given (for this session), then
     /// reports it. → [`Response::NightLight`].
     NightLight {
@@ -516,16 +539,32 @@ pub struct Percentiles {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "event", rename_all = "kebab-case")]
 pub enum Event {
-    WindowOpened { window: WindowInfo },
-    WindowClosed { id: WindowId },
+    WindowOpened {
+        window: WindowInfo,
+    },
+    WindowClosed {
+        id: WindowId,
+    },
     /// Title, app_id, desk, state, geometry or group changed.
-    WindowChanged { window: WindowInfo },
-    WindowFocused { id: Option<WindowId> },
+    WindowChanged {
+        window: WindowInfo,
+    },
+    WindowFocused {
+        id: Option<WindowId>,
+    },
     /// The current Desk changed.
-    DeskChanged { index: u32, id: u64, name: String },
+    DeskChanged {
+        index: u32,
+        id: u64,
+        name: String,
+    },
     /// Desks were added, removed, renamed or reordered.
-    DesksChanged { desks: Vec<DeskInfo> },
-    OutputsChanged { outputs: Vec<OutputInfo> },
+    DesksChanged {
+        desks: Vec<DeskInfo>,
+    },
+    OutputsChanged {
+        outputs: Vec<OutputInfo>,
+    },
     ConfigChanged,
     /// A key or pointer binding that belongs to the shell (`palette`,
     /// `toolchest`, `lock`, `screenshot-tool`, the media keys, `app-menu`
@@ -540,13 +579,21 @@ pub enum Event {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         output: Option<String>,
     },
-    ScreenshotTaken { path: String },
+    ScreenshotTaken {
+        path: String,
+    },
     /// No input for the configured time: `lock` or `monitors-off`.
-    Idle { kind: String },
+    Idle {
+        kind: String,
+    },
     Resumed,
-    LockStateChanged { locked: bool },
+    LockStateChanged {
+        locked: bool,
+    },
     /// Night Light turned on or off, warmed or cooled.
-    NightLightChanged { state: NightLightState },
+    NightLightChanged {
+        state: NightLightState,
+    },
 }
 
 /// `$XDG_RUNTIME_DIR/aizome.$WAYLAND_DISPLAY.sock`.
@@ -564,10 +611,7 @@ pub fn socket_path() -> Option<PathBuf> {
 }
 
 pub fn runtime_dir() -> PathBuf {
-    std::env::var_os("XDG_RUNTIME_DIR")
-        .filter(|v| !v.is_empty())
-        .map(PathBuf::from)
-        .unwrap_or_else(std::env::temp_dir)
+    std::env::var_os("XDG_RUNTIME_DIR").filter(|v| !v.is_empty()).map(PathBuf::from).unwrap_or_else(std::env::temp_dir)
 }
 
 /// A blocking connection to the compositor.
@@ -655,9 +699,9 @@ impl Iterator for Events {
         let mut buf = String::new();
         match self.reader.read_line(&mut buf) {
             Ok(0) => None,
-            Ok(_) => Some(
-                serde_json::from_str(buf.trim_end()).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e)),
-            ),
+            Ok(_) => {
+                Some(serde_json::from_str(buf.trim_end()).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e)))
+            }
             Err(e) => Some(Err(e)),
         }
     }

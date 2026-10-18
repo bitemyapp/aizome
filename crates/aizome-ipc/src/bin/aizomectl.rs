@@ -171,7 +171,8 @@ fn parse(command: &str, mut args: Vec<String>) -> Result<Request, String> {
         }
     };
     let id = |s: &str| s.parse::<u64>().map_err(|_| format!("not a window ID: {s}"));
-    let opt_id = |args: &[String], at: usize| -> Result<Option<u64>, String> { args.get(at).map(|s| id(s)).transpose() };
+    let opt_id =
+        |args: &[String], at: usize| -> Result<Option<u64>, String> { args.get(at).map(|s| id(s)).transpose() };
     let int = |s: &str| s.parse::<i32>().map_err(|_| format!("not a number: {s}"));
     let need = |args: &[String], n: usize, what: &str| -> Result<(), String> {
         if args.len() < n { Err(format!("{command} needs {what}")) } else { Ok(()) }
@@ -269,7 +270,9 @@ fn parse(command: &str, mut args: Vec<String>) -> Result<Request, String> {
         }
         "add-desk" => {
             let folder = opt(&mut args, "--folder")?;
-            let index = opt(&mut args, "--index")?.map(|s| s.parse::<u32>().map_err(|_| "bad --index".to_string())).transpose()?;
+            let index = opt(&mut args, "--index")?
+                .map(|s| s.parse::<u32>().map_err(|_| "bad --index".to_string()))
+                .transpose()?;
             need(&args, 1, "a name")?;
             Request::AddDesk { name: args[0].clone(), folder, index }
         }
@@ -329,7 +332,9 @@ fn parse(command: &str, mut args: Vec<String>) -> Result<Request, String> {
         "reload-config" | "reload" => Request::ReloadConfig,
         "output" => {
             let mode = opt(&mut args, "--mode")?;
-            let scale = opt(&mut args, "--scale")?.map(|s| s.parse::<f64>().map_err(|_| format!("bad scale {s}"))).transpose()?;
+            let scale = opt(&mut args, "--scale")?
+                .map(|s| s.parse::<f64>().map_err(|_| format!("bad scale {s}")))
+                .transpose()?;
             let position = opt(&mut args, "--position")?
                 .map(|s| {
                     let v: Vec<i32> = s.split(',').filter_map(|p| p.trim().parse().ok()).collect();
@@ -337,7 +342,10 @@ fn parse(command: &str, mut args: Vec<String>) -> Result<Request, String> {
                 })
                 .transpose()?;
             let transform = opt(&mut args, "--transform")?
-                .map(|t| serde_json::from_value::<Transform>(serde_json::Value::String(t.clone())).map_err(|_| format!("bad transform {t}")))
+                .map(|t| {
+                    serde_json::from_value::<Transform>(serde_json::Value::String(t.clone()))
+                        .map_err(|_| format!("bad transform {t}"))
+                })
                 .transpose()?;
             let enabled = if flag(&mut args, "--on") {
                 Some(true)
@@ -359,7 +367,9 @@ fn parse(command: &str, mut args: Vec<String>) -> Result<Request, String> {
             Request::SetPrimaryOutput { name: args[0].clone() }
         }
         "night-light" => {
-            let temperature = opt(&mut args, "--temperature")?.map(|t| t.parse::<u32>().map_err(|_| format!("bad temperature {t}"))).transpose()?;
+            let temperature = opt(&mut args, "--temperature")?
+                .map(|t| t.parse::<u32>().map_err(|_| format!("bad temperature {t}")))
+                .transpose()?;
             let enabled = match args.first().map(String::as_str) {
                 Some("on") => Some(true),
                 Some("off") => Some(false),
@@ -396,7 +406,10 @@ fn parse(command: &str, mut args: Vec<String>) -> Result<Request, String> {
                 "click" => vec![Synthetic::Click { button: args.get(1).cloned().unwrap_or_else(|| "left".into()) }],
                 "button" => {
                     need(&args, 2, "a button")?;
-                    presses(args.get(2))?.into_iter().map(|pressed| Synthetic::PointerButton { button: args[1].clone(), pressed }).collect()
+                    presses(args.get(2))?
+                        .into_iter()
+                        .map(|pressed| Synthetic::PointerButton { button: args[1].clone(), pressed })
+                        .collect()
                 }
                 "scroll" => {
                     need(&args, 3, "DX DY")?;
@@ -404,7 +417,10 @@ fn parse(command: &str, mut args: Vec<String>) -> Result<Request, String> {
                 }
                 "key" => {
                     need(&args, 2, "a key")?;
-                    presses(args.get(2))?.into_iter().map(|pressed| Synthetic::Key { key: args[1].clone(), pressed }).collect()
+                    presses(args.get(2))?
+                        .into_iter()
+                        .map(|pressed| Synthetic::Key { key: args[1].clone(), pressed })
+                        .collect()
                 }
                 "chord" => {
                     need(&args, 2, "keys like super+tab")?;
@@ -497,7 +513,10 @@ fn print_response(r: &Response) -> ExitCode {
         Response::NightLight { state } => {
             let on = if state.enabled { "on" } else { "off" };
             let now = if state.active { "warm now" } else { "neutral now" };
-            println!("night light {on}, {} K, {} schedule; {now} ({} K)", state.temperature, state.schedule, state.current);
+            println!(
+                "night light {on}, {} K, {} schedule; {now} ({} K)",
+                state.temperature, state.schedule, state.current
+            );
             if state.outputs.is_empty() {
                 println!("no display here can show it");
             } else {
@@ -638,7 +657,9 @@ fn describe_event(e: &Event) -> String {
         Event::Idle { kind } => format!("idle {kind}"),
         Event::Resumed => "resumed".into(),
         Event::LockStateChanged { locked } => format!("locked {locked}"),
-        Event::NightLightChanged { state } => format!("night-light {} {} K now", if state.enabled { "on" } else { "off" }, state.current),
+        Event::NightLightChanged { state } => {
+            format!("night-light {} {} K now", if state.enabled { "on" } else { "off" }, state.current)
+        }
     }
 }
 
@@ -680,7 +701,10 @@ mod tests {
     #[test]
     fn keys_tap_unless_told_down_or_up() {
         let key = |k: &str, pressed| Synthetic::Key { key: k.into(), pressed };
-        assert_eq!(p("input", &["key", "escape"]), Request::Synthesize { events: vec![key("escape", true), key("escape", false)] });
+        assert_eq!(
+            p("input", &["key", "escape"]),
+            Request::Synthesize { events: vec![key("escape", true), key("escape", false)] }
+        );
         assert_eq!(p("input", &["key", "super", "down"]), Request::Synthesize { events: vec![key("super", true)] });
         assert_eq!(p("input", &["key", "super", "up"]), Request::Synthesize { events: vec![key("super", false)] });
         assert_eq!(
