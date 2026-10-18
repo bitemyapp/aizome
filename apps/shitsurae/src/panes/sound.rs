@@ -594,7 +594,16 @@ fn device_row(d: &AudioDevice, io: Io, all: &[&AudioDevice]) -> Row<Msg> {
     .align(Align::Center)
     .width(Fill);
     let msg = (!d.is_default).then(|| Msg::Default(io, d.name.clone()));
-    form::whole(press(line).style(PressStyle::Plain).padding([7.0, 12.0]).on_press_maybe(msg).named(name).width(Fill))
+    // Selected: what assistive technology hears for the check.
+    form::whole(
+        press(line)
+            .style(PressStyle::Plain)
+            .selected(d.is_default)
+            .padding([7.0, 12.0])
+            .on_press_maybe(msg)
+            .named(name)
+            .width(Fill),
+    )
 }
 
 /// A volume slider with the mute button before it and the level after.
