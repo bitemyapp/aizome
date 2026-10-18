@@ -71,7 +71,14 @@ pub(crate) fn read(root: &Path) -> Vec<BacklightDevice> {
         .filter_map(|entry| {
             let dir = entry.path();
             let max_brightness = number(&dir, "max_brightness")?;
-            let brightness = number(&dir, "actual_brightness").or_else(|| number(&dir, "brightness"))?;
+            // What the hardware shows, but a panel that's off (blanked, the
+            // lid shut) reads 0 there: then the level set, which it comes
+            // back at and which the keys step from.
+            let brightness = match (number(&dir, "actual_brightness"), number(&dir, "brightness")) {
+                (Some(0), Some(set)) => set,
+                (Some(actual), _) => actual,
+                (None, set) => set?,
+            };
             Some(BacklightDevice {
                 name: entry.file_name().to_string_lossy().into_owned(),
                 kind: std::fs::read_to_string(dir.join("type"))
@@ -293,5 +300,21 @@ mod tests {
         assert_eq!(state.primary().unwrap().name, "acpi_video0");
         let raw = state.devices.iter().find(|d| d.kind == "raw").unwrap();
         assert!((raw.fraction() - 25.0 / 496.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn a_panel_that_is_off_reads_the_level_set() {
+        // Blanked or with the lid shut, intel_backlight reads 0 actual:
+        // the keys step from the level it comes back at, not from dark.
+        let root = std::env::temp_dir().join(format!("aizome-sys-backlight-off-{}", std::process::id()));
+        let dir = root.join("intel_backlight");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("max_brightness"), "496\n").unwrap();
+        std::fs::write(dir.join("brightness"), "124\n").unwrap();
+        std::fs::write(dir.join("actual_brightness"), "0\n").unwrap();
+        let devices = read(&root);
+        std::fs::remove_dir_all(&root).unwrap();
+        assert_eq!(devices[0].brightness, 124);
+        assert_eq!(stepped(&devices[0], 0.05), 149);
     }
 }
