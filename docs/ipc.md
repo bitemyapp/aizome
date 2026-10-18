@@ -33,7 +33,7 @@ Protocol version: **1** (`version` reports it).
 
 | Request | Fields | Response |
 |---|---|---|
-| `version` | | `version {version, protocol}` |
+| `version` | | `version {version, protocol, pid, exe, build}`: `build` is how the compositor's core was built (`aizome --build-info`), which a logic library must match |
 | `outputs` | | `outputs {outputs: [OutputInfo]}` |
 | `windows` | | `windows {windows: [WindowInfo]}`, bottom of the stack first |
 | `desks` | | `desks {desks: [DeskInfo], current}` (`current` is 1-based) |
@@ -67,7 +67,8 @@ Protocol version: **1** (`version` reports it).
 | `screenshot` | `output?`, `path?`, `window?`, `area? {x,y,w,h}`, `clipboard` (bool) | `screenshot {path}`; PNG of one output, a window (with its tab, frame and shadow), an area, or (none given) every output side by side; default path `~/Pictures/Screenshots/Screenshot YYYY-MM-DD at HH.MM.SS.png`; also emits `screenshot-taken` |
 | `reload-config` | | `ok`; re-reads `settings.toml`, applies it, emits `config-changed` |
 | `output-config` | `name`, `mode?` (`"WxH"` or `"WxH@Hz"`), `scale?`, `position? [x,y]`, `transform?`, `enabled?` | `ok`; for this session (Settings writes the file). `enabled: false` turns the output off (its CRTC disabled on udev; out of the layout, its windows moved to the main display); `true` turns it on again, at `position` or right of the others |
-| `stats` | `reset` (bool) | `stats {stats}`: frame times per output |
+| `stats` | `reset` (bool) | `stats {stats}`: frame times per output, and `logic` (the build running, where from, reloads, rollbacks, the last error) |
+| `reload` | `logic`, `shell` (bools), `from?` (a logic library), `shell_from?` (a shell binary), `check` | `reload {report}`: `logic`, `shell`, `settings` and `core`, each an `action` (`reloaded`, `restarted`, `unchanged`, `would-reload`, `refused`, `failed`, `skipped`, and for `core` `same` or `needs-restart`) and a `detail`. With none of `logic`, `shell`, `from`, `shell_from`: whatever changed since it was loaded. Emits `reloaded` (`docs/reload.md`) |
 | `quit` | | `ok`; ends the session |
 | `power-off-monitors` / `power-on-monitors` | | `ok` |
 | `lock` | | `ok`; tells the shell (a `binding` event with action `lock`) |
@@ -198,6 +199,8 @@ another renderer than the one running.
 | `resumed` | | input after `idle` |
 | `lock-state-changed` | `locked` | an ext-session-lock client locked or unlocked |
 | `night-light-changed` | `state` | Night Light turned on or off, or warmed or cooled (the schedule) |
+| `reloaded` | `report` | a `reload` did something (as its response says) |
+| `logic-failed` | `message`, `action` | the compositor's logic panicked, and what the core did (rolled back, restarted it, set it aside) |
 
 ## Bindings
 
@@ -224,6 +227,7 @@ Handled by the compositor:
 | ❖⇧3, Print | `screenshot-screen` |
 | ❖⇧4 | `screenshot-area` (a rubber band; Space picks a window; Esc cancels) |
 | XF86Switch_VT_N | `vt-N` |
+| ⌃❖R | `reload`: what changed (the core's own chord, so it works with the logic set aside; `reload` can be bound to another) |
 
 Sent to subscribers as `binding` events, for the shell:
 

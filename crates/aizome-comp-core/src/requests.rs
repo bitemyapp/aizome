@@ -162,7 +162,10 @@ impl State {
                 Response::Ok
             }
             Request::Action { action } if action == "reload" => {
+                // As ⌃❖R does (the palette's Reload Aizome sends this): what
+                // happened, in a notification too.
                 let report = self.reload(&ReloadArgs::default());
+                self.notify("Aizome reloaded", &reload_summary(&report));
                 Response::Reload { report }
             }
             Request::Reload { logic, shell, from, shell_from, check } => {
