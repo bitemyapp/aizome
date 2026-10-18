@@ -135,3 +135,49 @@ fn without_a_shell_the_menu_bar_is_in_the_window() {
     h.named(w, aizome_kit::sidestep_ui::NamedKey::Enter, aizome_kit::sidestep_ui::Modifiers::NONE);
     assert_eq!(h.program().log, ["new"]);
 }
+
+#[test]
+fn a_shell_that_comes_late_gets_the_menus_and_one_that_goes_gives_them_back() {
+    let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("late-shell-{}", std::process::id()));
+    let _ = std::fs::create_dir_all(&dir);
+    let path = dir.join("shell.sock");
+    let _ = std::fs::remove_file(&path);
+    // Started before the shell, as at login: the menus are the window's.
+    let mut h = Harness::waiting_for_shell(Notes::default(), &path, Duration::from_millis(20));
+    let w = h.window();
+    assert!(!h.has_shell());
+    assert!(bar_in(&h, w), "the menu bar is in the window");
+
+    // The shell comes: the app finds it, says hello, and sends its menus.
+    let listener = UnixListener::bind(&path).expect("a socket");
+    let (stream, _) = listener.accept().expect("the app connected");
+    stream.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+    let mut lines = BufReader::new(stream.try_clone().unwrap()).lines();
+    assert!(matches!(read(&mut lines), proto::AppMessage::Hello { .. }));
+    assert!(h.wait_for_shell(true, Duration::from_secs(5)));
+    let proto::AppMessage::Menus { menus } = read(&mut lines) else { panic!("menus") };
+    assert!(menus.iter().any(|m| m.title == "File"));
+    assert!(!bar_in(&h, w), "the window's bar has gone to the shell");
+
+    // The shell goes: the menus come back into the window.
+    drop(lines);
+    drop(stream);
+    drop(listener);
+    let _ = std::fs::remove_file(&path);
+    assert!(h.wait_for_shell(false, Duration::from_secs(5)));
+    assert!(bar_in(&h, w), "the menu bar is back in the window");
+
+    // And it comes back once more.
+    let listener = UnixListener::bind(&path).expect("a socket again");
+    let (stream, _) = listener.accept().expect("the app connected again");
+    stream.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+    let mut lines = BufReader::new(stream).lines();
+    assert!(matches!(read(&mut lines), proto::AppMessage::Hello { .. }));
+    assert!(h.wait_for_shell(true, Duration::from_secs(5)));
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// Whether window `w` draws its own menu bar.
+fn bar_in(h: &Harness<Notes>, w: WindowKey) -> bool {
+    h.semantics(w).iter().any(|(s, _)| s.role == aizome_kit::widget::SemanticRole::MenuBar)
+}

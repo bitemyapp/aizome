@@ -370,7 +370,12 @@ through `Cx::set_window_manager` (the compositor's IPC).
 
 Where `$AIZOME_SHELL_SOCKET` is set, the menus are published to the shell
 (`docs/shell-protocol.md`) whenever they change; elsewhere the kit draws a
-menu bar along each normal window's top.
+menu bar along each normal window's top. An app that starts before the
+shell (at login) draws its menu bars until the socket appears (it looks
+once a second), then hands them to the shell; if the shell goes away they
+come back into the windows until it returns. The shell's own process says
+`menus_to_shell() -> false`. Help ▸ Search asks the shell for its palette
+on the app's commands; Help ▸ Aizome Tour starts `aizome-annai`.
 
 Menus behave the same everywhere (in-window, the shell's, pop-up buttons,
 context menus): ↑↓ move, → opens a submenu, ← closes it, Return or Space

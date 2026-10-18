@@ -2,8 +2,18 @@
 //! `$AIZOME_SHELL_SOCKET` (`aizome-shell-proto`), and acting on what the
 //! shell sends back. Without the socket (another desktop), the kit draws
 //! the menu bar along each window's top instead.
+//!
+//! The shell may come later than the app (apps a session starts before
+//! the shell is up) and may go away (it crashed, or restarts): while
+//! there's no shell the kit draws the menu bars in the windows and looks
+//! for its socket once a second; once the shell is there the menus go to
+//! it again.
 
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, channel};
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use aizome_shell_proto as proto;
 
@@ -18,38 +28,46 @@ use crate::program::{AppInfo, Program};
 pub(crate) struct ShellLink {
     sender: proto::Sender,
     rx: Receiver<proto::ShellMessage>,
+    /// Cleared when the shell hangs up.
+    alive: Arc<AtomicBool>,
 }
 
 impl ShellLink {
-    /// Connect and say hello, if there's a shell to talk to.
-    pub fn connect(info: &AppInfo, wake: Waker) -> Option<ShellLink> {
-        ShellLink::connect_to(&proto::socket_path()?, info, wake)
+    /// Connect to the shell at `path` and say hello; `None` (and a line in
+    /// the log) if there's no shell there.
+    pub fn connect_to(path: &Path, info: &AppInfo, wake: Waker) -> Option<ShellLink> {
+        match ShellLink::try_connect(path, info, wake) {
+            Ok(link) => Some(link),
+            Err(e) => {
+                log::info!("no shell at {} ({e}); menus go in the windows until there is", path.display());
+                None
+            }
+        }
     }
 
-    /// Connect to the shell at `path` and say hello.
-    pub fn connect_to(path: &std::path::Path, info: &AppInfo, wake: Waker) -> Option<ShellLink> {
-        let path = path.to_path_buf();
-        let mut client = match proto::Client::hello(&path, &info.app_id, &info.name) {
-            Ok(c) => c,
-            Err(e) => {
-                log::warn!("the shell at {}: {e}; menus go in the windows", path.display());
-                return None;
-            }
-        };
-        let sender = client.sender().ok()?;
+    fn try_connect(path: &Path, info: &AppInfo, wake: Waker) -> std::io::Result<ShellLink> {
+        let mut client = proto::Client::hello(path, &info.app_id, &info.name)?;
+        let sender = client.sender()?;
         let (tx, rx) = channel();
-        std::thread::Builder::new()
-            .name("aizome-shell".into())
-            .spawn(move || {
-                while let Ok(Some(m)) = client.recv() {
-                    if tx.send(m).is_err() {
-                        return;
-                    }
-                    wake();
+        let alive = Arc::new(AtomicBool::new(true));
+        let flag = alive.clone();
+        std::thread::Builder::new().name("aizome-shell".into()).spawn(move || {
+            while let Ok(Some(m)) = client.recv() {
+                if tx.send(m).is_err() {
+                    return;
                 }
-            })
-            .ok()?;
-        Some(ShellLink { sender, rx })
+                wake();
+            }
+            // The shell hung up.
+            flag.store(false, Ordering::Release);
+            wake();
+        })?;
+        Ok(ShellLink { sender, rx, alive })
+    }
+
+    /// The shell is still there.
+    pub fn alive(&self) -> bool {
+        self.alive.load(Ordering::Acquire)
     }
 
     pub fn incoming(&mut self) -> Vec<proto::ShellMessage> {
@@ -66,6 +84,66 @@ impl ShellLink {
         if let Err(e) = self.sender.send(msg) {
             log::warn!("the shell: {e}");
         }
+    }
+}
+
+/// Where the shell is to be found, and how to wake the loop when it
+/// comes or goes.
+#[derive(Clone)]
+pub(crate) struct ShellPlace {
+    pub path: PathBuf,
+    pub wake: Waker,
+    /// How often to look for the socket while there's no shell.
+    pub period: Duration,
+}
+
+/// Looking for the shell on a thread of its own: its socket, once a
+/// period (a `stat`, and a connection once the file is there).
+pub(crate) struct ShellWatch {
+    found: Arc<Mutex<Option<ShellLink>>>,
+    stop: Arc<AtomicBool>,
+}
+
+impl ShellWatch {
+    /// Once a second.
+    pub const PERIOD: Duration = Duration::from_secs(1);
+
+    pub fn start(place: &ShellPlace, info: &AppInfo) -> ShellWatch {
+        let found = Arc::new(Mutex::new(None));
+        let stop = Arc::new(AtomicBool::new(false));
+        let (slot, quit, place, info) = (found.clone(), stop.clone(), place.clone(), info.clone());
+        let started = std::thread::Builder::new().name("aizome-shell-watch".into()).spawn(move || {
+            loop {
+                std::thread::sleep(place.period);
+                if quit.load(Ordering::Acquire) {
+                    return;
+                }
+                if !place.path.exists() {
+                    continue;
+                }
+                // There, but maybe not listening yet (or left behind).
+                if let Ok(link) = ShellLink::try_connect(&place.path, &info, place.wake.clone()) {
+                    *slot.lock().unwrap_or_else(|e| e.into_inner()) = Some(link);
+                    (place.wake)();
+                    return;
+                }
+            }
+        });
+        if let Err(e) = started {
+            log::warn!("looking for the shell: {e}");
+        }
+        ShellWatch { found, stop }
+    }
+
+    /// The shell, once found.
+    pub fn take(&self) -> Option<ShellLink> {
+        self.found.lock().unwrap_or_else(|e| e.into_inner()).take()
+    }
+}
+
+impl Drop for ShellWatch {
+    fn drop(&mut self) {
+        self.stop.store(true, Ordering::Release);
     }
 }
 

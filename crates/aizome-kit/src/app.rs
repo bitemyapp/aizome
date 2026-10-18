@@ -20,7 +20,7 @@ use crate::hash::hash_of;
 use crate::layout::{Rect, Size, Vec2};
 use crate::platform::{LayerChange, OpenKind, OpenSpec, Placement, Platform, Waker, WinId};
 use crate::program::Program;
-use crate::shell::ShellLink;
+use crate::shell::{ShellLink, ShellPlace, ShellWatch};
 use crate::theme::{Appearance, ThemeChoice};
 
 /// Points a wheel's detent scrolls.
@@ -51,6 +51,10 @@ pub(crate) struct Runtime<P: Program> {
     pub core: Core,
     pub pool: Pool,
     pub shell: Option<ShellLink>,
+    /// Where the shell is to be found, if anywhere.
+    pub shell_place: Option<ShellPlace>,
+    /// Looking for the shell while there's none.
+    pub shell_watch: Option<ShellWatch>,
     /// The settings file changed (set by its watcher's thread).
     pub settings_changed: Arc<AtomicBool>,
     /// Watches the settings file while the app runs.
@@ -69,11 +73,57 @@ impl<P: Program> Runtime<P> {
             core,
             pool: Pool::default(),
             shell: None,
+            shell_place: None,
+            shell_watch: None,
             settings_changed: Arc::new(AtomicBool::new(false)),
             watcher: None,
             menus_published: 0,
             window_states: HashMap::new(),
         }
+    }
+
+    /// Talk to the shell at `place`: now if it's there, else as soon as
+    /// it is; the menus are in the windows meanwhile.
+    pub fn find_shell(&mut self, place: ShellPlace) {
+        self.shell = ShellLink::connect_to(&place.path, &self.core.info, place.wake.clone());
+        self.core.in_window_menus = self.shell.is_none();
+        if self.shell.is_none() {
+            self.shell_watch = Some(ShellWatch::start(&place, &self.core.info));
+        }
+        self.shell_place = Some(place);
+    }
+
+    /// The shell came or went: the menus follow it, to the bar or into
+    /// the windows. Whether anything changed.
+    pub fn check_shell(&mut self, platform: &mut dyn Platform) -> bool {
+        if self.shell.as_ref().is_some_and(|s| !s.alive()) {
+            log::info!("the shell went away; menus go in the windows");
+            self.shell = None;
+            self.shell_watch = self.shell_place.as_ref().map(|p| ShellWatch::start(p, &self.core.info));
+            self.menus_go_in_windows(true, platform);
+            return true;
+        }
+        let Some(link) = self.shell_watch.as_ref().and_then(ShellWatch::take) else { return false };
+        log::info!("the shell is here; menus go to it");
+        self.shell_watch = None;
+        self.shell = Some(link);
+        self.menus_go_in_windows(false, platform);
+        // The menus as they are now, at once.
+        let published = crate::shell::published(&self.core);
+        self.menus_published = hash_of(&serde_json::to_string(&published).unwrap_or_default());
+        if let Some(s) = &mut self.shell {
+            s.send_menus(published);
+        }
+        true
+    }
+
+    fn menus_go_in_windows(&mut self, on: bool, platform: &mut dyn Platform) {
+        // Menus open from the windows' bars go with the bars.
+        for (win, _) in self.core.app_windows() {
+            self.core.kit(KitMsg::CloseMenus { window: win }, platform);
+        }
+        self.core.in_window_menus = on;
+        self.core.mark_all_dirty();
     }
 
     pub fn launch(&mut self, platform: &mut dyn Platform, paths: Vec<PathBuf>) {
@@ -216,6 +266,7 @@ impl<P: Program> Runtime<P> {
         for m in incoming {
             crate::shell::handle(self, m, platform);
         }
+        self.check_shell(platform);
         self.flush(platform);
     }
 
@@ -520,8 +571,15 @@ impl<P: Program> sidestep_ui::Handler for Glue<P> {
             flag.store(true, Ordering::Release);
             w();
         }));
-        self.rt.shell = ShellLink::connect(&self.rt.core.info, wake);
-        self.rt.core.in_window_menus = self.rt.shell.is_none();
+        if !self.rt.program.menus_to_shell() {
+            // The shell itself: no one to publish to, and no menu bars.
+            self.rt.core.in_window_menus = false;
+        } else if let Some(path) = aizome_shell_proto::socket_path() {
+            self.rt.find_shell(ShellPlace { path, wake, period: ShellWatch::PERIOD });
+        } else {
+            // Another desktop: the menus are the windows' own.
+            self.rt.core.in_window_menus = true;
+        }
         let (rt, mut p) = self.split(cx);
         rt.launch(&mut p, argv_paths());
     }

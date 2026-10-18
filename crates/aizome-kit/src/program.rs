@@ -116,6 +116,13 @@ pub trait Program: Sized + 'static {
     fn quit_when_last_window_closes(&self) -> bool {
         true
     }
+
+    /// Whether the app's menus go to the Aizome shell's bar (when there's
+    /// one, at `$AIZOME_SHELL_SOCKET`): apps' do; the shell's own process
+    /// says no, or it would publish to itself.
+    fn menus_to_shell(&self) -> bool {
+        true
+    }
 }
 
 /// What the desktop has done with a window.

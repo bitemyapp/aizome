@@ -257,6 +257,43 @@ impl<P: Program> Harness<P> {
         Harness { rt, platform }
     }
 
+    /// Launch `program` with the shell to be at `socket`, as an app the
+    /// session starts before the shell: the menus are in the windows until
+    /// the shell is there (looked for every `period`), then go to it, and
+    /// come back into the windows if it goes. See
+    /// [`wait_for_shell`](Harness::wait_for_shell).
+    pub fn waiting_for_shell(program: P, socket: &Path, period: Duration) -> Harness<P> {
+        crate::fonts::install();
+        let mut rt = Runtime::new(program, Appearance::default());
+        rt.find_shell(crate::shell::ShellPlace { path: socket.to_path_buf(), wake: Arc::new(|| {}), period });
+        let mut platform = TestPlatform::new();
+        rt.launch(&mut platform, Vec::new());
+        Harness { rt, platform }
+    }
+
+    /// Whether the menus go to a shell now (not into the windows).
+    pub fn has_shell(&self) -> bool {
+        self.rt.shell.is_some()
+    }
+
+    /// Wait up to `wait` for the shell to be there (or gone), as the app
+    /// would notice it; whether it is (or is gone).
+    pub fn wait_for_shell(&mut self, there: bool, wait: Duration) -> bool {
+        let deadline = std::time::Instant::now() + wait;
+        loop {
+            if self.rt.check_shell(&mut self.platform) {
+                self.rt.flush(&mut self.platform);
+            }
+            if self.has_shell() == there {
+                return true;
+            }
+            if std::time::Instant::now() >= deadline {
+                return false;
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    }
+
     /// Handle what the shell has sent, waiting up to `wait` for something.
     pub fn pump_shell(&mut self, wait: Duration) -> usize {
         let deadline = std::time::Instant::now() + wait;

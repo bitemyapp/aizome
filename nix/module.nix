@@ -60,15 +60,6 @@ in
       defaultText = lib.literalExpression "aizome.packages.\${system}.aizome";
       description = "The Aizome package: compositor, shell, aizomectl and apps.";
     };
-    mutableTimeZone = lib.mkOption {
-      type = lib.types.bool;
-      default = true;
-      description = ''
-        Let Settings (and the automatic time zone) change the time zone.
-        Aizome takes `time.timeZone` over, starting from the zone the
-        system was last set to, so changes made in Settings last.
-      '';
-    };
     alarmsWakeSystem = lib.mkOption {
       type = lib.types.bool;
       default = true;
@@ -113,40 +104,6 @@ in
     ];
     services.displayManager.sessionPackages = [ session ];
     systemd.packages = [ cfg.package ];
-
-    # In Aizome, Settings owns the time zone and the computer's name:
-    # Sekka lets its desktop configure more than a desktop usually does.
-    # The time zone starts from the one the system is set to now (NixOS's
-    # link while time.timeZone was set), saved before /etc is rebuilt and
-    # put back if the rebuild removed it; after that timedated keeps it.
-    time.timeZone = lib.mkIf cfg.mutableTimeZone (lib.mkOverride 90 null);
-    system.activationScripts = lib.mkIf cfg.mutableTimeZone {
-      aizomeTimeZoneSave.text = ''
-        if zone=$(readlink -f /etc/localtime 2>/dev/null) && [ -f "$zone" ]; then
-          case "$zone" in
-            */zoneinfo/*)
-              mkdir -p /var/lib/aizome
-              printf '%s\n' "''${zone#*/zoneinfo/}" > /var/lib/aizome/timezone
-              ;;
-          esac
-        fi
-      '';
-      etc.deps = [ "aizomeTimeZoneSave" ];
-      aizomeTimeZoneRestore = {
-        deps = [ "etc" ];
-        text = ''
-          if [ ! -e /etc/localtime ] && [ -s /var/lib/aizome/timezone ]; then
-            zone=$(cat /var/lib/aizome/timezone)
-            if [ -e "/etc/zoneinfo/$zone" ]; then
-              ln -sfn "/etc/zoneinfo/$zone" /etc/localtime
-            fi
-          fi
-        '';
-      };
-    };
-    # The pretty name ("The studio laptop") in a file hostnamed can write;
-    # the host name itself stays networking.hostName.
-    systemd.services.systemd-hostnamed.environment.SYSTEMD_ETC_MACHINE_INFO = lib.mkForce "/etc/machine-info";
 
     # Tokei's alarms are transient systemd timers, which end with the user
     # manager: schedule them again at each login, in any desktop.
