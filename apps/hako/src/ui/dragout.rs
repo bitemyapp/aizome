@@ -15,7 +15,11 @@ pub const HEIGHT: f64 = 26.0;
 
 /// A chip for dragging `first` (and `count - 1` more): its size in points
 /// and its drawing, for `DragSource::icon_drawn`.
-pub fn chip(theme: &Theme, first: Option<&Entry>, count: usize) -> (Size, impl Fn(&mut Canvas) + Send + Sync + 'static) {
+pub fn chip(
+    theme: &Theme,
+    first: Option<&Entry>,
+    count: usize,
+) -> (Size, impl Fn(&mut Canvas) + Send + Sync + 'static) {
     let label = match (first, count) {
         (Some(e), 1) => e.display.clone(),
         (_, n) => format!("{n} items"),

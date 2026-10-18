@@ -35,7 +35,8 @@ impl Hako {
     pub(crate) fn history_step(&mut self, cx: &mut Cx<Msg>, w: WindowKey, back: bool) {
         let w = self.owner(w);
         let Some(b) = self.windows.get_mut(&w) else { return };
-        let here = b.location().cloned().map(|l| (l, b.columns.last().and_then(|c| c.single().map(|e| e.name.clone()))));
+        let here =
+            b.location().cloned().map(|l| (l, b.columns.last().and_then(|c| c.single().map(|e| e.name.clone()))));
         let next = if back { b.back.pop() } else { b.forward.pop() };
         let Some((loc, sel)) = next else { return };
         if let Some(h) = here {
@@ -102,10 +103,16 @@ impl Hako {
                 let renaming = self.windows.get(&w).is_some_and(|b| b.rename.is_some());
                 // A sheet over the window closes first (the view kept the
                 // keyboard under it).
-                let sheet = self.sheets.iter().find(|(_, s)| match s {
-                    Sheet::Info { window, .. } | Sheet::QuickLook { window, .. } | Sheet::Confirm { window, .. } => *window == w,
-                    _ => false,
-                }).map(|(k, _)| *k);
+                let sheet = self
+                    .sheets
+                    .iter()
+                    .find(|(_, s)| match s {
+                        Sheet::Info { window, .. }
+                        | Sheet::QuickLook { window, .. }
+                        | Sheet::Confirm { window, .. } => *window == w,
+                        _ => false,
+                    })
+                    .map(|(k, _)| *k);
                 if let Some(s) = sheet {
                     self.sheets.remove(&s);
                     cx.close_window(s);
@@ -230,7 +237,8 @@ impl Hako {
 
     /// Files dropped from another program.
     pub(crate) fn on_drop_urls(&mut self, cx: &mut Cx<Msg>, w: WindowKey, dest: Dest, urls: Vec<String>) {
-        let sources: Vec<PathBuf> = urls.iter().filter_map(|u| uri::path_of(u)).filter(|p| std::fs::symlink_metadata(p).is_ok()).collect();
+        let sources: Vec<PathBuf> =
+            urls.iter().filter_map(|u| uri::path_of(u)).filter(|p| std::fs::symlink_metadata(p).is_ok()).collect();
         if sources.is_empty() || !self.drop_allowed(&sources, &dest) {
             return;
         }
@@ -278,7 +286,9 @@ impl Hako {
         let root = self
             .windows
             .get(&w)
-            .and_then(|b| b.search.as_ref().map(|s| s.root.clone()).or_else(|| b.target_folder().map(Path::to_path_buf)))
+            .and_then(|b| {
+                b.search.as_ref().map(|s| s.root.clone()).or_else(|| b.target_folder().map(Path::to_path_buf))
+            })
             .unwrap_or_else(|| self.opts.home.clone());
         let Some(b) = self.windows.get_mut(&w) else { return };
         if q.trim().is_empty() {
@@ -293,17 +303,32 @@ impl Hako {
                 s.running = true;
             }
             None => {
-                b.search = Some(Search { query: q.clone(), root: root.clone(), results: Rc::new(Vec::new()), selected: Rc::new(Vec::new()), generation: g, running: true });
+                b.search = Some(Search {
+                    query: q.clone(),
+                    root: root.clone(),
+                    results: Rc::new(Vec::new()),
+                    selected: Rc::new(Vec::new()),
+                    generation: g,
+                    running: true,
+                });
             }
         }
         b.rename = None;
-        let index = self.search_index.get(&root).filter(|(at, _)| at.elapsed() < Duration::from_secs(120)).map(|(_, i)| i.clone());
+        let index = self
+            .search_index
+            .get(&root)
+            .filter(|(at, _)| at.elapsed() < Duration::from_secs(120))
+            .map(|(_, i)| i.clone());
         let tx = cx.stream();
         let (services, home) = (self.opts.services, self.opts.home.clone());
         std::thread::spawn(move || {
             let index = index.unwrap_or_else(|| Arc::new(build_index(&root, &home, services)));
             let hits = index.search(&q, 400, &|_| 0);
-            let entries: Vec<Entry> = hits.into_iter().filter(|h| h.path.starts_with(&root)).filter_map(|h| Entry::read(&h.path).ok()).collect();
+            let entries: Vec<Entry> = hits
+                .into_iter()
+                .filter(|h| h.path.starts_with(&root))
+                .filter_map(|h| Entry::read(&h.path).ok())
+                .collect();
             tx.send(Msg::SearchDone(w, g, Arc::new(entries)));
             tx.send(Msg::SearchIndex(root, super::app::Shared(index)));
         });
@@ -331,8 +356,11 @@ impl Hako {
 
     pub(crate) fn run_thumbs_again(&mut self, cx: &mut Cx<Msg>) {
         // Only what's still on screen is worth making.
-        let shown: std::collections::HashSet<PathBuf> =
-            self.windows.values().flat_map(|b| b.columns.iter().flat_map(|c| c.rows.iter().map(|e| e.path.clone()))).collect();
+        let shown: std::collections::HashSet<PathBuf> = self
+            .windows
+            .values()
+            .flat_map(|b| b.columns.iter().flat_map(|c| c.rows.iter().map(|e| e.path.clone())))
+            .collect();
         self.thumb_wanted.retain(|(p, _)| shown.contains(p));
         self.run_thumbs(cx);
     }
@@ -453,10 +481,7 @@ impl Hako {
         self.system_disk = crate::model::places::system_disk(&self.opts.home);
         // The Desks, from the compositor.
         let tx = cx.stream();
-        std::thread::Builder::new()
-            .name("hako-desks".into())
-            .spawn(move || follow_desks(tx))
-            .ok();
+        std::thread::Builder::new().name("hako-desks".into()).spawn(move || follow_desks(tx)).ok();
     }
 
     // Jobs' questions and the operations window.
@@ -480,7 +505,9 @@ impl Hako {
         if self.ops_window.is_some() || self.jobs.is_empty() {
             return;
         }
-        let w = cx.open_window(WindowSpec::new("Operations").size(440.0, 96.0 + 64.0 * self.jobs.len().min(5) as f64).utility());
+        let w = cx.open_window(
+            WindowSpec::new("Operations").size(440.0, 96.0 + 64.0 * self.jobs.len().min(5) as f64).utility(),
+        );
         self.ops_window = Some(w);
     }
 
@@ -489,7 +516,12 @@ impl Hako {
     pub(crate) fn on_key(&mut self, cx: &mut Cx<Msg>, w: WindowKey, k: &KeyEvent) {
         use aizome_kit::sidestep_ui::{Key, NamedKey};
         let w = self.owner(w);
-        let Some(sheet) = self.sheets.iter().find(|(_, s)| matches!(s, Sheet::QuickLook { window, .. } if *window == w)).map(|(k, _)| *k) else {
+        let Some(sheet) = self
+            .sheets
+            .iter()
+            .find(|(_, s)| matches!(s, Sheet::QuickLook { window, .. } if *window == w))
+            .map(|(k, _)| *k)
+        else {
             return;
         };
         let step: isize = match k.key {
@@ -536,7 +568,6 @@ impl Hako {
         self.after_change(cx, w);
     }
 }
-
 
 /// Follow the compositor's Desks, telling the program the current one.
 fn follow_desks(tx: aizome_kit::MsgSender<Msg>) {
@@ -587,7 +618,8 @@ impl Hako {
     /// over another window (or the operations window), or, with none
     /// left, stop their jobs.
     pub(crate) fn reparent_questions(&mut self, cx: &mut Cx<Msg>, gone: WindowKey) {
-        let asking: Vec<(u64, WindowKey)> = self.jobs.iter().filter(|j| j.window == gone).filter_map(|j| j.sheet.map(|s| (j.id, s))).collect();
+        let asking: Vec<(u64, WindowKey)> =
+            self.jobs.iter().filter(|j| j.window == gone).filter_map(|j| j.sheet.map(|s| (j.id, s))).collect();
         for (id, sheet) in asking {
             self.sheets.remove(&sheet);
             let to = self.windows.keys().next().copied().or(self.ops_window).or_else(|| {

@@ -18,10 +18,12 @@ use aizome_kit::hash::PaintHasher;
 use aizome_kit::sidestep_ui::{Cursor, Key, NamedKey, PointerButton};
 use aizome_kit::text::TextSpec;
 use aizome_kit::theme::FontSpec;
-use aizome_kit::widget::{Event, EventCx, FocusRing, Focusable, LayoutCx, PaintCx, SemanticRole, Semantics, Status, Widget};
+use aizome_kit::widget::{
+    Event, EventCx, FocusRing, Focusable, LayoutCx, PaintCx, SemanticRole, Semantics, Status, Widget,
+};
 use aizome_kit::{Align, Constraints, Icon, Image, Layoutable, Point, Rect, Size, Vec2};
 
-use super::dnd::{self, DragEvent, Dest, Spot, Spots, Target};
+use super::dnd::{self, Dest, DragEvent, Spot, Spots, Target};
 use super::look;
 use crate::model::entry::{Entry, SortKey};
 use crate::model::format;
@@ -158,7 +160,13 @@ impl<Msg> Layoutable for FileView<Msg> {
 }
 
 /// A view: `file_view(Layout::Column, rows, handlers, spots, spot)`.
-pub fn file_view<Msg>(layout: Layout, rows: Rc<Vec<Entry>>, handlers: Rc<Handlers<Msg>>, spots: Spots, spot: u64) -> FileView<Msg> {
+pub fn file_view<Msg>(
+    layout: Layout,
+    rows: Rc<Vec<Entry>>,
+    handlers: Rc<Handlers<Msg>>,
+    spots: Spots,
+    spot: u64,
+) -> FileView<Msg> {
     let n = rows.len();
     FileView {
         common: Common::default(),
@@ -489,7 +497,9 @@ impl<Msg: Clone + Send + 'static> ViewWidget<Msg> {
         let cur = cx.state::<ViewState>().cursor.filter(|c| *c < n).or(self.v.selected.last().copied());
         let shift = m.shift();
         let cols = if self.v.layout == Layout::Icons { self.grid_cols() } else { 1 };
-        let page = ((self.viewport_h(&t) / if self.v.layout == Layout::Icons { CELL_H } else { self.row_h(&t) }).floor() as usize).max(1) * cols;
+        let page = ((self.viewport_h(&t) / if self.v.layout == Layout::Icons { CELL_H } else { self.row_h(&t) }).floor()
+            as usize)
+            .max(1) * cols;
         let named = |key: NamedKey| k.key == Key::Named(key);
         if named(NamedKey::ArrowDown) {
             self.move_to(cx, cur.map_or(0, |c| (c + cols).min(n.saturating_sub(1))), shift);
@@ -537,7 +547,9 @@ impl<Msg: Clone + Send + 'static> ViewWidget<Msg> {
             let start = cur.unwrap_or(0);
             let from = if prefix.chars().count() == 1 { start + 1 } else { start };
             let rows = &self.v.rows;
-            if let Some(i) = (0..n).map(|k| (from + k) % n).find(|&i| rows[i].display.to_lowercase().starts_with(&prefix)) {
+            if let Some(i) =
+                (0..n).map(|k| (from + k) % n).find(|&i| rows[i].display.to_lowercase().starts_with(&prefix))
+            {
                 self.move_to(cx, i, false);
             }
         } else {
@@ -614,7 +626,12 @@ impl<Msg: Clone + Send + 'static> Widget for ViewWidget<Msg> {
         {
             let r = self.row_rect(row, off, &t);
             let field = match self.v.layout {
-                Layout::Icons => Rect::new(r.x0 + 4.0, r.y0 + 8.0 + BIG_ICON + 4.0, r.x1 - 4.0, r.y0 + 8.0 + BIG_ICON + 4.0 + t.metrics.control),
+                Layout::Icons => Rect::new(
+                    r.x0 + 4.0,
+                    r.y0 + 8.0 + BIG_ICON + 4.0,
+                    r.x1 - 4.0,
+                    r.y0 + 8.0 + BIG_ICON + 4.0 + t.metrics.control,
+                ),
                 Layout::List => {
                     let w = self.name_width();
                     Rect::new(PAD + ICON + PAD - 4.0, r.y0, PAD + w, r.y1)
@@ -639,7 +656,13 @@ impl<Msg: Clone + Send + 'static> Widget for ViewWidget<Msg> {
             let rows = self.v.rows.clone();
             let dest = self.v.dest.clone();
             let spot = self.v.spot;
-            let geometry = Geometry { layout: self.v.layout, size: self.v.size, header: self.header(t), row_h: self.row_h(t), n: rows.len() };
+            let geometry = Geometry {
+                layout: self.v.layout,
+                size: self.v.size,
+                header: self.header(t),
+                row_h: self.row_h(t),
+                n: rows.len(),
+            };
             let resolve_fn: dnd::Resolve = Rc::new(move |p: Point| {
                 let local = Point::new(p.x - origin.x, p.y - origin.y);
                 resolve(&rows, geometry.hit(local, off), dest.clone(), spot)
@@ -648,27 +671,41 @@ impl<Msg: Clone + Send + 'static> Widget for ViewWidget<Msg> {
         }
         let active = cx.is_focused() && cx.window_active();
         if self.n() == 0
-            && let Some(m) = &self.v.message {
-                let spec = TextSpec { max_lines: 3, wrap: aizome_kit::sidestep_ui::Wrap::Words, align: aizome_kit::sidestep_ui::Alignment::Center, ..TextSpec::new(FontSpec::ui(t.metrics.small + 1.0), t.text3()) };
-                let w = (b.width() - 24.0).max(10.0);
-                let l = cx.layout_text(m, &spec, Some(w));
-                let s = l.size();
-                cx.canvas.draw_text(&l, Point::new(((b.width() - s.width) / 2.0).round(), (b.height() * 0.38 - s.height / 2.0).round()));
-            }
+            && let Some(m) = &self.v.message
+        {
+            let spec = TextSpec {
+                max_lines: 3,
+                wrap: aizome_kit::sidestep_ui::Wrap::Words,
+                align: aizome_kit::sidestep_ui::Alignment::Center,
+                ..TextSpec::new(FontSpec::ui(t.metrics.small + 1.0), t.text3())
+            };
+            let w = (b.width() - 24.0).max(10.0);
+            let l = cx.layout_text(m, &spec, Some(w));
+            let s = l.size();
+            cx.canvas.draw_text(
+                &l,
+                Point::new(((b.width() - s.width) / 2.0).round(), (b.height() * 0.38 - s.height / 2.0).round()),
+            );
+        }
         let header = self.header(t);
         let body = Rect::new(0.0, header, b.x1, b.y1);
         cx.canvas.save();
         cx.canvas.clip_rect(body);
-        
-        
+
         let (first, last) = match self.v.layout {
             Layout::Icons => {
                 let cols = self.grid_cols();
-                (((off / CELL_H).floor().max(0.0) as usize) * cols, ((((off + body.height()) / CELL_H).ceil().max(0.0) as usize) * cols).min(self.n()))
+                (
+                    ((off / CELL_H).floor().max(0.0) as usize) * cols,
+                    ((((off + body.height()) / CELL_H).ceil().max(0.0) as usize) * cols).min(self.n()),
+                )
             }
             _ => {
                 let rh = self.row_h(t);
-                ((off / rh).floor().max(0.0) as usize, (((off + body.height()) / rh).ceil().max(0.0) as usize).min(self.n()))
+                (
+                    (off / rh).floor().max(0.0) as usize,
+                    (((off + body.height()) / rh).ceil().max(0.0) as usize).min(self.n()),
+                )
             }
         };
         for i in first.min(last)..last {
@@ -806,7 +843,8 @@ impl<Msg: Clone + Send + 'static> Widget for ViewWidget<Msg> {
                         let Some(i) = row else {
                             // Empty space: nothing selected, and a rubber
                             // band where there's room for one.
-                            let keep = if mods.super_key() || mods.shift() { (*self.v.selected).clone() } else { Vec::new() };
+                            let keep =
+                                if mods.super_key() || mods.shift() { (*self.v.selected).clone() } else { Vec::new() };
                             if self.v.layout != Layout::Column {
                                 let p = Point::new(pos.x, pos.y + off);
                                 cx.state::<ViewState>().band = Some((p, p, keep.clone()));
@@ -944,7 +982,11 @@ impl<Msg: Clone + Send + 'static> Widget for ViewWidget<Msg> {
             }
             Event::DragOver { pos, urls, .. } => {
                 let off = cx.state::<ViewState>().offset;
-                if !urls.is_empty() && self.target_at(*pos, off, &t).is_some() { Status::Handled } else { Status::Ignored }
+                if !urls.is_empty() && self.target_at(*pos, off, &t).is_some() {
+                    Status::Handled
+                } else {
+                    Status::Ignored
+                }
             }
             Event::Drop { pos, urls, .. } => {
                 let off = cx.state::<ViewState>().offset;
@@ -969,7 +1011,15 @@ impl<Msg: Clone + Send + 'static> Widget for ViewWidget<Msg> {
     }
 
     fn selection(&self, _state: aizome_kit::widget::StateView) -> Option<String> {
-        Some(self.v.selected.iter().filter_map(|&i| self.v.rows.get(i)).map(|e| e.display.clone()).collect::<Vec<_>>().join("\n"))
+        Some(
+            self.v
+                .selected
+                .iter()
+                .filter_map(|&i| self.v.rows.get(i))
+                .map(|e| e.display.clone())
+                .collect::<Vec<_>>()
+                .join("\n"),
+        )
     }
 }
 
@@ -1073,7 +1123,12 @@ impl<Msg: Clone + Send + 'static> ViewWidget<Msg> {
                 }
             }
             let left = if *d == Detail::Name { left + ICON + PAD } else { left };
-            cx.draw_text_in(d.title(), &TextSpec { color: fg, ..base.clone() }, Rect::new(left, 0.0, right, h.y1), align);
+            cx.draw_text_in(
+                d.title(),
+                &TextSpec { color: fg, ..base.clone() },
+                Rect::new(left, 0.0, right, h.y1),
+                align,
+            );
             if k + 1 < spans.len() {
                 cx.canvas.fill_rect(Rect::new(x1 - 1.0, 5.0, *x1, h.y1 - 5.0), t.line());
             }
@@ -1104,7 +1159,12 @@ impl<Msg: Clone + Send + 'static> ViewWidget<Msg> {
             Layout::Icons => {
                 let cell = r.inset(-4.0);
                 let icon_rect = Rect::new(cell.x0 + (cell.width() - BIG_ICON) / 2.0, cell.y0 + 4.0, 0.0, 0.0);
-                let icon_rect = Rect::new(icon_rect.x0.round(), icon_rect.y0, icon_rect.x0.round() + BIG_ICON, icon_rect.y0 + BIG_ICON);
+                let icon_rect = Rect::new(
+                    icon_rect.x0.round(),
+                    icon_rect.y0,
+                    icon_rect.x0.round() + BIG_ICON,
+                    icon_rect.y0 + BIG_ICON,
+                );
                 if selected {
                     let fill = if active { t.selection() } else { t.line2() };
                     cx.canvas.fill_rect(icon_rect.inflate(4.0, 4.0), fill.with_alpha(if active { 0.35 } else { 0.6 }));
@@ -1133,7 +1193,10 @@ impl<Msg: Clone + Send + 'static> ViewWidget<Msg> {
                     let fill = if active { t.selection() } else { t.line2() };
                     let mid = cell.x0 + cell.width() / 2.0;
                     let half = s.width.min(w) / 2.0;
-                    cx.canvas.fill_rect(Rect::new((mid - half - 3.0).round(), y - 1.0, (mid + half + 3.0).round(), y + s.height + 1.0), fill);
+                    cx.canvas.fill_rect(
+                        Rect::new((mid - half - 3.0).round(), y - 1.0, (mid + half + 3.0).round(), y + s.height + 1.0),
+                        fill,
+                    );
                 }
                 cx.canvas.draw_text(&l, Point::new(x, y));
             }
@@ -1155,25 +1218,41 @@ impl<Msg: Clone + Send + 'static> ViewWidget<Msg> {
                     let mut right = r.x1 - PAD;
                     if e.is_folder() {
                         let c = if on_sel { t.on_selection() } else { t.text3() };
-                        Icon::ChevronRight.draw(cx.canvas, Point::new(r.x1 - PAD - 12.0, r.y0 + ((r.height() - 12.0) / 2.0).round()), 12.0, c);
+                        Icon::ChevronRight.draw(
+                            cx.canvas,
+                            Point::new(r.x1 - PAD - 12.0, r.y0 + ((r.height() - 12.0) / 2.0).round()),
+                            12.0,
+                            c,
+                        );
                         right -= 16.0;
                     }
                     if self.rename_row != Some(i) {
                         cx.draw_text_in(&e.display, &body, Rect::new(x, r.y0, right, r.y1), Align::Start);
                     }
                 } else {
-                    let small = TextSpec::new(FontSpec::ui(t.metrics.small + 1.0), if on_sel { t.on_selection() } else { t.text2() });
+                    let small = TextSpec::new(
+                        FontSpec::ui(t.metrics.small + 1.0),
+                        if on_sel { t.on_selection() } else { t.text2() },
+                    );
                     for (d, x0, x1) in self.detail_spans() {
                         let cell = Rect::new(x0 + PAD, r.y0, x1 - PAD, r.y1);
                         match d {
                             Detail::Name => {
                                 if self.rename_row != Some(i) {
-                                    cx.draw_text_in(&e.display, &body, Rect::new(x, r.y0, x1 - PAD, r.y1), Align::Start);
+                                    cx.draw_text_in(
+                                        &e.display,
+                                        &body,
+                                        Rect::new(x, r.y0, x1 - PAD, r.y1),
+                                        Align::Start,
+                                    );
                                 }
                             }
                             Detail::Size => {
                                 let s = if e.is_folder() { "—".to_owned() } else { format::size(e.size) };
-                                let spec = TextSpec::new(FontSpec { tabular: true, ..FontSpec::mono(t.metrics.small) }, small.color);
+                                let spec = TextSpec::new(
+                                    FontSpec { tabular: true, ..FontSpec::mono(t.metrics.small) },
+                                    small.color,
+                                );
                                 cx.draw_text_in(&s, &spec, cell, Align::End);
                             }
                             Detail::Kind => {
@@ -1257,7 +1336,6 @@ mod tests {
 
     #[test]
     fn resolves_folders_and_the_view() {
-
         let t = crate::fsops::testing::TempDir::new("resolve");
         t.dir("folder");
         t.file("file.txt", "x");
@@ -1266,7 +1344,10 @@ mod tests {
 
         let here = Dest::Folder(t.path().to_path_buf());
         assert_eq!(resolve(&rows, Some(0), Some(here.clone()), 3).unwrap().dest, Dest::Folder(t.join("folder")));
-        assert_eq!(resolve(&rows, Some(1), Some(here.clone()), 3).unwrap(), Target { dest: here.clone(), spot: 3, row: None });
+        assert_eq!(
+            resolve(&rows, Some(1), Some(here.clone()), 3).unwrap(),
+            Target { dest: here.clone(), spot: 3, row: None }
+        );
         assert_eq!(resolve(&rows, None, None, 3), None);
     }
 }

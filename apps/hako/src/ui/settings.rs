@@ -24,7 +24,14 @@ pub struct Settings {
 
 impl Default for Settings {
     fn default() -> Settings {
-        Settings { layout: Layout::Column, hidden: false, sort: Sort::default(), column_width: 220.0, sidebar: 196.0, window: (980.0, 600.0) }
+        Settings {
+            layout: Layout::Column,
+            hidden: false,
+            sort: Sort::default(),
+            column_width: 220.0,
+            sidebar: 196.0,
+            window: (980.0, 600.0),
+        }
     }
 }
 

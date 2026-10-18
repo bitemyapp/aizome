@@ -27,7 +27,9 @@ pub use app::{Hako, Msg, Options, Request};
 pub fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.iter().any(|a| a == "--help" || a == "-h") {
-        println!("Usage: aizome-hako [PATH…]\n       aizome-hako --select FILE\n\nOpens Hako (Files) at each folder, or with each file selected in its folder.");
+        println!(
+            "Usage: aizome-hako [PATH…]\n       aizome-hako --select FILE\n\nOpens Hako (Files) at each folder, or with each file selected in its folder."
+        );
         return;
     }
     let cwd = std::env::current_dir().unwrap_or_else(|_| crate::home_dir());

@@ -10,7 +10,8 @@ use std::os::unix::io::AsRawFd;
 use std::path::Path;
 
 fn cstr(p: &Path) -> io::Result<CString> {
-    CString::new(p.as_os_str().as_bytes()).map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "a path with a NUL byte"))
+    CString::new(p.as_os_str().as_bytes())
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "a path with a NUL byte"))
 }
 
 /// Rename `from` to `to`, failing with `AlreadyExists` if `to` is there
@@ -68,14 +69,23 @@ pub fn copy_contents(from: &mut File, to: &mut File, each: &mut dyn FnMut(u64) -
             // SAFETY: both descriptors are open files of ours; null offsets
             // use and advance their own.
             let r = unsafe {
-                libc::copy_file_range(from.as_raw_fd(), std::ptr::null_mut(), to.as_raw_fd(), std::ptr::null_mut(), CHUNK, 0)
+                libc::copy_file_range(
+                    from.as_raw_fd(),
+                    std::ptr::null_mut(),
+                    to.as_raw_fd(),
+                    std::ptr::null_mut(),
+                    CHUNK,
+                    0,
+                )
             };
             if r < 0 {
                 let e = io::Error::last_os_error();
                 match e.raw_os_error() {
                     // Not between these files: copy through a buffer from
                     // where it got to.
-                    Some(libc::EXDEV | libc::EINVAL | libc::ENOSYS | libc::EOPNOTSUPP | libc::EBADF | libc::EPERM) if total == 0 => {
+                    Some(libc::EXDEV | libc::EINVAL | libc::ENOSYS | libc::EOPNOTSUPP | libc::EBADF | libc::EPERM)
+                        if total == 0 =>
+                    {
                         kernel = false;
                         continue;
                     }

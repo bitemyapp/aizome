@@ -22,9 +22,13 @@ use crate::model::places::PlaceKind;
 /// The window `w`'s view.
 pub fn window(h: &Hako, w: WindowKey, b: &Browser) -> Element<Msg> {
     let n = b.columns.len() as u64;
-    b.spots.retain(|id| id < n || (dnd::SIDEBAR..dnd::SIDEBAR + 64).contains(&id) || (dnd::PATHBAR..dnd::PATHBAR + 64).contains(&id));
-    let main = sidebar_layout(sidebar(h, w, b), content(h, w, b)).first_size(h.settings.sidebar).on_resize(Msg::SidebarWidth);
-    let body = column![toolbar(h, w, b), pathbar(h, w, b), main, status(h, w, b)].width(Length::Fill).height(Length::Fill);
+    b.spots.retain(|id| {
+        id < n || (dnd::SIDEBAR..dnd::SIDEBAR + 64).contains(&id) || (dnd::PATHBAR..dnd::PATHBAR + 64).contains(&id)
+    });
+    let main =
+        sidebar_layout(sidebar(h, w, b), content(h, w, b)).first_size(h.settings.sidebar).on_resize(Msg::SidebarWidth);
+    let body =
+        column![toolbar(h, w, b), pathbar(h, w, b), main, status(h, w, b)].width(Length::Fill).height(Length::Fill);
     let body = dnd::window_bounds(body.into(), b.spots.clone());
     keys::catcher(body, window_key).width(Length::Fill).height(Length::Fill)
 }
@@ -33,7 +37,10 @@ pub fn window(h: &Hako, w: WindowKey, b: &Browser) -> Element<Msg> {
 /// move through the items it shows.
 pub(crate) fn quick_look_key(w: WindowKey, k: &aizome_kit::sidestep_ui::KeyEvent) -> Option<Msg> {
     use aizome_kit::sidestep_ui::{Key, NamedKey};
-    let arrow = matches!(k.key, Key::Named(NamedKey::ArrowUp | NamedKey::ArrowDown | NamedKey::ArrowLeft | NamedKey::ArrowRight));
+    let arrow = matches!(
+        k.key,
+        Key::Named(NamedKey::ArrowUp | NamedKey::ArrowDown | NamedKey::ArrowLeft | NamedKey::ArrowRight)
+    );
     (arrow && k.modifiers.is_empty()).then(|| Msg::Key(w, k.clone()))
 }
 
@@ -54,8 +61,18 @@ fn toolbar(h: &Hako, w: WindowKey, b: &Browser) -> Element<Msg> {
     let has_sel = !b.selection().is_empty();
     let folder = b.target_folder().is_some() && b.search.is_none();
     let mut items: Vec<Element<Msg>> = vec![
-        icon_button(Icon::ChevronLeft).toolbar().on_press_maybe((!b.back.is_empty()).then_some(Msg::Back(w))).tooltip("Back (❖[)").label("Back").into(),
-        icon_button(Icon::ChevronRight).toolbar().on_press_maybe((!b.forward.is_empty()).then_some(Msg::Forward(w))).tooltip("Forward (❖])").label("Forward").into(),
+        icon_button(Icon::ChevronLeft)
+            .toolbar()
+            .on_press_maybe((!b.back.is_empty()).then_some(Msg::Back(w)))
+            .tooltip("Back (❖[)")
+            .label("Back")
+            .into(),
+        icon_button(Icon::ChevronRight)
+            .toolbar()
+            .on_press_maybe((!b.forward.is_empty()).then_some(Msg::Forward(w)))
+            .tooltip("Forward (❖])")
+            .label("Forward")
+            .into(),
         toolbar_separator(),
         segmented_icons([Icon::Columns3, Icon::List, Icon::LayoutGrid], Some(layout))
             .on_select(move |i| Msg::SetLayout(w, [Layout::Column, Layout::List, Layout::Icons][i.min(2)]))
@@ -63,17 +80,48 @@ fn toolbar(h: &Hako, w: WindowKey, b: &Browser) -> Element<Msg> {
             .tooltip("Columns, list or icons (❖1, ❖2, ❖3)")
             .into(),
         toolbar_separator(),
-        icon_button(Icon::FolderPlus).toolbar().on_press_maybe(folder.then_some(Msg::NewFolder(w))).tooltip("New Folder (⇧❖N)").label("New Folder").into(),
+        icon_button(Icon::FolderPlus)
+            .toolbar()
+            .on_press_maybe(folder.then_some(Msg::NewFolder(w)))
+            .tooltip("New Folder (⇧❖N)")
+            .label("New Folder")
+            .into(),
     ];
     if in_trash {
-        items.push(icon_button(Icon::Undo2).toolbar().on_press_maybe(has_sel.then_some(Msg::PutBack(w))).tooltip("Put Back").label("Put Back").into());
-        items.push(button("Empty Trash").toolbar().on_press_maybe((!h.trash_is_empty()).then_some(Msg::AskEmptyTrash(w))).into());
+        items.push(
+            icon_button(Icon::Undo2)
+                .toolbar()
+                .on_press_maybe(has_sel.then_some(Msg::PutBack(w)))
+                .tooltip("Put Back")
+                .label("Put Back")
+                .into(),
+        );
+        items.push(
+            button("Empty Trash")
+                .toolbar()
+                .on_press_maybe((!h.trash_is_empty()).then_some(Msg::AskEmptyTrash(w)))
+                .into(),
+        );
     } else {
-        items.push(icon_button(Icon::Trash).toolbar().on_press_maybe((has_sel && b.search.is_none()).then_some(Msg::Trash(w))).tooltip("Move to Trash (❖⌫)").label("Move to Trash").into());
+        items.push(
+            icon_button(Icon::Trash)
+                .toolbar()
+                .on_press_maybe((has_sel && b.search.is_none()).then_some(Msg::Trash(w)))
+                .tooltip("Move to Trash (❖⌫)")
+                .label("Move to Trash")
+                .into(),
+        );
     }
     items.push(spacer().into());
     let query = b.search.as_ref().map(|s| s.query.clone()).unwrap_or_default();
-    items.push(search_field(&query).id("search").width(220.0).placeholder("Search").on_change(move |s| Msg::Search(w, s)).into());
+    items.push(
+        search_field(&query)
+            .id("search")
+            .width(220.0)
+            .placeholder("Search")
+            .on_change(move |s| Msg::Search(w, s))
+            .into(),
+    );
     aizome_kit::toolbar(items)
 }
 
@@ -99,9 +147,16 @@ fn pathbar(h: &Hako, w: WindowKey, b: &Browser) -> Element<Msg> {
     } else if let Some(s) = &b.search {
         row![
             icon(Icon::Search).size(14.0).role(Role::Text3),
-            text(format!("{} in “{}”", if s.running { "Searching" } else { "Results" }, s.root.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| s.root.display().to_string())))
-                .size(12.0)
-                .role(Role::Text2),
+            text(format!(
+                "{} in “{}”",
+                if s.running { "Searching" } else { "Results" },
+                s.root
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| s.root.display().to_string())
+            ))
+            .size(12.0)
+            .role(Role::Text2),
             spacer(),
             button("Done").compact().on_press(Msg::EndSearch(w)),
         ]
@@ -118,10 +173,12 @@ fn pathbar(h: &Hako, w: WindowKey, b: &Browser) -> Element<Msg> {
                 items.push(super::view::chevron());
             }
             let id = dnd::PATHBAR + i as u64;
-            let dest = path.as_ref().map(|p| if p == Path::new("\u{0}trash") { Dest::Trash } else { Dest::Folder(p.clone()) });
-            let on_press = path.as_ref().filter(|_| i + 1 < n).map(|p| {
-                if p == Path::new("\u{0}trash") { Msg::Go(w, Loc::Trash) } else { Msg::GoPath(w, p.clone()) }
-            });
+            let dest =
+                path.as_ref().map(|p| if p == Path::new("\u{0}trash") { Dest::Trash } else { Dest::Folder(p.clone()) });
+            let on_press = path
+                .as_ref()
+                .filter(|_| i + 1 < n)
+                .map(|p| if p == Path::new("\u{0}trash") { Msg::Go(w, Loc::Trash) } else { Msg::GoPath(w, p.clone()) });
             items.push(
                 Crumb {
                     icon,
@@ -135,7 +192,15 @@ fn pathbar(h: &Hako, w: WindowKey, b: &Browser) -> Element<Msg> {
             );
         }
         items.push(spacer().into());
-        items.push(icon_button(Icon::Pencil).compact().plain().on_press(Msg::EditPath(w)).tooltip("Go to a folder (❖L)").label("Go to a folder").into());
+        items.push(
+            icon_button(Icon::Pencil)
+                .compact()
+                .plain()
+                .on_press(Msg::EditPath(w))
+                .tooltip("Go to a folder (❖L)")
+                .label("Go to a folder")
+                .into(),
+        );
         aizome_kit::row(items).spacing(0.0).width(Length::Fill).into()
     };
     container(inner).padding([2.0, 6.0]).width(Length::Fill).fill(Tone::Surface).edges(Edge::Line, Sides::BOTTOM).into()
@@ -166,7 +231,12 @@ fn crumbs(h: &Hako, b: &Browser) -> Vec<(String, Option<Icon>, Option<PathBuf>)>
                 out.push(("Home".to_owned(), Some(Icon::House), Some(home.clone())));
                 (home.clone(), p.strip_prefix(home).unwrap_or(Path::new("")).to_path_buf())
             } else {
-                let name = h.system_disk.as_ref().filter(|d| d.path == Path::new("/")).map(|d| d.name.clone()).unwrap_or_else(|| "Computer".into());
+                let name = h
+                    .system_disk
+                    .as_ref()
+                    .filter(|d| d.path == Path::new("/"))
+                    .map(|d| d.name.clone())
+                    .unwrap_or_else(|| "Computer".into());
                 out.push((name, Some(Icon::HardDrive), Some(PathBuf::from("/"))));
                 (PathBuf::from("/"), p.strip_prefix("/").unwrap_or(p).to_path_buf())
             };
@@ -197,7 +267,13 @@ fn sidebar(h: &Hako, w: WindowKey, b: &Browser) -> Element<Msg> {
     let lit = b.drag.as_ref().and_then(|d| d.target.as_ref()).map(|t| t.spot);
     let mut items: Vec<Element<Msg>> = Vec::new();
     let next_id = std::cell::Cell::new(dnd::SIDEBAR);
-    let place = |items: &mut Vec<Element<Msg>>, kind: PlaceKind, label: String, detail: Option<String>, loc: Loc, eject: Option<String>, busy: bool| {
+    let place = |items: &mut Vec<Element<Msg>>,
+                 kind: PlaceKind,
+                 label: String,
+                 detail: Option<String>,
+                 loc: Loc,
+                 eject: Option<String>,
+                 busy: bool| {
         let (icon, role) = look::place_icon(kind);
         let dest = match &loc {
             Loc::Folder(p) => Some(Dest::Folder(p.clone())),
@@ -246,7 +322,15 @@ fn sidebar(h: &Hako, w: WindowKey, b: &Browser) -> Element<Msg> {
         let busy = h.mounting.contains(&v.block);
         let can_eject = v.mount_point.is_some() || v.ejectable;
         match &v.mount_point {
-            Some(m) => place(&mut items, kind, v.name.clone(), None, Loc::Folder(PathBuf::from(m)), can_eject.then(|| v.block.clone()), busy),
+            Some(m) => place(
+                &mut items,
+                kind,
+                v.name.clone(),
+                None,
+                Loc::Folder(PathBuf::from(m)),
+                can_eject.then(|| v.block.clone()),
+                busy,
+            ),
             None => {
                 // Not mounted: a press mounts it (and goes there).
                 let (icon, role) = look::place_icon(kind);
@@ -294,7 +378,11 @@ fn content(h: &Hako, w: WindowKey, b: &Browser) -> Element<Msg> {
             drop: Box::new(move |d, u| Msg::DropUrls(w, d, u)),
             sort: Box::new(|_| Msg::Nop),
         });
-        let message = if s.running && s.results.is_empty() { "Searching…".to_owned() } else { format!("Nothing under “{}” matches “{}”.", s.root.display(), s.query) };
+        let message = if s.running && s.results.is_empty() {
+            "Searching…".to_owned()
+        } else {
+            format!("Nothing under “{}” matches “{}”.", s.root.display(), s.query)
+        };
         return file_view(Layout::List, s.results.clone(), handlers, b.spots.clone(), 0)
             .home(Rc::new(h.opts.home.clone()))
             .now(h.now())
@@ -307,7 +395,8 @@ fn content(h: &Hako, w: WindowKey, b: &Browser) -> Element<Msg> {
     }
     match b.layout {
         Layout::Column => {
-            let mut cols: Vec<Element<Msg>> = b.columns.iter().enumerate().map(|(i, c)| column_view(h, w, b, i, c, Layout::Column)).collect();
+            let mut cols: Vec<Element<Msg>> =
+                b.columns.iter().enumerate().map(|(i, c)| column_view(h, w, b, i, c, Layout::Column)).collect();
             let preview = h.preview_entry(w);
             let last_width = if preview.is_some() { 300.0 } else { h.settings.column_width };
             if let Some(e) = preview {
@@ -349,7 +438,11 @@ fn column_view(h: &Hako, w: WindowKey, b: &Browser, i: usize, c: &Column, layout
         Loc::Recent => None,
     };
     let lit = b.drag.as_ref().and_then(|d| d.target.as_ref()).filter(|t| t.spot == i as u64).map(|t| t.row);
-    let faded: Vec<bool> = if h.cut_paths.is_empty() { Vec::new() } else { c.rows.iter().map(|e| h.cut_paths.contains(&e.path)).collect() };
+    let faded: Vec<bool> = if h.cut_paths.is_empty() {
+        Vec::new()
+    } else {
+        c.rows.iter().map(|e| h.cut_paths.contains(&e.path)).collect()
+    };
     let details = match c.loc {
         Loc::Trash => vec![Detail::Name, Detail::Where, Detail::Trashed, Detail::Size],
         Loc::Recent => vec![Detail::Name, Detail::Where, Detail::Modified, Detail::Size],
@@ -389,7 +482,8 @@ fn column_view(h: &Hako, w: WindowKey, b: &Browser, i: usize, c: &Column, layout
 fn preview_column(h: &Hako, e: &Entry) -> Element<Msg> {
     let p = h.previews.get(&e.path);
     let (ic, role) = look::entry_icon(e);
-    let picture: Element<Msg> = match p.and_then(|p| p.image.clone()).or_else(|| h.thumbs.images.get(&e.path).cloned()) {
+    let picture: Element<Msg> = match p.and_then(|p| p.image.clone()).or_else(|| h.thumbs.images.get(&e.path).cloned())
+    {
         Some(img) => image(img).fit(Fit::Contain).width(Length::Fill).height(180.0).into(),
         None => container(icon(ic).size(96.0).role(role)).center().width(Length::Fill).height(180.0).into(),
     };
@@ -424,16 +518,20 @@ fn preview_column(h: &Hako, e: &Entry) -> Element<Msg> {
                 .into(),
         );
     }
-    scroll(aizome_kit::column(parts).spacing(12.0).padding(16.0).width(Length::Fill)).key(("preview", e.path.clone())).into()
-}
-
-fn fact(label: &str, value: String) -> Element<Msg> {
-    row![text(label.to_owned()).size(11.5).role(Role::Text3).width(72.0), text(value).size(11.5).role(Role::Text2).width(Length::Fill)]
-        .spacing(6.0)
-        .width(Length::Fill)
+    scroll(aizome_kit::column(parts).spacing(12.0).padding(16.0).width(Length::Fill))
+        .key(("preview", e.path.clone()))
         .into()
 }
 
+fn fact(label: &str, value: String) -> Element<Msg> {
+    row![
+        text(label.to_owned()).size(11.5).role(Role::Text3).width(72.0),
+        text(value).size(11.5).role(Role::Text2).width(Length::Fill)
+    ]
+    .spacing(6.0)
+    .width(Length::Fill)
+    .into()
+}
 
 /// The status bar: what's here and selected, the space free, and
 /// operations under way.

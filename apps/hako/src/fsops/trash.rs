@@ -312,7 +312,8 @@ impl Trash {
             tried += 1;
             if tried > 1 {
                 name = names::free_name_with(&base, meta.is_dir(), |n| {
-                    fs::symlink_metadata(files.join(n)).is_err() && fs::symlink_metadata(info.join(info_name(n))).is_err()
+                    fs::symlink_metadata(files.join(n)).is_err()
+                        && fs::symlink_metadata(info.join(info_name(n))).is_err()
                 });
             }
             if fs::symlink_metadata(files.join(&name)).is_ok() {
@@ -414,7 +415,15 @@ pub fn list_can(can: &Can) -> Vec<Entry> {
                 _ => p,
             });
             seen.insert(name.clone());
-            out.push(Entry { name, file, info: Some(e.path()), original, deleted, can: can.clone(), is_dir: meta.is_dir() });
+            out.push(Entry {
+                name,
+                file,
+                info: Some(e.path()),
+                original,
+                deleted,
+                can: can.clone(),
+                is_dir: meta.is_dir(),
+            });
         }
     }
     if let Ok(rd) = fs::read_dir(can.files()) {
@@ -424,7 +433,15 @@ pub fn list_can(can: &Can) -> Vec<Entry> {
                 continue;
             }
             let is_dir = e.file_type().map(|t| t.is_dir()).unwrap_or(false);
-            out.push(Entry { file: e.path(), name, info: None, original: None, deleted: None, can: can.clone(), is_dir });
+            out.push(Entry {
+                file: e.path(),
+                name,
+                info: None,
+                original: None,
+                deleted: None,
+                can: can.clone(),
+                is_dir,
+            });
         }
     }
     out
@@ -597,9 +614,29 @@ pub struct Mount {
 /// The real filesystems in a `mountinfo`'s text.
 pub fn parse_mountinfo(text: &str) -> Vec<Mount> {
     const VIRTUAL: &[&str] = &[
-        "proc", "sysfs", "devtmpfs", "devpts", "cgroup", "cgroup2", "securityfs", "pstore", "bpf", "tracefs", "debugfs",
-        "mqueue", "hugetlbfs", "configfs", "fusectl", "efivarfs", "autofs", "binfmt_misc", "ramfs", "nsfs", "rpc_pipefs",
-        "overlay", "squashfs",
+        "proc",
+        "sysfs",
+        "devtmpfs",
+        "devpts",
+        "cgroup",
+        "cgroup2",
+        "securityfs",
+        "pstore",
+        "bpf",
+        "tracefs",
+        "debugfs",
+        "mqueue",
+        "hugetlbfs",
+        "configfs",
+        "fusectl",
+        "efivarfs",
+        "autofs",
+        "binfmt_misc",
+        "ramfs",
+        "nsfs",
+        "rpc_pipefs",
+        "overlay",
+        "squashfs",
     ];
     let mut out = Vec::new();
     for line in text.lines() {
@@ -614,7 +651,8 @@ pub fn parse_mountinfo(text: &str) -> Vec<Mount> {
         if VIRTUAL.contains(&fs_type.as_str()) {
             continue;
         }
-        if mount_point.starts_with("/nix/store") || mount_point.starts_with("/proc") || mount_point.starts_with("/sys") {
+        if mount_point.starts_with("/nix/store") || mount_point.starts_with("/proc") || mount_point.starts_with("/sys")
+        {
             continue;
         }
         out.push(Mount { mount_point, fs_type, source: rfields[1].to_owned() });

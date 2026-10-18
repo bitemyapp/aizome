@@ -18,10 +18,10 @@ use super::jobs::{self, Answer, Done, Job, JobEvent, Work};
 use super::settings::Settings;
 use crate::fsops::archive::{self, Format};
 use crate::fsops::names;
+use crate::fsops::sys;
 use crate::fsops::transfer::Mode;
 use crate::fsops::trash::{self, Trash};
 use crate::fsops::undo::{History, Record, Step};
-use crate::fsops::sys;
 use crate::model::entry::{self, Entry, Sort, SortKey};
 use crate::model::mime::MimeDb;
 use crate::model::places::{self, Place};
@@ -64,7 +64,12 @@ impl Options {
     pub fn sandbox(root: &Path) -> Options {
         Options {
             home: root.join("home"),
-            trash: Trash { home: root.join("data/Trash"), home_dir: Some(root.join("home")), uid: sys::uid(), topdirs: Some(Vec::new()) },
+            trash: Trash {
+                home: root.join("data/Trash"),
+                home_dir: Some(root.join("home")),
+                uid: sys::uid(),
+                topdirs: Some(Vec::new()),
+            },
             thumbnails: Some(Thumbnails { root: root.join("cache/thumbnails") }),
             services: false,
             watch: false,
@@ -384,7 +389,9 @@ impl Hako {
                 .unwrap_or(WindowKey::NONE);
         }
         match self.sheets.get(&key) {
-            Some(Sheet::Info { window, .. } | Sheet::QuickLook { window, .. } | Sheet::Confirm { window, .. }) => *window,
+            Some(Sheet::Info { window, .. } | Sheet::QuickLook { window, .. } | Sheet::Confirm { window, .. }) => {
+                *window
+            }
             _ => key,
         }
     }
@@ -422,7 +429,11 @@ impl Hako {
 
     /// A folder as a place: the Trash's files folder is the Trash.
     pub(crate) fn loc_for(&self, dir: &Path) -> Loc {
-        if self.opts.trash.cans().iter().any(|c| c.files() == dir) { Loc::Trash } else { Loc::Folder(dir.to_path_buf()) }
+        if self.opts.trash.cans().iter().any(|c| c.files() == dir) {
+            Loc::Trash
+        } else {
+            Loc::Folder(dir.to_path_buf())
+        }
     }
 
     /// Where the columns start for `loc`: the deepest of the places, the
@@ -435,7 +446,12 @@ impl Hako {
             roots.push(PathBuf::from(d));
         }
         roots.push(PathBuf::from("/"));
-        roots.into_iter().filter(|r| p.starts_with(r)).max_by_key(|r| r.as_os_str().len()).map(Loc::Folder).unwrap_or(Loc::Folder(PathBuf::from("/")))
+        roots
+            .into_iter()
+            .filter(|r| p.starts_with(r))
+            .max_by_key(|r| r.as_os_str().len())
+            .map(Loc::Folder)
+            .unwrap_or(Loc::Folder(PathBuf::from("/")))
     }
 
     /// Show `loc` in window `w`.
@@ -490,7 +506,9 @@ impl Hako {
         } else {
             match b.location() {
                 Some(Loc::Folder(p)) if *p == self.opts.home => "Home".to_owned(),
-                Some(Loc::Folder(p)) => p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| p.display().to_string()),
+                Some(Loc::Folder(p)) => {
+                    p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| p.display().to_string())
+                }
                 Some(Loc::Trash) => "Trash".into(),
                 Some(Loc::Recent) => "Recent".into(),
                 None => "Files".into(),
@@ -549,7 +567,13 @@ impl Hako {
             .windows
             .get(&w)
             .and_then(|b| b.columns.get(i))
-            .map(|c| c.rows.iter().filter(|e| thumbs::can_thumbnail(&e.mime)).map(|e| (e.path.clone(), e.mime.to_string())).collect())
+            .map(|c| {
+                c.rows
+                    .iter()
+                    .filter(|e| thumbs::can_thumbnail(&e.mime))
+                    .map(|e| (e.path.clone(), e.mime.to_string()))
+                    .collect()
+            })
             .unwrap_or_default();
         self.want_thumbs(cx, entries);
         // After going somewhere, the column with the selection takes the
@@ -664,7 +688,11 @@ impl Hako {
                 p.image = if full && size < 12 << 20 {
                     Image::open(&path).ok()
                 } else {
-                    cache.as_ref().and_then(|c| thumbs::make(c, &path, &mime)).and_then(|t| Image::open(t).ok()).map(|i| i.with_scale(0.5))
+                    cache
+                        .as_ref()
+                        .and_then(|c| thumbs::make(c, &path, &mime))
+                        .and_then(|t| Image::open(t).ok())
+                        .map(|i| i.with_scale(0.5))
                 };
             } else if db.is_text(&mime) || mime == crate::model::mime::EMPTY {
                 p.text = read_head(&path, if full { 64 << 10 } else { 4 << 10 });
@@ -681,7 +709,17 @@ impl Hako {
         let title = work.title();
         let tx = cx.stream();
         let (control, answers) = jobs::start(id, work, self.opts.trash.clone(), tx, Msg::Job);
-        self.jobs.push(Job { id, title, window: w, control, progress: Default::default(), question: None, sheet: None, answers, started: Instant::now() });
+        self.jobs.push(Job {
+            id,
+            title,
+            window: w,
+            control,
+            progress: Default::default(),
+            question: None,
+            sheet: None,
+            answers,
+            started: Instant::now(),
+        });
         cx.after(Duration::from_millis(600), Msg::JobSlow(id));
     }
 
@@ -694,7 +732,10 @@ impl Hako {
             }
             JobEvent::Ask(q) => {
                 let window = self.jobs.iter().find(|j| j.id == id).map(|j| j.window);
-                let parent = window.filter(|w| self.windows.contains_key(w)).or(self.ops_window).or_else(|| self.windows.keys().next().copied());
+                let parent = window
+                    .filter(|w| self.windows.contains_key(w))
+                    .or(self.ops_window)
+                    .or_else(|| self.windows.keys().next().copied());
                 if let Some(j) = self.jobs.iter_mut().find(|j| j.id == id) {
                     j.question = Some(q);
                 }
@@ -752,11 +793,23 @@ impl Hako {
             let shown: Vec<String> = problems
                 .iter()
                 .take(6)
-                .map(|(p, why)| format!("“{}”: {why}", p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| p.display().to_string())))
+                .map(|(p, why)| {
+                    format!(
+                        "“{}”: {why}",
+                        p.file_name()
+                            .map(|n| n.to_string_lossy().into_owned())
+                            .unwrap_or_else(|| p.display().to_string())
+                    )
+                })
                 .collect();
             let more = if n > 6 { format!("\n…and {} more.", n - 6) } else { String::new() };
-            let head = if n == 1 { "An item couldn't be done.".to_owned() } else { format!("{n} items couldn't be done.") };
-            self.open_sheet(cx, w, Sheet::Message { title: format!("{title}: {head}"), body: shown.join("\n") + &more });
+            let head =
+                if n == 1 { "An item couldn't be done.".to_owned() } else { format!("{n} items couldn't be done.") };
+            self.open_sheet(
+                cx,
+                w,
+                Sheet::Message { title: format!("{title}: {head}"), body: shown.join("\n") + &more },
+            );
         }
     }
 
@@ -847,7 +900,11 @@ impl Hako {
             self.opened.push(path.to_path_buf());
             return;
         }
-        let mime = if mime == crate::model::mime::UNKNOWN { MimeDb::get().for_file(path, true).to_string() } else { mime.to_owned() };
+        let mime = if mime == crate::model::mime::UNKNOWN {
+            MimeDb::get().for_file(path, true).to_string()
+        } else {
+            mime.to_owned()
+        };
         if let Some(apps) = &self.apps
             && let Some(id) = apps.default_for(&mime)
             && let Some(app) = apps.get(&id)
@@ -897,7 +954,8 @@ impl Hako {
             _ => {
                 // Another program's: files as a file manager puts them (a
                 // cut moves), else paths or file URIs as text, a line each.
-                let (cut, ps) = super::clipboard::foreign_files().unwrap_or_else(|| (false, uri::parse_uri_list(&text)));
+                let (cut, ps) =
+                    super::clipboard::foreign_files().unwrap_or_else(|| (false, uri::parse_uri_list(&text)));
                 let ps: Vec<PathBuf> = ps.into_iter().filter(|p| std::fs::symlink_metadata(p).is_ok()).collect();
                 if ps.is_empty() {
                     return;
@@ -947,7 +1005,10 @@ impl Hako {
         match sys::rename_noreplace(&r.path, &to) {
             Ok(()) => {
                 b.rename = None;
-                self.history.push(Step { record: Record::Rename { from: r.path.clone(), to: to.clone() }, label: "Rename".into() });
+                self.history.push(Step {
+                    record: Record::Rename { from: r.path.clone(), to: to.clone() },
+                    label: "Rename".into(),
+                });
                 let dir = dir.to_path_buf();
                 self.select_after(&dir, vec![OsString::from(&text)]);
                 self.reload_dir(cx, &dir);
@@ -970,7 +1031,8 @@ impl Hako {
         let path = dir.join(&name);
         match std::fs::create_dir(&path) {
             Ok(()) => {
-                self.history.push(Step { record: Record::Made { paths: vec![path.clone()] }, label: "New Folder".into() });
+                self.history
+                    .push(Step { record: Record::Made { paths: vec![path.clone()] }, label: "New Folder".into() });
                 if let Some(b) = self.windows.get_mut(&w) {
                     let focus = b.focus;
                     b.columns.truncate(focus + 1);
@@ -982,7 +1044,11 @@ impl Hako {
                 self.reload_dir(cx, &dir);
             }
             Err(e) => {
-                self.open_sheet(cx, w, Sheet::Message { title: "The folder couldn't be made.".into(), body: crate::fsops::describe(&e) });
+                self.open_sheet(
+                    cx,
+                    w,
+                    Sheet::Message { title: "The folder couldn't be made.".into(), body: crate::fsops::describe(&e) },
+                );
             }
         }
     }
@@ -1051,7 +1117,8 @@ pub fn read_loc(loc: &Loc, sort: Sort, trash: &Trash, services: bool) -> Result<
 
 /// Launch `app` on `path` (in the background).
 pub(crate) fn launch_app(app: aizome_sys::apps::App, path: &Path) {
-    let options = aizome_sys::apps::LaunchOptions { targets: vec![path.to_string_lossy().into_owned()], ..Default::default() };
+    let options =
+        aizome_sys::apps::LaunchOptions { targets: vec![path.to_string_lossy().into_owned()], ..Default::default() };
     std::thread::spawn(move || {
         if let Err(e) = aizome_sys::apps::launch(&app, &options) {
             log::warn!("{}: {e}", app.id);

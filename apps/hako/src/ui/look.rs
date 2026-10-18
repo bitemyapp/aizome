@@ -35,15 +35,17 @@ pub fn mime_icon(mime: &str, name: &str) -> (Icon, Role) {
         _ => match minor {
             "pdf" => (Icon::FileText, Role::Danger),
             "x-cd-image" | "x-iso9660-image" | "x-raw-disk-image" => (Icon::Disc, Role::Violet),
-            "json" | "xml" | "javascript" | "toml" | "x-yaml" | "yaml" | "x-shellscript" | "x-perl" | "x-ruby" | "sql"
-            | "x-typescript" | "wasm" => (Icon::FileCode, Role::Cyan),
+            "json" | "xml" | "javascript" | "toml" | "x-yaml" | "yaml" | "x-shellscript" | "x-perl" | "x-ruby"
+            | "sql" | "x-typescript" | "wasm" => (Icon::FileCode, Role::Cyan),
             "x-executable" | "x-sharedlib" | "x-pie-executable" => (Icon::FileTerminal, Role::Text2),
             "x-desktop" => (Icon::AppWindow, Role::Text2),
             m if m.contains("spreadsheet") || m.contains("excel") => (Icon::FileSpreadsheet, Role::Success),
             m if m.contains("zip") || m.contains("compressed") || m.contains("tar") || m.contains("archive") => {
                 (Icon::FileArchive, Role::Warning)
             }
-            m if m.contains("document") || m.contains("word") || m.contains("opendocument") => (Icon::FileText, Role::Accent),
+            m if m.contains("document") || m.contains("word") || m.contains("opendocument") => {
+                (Icon::FileText, Role::Accent)
+            }
             "x-zerosize" => (Icon::File, Role::Text3),
             _ => (Icon::File, Role::Text2),
         },
@@ -54,10 +56,45 @@ fn is_code(minor: &str) -> bool {
     let m = minor.trim_start_matches("x-");
     matches!(
         m,
-        "rust" | "python" | "csrc" | "chdr" | "c++src" | "c++hdr" | "java" | "go" | "javascript" | "nix" | "makefile"
-            | "cmake" | "shellscript" | "lua" | "haskell" | "ocaml" | "zig" | "swift" | "kotlin" | "scala" | "ruby"
-            | "perl" | "php" | "css" | "html" | "scss" | "typescript" | "vala" | "csharp" | "elixir" | "erlang" | "dart"
-            | "patch" | "diff" | "toml" | "yaml" | "sql" | "tex" | "meson"
+        "rust"
+            | "python"
+            | "csrc"
+            | "chdr"
+            | "c++src"
+            | "c++hdr"
+            | "java"
+            | "go"
+            | "javascript"
+            | "nix"
+            | "makefile"
+            | "cmake"
+            | "shellscript"
+            | "lua"
+            | "haskell"
+            | "ocaml"
+            | "zig"
+            | "swift"
+            | "kotlin"
+            | "scala"
+            | "ruby"
+            | "perl"
+            | "php"
+            | "css"
+            | "html"
+            | "scss"
+            | "typescript"
+            | "vala"
+            | "csharp"
+            | "elixir"
+            | "erlang"
+            | "dart"
+            | "patch"
+            | "diff"
+            | "toml"
+            | "yaml"
+            | "sql"
+            | "tex"
+            | "meson"
     )
 }
 

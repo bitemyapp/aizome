@@ -42,7 +42,11 @@ pub fn menu_bar(h: &Hako) -> MenuBar<Msg> {
         .item(item("Quick Look", Msg::QuickLook(w)).enabled(has_sel))
         .item(item("Get Info", Msg::GetInfo(w)).shortcut(Shortcut::cmd('I')))
         .separator()
-        .item(item("Rename…", Msg::StartRename(w)).shortcut(Shortcut::key(ShortcutKey::F(2))).enabled(single && !in_trash))
+        .item(
+            item("Rename…", Msg::StartRename(w))
+                .shortcut(Shortcut::key(ShortcutKey::F(2)))
+                .enabled(single && !in_trash),
+        )
         .item(item("Duplicate", Msg::Duplicate(w)).shortcut(Shortcut::cmd('D')).enabled(has_sel && !in_trash))
         .item(item(&compress_label(&sel), Msg::Compress(w, Format::Zip)).enabled(has_sel && !in_trash))
         .submenu(compress_as(w, has_sel && !in_trash))
@@ -50,13 +54,25 @@ pub fn menu_bar(h: &Hako) -> MenuBar<Msg> {
         .separator();
     if in_trash {
         file = file
-            .item(item("Put Back", Msg::PutBack(w)).shortcut(Shortcut::cmd_key(ShortcutKey::Backspace)).enabled(has_sel))
-            .item(item("Delete Immediately…", Msg::AskErase(w)).shortcut(Shortcut::cmd_key(ShortcutKey::Backspace).alt()).enabled(has_sel));
+            .item(
+                item("Put Back", Msg::PutBack(w)).shortcut(Shortcut::cmd_key(ShortcutKey::Backspace)).enabled(has_sel),
+            )
+            .item(
+                item("Delete Immediately…", Msg::AskErase(w))
+                    .shortcut(Shortcut::cmd_key(ShortcutKey::Backspace).alt())
+                    .enabled(has_sel),
+            );
     } else {
-        file = file.item(item("Move to Trash", Msg::Trash(w)).shortcut(Shortcut::cmd_key(ShortcutKey::Backspace)).enabled(has_sel));
+        file = file.item(
+            item("Move to Trash", Msg::Trash(w)).shortcut(Shortcut::cmd_key(ShortcutKey::Backspace)).enabled(has_sel),
+        );
     }
     file = file
-        .item(item("Empty Trash…", Msg::AskEmptyTrash(w)).shortcut(Shortcut::cmd_key(ShortcutKey::Backspace).shift()).enabled(!h.trash_is_empty()))
+        .item(
+            item("Empty Trash…", Msg::AskEmptyTrash(w))
+                .shortcut(Shortcut::cmd_key(ShortcutKey::Backspace).shift())
+                .enabled(!h.trash_is_empty()),
+        )
         .separator()
         .item(item("Close Window", Msg::CloseWindow(w)).shortcut(Shortcut::cmd('W')));
 
@@ -70,8 +86,18 @@ pub fn menu_bar(h: &Hako) -> MenuBar<Msg> {
     };
     let can_paste = folder && !in_trash;
     let edit = Menu::new("Edit")
-        .item(MenuItem::new(undo, Msg::Undo).role(MenuRole::Undo).shortcut(Shortcut::cmd('Z')).enabled(h.history.undo_label().is_some()))
-        .item(MenuItem::new(redo, Msg::Redo).role(MenuRole::Redo).shortcut(Shortcut::cmd('Z').shift()).enabled(h.history.redo_label().is_some()))
+        .item(
+            MenuItem::new(undo, Msg::Undo)
+                .role(MenuRole::Undo)
+                .shortcut(Shortcut::cmd('Z'))
+                .enabled(h.history.undo_label().is_some()),
+        )
+        .item(
+            MenuItem::new(redo, Msg::Redo)
+                .role(MenuRole::Redo)
+                .shortcut(Shortcut::cmd('Z').shift())
+                .enabled(h.history.redo_label().is_some()),
+        )
         .separator()
         .item(item("Cut", Msg::Cut(w)).role(MenuRole::Cut).shortcut(Shortcut::cmd('X')).enabled(has_sel && !in_trash))
         .item(item("Copy", Msg::Copy(w)).role(MenuRole::Copy).shortcut(Shortcut::cmd('C')).enabled(has_sel))
@@ -85,7 +111,12 @@ pub fn menu_bar(h: &Hako) -> MenuBar<Msg> {
 
     let sort = h.settings.sort;
     let mut sort_menu = Menu::new("Sort By");
-    for (label, key) in [("Name", SortKey::Name), ("Size", SortKey::Size), ("Kind", SortKey::Kind), ("Date Modified", SortKey::Modified)] {
+    for (label, key) in [
+        ("Name", SortKey::Name),
+        ("Size", SortKey::Size),
+        ("Kind", SortKey::Kind),
+        ("Date Modified", SortKey::Modified),
+    ] {
         sort_menu = sort_menu.item(item(label, Msg::SortBy(key)).checked(sort.key == key));
     }
     sort_menu = sort_menu
@@ -95,18 +126,42 @@ pub fn menu_bar(h: &Hako) -> MenuBar<Msg> {
         .separator()
         .item(item("Folders First", Msg::FoldersFirst(!sort.folders_first)).checked(sort.folders_first));
     let view = Menu::new("View")
-        .item(item("as Columns", Msg::SetLayout(w, Layout::Column)).shortcut(Shortcut::cmd('1')).checked(layout == Layout::Column))
-        .item(item("as List", Msg::SetLayout(w, Layout::List)).shortcut(Shortcut::cmd('2')).checked(layout == Layout::List))
-        .item(item("as Icons", Msg::SetLayout(w, Layout::Icons)).shortcut(Shortcut::cmd('3')).checked(layout == Layout::Icons))
+        .item(
+            item("as Columns", Msg::SetLayout(w, Layout::Column))
+                .shortcut(Shortcut::cmd('1'))
+                .checked(layout == Layout::Column),
+        )
+        .item(
+            item("as List", Msg::SetLayout(w, Layout::List))
+                .shortcut(Shortcut::cmd('2'))
+                .checked(layout == Layout::List),
+        )
+        .item(
+            item("as Icons", Msg::SetLayout(w, Layout::Icons))
+                .shortcut(Shortcut::cmd('3'))
+                .checked(layout == Layout::Icons),
+        )
         .separator()
         .submenu(sort_menu)
-        .item(item("Show Hidden Files", Msg::ToggleHidden).shortcut(Shortcut::cmd('.').shift()).checked(h.settings.hidden));
+        .item(
+            item("Show Hidden Files", Msg::ToggleHidden)
+                .shortcut(Shortcut::cmd('.').shift())
+                .checked(h.settings.hidden),
+        );
 
     let mut go = Menu::new("Go")
         .item(item("Back", Msg::Back(w)).shortcut(Shortcut::cmd('[')).enabled(b.is_some_and(|b| !b.back.is_empty())))
-        .item(item("Forward", Msg::Forward(w)).shortcut(Shortcut::cmd(']')).enabled(b.is_some_and(|b| !b.forward.is_empty())))
+        .item(
+            item("Forward", Msg::Forward(w))
+                .shortcut(Shortcut::cmd(']'))
+                .enabled(b.is_some_and(|b| !b.forward.is_empty())),
+        )
         .item(item("Enclosing Folder", Msg::Up(w)).shortcut(Shortcut::cmd_key(ShortcutKey::Up)))
-        .item(item("Open Selected", Msg::OpenSelection(w)).shortcut(Shortcut::cmd_key(ShortcutKey::Down)).enabled(has_sel))
+        .item(
+            item("Open Selected", Msg::OpenSelection(w))
+                .shortcut(Shortcut::cmd_key(ShortcutKey::Down))
+                .enabled(has_sel),
+        )
         .separator();
     let shortcut_for = |kind| match kind {
         crate::model::places::PlaceKind::Home => Some(Shortcut::cmd('H').shift()),
@@ -140,7 +195,9 @@ pub fn menu_bar(h: &Hako) -> MenuBar<Msg> {
 
 fn compress_label(sel: &[PathBuf]) -> String {
     match sel {
-        [one] => format!("Compress “{}”", one.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()),
+        [one] => {
+            format!("Compress “{}”", one.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default())
+        }
         [] => "Compress".into(),
         _ => format!("Compress {} Items", sel.len()),
     }
@@ -206,7 +263,10 @@ pub fn item_menu(h: &Hako, w: WindowKey) -> Menu<Msg> {
     if elsewhere && let [one] = sel.as_slice() {
         m = m.item(MenuItem::new("Show in Enclosing Folder", Msg::ShowInFolder(w, one.clone())));
     }
-    m = m.separator().item(MenuItem::new("Get Info", Msg::GetInfo(w))).item(MenuItem::new("Quick Look", Msg::QuickLook(w)));
+    m = m
+        .separator()
+        .item(MenuItem::new("Get Info", Msg::GetInfo(w)))
+        .item(MenuItem::new("Quick Look", Msg::QuickLook(w)));
     if in_trash {
         return m
             .separator()

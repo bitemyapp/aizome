@@ -12,7 +12,10 @@ use super::app::Request;
 
 /// The socket.
 pub fn socket_path() -> PathBuf {
-    let dir = std::env::var_os("XDG_RUNTIME_DIR").filter(|v| !v.is_empty()).map(PathBuf::from).unwrap_or_else(std::env::temp_dir);
+    let dir = std::env::var_os("XDG_RUNTIME_DIR")
+        .filter(|v| !v.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(std::env::temp_dir);
     // A display of its own (a nested or headless session) runs its own
     // Hako.
     let display = std::env::var("WAYLAND_DISPLAY").unwrap_or_default();
@@ -87,7 +90,11 @@ pub fn claim(requests: &[Request]) -> Claim {
 }
 
 /// Answer later launches on a thread of their own.
-pub fn serve<Msg: Send + 'static>(listener: UnixListener, tx: MsgSender<Msg>, msg: impl Fn(Vec<Request>) -> Msg + Send + 'static) {
+pub fn serve<Msg: Send + 'static>(
+    listener: UnixListener,
+    tx: MsgSender<Msg>,
+    msg: impl Fn(Vec<Request>) -> Msg + Send + 'static,
+) {
     let _ = std::thread::Builder::new().name("hako-instance".into()).spawn(move || {
         for stream in listener.incoming() {
             let Ok(mut s) = stream else { continue };

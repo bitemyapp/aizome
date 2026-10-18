@@ -125,9 +125,16 @@ pub fn system_disk(home: &Path) -> Option<Place> {
     let root = mounts.iter().find(|m| m.mount_point == Path::new("/"));
     let chosen = match root {
         Some(r) if r.source.starts_with("/dev/") => r,
-        _ => mounts.iter().filter(|m| home.starts_with(&m.mount_point) && m.source.starts_with("/dev/")).max_by_key(|m| m.mount_point.as_os_str().len())?,
+        _ => mounts
+            .iter()
+            .filter(|m| home.starts_with(&m.mount_point) && m.source.starts_with("/dev/"))
+            .max_by_key(|m| m.mount_point.as_os_str().len())?,
     };
-    Some(Place { name: disk_name(&chosen.source).unwrap_or_else(|| "System".into()), path: chosen.mount_point.clone(), kind: PlaceKind::Disk })
+    Some(Place {
+        name: disk_name(&chosen.source).unwrap_or_else(|| "System".into()),
+        path: chosen.mount_point.clone(),
+        kind: PlaceKind::Disk,
+    })
 }
 
 /// A device's short name: `/dev/nvme0n1p2` → `nvme0`, `/dev/sda2` →

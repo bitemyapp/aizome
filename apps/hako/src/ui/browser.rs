@@ -114,7 +114,8 @@ impl Column {
 
     /// Select the rows of these names (in the column's own names).
     pub fn select_names(&mut self, names: &[OsString]) {
-        let sel: Vec<usize> = self.rows.iter().enumerate().filter(|(_, e)| names.contains(&e.name)).map(|(i, _)| i).collect();
+        let sel: Vec<usize> =
+            self.rows.iter().enumerate().filter(|(_, e)| names.contains(&e.name)).map(|(i, _)| i).collect();
         self.selected = Rc::new(sel);
     }
 }
@@ -297,7 +298,12 @@ impl Browser {
 
     /// Make the columns after `col` match its selection.
     pub fn open_after(&mut self, col: usize, generation: u64) -> bool {
-        let next = self.columns.get(col).and_then(|c| c.single()).filter(|e| e.is_folder()).map(|e| Loc::Folder(e.path.clone()));
+        let next = self
+            .columns
+            .get(col)
+            .and_then(|c| c.single())
+            .filter(|e| e.is_folder())
+            .map(|e| Loc::Folder(e.path.clone()));
         if let Some(loc) = next {
             if self.columns.get(col + 1).is_some_and(|c| c.loc == loc) {
                 self.columns.truncate(col + 2);

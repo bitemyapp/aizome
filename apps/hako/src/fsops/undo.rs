@@ -14,8 +14,8 @@
 
 use std::path::PathBuf;
 
-use super::trash::{Trash, Trashed};
 use super::transfer::{self, Item, Mode};
+use super::trash::{Trash, Trashed};
 use super::{Env, Report, sys};
 
 /// What an operation did, to undo.
@@ -145,7 +145,8 @@ pub fn invert(record: &Record, trash: &Trash, env: &mut Env) -> (Report, Record)
             }
         }
         Record::Move { pairs } => {
-            let items: Vec<Item> = pairs.iter().map(|(was, now)| Item { source: now.clone(), target: was.clone() }).collect();
+            let items: Vec<Item> =
+                pairs.iter().map(|(was, now)| Item { source: now.clone(), target: was.clone() }).collect();
             let report = transfer::transfer_items(&items, Mode::Move, env, Some(trash));
             let back = report.done.iter().map(|(now, was)| (now.clone(), was.clone())).collect();
             (report, Record::Move { pairs: back })

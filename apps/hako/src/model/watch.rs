@@ -50,7 +50,9 @@ impl Watcher {
         let watches: Arc<Mutex<HashMap<i32, PathBuf>>> = Arc::default();
         let thread = {
             let (fd, watches) = (fd.clone(), watches.clone());
-            std::thread::Builder::new().name("hako-watch".into()).spawn(move || read_events(&fd, &wake_r, &watches, &on_change))?
+            std::thread::Builder::new()
+                .name("hako-watch".into())
+                .spawn(move || read_events(&fd, &wake_r, &watches, &on_change))?
         };
         Ok(Watcher { fd, stop, watches, thread: Some(thread) })
     }

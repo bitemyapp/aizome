@@ -93,8 +93,20 @@ pub fn date(secs: i64, now: i64) -> String {
 /// A moment in full, for Get Info: "Saturday 17 October 2026, 21:42".
 pub fn date_long(secs: i64) -> String {
     const DAYS: [&str; 7] = ["Thursday", "Friday", "Saturday", "Sunday", "Monday", "Tuesday", "Wednesday"];
-    const LONG: [&str; 12] =
-        ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+    const LONG: [&str; 12] = [
+        "January",
+        "February",
+        "March",
+        "April",
+        "May",
+        "June",
+        "July",
+        "August",
+        "September",
+        "October",
+        "November",
+        "December",
+    ];
     let Some(t) = local(secs) else { return "—".into() };
     let weekday = DAYS[t.days.rem_euclid(7) as usize];
     format!("{weekday} {} {} {}, {:02}:{:02}", t.day, LONG[(t.month - 1) as usize], t.year, t.hour, t.minute)
@@ -108,7 +120,17 @@ pub fn now() -> i64 {
 /// `rwxr-xr-x`, with the special bits as `ls` shows them.
 pub fn permissions(mode: u32) -> String {
     let mut s = String::with_capacity(9);
-    let bits = [(0o400, 'r'), (0o200, 'w'), (0o100, 'x'), (0o040, 'r'), (0o020, 'w'), (0o010, 'x'), (0o004, 'r'), (0o002, 'w'), (0o001, 'x')];
+    let bits = [
+        (0o400, 'r'),
+        (0o200, 'w'),
+        (0o100, 'x'),
+        (0o040, 'r'),
+        (0o020, 'w'),
+        (0o010, 'x'),
+        (0o004, 'r'),
+        (0o002, 'w'),
+        (0o001, 'x'),
+    ];
     for (i, (bit, c)) in bits.iter().enumerate() {
         let on = mode & bit != 0;
         let special = match i {

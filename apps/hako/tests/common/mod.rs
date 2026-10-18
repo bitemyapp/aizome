@@ -125,7 +125,8 @@ pub fn settle(h: &mut Harness<Hako>) {
     loop {
         h.send(Msg::Nop);
         let p = h.program();
-        let loading = p.windows.values().any(|b| b.columns.iter().any(|c| matches!(c.load, Load::Wanted | Load::Loading(_))));
+        let loading =
+            p.windows.values().any(|b| b.columns.iter().any(|c| matches!(c.load, Load::Wanted | Load::Loading(_))));
         let searching = p.windows.values().any(|b| b.search.as_ref().is_some_and(|s| s.running));
         if !loading && p.jobs.is_empty() && !searching {
             // Once more, for what came with the last.
@@ -157,7 +158,8 @@ pub fn wait_for(h: &mut Harness<Hako>, cond: impl Fn(&Hako) -> bool) -> bool {
 
 /// Where test pictures go for looking at.
 pub fn out(name: &str) -> PathBuf {
-    let dir = option_env!("CARGO_TARGET_TMPDIR").map(PathBuf::from).unwrap_or_else(std::env::temp_dir).join("hako-shots");
+    let dir =
+        option_env!("CARGO_TARGET_TMPDIR").map(PathBuf::from).unwrap_or_else(std::env::temp_dir).join("hako-shots");
     std::fs::create_dir_all(&dir).unwrap();
     dir.join(name)
 }

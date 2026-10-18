@@ -136,13 +136,12 @@ impl<Msg: Clone + Send + 'static> Widget for Strip<Msg> {
             }
         }
         // A thin bar while it moves.
-        if self.content > self.viewport + 0.5
-            && st.is_some_and(|s| s.bar_until.is_some_and(|u| cx.now() < u))
-        {
+        if self.content > self.viewport + 0.5 && st.is_some_and(|s| s.bar_until.is_some_and(|u| cx.now() < u)) {
             let track = Rect::new(2.0, b.y1 - 6.0, b.x1 - 2.0, b.y1 - 2.0);
             let len = (track.width() * self.viewport / self.content).max(24.0);
             let x = track.x0 + (track.width() - len) * (off / (self.content - self.viewport)).clamp(0.0, 1.0);
-            cx.canvas.fill_rect(Rect::new(x.round(), track.y0, (x + len).round(), track.y1), t.line2().mix(t.text3(), 0.35));
+            cx.canvas
+                .fill_rect(Rect::new(x.round(), track.y0, (x + len).round(), track.y1), t.line2().mix(t.text3(), 0.35));
         }
     }
 

@@ -64,8 +64,30 @@ impl Format {
 
 /// Extensions of files `bsdtar` can extract.
 const ARCHIVES: &[&str] = &[
-    ".zip", ".tar", ".tar.gz", ".tgz", ".tar.bz2", ".tbz2", ".tar.xz", ".txz", ".tar.zst", ".tzst", ".tar.lz", ".tar.lzma",
-    ".7z", ".rar", ".cpio", ".iso", ".xar", ".cab", ".lha", ".lzh", ".ar", ".deb", ".jar", ".apk",
+    ".zip",
+    ".tar",
+    ".tar.gz",
+    ".tgz",
+    ".tar.bz2",
+    ".tbz2",
+    ".tar.xz",
+    ".txz",
+    ".tar.zst",
+    ".tzst",
+    ".tar.lz",
+    ".tar.lzma",
+    ".7z",
+    ".rar",
+    ".cpio",
+    ".iso",
+    ".xar",
+    ".cab",
+    ".lha",
+    ".lzh",
+    ".ar",
+    ".deb",
+    ".jar",
+    ".apk",
 ];
 
 /// Whether `name` looks like an archive Extract can open.
@@ -180,9 +202,12 @@ pub fn extract(archive: &Path, dest: &Path, env: &mut Env) -> Report {
     let mut list = Command::new(&tar);
     list.arg("-t").arg("-f").arg(archive);
     match list.stderr(Stdio::piped()).output() {
-        Ok(out) if out.status.success() => env.progress.items_total = out.stdout.split(|&b| b == b'\n').filter(|l| !l.is_empty()).count() as u64,
+        Ok(out) if out.status.success() => {
+            env.progress.items_total = out.stdout.split(|&b| b == b'\n').filter(|l| !l.is_empty()).count() as u64
+        }
         Ok(out) => {
-            let why = String::from_utf8_lossy(&out.stderr).trim().lines().last().unwrap_or("it can't be read").to_owned();
+            let why =
+                String::from_utf8_lossy(&out.stderr).trim().lines().last().unwrap_or("it can't be read").to_owned();
             report.failed.push((archive.to_path_buf(), clean_message(&why)));
             return report;
         }
@@ -213,7 +238,8 @@ pub fn extract(archive: &Path, dest: &Path, env: &mut Env) -> Report {
             return report;
         }
     }
-    let inside: Vec<_> = std::fs::read_dir(&partial).map(|rd| rd.flatten().map(|e| e.path()).collect()).unwrap_or_default();
+    let inside: Vec<_> =
+        std::fs::read_dir(&partial).map(|rd| rd.flatten().map(|e| e.path()).collect()).unwrap_or_default();
     let result = if let [one] = inside.as_slice() {
         let is_dir = std::fs::symlink_metadata(one).is_ok_and(|m| m.is_dir());
         let to = dest.join(names::free_name(dest, one.file_name().unwrap_or_default(), is_dir));

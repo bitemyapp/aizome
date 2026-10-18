@@ -12,7 +12,10 @@ use aizome_kit::{Constraints, Point, Size};
 pub const KEY_DOT: u32 = 52;
 
 /// `child`, with `on_key` hearing the keys nothing inside took.
-pub fn catcher<Msg: Clone + Send + 'static>(child: Element<Msg>, on_key: impl Fn(&KeyEvent) -> Option<Msg> + 'static) -> Element<Msg> {
+pub fn catcher<Msg: Clone + Send + 'static>(
+    child: Element<Msg>,
+    on_key: impl Fn(&KeyEvent) -> Option<Msg> + 'static,
+) -> Element<Msg> {
     Element::new(Catcher { on_key: Rc::new(on_key) }, vec![child])
 }
 

@@ -20,7 +20,11 @@ fn shows_home_in_columns() {
     assert_eq!(b.columns.len(), 1);
     assert_eq!(b.columns[0].loc, Loc::Folder(s.home()));
     let names: Vec<String> = b.columns[0].rows.iter().map(|e| e.display.clone()).collect();
-    assert_eq!(names, ["Desktop", "Documents", "Downloads", "Music", "Pictures", "Videos", "work"], "folders, sorted, hidden files hidden");
+    assert_eq!(
+        names,
+        ["Desktop", "Documents", "Downloads", "Music", "Pictures", "Videos", "work"],
+        "folders, sorted, hidden files hidden"
+    );
     h.send(Msg::GoPath(w, s.home().join("work/sidestep/README.md")));
     settle(&mut h);
     h.save_png(w, out("columns-night.png"), 2.0);

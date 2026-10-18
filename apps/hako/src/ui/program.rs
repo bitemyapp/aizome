@@ -92,7 +92,12 @@ impl Program for Hako {
                 cx.focus("search");
             }
             Msg::NewWindow => {
-                let loc = self.windows.values().last().and_then(|b| b.location().cloned()).unwrap_or(Loc::Folder(self.opts.home.clone()));
+                let loc = self
+                    .windows
+                    .values()
+                    .last()
+                    .and_then(|b| b.location().cloned())
+                    .unwrap_or(Loc::Folder(self.opts.home.clone()));
                 self.open_window(cx, loc, None);
             }
             Msg::CloseWindow(w) => {
@@ -214,7 +219,11 @@ impl Program for Hako {
                     let n = b.columns.len();
                     // Columns after a folder no longer shown go.
                     for i in 0..n {
-                        if i + 1 < b.columns.len() && b.columns[i].single().is_none_or(|e| Some(&e.path) != b.columns[i + 1].loc.folder().map(|p| p.to_path_buf()).as_ref()) {
+                        if i + 1 < b.columns.len()
+                            && b.columns[i].single().is_none_or(|e| {
+                                Some(&e.path) != b.columns[i + 1].loc.folder().map(|p| p.to_path_buf()).as_ref()
+                            })
+                        {
                             b.columns.truncate(i + 1);
                             break;
                         }
@@ -250,7 +259,11 @@ impl Program for Hako {
             Msg::PathSubmit(w) => {
                 let text = self.windows.get(&w).and_then(|b| b.path_edit.clone()).unwrap_or_default();
                 let p = crate::fsops::names::expand_tilde(text.trim(), &self.opts.home);
-                let p = if p.is_absolute() { p } else { self.focused_folder(w).unwrap_or_else(|| self.opts.home.clone()).join(p) };
+                let p = if p.is_absolute() {
+                    p
+                } else {
+                    self.focused_folder(w).unwrap_or_else(|| self.opts.home.clone()).join(p)
+                };
                 if std::fs::symlink_metadata(&p).is_ok() {
                     if let Some(b) = self.windows.get_mut(&w) {
                         b.path_edit = None;
@@ -474,7 +487,9 @@ impl Program for Hako {
             Msg::QuickLook(w) => {
                 let w = self.owner(w);
                 // Space again closes it.
-                if let Some((&s, _)) = self.sheets.iter().find(|(_, s)| matches!(s, Sheet::QuickLook { window, .. } if *window == w)) {
+                if let Some((&s, _)) =
+                    self.sheets.iter().find(|(_, s)| matches!(s, Sheet::QuickLook { window, .. } if *window == w))
+                {
                     self.sheets.remove(&s);
                     cx.close_window(s);
                     return;

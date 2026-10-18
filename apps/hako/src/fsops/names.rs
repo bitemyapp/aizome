@@ -26,7 +26,9 @@ pub fn split_ext(name: &OsStr, is_dir: bool) -> (OsString, OsString) {
         }
     }
     match b.iter().rposition(|&c| c == b'.') {
-        Some(i) if i > 0 && i + 1 < b.len() => (OsString::from_vec(b[..i].to_vec()), OsString::from_vec(b[i..].to_vec())),
+        Some(i) if i > 0 && i + 1 < b.len() => {
+            (OsString::from_vec(b[..i].to_vec()), OsString::from_vec(b[i..].to_vec()))
+        }
         _ => (name.to_os_string(), OsString::new()),
     }
 }
@@ -257,7 +259,8 @@ mod tests {
 
     #[test]
     fn names_duplicates() {
-        let taken: HashSet<&str> = ["photo.jpg", "photo copy.jpg", "notes", "notes copy", "notes copy 2"].into_iter().collect();
+        let taken: HashSet<&str> =
+            ["photo.jpg", "photo copy.jpg", "notes", "notes copy", "notes copy 2"].into_iter().collect();
         let free = |n: &OsStr| !taken.contains(n.to_str().unwrap());
         assert_eq!(duplicate_name_with(os("photo.jpg"), false, free), "photo copy 2.jpg");
         assert_eq!(duplicate_name_with(os("notes"), true, free), "notes copy 3");

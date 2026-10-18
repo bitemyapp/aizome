@@ -100,7 +100,17 @@ impl Thumbnails {
     /// Keep a thumbnail made from straight RGBA pixels (scaled down to
     /// fit `size`).
     #[allow(clippy::too_many_arguments)]
-    pub fn save(&self, file: &Path, mtime: i64, file_size: u64, mime: &str, rgba: &[u8], width: u32, height: u32, size: ThumbSize) -> io::Result<PathBuf> {
+    pub fn save(
+        &self,
+        file: &Path,
+        mtime: i64,
+        file_size: u64,
+        mime: &str,
+        rgba: &[u8],
+        width: u32,
+        height: u32,
+        size: ThumbSize,
+    ) -> io::Result<PathBuf> {
         let uri = file_uri(file);
         let (px, w, h) = scale_to_fit(rgba, width, height, size.pixels());
         let p = self.path(&uri, size);
@@ -122,14 +132,21 @@ impl Thumbnails {
     /// Mark `file` as failing (until it changes).
     pub fn save_failure(&self, file: &Path, mtime: i64) -> io::Result<()> {
         let uri = file_uri(file);
-        write_png(&self.fail_path(&uri), &[0, 0, 0, 0], 1, 1, &[("Thumb::URI", uri.clone()), ("Thumb::MTime", mtime.to_string()), ("Software", "Aizome Hako".into())])
+        write_png(
+            &self.fail_path(&uri),
+            &[0, 0, 0, 0],
+            1,
+            1,
+            &[("Thumb::URI", uri.clone()), ("Thumb::MTime", mtime.to_string()), ("Software", "Aizome Hako".into())],
+        )
     }
 }
 
 /// Whether the PNG at `p` is `uri`'s at `mtime`.
 fn is_valid(p: &Path, uri: &str, mtime: i64) -> bool {
     let text = read_text(p);
-    text.get("Thumb::URI").is_some_and(|u| u == uri) && text.get("Thumb::MTime").and_then(|m| m.parse::<i64>().ok()) == Some(mtime)
+    text.get("Thumb::URI").is_some_and(|u| u == uri)
+        && text.get("Thumb::MTime").and_then(|m| m.parse::<i64>().ok()) == Some(mtime)
 }
 
 /// A PNG's text chunks (those before its pixels).
@@ -137,7 +154,8 @@ pub fn read_text(p: &Path) -> HashMap<String, String> {
     let Ok(f) = fs::File::open(p) else { return HashMap::new() };
     let Ok(reader) = png::Decoder::new(BufReader::new(f)).read_info() else { return HashMap::new() };
     let info = reader.info();
-    let mut out: HashMap<String, String> = info.uncompressed_latin1_text.iter().map(|c| (c.keyword.clone(), c.text.clone())).collect();
+    let mut out: HashMap<String, String> =
+        info.uncompressed_latin1_text.iter().map(|c| (c.keyword.clone(), c.text.clone())).collect();
     for c in &info.utf8_text {
         if let Ok(t) = c.get_text() {
             out.insert(c.keyword.clone(), t);
@@ -150,7 +168,11 @@ pub fn read_text(p: &Path) -> HashMap<String, String> {
 fn write_png(p: &Path, rgba: &[u8], w: u32, h: u32, text: &[(&str, String)]) -> io::Result<()> {
     let dir = p.parent().unwrap_or(Path::new("/"));
     fs::DirBuilder::new().recursive(true).mode(0o700).create(dir)?;
-    let tmp = dir.join(format!(".{}.{}", p.file_name().unwrap_or_default().to_string_lossy(), crate::fsops::sys::random_word()));
+    let tmp = dir.join(format!(
+        ".{}.{}",
+        p.file_name().unwrap_or_default().to_string_lossy(),
+        crate::fsops::sys::random_word()
+    ));
     let result = (|| -> io::Result<()> {
         let mut bytes = Vec::new();
         {
@@ -187,9 +209,11 @@ pub fn scale_to_fit(rgba: &[u8], w: u32, h: u32, max: u32) -> (Vec<u8>, u32, u32
     let (nw, nh) = (((w as f64 * k).round() as u32).max(1), ((h as f64 * k).round() as u32).max(1));
     let mut out = vec![0u8; (nw * nh * 4) as usize];
     for y in 0..nh {
-        let (y0, y1) = ((y as u64 * h as u64 / nh as u64) as u32, (((y + 1) as u64 * h as u64).div_ceil(nh as u64)) as u32);
+        let (y0, y1) =
+            ((y as u64 * h as u64 / nh as u64) as u32, (((y + 1) as u64 * h as u64).div_ceil(nh as u64)) as u32);
         for x in 0..nw {
-            let (x0, x1) = ((x as u64 * w as u64 / nw as u64) as u32, (((x + 1) as u64 * w as u64).div_ceil(nw as u64)) as u32);
+            let (x0, x1) =
+                ((x as u64 * w as u64 / nw as u64) as u32, (((x + 1) as u64 * w as u64).div_ceil(nw as u64)) as u32);
             let (mut r, mut g, mut b, mut a, mut n) = (0u64, 0u64, 0u64, 0u64, 0u64);
             for sy in y0..y1.min(h) {
                 let row = (sy * w) as usize * 4;
@@ -217,7 +241,18 @@ pub fn scale_to_fit(rgba: &[u8], w: u32, h: u32, max: u32) -> (Vec<u8>, u32, u32
 
 /// Whether Hako makes thumbnails of files of `mime`.
 pub fn can_thumbnail(mime: &str) -> bool {
-    matches!(mime, "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/bmp" | "image/tiff" | "image/x-icon" | "image/vnd.microsoft.icon" | "image/apng")
+    matches!(
+        mime,
+        "image/png"
+            | "image/jpeg"
+            | "image/gif"
+            | "image/webp"
+            | "image/bmp"
+            | "image/tiff"
+            | "image/x-icon"
+            | "image/vnd.microsoft.icon"
+            | "image/apng"
+    )
 }
 
 /// Make (or find) `file`'s thumbnails, decoding it with Sidestep's

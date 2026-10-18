@@ -290,7 +290,8 @@ pub(crate) mod testing {
                 return None;
             }
             static N: AtomicUsize = AtomicUsize::new(0);
-            let dir = shm.join(format!("hako-test-{name}-{}-{}", std::process::id(), N.fetch_add(1, Ordering::Relaxed)));
+            let dir =
+                shm.join(format!("hako-test-{name}-{}-{}", std::process::id(), N.fetch_add(1, Ordering::Relaxed)));
             std::fs::create_dir_all(&dir).ok()?;
             Some(TempDir(dir))
         }

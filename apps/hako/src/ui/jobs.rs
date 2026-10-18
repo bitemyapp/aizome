@@ -3,8 +3,8 @@
 //! what they did (for undo, and for the views to show).
 
 use std::path::PathBuf;
-use std::sync::mpsc;
 use std::sync::Arc;
+use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use aizome_kit::{MsgSender, WindowKey};
@@ -18,16 +18,38 @@ use crate::fsops::{Asker, Conflict, Control, Env, ErrorChoice, Failure, Progress
 /// What a job does.
 #[derive(Clone, Debug)]
 pub enum Work {
-    Transfer { sources: Vec<PathBuf>, dest: PathBuf, mode: Mode },
-    Duplicate { sources: Vec<PathBuf> },
-    Trash { paths: Vec<PathBuf> },
-    Restore { entries: Vec<trash::Entry> },
-    Erase { entries: Vec<trash::Entry> },
+    Transfer {
+        sources: Vec<PathBuf>,
+        dest: PathBuf,
+        mode: Mode,
+    },
+    Duplicate {
+        sources: Vec<PathBuf>,
+    },
+    Trash {
+        paths: Vec<PathBuf>,
+    },
+    Restore {
+        entries: Vec<trash::Entry>,
+    },
+    Erase {
+        entries: Vec<trash::Entry>,
+    },
     EmptyTrash,
-    Compress { items: Vec<PathBuf>, archive: PathBuf, format: Format },
-    Extract { archive: PathBuf, dest: PathBuf },
+    Compress {
+        items: Vec<PathBuf>,
+        archive: PathBuf,
+        format: Format,
+    },
+    Extract {
+        archive: PathBuf,
+        dest: PathBuf,
+    },
     /// Undo (or redo, `redo`) a step.
-    Invert { step: Step, redo: bool },
+    Invert {
+        step: Step,
+        redo: bool,
+    },
 }
 
 fn dest_name(p: &std::path::Path) -> String {
@@ -48,7 +70,10 @@ impl Work {
                 [one] => format!("Putting back “{}”", one.display_name()),
                 _ => format!("Putting back {} items", entries.len()),
             },
-            Work::Erase { entries } => format!("Deleting {} for good", if entries.len() == 1 { "1 item".to_owned() } else { format!("{} items", entries.len()) }),
+            Work::Erase { entries } => format!(
+                "Deleting {} for good",
+                if entries.len() == 1 { "1 item".to_owned() } else { format!("{} items", entries.len()) }
+            ),
             Work::EmptyTrash => "Emptying the Trash".into(),
             Work::Compress { archive, .. } => format!("Compressing into “{}”", dest_name(archive)),
             Work::Extract { archive, .. } => format!("Extracting “{}”", dest_name(archive)),
@@ -130,7 +155,11 @@ impl Job {
             return format!("Preparing ({} items)…", p.items_total);
         }
         if p.bytes_total > 0 {
-            let mut s = format!("{} of {}", crate::model::format::size(p.bytes_done), crate::model::format::size(p.bytes_total));
+            let mut s = format!(
+                "{} of {}",
+                crate::model::format::size(p.bytes_done),
+                crate::model::format::size(p.bytes_total)
+            );
             let secs = self.started.elapsed().as_secs_f64();
             if secs > 1.0 && p.bytes_done > 0 {
                 let rate = p.bytes_done as f64 / secs;
@@ -199,7 +228,8 @@ pub fn run(work: Work, trash: &Trash, env: &mut Env) -> Done {
                 Mode::Copy => made(&report, "Copy"),
                 Mode::Move => {
                     let pairs: Vec<(PathBuf, PathBuf)> = report.done.iter().filter(|(a, b)| a != b).cloned().collect();
-                    let label = format!("Move of {}", items_label(&pairs.iter().map(|p| p.0.clone()).collect::<Vec<_>>()));
+                    let label =
+                        format!("Move of {}", items_label(&pairs.iter().map(|p| p.0.clone()).collect::<Vec<_>>()));
                     Some(Step { record: Record::Move { pairs }, label })
                 }
             };
@@ -211,7 +241,10 @@ pub fn run(work: Work, trash: &Trash, env: &mut Env) -> Done {
         }
         Work::Trash { paths } => {
             let (report, items) = transfer::trash_items(&paths, trash, env);
-            let label = format!("Move to Trash of {}", items_label(&items.iter().map(|t| t.original.clone()).collect::<Vec<_>>()));
+            let label = format!(
+                "Move to Trash of {}",
+                items_label(&items.iter().map(|t| t.original.clone()).collect::<Vec<_>>())
+            );
             let mut changed = parents(&paths);
             changed.extend(items.iter().filter_map(|t| t.file.parent().map(PathBuf::from)));
             Done { report, step: Some(Step { record: Record::Trash { items }, label }), inverted: None, changed }
@@ -236,7 +269,10 @@ pub fn run(work: Work, trash: &Trash, env: &mut Env) -> Done {
         }
         Work::Compress { items, archive: to, format } => {
             let report = archive::compress(&items, &to, format, env);
-            let step = report.done.first().map(|_| Step { record: Record::Made { paths: vec![to.clone()] }, label: "Compress".into() });
+            let step = report
+                .done
+                .first()
+                .map(|_| Step { record: Record::Made { paths: vec![to.clone()] }, label: "Compress".into() });
             Done { report, step, inverted: None, changed: parents(std::slice::from_ref(&to)) }
         }
         Work::Extract { archive: from, dest } => {
@@ -350,14 +386,16 @@ mod tests {
     #[test]
     fn runs_work_and_records_its_undo() {
         let t = TempDir::new("jobs");
-        let tr = Trash { home: t.join("Trash"), home_dir: Some(t.join("home")), uid: sys::uid(), topdirs: Some(Vec::new()) };
+        let tr =
+            Trash { home: t.join("Trash"), home_dir: Some(t.join("home")), uid: sys::uid(), topdirs: Some(Vec::new()) };
         let a = t.file("home/a.txt", "a");
         let dest = t.dir("home/dest");
         let control = Control::new();
         let mut asker = Always(Resolution::KeepBoth, ErrorChoice::Skip);
         let mut quiet = ();
         let mut env = Env::new(&control, &mut asker, &mut quiet);
-        let done = run(Work::Transfer { sources: vec![a.clone()], dest: dest.clone(), mode: Mode::Move }, &tr, &mut env);
+        let done =
+            run(Work::Transfer { sources: vec![a.clone()], dest: dest.clone(), mode: Mode::Move }, &tr, &mut env);
         assert!(done.report.is_clean());
         assert!(done.changed.contains(&dest) && done.changed.contains(&t.join("home")));
         let step = done.step.unwrap();

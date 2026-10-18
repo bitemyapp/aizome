@@ -53,7 +53,10 @@ pub struct MimeDb {
 /// The `mime/` folders, most important first.
 pub fn mime_dirs() -> Vec<PathBuf> {
     let mut out = vec![crate::xdg_dir("XDG_DATA_HOME", ".local/share").join("mime")];
-    let dirs = std::env::var("XDG_DATA_DIRS").ok().filter(|v| !v.is_empty()).unwrap_or_else(|| "/usr/local/share:/usr/share".into());
+    let dirs = std::env::var("XDG_DATA_DIRS")
+        .ok()
+        .filter(|v| !v.is_empty())
+        .unwrap_or_else(|| "/usr/local/share:/usr/share".into());
     for d in dirs.split(':').filter(|d| !d.is_empty()) {
         out.push(Path::new(d).join("mime"));
     }
@@ -255,8 +258,16 @@ impl MimeDb {
         self.is_a(mime, TEXT)
             || matches!(
                 mime,
-                "application/json" | "application/xml" | "application/javascript" | "application/x-shellscript" | "application/toml"
-                    | "application/x-yaml" | "application/x-desktop" | "application/x-perl" | "application/x-ruby" | "application/sql"
+                "application/json"
+                    | "application/xml"
+                    | "application/javascript"
+                    | "application/x-shellscript"
+                    | "application/toml"
+                    | "application/x-yaml"
+                    | "application/x-desktop"
+                    | "application/x-perl"
+                    | "application/x-ruby"
+                    | "application/sql"
             )
     }
 
@@ -305,7 +316,11 @@ impl MimeDb {
         if let Some(c) = cache.get(&*mime) {
             return c.clone();
         }
-        let found = self.dirs.iter().find_map(|d| std::fs::read_to_string(d.join(format!("{mime}.xml"))).ok()).and_then(|x| xml_comment(&x));
+        let found = self
+            .dirs
+            .iter()
+            .find_map(|d| std::fs::read_to_string(d.join(format!("{mime}.xml"))).ok())
+            .and_then(|x| xml_comment(&x));
         cache.insert(mime.to_string(), found.clone());
         found
     }
@@ -550,7 +565,10 @@ mod tests {
         assert!(glob_match(b"readme*", b"readme.md"));
         assert!(glob_match(b"?ake", b"make"));
         assert!(glob_match(b"[!a]b", b"xb") && !glob_match(b"[!a]b", b"ab"));
-        assert_eq!(xml_comment("<mime-type><comment>PNG image</comment><comment xml:lang=\"de\">PNG-Bild</comment>"), Some("PNG image".into()));
+        assert_eq!(
+            xml_comment("<mime-type><comment>PNG image</comment><comment xml:lang=\"de\">PNG-Bild</comment>"),
+            Some("PNG image".into())
+        );
         let db = fallback();
         assert_eq!(db.describe(DIRECTORY), "Folder");
         assert_eq!(db.describe("image/x-foo"), "FOO image");

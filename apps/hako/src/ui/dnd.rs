@@ -114,12 +114,13 @@ pub enum DragEvent {
 /// Points the pointer must move with the button down before it drags.
 pub const SLOP: f64 = 5.0;
 
-
 /// `child`, telling `spots` where the window's content is whenever it's
 /// drawn: the window's whole view goes in one.
 pub fn window_bounds<Msg: 'static>(child: aizome_kit::Element<Msg>, spots: Spots) -> aizome_kit::Element<Msg> {
     use aizome_kit::Layoutable;
-    aizome_kit::Element::new(Bounds { spots }, vec![child]).width(aizome_kit::Length::Fill).height(aizome_kit::Length::Fill)
+    aizome_kit::Element::new(Bounds { spots }, vec![child])
+        .width(aizome_kit::Length::Fill)
+        .height(aizome_kit::Length::Fill)
 }
 
 struct Bounds {

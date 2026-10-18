@@ -11,7 +11,9 @@ use aizome_kit::hash::PaintHasher;
 use aizome_kit::sidestep_ui::PointerButton;
 use aizome_kit::text::TextSpec;
 use aizome_kit::theme::FontSpec;
-use aizome_kit::widget::{Event, EventCx, Focusable, LayoutCx, PaintCx, SemanticAction, SemanticRole, Semantics, Status, Widget};
+use aizome_kit::widget::{
+    Event, EventCx, Focusable, LayoutCx, PaintCx, SemanticAction, SemanticRole, Semantics, Status, Widget,
+};
 use aizome_kit::{Align, Constraints, Icon, Layoutable, Length, Point, Rect, Role, Size};
 
 use super::dnd::{Dest, Spot, Spots, Target};
@@ -71,7 +73,14 @@ impl<Msg: Clone + Send + 'static> Widget for RowWidget<Msg> {
             let origin = cx.canvas.transform().translation();
             let (dest, id) = (dest.clone(), *id);
             let rect = b + origin;
-            spots.set(id, Spot { rect, priority: 2, resolve: Rc::new(move |_| Some(Target { dest: dest.clone(), spot: id, row: None })) });
+            spots.set(
+                id,
+                Spot {
+                    rect,
+                    priority: 2,
+                    resolve: Rc::new(move |_| Some(Target { dest: dest.clone(), spot: id, row: None })),
+                },
+            );
         }
         let fg = if self.r.selected {
             cx.canvas.fill_rect(b, t.selection());
@@ -95,11 +104,17 @@ impl<Msg: Clone + Send + 'static> Widget for RowWidget<Msg> {
             let w = cx.draw_text_in("…", &spec, Rect::new(34.0, 0.0, right, b.y1), Align::End);
             right -= w + 6.0;
         } else if let Some(d) = &self.r.detail {
-            let spec = TextSpec::new(FontSpec { tabular: true, ..FontSpec::mono(t.metrics.small) }, if self.r.selected { fg } else { t.text3() });
+            let spec = TextSpec::new(
+                FontSpec { tabular: true, ..FontSpec::mono(t.metrics.small) },
+                if self.r.selected { fg } else { t.text3() },
+            );
             let w = cx.draw_text_in(d, &spec, Rect::new(34.0, 0.0, right, b.y1), Align::End);
             right -= w + 8.0;
         }
-        let spec = TextSpec::new(FontSpec { weight: if self.r.selected { 600.0 } else { 400.0 }, ..FontSpec::ui(t.metrics.body) }, fg);
+        let spec = TextSpec::new(
+            FontSpec { weight: if self.r.selected { 600.0 } else { 400.0 }, ..FontSpec::ui(t.metrics.body) },
+            fg,
+        );
         cx.draw_text_in(&self.r.label, &spec, Rect::new(34.0, 0.0, right, b.y1), Align::Start);
         if self.r.lit {
             aizome_kit::draw::border(cx.canvas, b, t.focus(), 2.0);
@@ -107,7 +122,14 @@ impl<Msg: Clone + Send + 'static> Widget for RowWidget<Msg> {
     }
 
     fn hash(&self, h: &mut PaintHasher) {
-        h.str(&self.r.label).add(&(self.r.icon, self.r.role, self.r.selected, self.r.lit, self.r.busy, self.r.on_eject.is_some()));
+        h.str(&self.r.label).add(&(
+            self.r.icon,
+            self.r.role,
+            self.r.selected,
+            self.r.lit,
+            self.r.busy,
+            self.r.on_eject.is_some(),
+        ));
         h.add(&self.r.detail.as_deref());
     }
 
@@ -199,7 +221,10 @@ struct CrumbWidget<Msg> {
 impl<Msg: Clone + Send + 'static> CrumbWidget<Msg> {
     fn spec(&self, t: &aizome_kit::Theme) -> TextSpec {
         let color = if self.c.current { t.text() } else { t.text2() };
-        TextSpec::new(FontSpec { weight: if self.c.current { 600.0 } else { 400.0 }, ..FontSpec::ui(t.metrics.small + 1.0) }, color)
+        TextSpec::new(
+            FontSpec { weight: if self.c.current { 600.0 } else { 400.0 }, ..FontSpec::ui(t.metrics.small + 1.0) },
+            color,
+        )
     }
 }
 
@@ -210,7 +235,9 @@ impl<Msg: Clone + Send + 'static> Widget for CrumbWidget<Msg> {
 
     fn layout(&mut self, cx: &mut LayoutCx, bc: Constraints) -> Size {
         let t = cx.theme().clone();
-        let w = cx.measure(&self.c.label, &self.spec(&t)).width.ceil() + 12.0 + if self.c.icon.is_some() { 18.0 } else { 0.0 };
+        let w = cx.measure(&self.c.label, &self.spec(&t)).width.ceil()
+            + 12.0
+            + if self.c.icon.is_some() { 18.0 } else { 0.0 };
         self.width = w;
         bc.constrain(Size::new(w.min(if bc.max.width.is_finite() { bc.max.width } else { w }), t.metrics.control))
     }
@@ -221,14 +248,26 @@ impl<Msg: Clone + Send + 'static> Widget for CrumbWidget<Msg> {
         if let Some((dest, id, spots, _)) = &self.c.drop {
             let origin = cx.canvas.transform().translation();
             let (dest, id) = (dest.clone(), *id);
-            spots.set(id, Spot { rect: b + origin, priority: 2, resolve: Rc::new(move |_| Some(Target { dest: dest.clone(), spot: id, row: None })) });
+            spots.set(
+                id,
+                Spot {
+                    rect: b + origin,
+                    priority: 2,
+                    resolve: Rc::new(move |_| Some(Target { dest: dest.clone(), spot: id, row: None })),
+                },
+            );
         }
         if cx.is_hovered() && self.c.on_press.is_some() {
             cx.canvas.fill_rect(b, t.hover(t.surface()));
         }
         let mut x = 6.0;
         if let Some(i) = self.c.icon {
-            i.draw(cx.canvas, Point::new(x, ((b.height() - 14.0) / 2.0).round()), 14.0, if self.c.current { t.text() } else { t.text2() });
+            i.draw(
+                cx.canvas,
+                Point::new(x, ((b.height() - 14.0) / 2.0).round()),
+                14.0,
+                if self.c.current { t.text() } else { t.text2() },
+            );
             x += 18.0;
         }
         let spec = self.spec(t);

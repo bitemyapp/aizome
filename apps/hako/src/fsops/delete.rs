@@ -44,7 +44,14 @@ pub fn remove_quietly(path: &Path) -> Removed {
     remove_tree(path, &Control::new(), &mut |_| {}).unwrap_or_default()
 }
 
-fn remove_any(path: &Path, meta: &fs::Metadata, dev: u64, control: &Control, each: &mut dyn FnMut(u64), out: &mut Removed) -> Result<(), Cancelled> {
+fn remove_any(
+    path: &Path,
+    meta: &fs::Metadata,
+    dev: u64,
+    control: &Control,
+    each: &mut dyn FnMut(u64),
+    out: &mut Removed,
+) -> Result<(), Cancelled> {
     control.checkpoint()?;
     if meta.is_dir() {
         if meta.dev() != dev {
@@ -53,13 +60,15 @@ fn remove_any(path: &Path, meta: &fs::Metadata, dev: u64, control: &Control, eac
         }
         let entries = match fs::read_dir(path) {
             Ok(rd) => rd,
-            Err(e) if e.kind() == io::ErrorKind::PermissionDenied && make_writable(path, meta) => match fs::read_dir(path) {
-                Ok(rd) => rd,
-                Err(e) => {
-                    out.failed.push((path.to_path_buf(), super::describe(&e)));
-                    return Ok(());
+            Err(e) if e.kind() == io::ErrorKind::PermissionDenied && make_writable(path, meta) => {
+                match fs::read_dir(path) {
+                    Ok(rd) => rd,
+                    Err(e) => {
+                        out.failed.push((path.to_path_buf(), super::describe(&e)));
+                        return Ok(());
+                    }
                 }
-            },
+            }
             Err(e) => {
                 out.failed.push((path.to_path_buf(), super::describe(&e)));
                 return Ok(());
@@ -128,7 +137,8 @@ pub fn measure(path: &Path, control: &Control, limit: u64) -> Option<(u64, u64)>
         if n.0.is_multiple_of(512) {
             control.checkpoint()?;
         }
-        if m.is_dir() && n.0 < limit
+        if m.is_dir()
+            && n.0 < limit
             && let Ok(rd) = fs::read_dir(p)
         {
             for e in rd.flatten() {

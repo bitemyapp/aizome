@@ -155,7 +155,9 @@ pub fn restore(entries: &[trash::Entry], trash: &Trash, env: &mut Env) -> Report
             && !parent.is_dir()
             && let Err(e) = fs::create_dir_all(parent)
         {
-            report.failed.push((item.source.clone(), format!("its folder couldn't be made again: {}", super::describe(&e))));
+            report
+                .failed
+                .push((item.source.clone(), format!("its folder couldn't be made again: {}", super::describe(&e))));
             continue;
         }
         match w.place_top(&item.source, &item.target) {
@@ -359,7 +361,10 @@ impl Worker<'_, '_> {
         if src_n == target {
             match self.mode {
                 Mode::Move => return Ok(Placed::Done(target)),
-                Mode::Copy => target = dest.join(names::duplicate_name(&dest, source.file_name().unwrap_or_default(), smeta.is_dir())),
+                Mode::Copy => {
+                    target =
+                        dest.join(names::duplicate_name(&dest, source.file_name().unwrap_or_default(), smeta.is_dir()))
+                }
             }
         }
         if smeta.is_dir() && is_within(&target, &src_n) {
@@ -397,7 +402,8 @@ impl Worker<'_, '_> {
                     Resolution::Skip => return Ok(Placed::Skipped),
                     Resolution::Cancel => return Err(Stop::Cancel),
                     Resolution::KeepBoth => {
-                        target = dest.join(names::free_name(&dest, target.file_name().unwrap_or_default(), smeta.is_dir()));
+                        target =
+                            dest.join(names::free_name(&dest, target.file_name().unwrap_or_default(), smeta.is_dir()));
                     }
                     Resolution::Merge if conflict.can_merge() => {
                         self.merge(source, &target)?;
@@ -426,7 +432,11 @@ impl Worker<'_, '_> {
                 {
                     self.problems.push((
                         target.clone(),
-                        format!("the item it was to replace is kept as “{}” ({})", aside.display(), super::describe(&e)),
+                        format!(
+                            "the item it was to replace is kept as “{}” ({})",
+                            aside.display(),
+                            super::describe(&e)
+                        ),
                     ));
                 }
                 Err(stop)
@@ -458,7 +468,10 @@ impl Worker<'_, '_> {
         }
         let r = delete::remove_quietly(aside);
         if let Some((p, why)) = r.failed.first() {
-            self.problems.push((was.to_path_buf(), format!("the item it replaced couldn't all be removed ({}: {why})", p.display())));
+            self.problems.push((
+                was.to_path_buf(),
+                format!("the item it replaced couldn't all be removed ({}: {why})", p.display()),
+            ));
         }
     }
 
@@ -483,7 +496,10 @@ impl Worker<'_, '_> {
                         break;
                     }
                     Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {
-                        return Err(Stop::Skip(format!("“{}” appeared there meanwhile", names::display(target.file_name().unwrap_or_default()))));
+                        return Err(Stop::Skip(format!(
+                            "“{}” appeared there meanwhile",
+                            names::display(target.file_name().unwrap_or_default())
+                        )));
                     }
                     Err(e) => self.ask(Failure::new(source, "move", &e))?,
                 }
@@ -505,7 +521,10 @@ impl Worker<'_, '_> {
                 Ok(()) => break,
                 Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {
                     delete::remove_quietly(&partial);
-                    return Err(Stop::Skip(format!("“{}” appeared there meanwhile", names::display(target.file_name().unwrap_or_default()))));
+                    return Err(Stop::Skip(format!(
+                        "“{}” appeared there meanwhile",
+                        names::display(target.file_name().unwrap_or_default())
+                    )));
                 }
                 Err(e) => {
                     if let Err(stop) = self.ask(Failure::new(target, "put in place", &e)) {
@@ -525,7 +544,10 @@ impl Worker<'_, '_> {
                 if let Err(e) = fs::remove_file(leaf)
                     && e.kind() != io::ErrorKind::NotFound
                 {
-                    self.problems.push((leaf.clone(), format!("arrived, but the original couldn't be removed: {}", super::describe(&e))));
+                    self.problems.push((
+                        leaf.clone(),
+                        format!("arrived, but the original couldn't be removed: {}", super::describe(&e)),
+                    ));
                 }
             }
             for dir in &arrived.dirs {
@@ -540,7 +562,12 @@ impl Worker<'_, '_> {
     /// of ours (which a rename to another folder needs to write to).
     fn rename_into(&self, source: &Path, target: &Path, smeta: &fs::Metadata) -> io::Result<()> {
         match sys::rename_noreplace(source, target) {
-            Err(e) if e.kind() == io::ErrorKind::PermissionDenied && smeta.is_dir() && smeta.uid() == sys::uid() && smeta.mode() & 0o200 == 0 => {
+            Err(e)
+                if e.kind() == io::ErrorKind::PermissionDenied
+                    && smeta.is_dir()
+                    && smeta.uid() == sys::uid()
+                    && smeta.mode() & 0o200 == 0 =>
+            {
                 let mode = smeta.mode() & 0o7777;
                 fs::set_permissions(source, fs::Permissions::from_mode(mode | 0o200))?;
                 let r = sys::rename_noreplace(source, target);
@@ -579,7 +606,8 @@ impl Worker<'_, '_> {
 
     fn read_names(&mut self, dir: &Path) -> Step<Vec<std::ffi::OsString>> {
         loop {
-            match fs::read_dir(dir).and_then(|rd| rd.map(|e| e.map(|e| e.file_name())).collect::<io::Result<Vec<_>>>()) {
+            match fs::read_dir(dir).and_then(|rd| rd.map(|e| e.map(|e| e.file_name())).collect::<io::Result<Vec<_>>>())
+            {
                 Ok(mut v) => {
                     v.sort();
                     return Ok(v);
@@ -603,7 +631,11 @@ impl Worker<'_, '_> {
         } else if ft.is_file() {
             self.copy_file(source, dest, &meta, sync, arrived)
         } else {
-            self.ask(Failure::because(source, "copy", "it's a special file (a pipe, socket or device), which can't be copied"))?;
+            self.ask(Failure::because(
+                source,
+                "copy",
+                "it's a special file (a pipe, socket or device), which can't be copied",
+            ))?;
             Err(Stop::Skip("it's a special file".into()))
         }
     }
@@ -622,7 +654,14 @@ impl Worker<'_, '_> {
         Ok(true)
     }
 
-    fn copy_file(&mut self, source: &Path, dest: &Path, meta: &fs::Metadata, sync: bool, arrived: &mut Option<Arrived>) -> Step<bool> {
+    fn copy_file(
+        &mut self,
+        source: &Path,
+        dest: &Path,
+        meta: &fs::Metadata,
+        sync: bool,
+        arrived: &mut Option<Arrived>,
+    ) -> Step<bool> {
         loop {
             let mut counted = 0u64;
             match self.try_copy_file(source, dest, meta, sync, &mut counted) {
@@ -645,9 +684,17 @@ impl Worker<'_, '_> {
         Ok(true)
     }
 
-    fn try_copy_file(&mut self, source: &Path, dest: &Path, meta: &fs::Metadata, sync: bool, counted: &mut u64) -> Result<(), (&'static str, io::Error)> {
+    fn try_copy_file(
+        &mut self,
+        source: &Path,
+        dest: &Path,
+        meta: &fs::Metadata,
+        sync: bool,
+        counted: &mut u64,
+    ) -> Result<(), (&'static str, io::Error)> {
         let mut from = File::open(source).map_err(|e| ("read", e))?;
-        let mut to = OpenOptions::new().write(true).create_new(true).mode(0o600).open(dest).map_err(|e| ("write", e))?;
+        let mut to =
+            OpenOptions::new().write(true).create_new(true).mode(0o600).open(dest).map_err(|e| ("write", e))?;
         let Env { control, reporter, progress, .. } = &mut *self.env;
         sys::copy_contents(&mut from, &mut to, &mut |n| {
             *counted += n;
@@ -667,7 +714,14 @@ impl Worker<'_, '_> {
         Ok(())
     }
 
-    fn copy_dir(&mut self, source: &Path, dest: &Path, meta: &fs::Metadata, sync: bool, arrived: &mut Option<Arrived>) -> Step<bool> {
+    fn copy_dir(
+        &mut self,
+        source: &Path,
+        dest: &Path,
+        meta: &fs::Metadata,
+        sync: bool,
+        arrived: &mut Option<Arrived>,
+    ) -> Step<bool> {
         loop {
             match fs::DirBuilder::new().mode(0o700).create(dest) {
                 Ok(()) => break,
@@ -695,7 +749,8 @@ impl Worker<'_, '_> {
         }
         // The folder's own permissions and times, now that it's full.
         if let Err(e) = fs::set_permissions(dest, fs::Permissions::from_mode(meta.mode() & 0o1777)) {
-            self.problems.push((source.to_path_buf(), format!("its permissions couldn't be copied: {}", super::describe(&e))));
+            self.problems
+                .push((source.to_path_buf(), format!("its permissions couldn't be copied: {}", super::describe(&e))));
         }
         if let (Ok(a), Ok(m), Ok(f)) = (meta.accessed(), meta.modified(), File::open(dest)) {
             let _ = f.set_times(FileTimes::new().set_accessed(a).set_modified(m));
@@ -797,7 +852,10 @@ mod tests {
         let f = t.file("doc.txt", "d");
         let r = quiet(std::slice::from_ref(&f), t.path(), Mode::Copy);
         assert_eq!(r.done, vec![(f.clone(), t.join("doc copy.txt"))]);
-        let r = duplicate(std::slice::from_ref(&f), &mut Env::new(&Control::new(), &mut Always(Resolution::Cancel, ErrorChoice::Cancel), &mut ()));
+        let r = duplicate(
+            std::slice::from_ref(&f),
+            &mut Env::new(&Control::new(), &mut Always(Resolution::Cancel, ErrorChoice::Cancel), &mut ()),
+        );
         assert_eq!(r.done, vec![(f, t.join("doc copy 2.txt"))]);
     }
 
@@ -842,7 +900,10 @@ mod tests {
         let a = t.file("new/a.txt", "new a");
         let b = t.file("new/b.txt", "new b");
         let c = t.file("new/c.txt", "new c");
-        let mut s = Script { conflicts: [Resolution::Skip, Resolution::KeepBoth, Resolution::Replace].into(), ..Default::default() };
+        let mut s = Script {
+            conflicts: [Resolution::Skip, Resolution::KeepBoth, Resolution::Replace].into(),
+            ..Default::default()
+        };
         let r = run(&[a.clone(), b.clone(), c.clone()], &dest, Mode::Copy, &mut s);
         assert_eq!(s.asked, ["conflict a.txt", "conflict b.txt", "conflict c.txt"]);
         assert_eq!(r.skipped, vec![a]);
@@ -864,7 +925,8 @@ mod tests {
     #[test]
     fn replaced_items_go_to_the_trash() {
         let t = TempDir::new("replace-trash");
-        let trash = Trash { home: t.join("Trash"), home_dir: Some(t.join("home")), uid: sys::uid(), topdirs: Some(Vec::new()) };
+        let trash =
+            Trash { home: t.join("Trash"), home_dir: Some(t.join("home")), uid: sys::uid(), topdirs: Some(Vec::new()) };
         let dest = t.dir("dest");
         t.file("dest/folder/old-only.txt", "kept in the trash");
         let src = t.file("new/folder/new.txt", "new");
@@ -1055,7 +1117,12 @@ mod tests {
     #[test]
     fn trash_restore_and_erase() {
         let t = TempDir::new("trash-ops");
-        let trash = Trash { home: t.join("data/Trash"), home_dir: Some(t.join("home")), uid: sys::uid(), topdirs: Some(Vec::new()) };
+        let trash = Trash {
+            home: t.join("data/Trash"),
+            home_dir: Some(t.join("home")),
+            uid: sys::uid(),
+            topdirs: Some(Vec::new()),
+        };
         let a = t.file("home/docs/a.txt", "a");
         let folder = tree(&t, "home/docs/folder");
         let control = Control::new();

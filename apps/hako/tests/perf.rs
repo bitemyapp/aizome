@@ -34,7 +34,13 @@ fn frame(h: &mut Harness<Hako>, w: WindowKey, act: impl FnOnce(&mut Harness<Hako
 fn report(name: &str, mut frames: Vec<Duration>) -> Duration {
     frames.sort();
     let p = |q: f64| frames[((frames.len() - 1) as f64 * q) as usize];
-    eprintln!("hako {name}: p50 {:?} p95 {:?} max {:?} (n={}, at 2x)", p(0.5), p(0.95), frames.last().unwrap(), frames.len());
+    eprintln!(
+        "hako {name}: p50 {:?} p95 {:?} max {:?} (n={}, at 2x)",
+        p(0.5),
+        p(0.95),
+        frames.last().unwrap(),
+        frames.len()
+    );
     p(0.5)
 }
 

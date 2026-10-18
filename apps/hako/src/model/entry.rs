@@ -17,7 +17,10 @@ pub enum Kind {
     File,
     /// A symbolic link: to a folder (browsable), to something else, or
     /// to nothing.
-    Link { to_folder: bool, broken: bool },
+    Link {
+        to_folder: bool,
+        broken: bool,
+    },
     /// A pipe, socket or device.
     Special,
 }
@@ -70,7 +73,12 @@ impl Entry {
     /// The item at `path`, as a listing shows it.
     pub fn read(path: &Path) -> io::Result<Entry> {
         let meta = fs::symlink_metadata(path)?;
-        Ok(Entry::from_meta(path.to_path_buf(), path.file_name().unwrap_or(path.as_os_str()).to_os_string(), &meta, MimeDb::get()))
+        Ok(Entry::from_meta(
+            path.to_path_buf(),
+            path.file_name().unwrap_or(path.as_os_str()).to_os_string(),
+            &meta,
+            MimeDb::get(),
+        ))
     }
 
     /// An entry from what `lstat` said.
@@ -87,7 +95,10 @@ impl Entry {
                 Ok(t) if t.is_dir() => (Kind::Link { to_folder: true, broken: false }, db.intern(mime::DIRECTORY)),
                 Ok(t) => {
                     size = t.len();
-                    (Kind::Link { to_folder: false, broken: false }, db.by_name(&display).unwrap_or_else(|| db.intern(mime::UNKNOWN)))
+                    (
+                        Kind::Link { to_folder: false, broken: false },
+                        db.by_name(&display).unwrap_or_else(|| db.intern(mime::UNKNOWN)),
+                    )
                 }
                 Err(_) => (Kind::Link { to_folder: false, broken: true }, db.intern(mime::SYMLINK)),
             }

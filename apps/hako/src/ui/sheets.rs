@@ -63,14 +63,18 @@ fn info(h: &Hako, key: WindowKey, e: &Entry) -> Element<Msg> {
         format::size_long(e.size)
     };
     let where_ = match &e.trashed {
-        Some(t) => format!("In the Trash, from {}", t.original.as_ref().and_then(|o| o.parent()).map(|p| p.display().to_string()).unwrap_or_else(|| "somewhere unknown".into())),
+        Some(t) => format!(
+            "In the Trash, from {}",
+            t.original
+                .as_ref()
+                .and_then(|o| o.parent())
+                .map(|p| p.display().to_string())
+                .unwrap_or_else(|| "somewhere unknown".into())
+        ),
         None => e.path.parent().map(|p| p.display().to_string()).unwrap_or_default(),
     };
-    let mut rows: Vec<Element<Msg>> = vec![
-        row_of("Kind", e.kind_name.to_string()),
-        row_of("Size", size),
-        row_of("Where", where_),
-    ];
+    let mut rows: Vec<Element<Msg>> =
+        vec![row_of("Kind", e.kind_name.to_string()), row_of("Size", size), row_of("Where", where_)];
     if let Some(t) = &e.link_target {
         rows.push(row_of("Link to", t.display().to_string()));
     }
@@ -103,7 +107,9 @@ fn info(h: &Hako, key: WindowKey, e: &Entry) -> Element<Msg> {
     let body = column![
         row![
             big_icon(h, e, 48.0),
-            column![title(e.display.clone()), text(e.kind_name.to_string()).size(12.0).role(Role::Text3)].spacing(2.0).width(Length::Fill),
+            column![title(e.display.clone()), text(e.kind_name.to_string()).size(12.0).role(Role::Text3)]
+                .spacing(2.0)
+                .width(Length::Fill),
         ]
         .spacing(12.0)
         .width(Length::Fill),
@@ -111,7 +117,8 @@ fn info(h: &Hako, key: WindowKey, e: &Entry) -> Element<Msg> {
         aizome_kit::column(rows).spacing(6.0).width(Length::Fill),
         text("Sharing & Permissions").mono().size(10.5).letter_spacing(1.2).caps().role(Role::Text3),
         aizome_kit::column(perms).spacing(6.0).width(Length::Fill),
-        row![spacer(), button("Done").default().cancel().id("sheet-default").on_press(Msg::CloseSheet(key))].width(Length::Fill),
+        row![spacer(), button("Done").default().cancel().id("sheet-default").on_press(Msg::CloseSheet(key))]
+            .width(Length::Fill),
     ]
     .spacing(10.0)
     .width(Length::Fill);
@@ -126,16 +133,22 @@ fn quick_look(h: &Hako, key: WindowKey, e: &Entry) -> Element<Msg> {
             Some((n, b)) => format!("{} — {}", format::items(*n as usize), format::size(*b)),
             None => "Counting…".into(),
         };
-        column![big_icon(h, e, 128.0), text(what).size(13.0).role(Role::Text2)].spacing(12.0).align(Align::Center).into()
+        column![big_icon(h, e, 128.0), text(what).size(13.0).role(Role::Text2)]
+            .spacing(12.0)
+            .align(Align::Center)
+            .into()
     } else if let Some(img) = p.and_then(|p| p.image.clone()).or_else(|| h.thumbs.images.get(&e.path).cloned()) {
         image(img).fit(Fit::Contain).width(Length::Fill).height(Length::Fill).into()
     } else if let Some(t) = p.and_then(|p| p.text.clone()) {
         scroll(container(text(t).mono().size(12.0).wrap().selectable()).padding(12.0).width(Length::Fill)).into()
     } else {
-        column![big_icon(h, e, 128.0), text(format!("{} — {}", e.kind_name, format::size(e.size))).size(13.0).role(Role::Text2)]
-            .spacing(12.0)
-            .align(Align::Center)
-            .into()
+        column![
+            big_icon(h, e, 128.0),
+            text(format!("{} — {}", e.kind_name, format::size(e.size))).size(13.0).role(Role::Text2)
+        ]
+        .spacing(12.0)
+        .align(Align::Center)
+        .into()
     };
     let body = column![
         row![
@@ -153,7 +166,9 @@ fn quick_look(h: &Hako, key: WindowKey, e: &Entry) -> Element<Msg> {
 }
 
 fn when(t: Option<std::time::SystemTime>, now: i64) -> String {
-    t.and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| format::date(d.as_secs() as i64, now)).unwrap_or_else(|| "—".into())
+    t.and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| format::date(d.as_secs() as i64, now))
+        .unwrap_or_else(|| "—".into())
 }
 
 fn side(label: &str, is_dir: bool, size: u64, modified: Option<std::time::SystemTime>, now: i64) -> Element<Msg> {
@@ -171,7 +186,9 @@ fn side(label: &str, is_dir: bool, size: u64, modified: Option<std::time::System
 fn ask(h: &Hako, job: u64, all: bool) -> Element<Msg> {
     let Some(j) = h.jobs.iter().find(|j| j.id == job) else { return text("").into() };
     let Some(q) = &j.question else { return text("").into() };
-    let name = |p: &std::path::Path| p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| p.display().to_string());
+    let name = |p: &std::path::Path| {
+        p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| p.display().to_string())
+    };
     let body: Element<Msg> = match q {
         Question::Conflict(c) => conflict(job, c, all, &name(&c.target), &j.title, h.now()),
         Question::Failure(f) => {
@@ -179,19 +196,31 @@ fn ask(h: &Hako, job: u64, all: bool) -> Element<Msg> {
                 checkbox("Do the same for the rest", all).on_toggle(move |on| Msg::AskAll(job, on)).into(),
                 spacer().into(),
                 button("Stop").cancel().on_press(Msg::Answer(job, Answer::Error(ErrorChoice::Cancel, false))).into(),
-                button("Skip").id(if f.can_retry { "sheet-skip" } else { "sheet-default" }).on_press(Msg::Answer(job, Answer::Error(ErrorChoice::Skip, false))).into(),
+                button("Skip")
+                    .id(if f.can_retry { "sheet-skip" } else { "sheet-default" })
+                    .on_press(Msg::Answer(job, Answer::Error(ErrorChoice::Skip, false)))
+                    .into(),
             ];
             if f.can_retry {
-                buttons.push(button("Try Again").default().id("sheet-default").on_press(Msg::Answer(job, Answer::Error(ErrorChoice::Retry, false))).into());
+                buttons.push(
+                    button("Try Again")
+                        .default()
+                        .id("sheet-default")
+                        .on_press(Msg::Answer(job, Answer::Error(ErrorChoice::Retry, false)))
+                        .into(),
+                );
             }
             column![
-                row![icon(Icon::TriangleAlert).size(32.0).role(Role::Warning), column![
-                    title(format!("“{}” couldn't {}.", name(&f.path), action_words(f.action))),
-                    text(format!("{}.", f.message)).size(12.0).role(Role::Text2).wrap().width(Length::Fill),
-                    text(j.title.clone()).size(11.0).role(Role::Text3),
+                row![
+                    icon(Icon::TriangleAlert).size(32.0).role(Role::Warning),
+                    column![
+                        title(format!("“{}” couldn't {}.", name(&f.path), action_words(f.action))),
+                        text(format!("{}.", f.message)).size(12.0).role(Role::Text2).wrap().width(Length::Fill),
+                        text(j.title.clone()).size(11.0).role(Role::Text3),
+                    ]
+                    .spacing(4.0)
+                    .width(Length::Fill)
                 ]
-                .spacing(4.0)
-                .width(Length::Fill)]
                 .spacing(12.0)
                 .align(Align::Start)
                 .width(Length::Fill),
@@ -223,7 +252,12 @@ fn action_words(action: &str) -> String {
 }
 
 fn conflict(job: u64, c: &Conflict, all: bool, name: &str, doing: &str, now: i64) -> Element<Msg> {
-    let folder = c.target.parent().and_then(|p| p.file_name()).map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "/".into());
+    let folder = c
+        .target
+        .parent()
+        .and_then(|p| p.file_name())
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "/".into());
     let what = if c.target_is_dir { "A folder" } else { "An item" };
     let answer = move |r: Resolution| Msg::Answer(job, Answer::Conflict(r, false));
     let mut buttons: Vec<Element<Msg>> = vec![
@@ -259,9 +293,12 @@ fn conflict(job: u64, c: &Conflict, all: bool, name: &str, doing: &str, now: i64
         .spacing(12.0)
         .align(Align::Start)
         .width(Length::Fill),
-        row![side("Coming", c.source_is_dir, c.source_size, c.source_modified, now), side("There now", c.target_is_dir, c.target_size, c.target_modified, now)]
-            .spacing(16.0)
-            .width(Length::Fill),
+        row![
+            side("Coming", c.source_is_dir, c.source_size, c.source_modified, now),
+            side("There now", c.target_is_dir, c.target_size, c.target_modified, now)
+        ]
+        .spacing(16.0)
+        .width(Length::Fill),
         aizome_kit::row(buttons).spacing(6.0).width(Length::Fill),
     ]
     .spacing(16.0)
@@ -288,7 +325,9 @@ fn confirm(h: &Hako, key: WindowKey, what: &Confirm) -> Element<Msg> {
     let content = column![
         row![
             icon(Icon::TriangleAlert).size(32.0).role(Role::Danger),
-            column![title(head), text(body).size(12.0).role(Role::Text2).wrap().width(Length::Fill)].spacing(4.0).width(Length::Fill),
+            column![title(head), text(body).size(12.0).role(Role::Text2).wrap().width(Length::Fill)]
+                .spacing(4.0)
+                .width(Length::Fill),
         ]
         .spacing(12.0)
         .align(Align::Start)
@@ -310,14 +349,18 @@ fn message(key: WindowKey, head: &str, body: &str) -> Element<Msg> {
     let content = column![
         row![
             icon(Icon::CircleAlert).size(32.0).role(Role::Warning),
-            column![title(head.to_owned()), text(body.to_owned()).size(12.0).role(Role::Text2).wrap().selectable().width(Length::Fill)]
-                .spacing(6.0)
-                .width(Length::Fill),
+            column![
+                title(head.to_owned()),
+                text(body.to_owned()).size(12.0).role(Role::Text2).wrap().selectable().width(Length::Fill)
+            ]
+            .spacing(6.0)
+            .width(Length::Fill),
         ]
         .spacing(12.0)
         .align(Align::Start)
         .width(Length::Fill),
-        row![spacer(), button("OK").default().cancel().id("sheet-default").on_press(Msg::CloseSheet(key))].width(Length::Fill),
+        row![spacer(), button("OK").default().cancel().id("sheet-default").on_press(Msg::CloseSheet(key))]
+            .width(Length::Fill),
     ]
     .spacing(16.0)
     .width(Length::Fill);
@@ -329,12 +372,19 @@ pub fn operations(h: &Hako) -> Element<Msg> {
     let mut rows: Vec<Element<Msg>> = Vec::new();
     for j in &h.jobs {
         let id = j.id;
-        let bar: Element<Msg> = if j.progress.preparing || (j.progress.bytes_total == 0 && j.progress.items_total == 0) {
+        let bar: Element<Msg> = if j.progress.preparing || (j.progress.bytes_total == 0 && j.progress.items_total == 0)
+        {
             progress_indeterminate().width(Length::Fill).into()
         } else {
             progress(j.progress.fraction()).width(Length::Fill).into()
         };
-        let current = j.progress.current.as_ref().and_then(|p| p.file_name()).map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        let current = j
+            .progress
+            .current
+            .as_ref()
+            .and_then(|p| p.file_name())
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
         rows.push(
             row![
                 column![
@@ -365,5 +415,10 @@ pub fn operations(h: &Hako) -> Element<Msg> {
     if rows.is_empty() {
         rows.push(text("Nothing under way.").role(Role::Text3).into());
     }
-    container(aizome_kit::column(rows).spacing(14.0).width(Length::Fill)).padding(16.0).width(Length::Fill).height(Length::Fill).fill(Tone::Surface).into()
+    container(aizome_kit::column(rows).spacing(14.0).width(Length::Fill))
+        .padding(16.0)
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .fill(Tone::Surface)
+        .into()
 }

@@ -17,11 +17,23 @@ use hako::ui::fileview::Layout;
 use hako::ui::{Hako, Msg};
 
 fn names(h: &Harness<Hako>, w: WindowKey, col: usize) -> Vec<String> {
-    h.program().browser(w).unwrap().columns.get(col).map(|c| c.rows.iter().map(|e| e.display.clone()).collect()).unwrap_or_default()
+    h.program()
+        .browser(w)
+        .unwrap()
+        .columns
+        .get(col)
+        .map(|c| c.rows.iter().map(|e| e.display.clone()).collect())
+        .unwrap_or_default()
 }
 
 fn selected(h: &Harness<Hako>, w: WindowKey) -> Vec<String> {
-    h.program().browser(w).unwrap().selection().iter().map(|p| p.file_name().unwrap().to_string_lossy().into_owned()).collect()
+    h.program()
+        .browser(w)
+        .unwrap()
+        .selection()
+        .iter()
+        .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
+        .collect()
 }
 
 /// The middle of row `row` of column `col`'s view.
@@ -33,7 +45,10 @@ fn row_at(h: &Harness<Hako>, w: WindowKey, col: usize, row: usize) -> Point {
 }
 
 fn click_name(h: &mut Harness<Hako>, w: WindowKey, col: usize, name: &str) {
-    let i = names(h, w, col).iter().position(|n| n == name).unwrap_or_else(|| panic!("{name} in column {col}: {:?}", names(h, w, col)));
+    let i = names(h, w, col)
+        .iter()
+        .position(|n| n == name)
+        .unwrap_or_else(|| panic!("{name} in column {col}: {:?}", names(h, w, col)));
     let p = row_at(h, w, col, i);
     h.click(w, p);
 }
@@ -398,7 +413,10 @@ fn live_updates_follow_the_disk() {
     h.send(Msg::GoPath(w, s.home().join("Documents")));
     settle(&mut h);
     std::fs::write(s.home().join("Documents/new.txt"), "fresh").unwrap();
-    assert!(wait_for(&mut h, |p| p.browser(w).unwrap().columns[0].rows.iter().any(|e| e.display == "new.txt")), "a file made outside shows");
+    assert!(
+        wait_for(&mut h, |p| p.browser(w).unwrap().columns[0].rows.iter().any(|e| e.display == "new.txt")),
+        "a file made outside shows"
+    );
     let _ = &mut h;
 }
 
@@ -437,13 +455,21 @@ fn context_menus_offer_what_fits() {
     let s = Sandbox::new("menus");
     populate(&s);
     let (h, w) = open(&s, "Downloads/fonts.tar.gz", Layout::List);
-    let labels = |m: &aizome_kit::Menu<Msg>| m.spec().items.iter().filter_map(|i| match i {
-        aizome_kit::menu::ItemSpec::Action(a) => Some(a.label.clone()),
-        _ => None,
-    }).collect::<Vec<String>>();
+    let labels = |m: &aizome_kit::Menu<Msg>| {
+        m.spec()
+            .items
+            .iter()
+            .filter_map(|i| match i {
+                aizome_kit::menu::ItemSpec::Action(a) => Some(a.label.clone()),
+                _ => None,
+            })
+            .collect::<Vec<String>>()
+    };
     let m = h.program().item_menu(w);
     let l = labels(&m);
-    for want in ["Open", "Get Info", "Rename…", "Duplicate", "Compress “fonts.tar.gz”", "Extract Here", "Copy", "Move to Trash"] {
+    for want in
+        ["Open", "Get Info", "Rename…", "Duplicate", "Compress “fonts.tar.gz”", "Extract Here", "Copy", "Move to Trash"]
+    {
         assert!(l.iter().any(|x| x == want), "{want} in {l:?}");
     }
 }
@@ -518,7 +544,8 @@ fn a_drag_out_of_the_window_goes_on_as_the_desktop_s() {
         settle(h);
         h.program().outbound.clone().expect("Hako's drag went out")
     };
-    let folder = |h: &Harness<Hako>, name: &str| row_at(h, w, 0, names(h, w, 0).iter().position(|n| n == name).unwrap());
+    let folder =
+        |h: &Harness<Hako>, name: &str| row_at(h, w, 0, names(h, w, 0).iter().position(|n| n == name).unwrap());
     let (first, files) = drag_out(&mut h);
     assert_eq!(files, [notes.clone()]);
     assert!(notes.exists(), "nothing moved");
