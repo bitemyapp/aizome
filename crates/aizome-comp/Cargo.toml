@@ -26,6 +26,9 @@ resvg = { version = "0.46", default-features = false }
 xcursor = "0.3"
 libc = "0.2"
 bitflags = "2"
+# The processes behind X11 apps' windows (xwayland-satellite owns them on
+# the Wayland side): X-Resource client IDs. Pure Rust, no libxcb.
+x11rb = { version = "0.13", default-features = false, features = ["res"] }
 
 [dependencies.smithay]
 version = "0.7.0"
