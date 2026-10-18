@@ -38,7 +38,8 @@ pub mod types;
 pub use confirm::{Confirm, DeletePartition, Destructive, Format, NewPartitionTable, Repair, Resize};
 pub use model::{
     BlockDevice, DisksState, Drive, Encrypted, Filesystem, FreeSpace, Health, Job, LoopDevice, Partition,
-    PartitionTable, Rotation, Smart, Swap, Usage, Volume, VolumeChanges, format_size, usage,
+    PartitionTable, Rotation, Smart, Swap, Usage, Volume, VolumeChanges, format_size, short_name,
+    system_volume_from_mounts, usage,
 };
 pub use smart::SmartAttribute;
 

@@ -164,11 +164,56 @@ impl DisksState {
                     ejectable: drive.is_some_and(|d| d.ejectable),
                     can_power_off: drive.is_some_and(|d| d.can_power_off),
                     image_file: image.map(|l| l.backing_file.clone()),
+                    system: false,
                 }
             })
             .collect();
         volumes.sort_by(|a, b| a.name.cmp(&b.name));
         volumes
+    }
+
+    /// The disk the system runs from, as the desktop shows it: the
+    /// filesystem mounted at `/` (else the one holding `home`, where `/`
+    /// is no disk, as in a container), named for its drive as the boards
+    /// name it ("nvme0", "sda"), mounted where it is.
+    pub fn system_volume(&self, home: &str) -> Option<Volume> {
+        let mount_of = |b: &BlockDevice, want: &dyn Fn(&str) -> bool| -> Option<String> {
+            b.filesystem.as_ref()?.mount_points.iter().filter(|m| want(m)).max_by_key(|m| m.len()).cloned()
+        };
+        let (block, mount) = self
+            .blocks
+            .iter()
+            .find_map(|b| mount_of(b, &|m| m == "/").map(|m| (b, m)))
+            .or_else(|| {
+                self.blocks
+                    .iter()
+                    .filter_map(|b| mount_of(b, &|m| path_within(home, m)).map(|m| (b, m)))
+                    .max_by_key(|(_, m)| m.len())
+            })?;
+        let drive = self.drive_of(block);
+        let disk = drive.and_then(|d| self.drive_block(&d.path));
+        let name = disk
+            .and_then(|d| short_name(&d.device))
+            .or_else(|| short_name(&block.device))
+            .unwrap_or_else(|| block.display_name(drive));
+        Some(Volume {
+            block: block.path.clone(),
+            name,
+            icon_name: "drive-harddisk".into(),
+            mount_point: Some(mount),
+            drive: drive.map(|d| d.path.clone()),
+            system: true,
+            ..Volume::default()
+        })
+    }
+
+    /// What the desktop shows: the system's disk first, then the other
+    /// volumes (removable and external ones, and images).
+    pub fn desktop_volumes(&self, home: &str) -> Vec<Volume> {
+        let system = self.system_volume(home);
+        let mut out: Vec<Volume> = system.iter().cloned().collect();
+        out.extend(self.volumes().into_iter().filter(|v| system.as_ref().is_none_or(|s| s.block != v.block)));
+        out
     }
 
     /// Volumes that appeared and disappeared since `previous` (a USB stick
@@ -274,6 +319,9 @@ pub struct Volume {
     pub can_power_off: bool,
     /// For a mounted image, its file.
     pub image_file: Option<String>,
+    /// The disk the system runs from: opened at its mount point, never
+    /// unmounted or ejected.
+    pub system: bool,
 }
 
 /// A drive.
@@ -587,6 +635,89 @@ pub struct Job {
 }
 
 /// "512 GB" (decimal units, as drives are sold).
+/// Whether `path` is `dir` or inside it.
+fn path_within(path: &str, dir: &str) -> bool {
+    path == dir || dir == "/" || path.strip_prefix(dir).is_some_and(|rest| rest.starts_with('/'))
+}
+
+/// A disk's short name, as the desktop labels it: `/dev/nvme0n1p2` →
+/// `nvme0`, `/dev/sda2` → `sda`, `/dev/mmcblk0p1` → `mmcblk0`; other
+/// devices by their own name (`/dev/mapper/root` → `root`).
+pub fn short_name(device: &str) -> Option<String> {
+    let dev = device.strip_prefix("/dev/")?;
+    let dev = dev.rsplit('/').next().unwrap_or(dev);
+    if dev.is_empty() {
+        return None;
+    }
+    for prefix in ["nvme", "mmcblk"] {
+        if let Some(rest) = dev.strip_prefix(prefix) {
+            let n: String = rest.chars().take_while(char::is_ascii_digit).collect();
+            return Some(format!("{prefix}{n}"));
+        }
+    }
+    if ["sd", "vd", "hd", "xvd"].iter().any(|p| dev.starts_with(p)) {
+        return Some(dev.trim_end_matches(|c: char| c.is_ascii_digit()).to_owned());
+    }
+    Some(dev.to_owned())
+}
+
+/// The system's disk without UDisks, from `/proc/self/mountinfo`'s text:
+/// the device mounted at `/` (else the one holding `home`), its name
+/// found through sysfs (`/sys/class/block`, the root given) past device
+/// mapper layers (LUKS, LVM) to the disk.
+pub fn system_volume_from_mounts(mountinfo: &str, home: &str, sys_block: &std::path::Path) -> Option<Volume> {
+    // Fields: id parent major:minor root mount-point options… - type source …
+    let mounts: Vec<(&str, &str)> = mountinfo
+        .lines()
+        .filter_map(|l| {
+            let mut f = l.split_whitespace();
+            let mount = f.nth(4)?;
+            let mut rest = f.skip_while(|x| *x != "-");
+            rest.next()?;
+            rest.next()?;
+            Some((mount, rest.next()?))
+        })
+        .filter(|(_, source)| source.starts_with("/dev/"))
+        .collect();
+    let (mount, source) = mounts
+        .iter()
+        .find(|(m, _)| *m == "/")
+        .or_else(|| mounts.iter().filter(|(m, _)| path_within(home, m)).max_by_key(|(m, _)| m.len()))?;
+    let name = disk_of(source, sys_block).or_else(|| short_name(source))?;
+    Some(Volume {
+        block: (*source).to_owned(),
+        name,
+        icon_name: "drive-harddisk".into(),
+        mount_point: Some((*mount).to_owned()),
+        system: true,
+        ..Volume::default()
+    })
+}
+
+/// The disk under a device, through sysfs: a device mapper device's
+/// `slaves`, then a partition's parent.
+fn disk_of(device: &str, sys_block: &std::path::Path) -> Option<String> {
+    let mut name = std::fs::canonicalize(device)
+        .ok()
+        .and_then(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()))
+        .unwrap_or_else(|| device.rsplit('/').next().unwrap_or(device).to_owned());
+    for _ in 0..8 {
+        let slaves = sys_block.join(&name).join("slaves");
+        match std::fs::read_dir(&slaves).ok().and_then(|mut d| d.next()).and_then(Result::ok) {
+            Some(s) => name = s.file_name().to_string_lossy().into_owned(),
+            None => break,
+        }
+    }
+    let entry = sys_block.join(&name);
+    if entry.join("partition").exists()
+        && let Ok(real) = std::fs::canonicalize(&entry)
+        && let Some(parent) = real.parent().and_then(|p| p.file_name())
+    {
+        name = parent.to_string_lossy().into_owned();
+    }
+    short_name(&format!("/dev/{name}"))
+}
+
 pub fn format_size(bytes: u64) -> String {
     const UNITS: [&str; 6] = ["B", "kB", "MB", "GB", "TB", "PB"];
     let mut value = bytes as f64;
@@ -1009,6 +1140,68 @@ mod tests {
         assert!(data.ejectable && data.can_power_off);
         assert_eq!(data.icon_name, "drive-removable-media");
         assert!(volumes.iter().find(|v| v.name.ends_with("Encrypted")).unwrap().locked);
+        assert!(volumes.iter().all(|v| !v.system));
+    }
+
+    #[test]
+    fn the_system_disk_by_its_drive() {
+        // Here sdb10 holds `/`: the system's disk is shown first, as
+        // "sdb", once, and never as something to eject.
+        let state = build(&fixture());
+        let system = state.system_volume("/home/u").expect("the system's disk");
+        assert_eq!(system.name, "sdb");
+        assert_eq!(system.mount_point.as_deref(), Some("/"));
+        assert!(system.system && !system.ejectable && !system.can_power_off);
+        assert_eq!(system.drive.as_deref(), Some("/org/freedesktop/UDisks2/drives/usb"));
+        let shown = state.desktop_volumes("/home/u");
+        assert_eq!(shown[0], system);
+        assert_eq!(shown.iter().filter(|v| v.block == system.block).count(), 1);
+        assert_eq!(shown.len(), 3);
+        // Nothing at `/` (a container's tmpfs): the one holding home.
+        let mut moved = fixture();
+        let mut home = b"/home".to_vec();
+        home.push(0);
+        let b = "/org/freedesktop/UDisks2/block_devices/sdb10";
+        moved.map.get_mut(b).unwrap().get_mut(IFACE_FILESYSTEM).unwrap().insert("MountPoints".into(), owned(vec![home]));
+        let system = build(&moved).system_volume("/home/u").unwrap();
+        assert_eq!((system.name.as_str(), system.mount_point.as_deref()), ("sdb", Some("/home")));
+        assert!(build(&moved).system_volume("/srv/u").is_none());
+    }
+
+    #[test]
+    fn disks_short_names() {
+        assert_eq!(short_name("/dev/nvme0n1p2").as_deref(), Some("nvme0"));
+        assert_eq!(short_name("/dev/nvme1n1").as_deref(), Some("nvme1"));
+        assert_eq!(short_name("/dev/sda2").as_deref(), Some("sda"));
+        assert_eq!(short_name("/dev/mmcblk0p1").as_deref(), Some("mmcblk0"));
+        assert_eq!(short_name("/dev/mapper/cryptroot").as_deref(), Some("cryptroot"));
+        assert_eq!(short_name("tmpfs"), None);
+    }
+
+    #[test]
+    fn the_system_disk_without_udisks() {
+        // `/` on LUKS on nvme0n1p2, as sysfs shows it.
+        let root = std::env::temp_dir().join(format!("aizome-sys-sysblock-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let disk = root.join("devices/nvme0n1");
+        std::fs::create_dir_all(disk.join("nvme0n1p2")).unwrap();
+        std::fs::write(disk.join("nvme0n1p2/partition"), "2\n").unwrap();
+        std::fs::create_dir_all(root.join("devices/dm-0/slaves")).unwrap();
+        std::fs::create_dir_all(root.join("devices/dm-0/slaves/nvme0n1p2")).unwrap();
+        let class = root.join("class");
+        std::fs::create_dir_all(&class).unwrap();
+        std::os::unix::fs::symlink(root.join("devices/dm-0"), class.join("dm-0")).unwrap();
+        std::os::unix::fs::symlink(disk.join("nvme0n1p2"), class.join("nvme0n1p2")).unwrap();
+        let info = "22 1 254:0 / / rw,relatime shared:1 - ext4 /dev/dm-0 rw\n\
+                    40 22 0:5 / /proc rw - proc proc rw\n";
+        let v = system_volume_from_mounts(info, "/home/u", &class).unwrap();
+        assert_eq!((v.name.as_str(), v.mount_point.as_deref(), v.system), ("nvme0", Some("/"), true));
+        // `/` a tmpfs (a container): the disk holding home.
+        let info = "603 171 0:61 /newroot / rw - tmpfs tmpfs rw\n\
+                    646 603 259:2 /home /home rw - ext4 /dev/nvme0n1p2 rw\n";
+        let v = system_volume_from_mounts(info, "/home/u", &class).unwrap();
+        assert_eq!((v.name.as_str(), v.mount_point.as_deref()), ("nvme0", Some("/home")));
+        std::fs::remove_dir_all(&root).unwrap();
     }
 
     #[test]
