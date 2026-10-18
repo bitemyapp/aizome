@@ -274,7 +274,8 @@ nix develop --command cargo test -p aizome-comp
   of its own (and never the compositor's parent), Not responding, the
   lock screen's safe actions, Reset Input ending a stuck grab and freeing
   a locked pointer, and drags that end on release (after an overlay took
-  a release, with a frozen client, and a client's late move request), and the overlay's Reload Aizome reloading the logic.
+  a release, with a frozen client, and a client's late move request),
+  and the overlay's Reload Aizome reloading the logic.
 - `tests/reload.rs`: reloading the logic under a test client, foot and
   Electron (windows, groups, Desks and focus kept, the screen changed), a
   panic rolled back, a session without a logic, a library built against
