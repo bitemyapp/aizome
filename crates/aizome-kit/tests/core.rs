@@ -274,3 +274,20 @@ fn text_limited_to_lines_wraps_up_to_them() {
     assert!(all > two * 1.5, "unlimited, it takes more: {all}");
 }
 
+
+#[test]
+fn a_picture_drawn_smaller_is_scaled_once_and_looks_the_same() {
+    fn view(_: &Probe) -> Element<Msg> {
+        let px: Vec<u8> = (0..120u32 * 90).flat_map(|i| [(i % 120 * 2) as u8, (i / 120 * 2) as u8, 128, 255]).collect();
+        let img = Image::from_rgba(120, 90, &px).unwrap();
+        container(image(img).fit(aizome_kit::Fit::Contain)).width(70.0).height(70.0).into()
+    }
+    let mut h = Harness::new(Probe::new(view));
+    let w = h.window();
+    let direct = h.render(w, 1.0).to_rgba8().unwrap();
+    let cached = h.render(w, 1.0).to_rgba8().unwrap();
+    let again = h.render(w, 1.0).to_rgba8().unwrap();
+    assert_eq!(cached, again, "the scaled picture is kept");
+    let off = aizome_kit::testing::difference(&direct, &cached, 3);
+    assert!(off < 0.002, "scaled once, it looks as scaled each time: {off}");
+}

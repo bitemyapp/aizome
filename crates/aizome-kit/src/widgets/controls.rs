@@ -2046,12 +2046,42 @@ struct ImageWidget {
     revision: u64,
 }
 
+/// An image element's picture scaled to where it's drawn: the picture's
+/// size and revision, the device size and the scale it's for.
+#[derive(Default)]
+struct Scaled {
+    made: std::cell::RefCell<Option<(ScaleKey, Image)>>,
+    /// The key drawn last without a picture made for it.
+    seen: std::cell::Cell<Option<ScaleKey>>,
+}
+
+type ScaleKey = ((u32, u32), u64, (u32, u32), u64);
+
+impl Scaled {
+    /// The picture for `key`: made if it was asked for last time too.
+    fn get(&self, key: ScaleKey, make: impl FnOnce() -> Image) -> Option<Image> {
+        if let Some((k, img)) = &*self.made.borrow()
+            && *k == key
+        {
+            return Some(img.clone());
+        }
+        if self.seen.replace(Some(key)) != Some(key) {
+            return None;
+        }
+        let img = make();
+        *self.made.borrow_mut() = Some((key, img.clone()));
+        Some(img)
+    }
+}
+
 impl Widget for ImageWidget {
     fn name(&self) -> &'static str {
         "image"
     }
 
-    fn layout(&mut self, _cx: &mut LayoutCx, bc: Constraints) -> Size {
+    fn layout(&mut self, cx: &mut LayoutCx, bc: Constraints) -> Size {
+        // Where the picture scaled to its room is kept (see `paint`).
+        cx.state::<Scaled>();
         let s = self.image.size();
         if s.width <= 0.0 || s.height <= 0.0 {
             return bc.min;
@@ -2079,7 +2109,37 @@ impl Widget for ImageWidget {
         };
         cx.canvas.save();
         cx.canvas.clip_rect(b);
-        cx.canvas.draw_image_with(&self.image, None, dst, ImageOptions::default());
+        // Scaling smoothly is slow: a picture drawn at another size than
+        // its own is scaled once, the second time it's drawn at that size
+        // (not while a window is being resized), and copied one to one
+        // from then on.
+        let scale = cx.canvas.scale();
+        let [a, sb, sc, d, _, _] = cx.canvas.transform().as_coeffs();
+        let device = ((dst.width() * scale).round() as u32, (dst.height() * scale).round() as u32);
+        let upright = sb == 0.0 && sc == 0.0 && a == 1.0 && d == 1.0;
+        let scaled = match cx.state::<Scaled>() {
+            Some(cache) if upright && device != self.image.pixel_size() && device.0 > 0 && device.1 > 0 => {
+                let key = (self.image.pixel_size(), self.revision, device, scale.to_bits());
+                cache.get(key, || {
+                    let size = Size::new(f64::from(device.0) / scale, f64::from(device.1) / scale);
+                    let image = self.image.clone();
+                    sidestep_ui::offscreen::render(size, scale, sidestep_ui::Appearance::DARK, |c| {
+                        c.draw_image_with(&image, None, Rect::from_origin_size(Point::ZERO, size), ImageOptions::default());
+                    })
+                })
+            }
+            _ => None,
+        };
+        match scaled {
+            Some(img) => {
+                // On whole device pixels, so it's copied one to one.
+                let o = cx.canvas.transform() * dst.origin();
+                let snap = |v: f64| (v * scale).round() / scale;
+                let at = Point::new(snap(o.x) - (o.x - dst.x0), snap(o.y) - (o.y - dst.y0));
+                cx.canvas.draw_image_with(&img, None, Rect::from_origin_size(at, img.size()), ImageOptions::default());
+            }
+            None => cx.canvas.draw_image_with(&self.image, None, dst, ImageOptions::default()),
+        }
         cx.canvas.restore();
     }
 
