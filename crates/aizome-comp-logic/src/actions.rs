@@ -307,7 +307,10 @@ impl Actions for State {
     fn stack(&mut self, a: WinId, b: WinId) -> bool {
         let l = self.lg.m();
         let before: Vec<(WinId, Rect)> =
-            l.wm.group_members(b).iter().filter_map(|m| l.decor_tab_rect(*m).map(|r| (*m, r))).collect();
+            l.wm.group_members(b)
+                .iter()
+                .filter_map(|m| l.decor_tab_rect(&mut self.az.labels, *m).map(|r| (*m, r)))
+                .collect();
         let old_b = l.wm.get(b).map(|w| w.rect);
         let Some(changed) = l.wm.stack(a, b) else { return false };
         let rect = l.wm.get(a).map(|w| w.rect).unwrap_or_default();
@@ -323,7 +326,7 @@ impl Actions for State {
         let ms = self.az.motion_ms();
         let l = self.lg.m();
         for (m, r0) in before {
-            if let Some(r1) = l.decor_tab_rect(m) {
+            if let Some(r1) = l.decor_tab_rect(&mut self.az.labels, m) {
                 l.anims.start_tab(m, (r0.x - r1.x) as f64, (r0.y - r1.y) as f64, ms);
             }
         }
@@ -571,8 +574,8 @@ impl Logic {
     }
 
     /// Where a window's (first) tab is now, for slides.
-    pub fn decor_tab_rect(&mut self, id: WinId) -> Option<Rect> {
-        let l = self.decor_layout(id)?;
+    pub fn decor_tab_rect(&self, labels: &mut aizome_comp_core::text::Labels, id: WinId) -> Option<Rect> {
+        let l = self.decor_layout(labels, id)?;
         l.tabs.iter().find(|t| t.win == id).map(|t| t.rect)
     }
 }

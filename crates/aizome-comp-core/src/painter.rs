@@ -1,17 +1,19 @@
-//! Drawing overlays in Aizome's look: flat rectangles, 1pt bevels, hard
+//! Drawing overlays in Aizome's look (the logic's and the core's recovery
+//! overlay): flat rectangles, 1pt bevels, hard
 //! 3pt shadows, labels set by Sidestep, app icons and live thumbnails, in
 //! painter's order. Pieces keep their identities between frames by their
 //! place in the drawing order, so an unchanged overlay causes no damage.
 
-use aizome_comp_core::scene::{Scene, SceneItem};
 use aizome_theme::{Palette, Rgba};
 use smithay::backend::renderer::element::Kind;
 use smithay::utils::{Logical, Physical, Point};
 
-use crate::decor::{DecorCache, Piece};
-use crate::prelude::*;
-use crate::text::{Face, Style};
-use crate::wm::{Rect, WinId};
+use crate::icons::Icons;
+use crate::pieces::{DecorCache, Piece};
+use crate::scene::{Scene, SceneItem};
+use crate::state::Aizome;
+use crate::text::{Face, Labels, Style};
+use crate::{Rect, WinId};
 
 enum Item {
     Piece(Piece),
@@ -79,7 +81,7 @@ impl Painter {
     /// A dashed outline.
     pub fn dashed(&mut self, b: Box2, t: f64, color: Rgba) {
         let mut v = Vec::new();
-        super::dashed(&mut v, b.rect(), t, 6.0, 4.0, color);
+        crate::pieces::dashed(&mut v, b.rect(), t, 6.0, 4.0, color);
         for p in v {
             self.items.push(Item::Piece(p));
         }
@@ -100,9 +102,9 @@ impl Painter {
     /// Text with its top left at (x, y), shortened to `max_w`; returns its
     /// width.
     #[allow(clippy::too_many_arguments)]
-    pub fn text(&mut self, l: &mut Logic, text: &str, style: Style, x: f64, y: f64, max_w: f64) -> f64 {
-        let fitted = l.labels.fit(text, style.face, style.size(), max_w);
-        let Some(label) = l.labels.get(&fitted, style, self.scale, max_w + 1.0) else { return 0.0 };
+    pub fn text(&mut self, labels: &mut Labels, text: &str, style: Style, x: f64, y: f64, max_w: f64) -> f64 {
+        let fitted = labels.fit(text, style.face, style.size(), max_w);
+        let Some(label) = labels.get(&fitted, style, self.scale, max_w + 1.0) else { return 0.0 };
         let loc: Point<i32, Physical> =
             Point::<f64, Logical>::from((x - self.origin.0, y - self.origin.1)).to_physical_precise_round(self.scale);
         self.items.push(Item::Items(vec![SceneItem::Memory {
@@ -118,16 +120,25 @@ impl Painter {
 
     /// Text centred vertically in a box of height `h` from `y`.
     #[allow(clippy::too_many_arguments)]
-    pub fn text_mid(&mut self, l: &mut Logic, text: &str, style: Style, x: f64, y: f64, h: f64, max_w: f64) -> f64 {
-        let (_, th) = l.labels.measure(text, style.face, style.size());
-        self.text(l, text, style, x, y + ((h - th.ceil()) / 2.0).round(), max_w)
+    pub fn text_mid(
+        &mut self,
+        labels: &mut Labels,
+        text: &str,
+        style: Style,
+        x: f64,
+        y: f64,
+        h: f64,
+        max_w: f64,
+    ) -> f64 {
+        let (_, th) = labels.measure(text, style.face, style.size());
+        self.text(labels, text, style, x, y + ((h - th.ceil()) / 2.0).round(), max_w)
     }
 
     /// Text centred in a box.
-    pub fn text_center(&mut self, l: &mut Logic, text: &str, style: Style, b: Box2) -> f64 {
-        let (tw, th) = l.labels.measure(text, style.face, style.size());
+    pub fn text_center(&mut self, labels: &mut Labels, text: &str, style: Style, b: Box2) -> f64 {
+        let (tw, th) = labels.measure(text, style.face, style.size());
         let w = tw.min(b.w);
-        self.text(l, text, style, (b.x + (b.w - w) / 2.0).round(), (b.y + (b.h - th.ceil()) / 2.0).round(), b.w)
+        self.text(labels, text, style, (b.x + (b.w - w) / 2.0).round(), (b.y + (b.h - th.ceil()) / 2.0).round(), b.w)
     }
 
     /// An app's icon, `size` points square, with its top left at (x, y).
@@ -135,7 +146,7 @@ impl Painter {
     #[allow(clippy::too_many_arguments)]
     pub fn icon(
         &mut self,
-        l: &mut Logic,
+        icons: &mut Icons,
         app_id: &str,
         tint: crate::icons::Tint,
         x: f64,
@@ -145,7 +156,7 @@ impl Painter {
     ) {
         let scale = self.scale;
         let origin = self.origin;
-        if let Some(tex) = l.icons.texture(app_id, size, scale.ceil().max(1.0) as u32, tint) {
+        if let Some(tex) = icons.texture(app_id, size, scale.ceil().max(1.0) as u32, tint) {
             let item = crate::icons::icon_item(tex, (x, y), origin, scale, alpha * self.alpha);
             self.items.push(Item::Items(vec![item]));
         }
@@ -153,14 +164,8 @@ impl Painter {
 
     /// A window's live content scaled into a box.
     pub fn thumbnail(&mut self, az: &Aizome, id: WinId, b: Box2, alpha: f32) {
-        let e = aizome_comp_core::render::thumbnail_item(
-            az,
-            id,
-            (b.x, b.y, b.w, b.h),
-            self.origin,
-            self.scale,
-            alpha * self.alpha,
-        );
+        let e =
+            crate::render::thumbnail_item(az, id, (b.x, b.y, b.w, b.h), self.origin, self.scale, alpha * self.alpha);
         if let Some(e) = e {
             self.items.push(Item::Items(vec![e]));
         }

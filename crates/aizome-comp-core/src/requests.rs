@@ -11,6 +11,9 @@ use crate::state::State;
 
 impl State {
     pub fn handle_request(&mut self, req: Request) -> Response {
+        if let Some(r) = crate::recovery::handle_request(self, &req) {
+            return r;
+        }
         match self.request(req) {
             Ok(r) => r,
             Err(e) => Response::Error { message: e },
@@ -158,13 +161,20 @@ impl State {
                 let report = self.reload(&ReloadArgs::default());
                 Response::Reload { report }
             }
-            Request::Action { action } if action == "recovery" => {
-                crate::fallback::toggle_recovery(self);
-                Response::Ok
-            }
             Request::Reload { logic, shell, from, check } => {
                 let args = ReloadArgs { logic, shell, from: from.map(PathBuf::from), check };
                 Response::Reload { report: self.reload(&args) }
+            }
+            Request::DebugStall { seconds } => {
+                tracing::warn!(seconds, "stalling the main loop, as asked");
+                std::thread::sleep(std::time::Duration::from_secs(seconds.min(60) as u64));
+                Response::Ok
+            }
+            Request::Recovery { .. }
+            | Request::RecoveryState
+            | Request::RecoveryAction { .. }
+            | Request::InputState => {
+                return Err("the recovery overlay answers this".into());
             }
             other => {
                 // The window manager's: the logic answers.

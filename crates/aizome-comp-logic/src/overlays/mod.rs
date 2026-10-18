@@ -6,7 +6,6 @@
 pub mod area;
 pub mod marking;
 pub mod overview;
-pub mod painter;
 pub mod switcher;
 
 use aizome_comp_core::logic::KeyDecision;
@@ -19,7 +18,7 @@ use smithay::utils::{Logical, Physical, Point};
 use crate::bindings::Mods;
 use crate::decor::Piece;
 use crate::prelude::*;
-use crate::text::{Face, Style};
+use aizome_comp_core::text::{Face, Style};
 
 #[derive(Default)]
 pub struct Overlays {
@@ -180,7 +179,7 @@ pub fn window_gone(l: &mut Logic, id: WinId) {
 /// Feedback for a tab being dragged: drawn under the top layer.
 pub fn drag_feedback(st: &mut State, output: &Output, scale: f64) -> Scene {
     let mut out = Vec::new();
-    let (az, l) = (&st.az, st.lg.m());
+    let (az, l) = (&mut st.az, st.lg.m());
     let Some(drag) = l.interactive.drag.clone() else { return out };
     let (Some(slot), Some(target)) = (drag.slot, drag.target) else { return out };
     let geo = az.output_geometry(output);
@@ -192,13 +191,13 @@ pub fn drag_feedback(st: &mut State, output: &Output, scale: f64) -> Scene {
     // The label above the slot: "Release to stack with ‹title›".
     let title = l.wm.get(target).map(|w| w.title.clone()).unwrap_or_default();
     let text = format!("Release to stack with {title}");
-    let text = l.labels.fit(&text, Face::UiSemibold, 12.0, 420.0);
+    let text = az.labels.fit(&text, Face::UiSemibold, 12.0, 420.0);
     let style = Style::new(Face::UiSemibold, 12.0, p.on_menu_title);
     let mut pieces = Vec::new();
     // Slot: focus at 18% with a 2pt dashed focus border.
     pieces.push(Piece::rect(slot, p.focus.with_alpha(0.18)));
     dashed(&mut pieces, slot, 2.0, 6.0, 4.0, p.focus);
-    if let Some(label) = l.labels.get(&text, style, scale, 440.0) {
+    if let Some(label) = az.labels.get(&text, style, scale, 440.0) {
         let (w, h) = (label.w as f64 + 16.0, 22.0);
         let x = slot.x as f64;
         let y = slot.y as f64 - h - 18.0;
@@ -219,27 +218,4 @@ pub fn drag_feedback(st: &mut State, output: &Output, scale: f64) -> Scene {
     out
 }
 
-/// A dashed outline: dashes `dash` long with `gap` between, `t` thick.
-pub fn dashed(out: &mut Vec<Piece>, r: crate::wm::Rect, t: f64, dash: f64, gap: f64, color: aizome_theme::Rgba) {
-    let (x, y, w, h) = (r.x as f64, r.y as f64, r.w as f64, r.h as f64);
-    let along = |len: f64, mut put: Box<dyn FnMut(f64, f64) + '_>| {
-        let mut s = 0.0;
-        while s < len {
-            let l = dash.min(len - s);
-            put(s, l);
-            s += dash + gap;
-        }
-    };
-    let mut horiz = Vec::new();
-    along(w, Box::new(|s, l| horiz.push((s, l))));
-    for (s, l) in &horiz {
-        out.push(Piece::new(x + s, y, *l, t, color));
-        out.push(Piece::new(x + s, y + h - t, *l, t, color));
-    }
-    let mut vert = Vec::new();
-    along(h - 2.0 * t, Box::new(|s, l| vert.push((s, l))));
-    for (s, l) in &vert {
-        out.push(Piece::new(x, y + t + s, t, *l, color));
-        out.push(Piece::new(x + w - t, y + t + s, t, *l, color));
-    }
-}
+pub use aizome_comp_core::pieces::dashed;

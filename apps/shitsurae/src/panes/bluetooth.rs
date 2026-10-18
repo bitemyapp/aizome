@@ -223,6 +223,8 @@ pub enum Msg {
     PromptTyped(String),
     Answer(bool),
     Done(String, String, Result<(), Error>),
+    /// The pairing agent was registered, or not.
+    Agent(Result<(), Error>),
 }
 
 pub struct Bluetooth {
@@ -240,6 +242,9 @@ pub struct Bluetooth {
     /// The pane made the adapter discoverable (and undoes it when hidden).
     made_discoverable: bool,
     agent: bool,
+    /// The pane shows, and has started looking for devices.
+    showing: bool,
+    looking: bool,
 }
 
 impl Default for Bluetooth {
@@ -255,6 +260,8 @@ impl Default for Bluetooth {
             next_prompt: 1,
             made_discoverable: false,
             agent: false,
+            showing: false,
+            looking: false,
         }
     }
 }
@@ -284,6 +291,7 @@ impl Bluetooth {
         }
         let t = b.start_discovery(&a.path);
         cx.wait(t, |_| Msg::Done(String::new(), String::new(), Ok(())));
+        self.looking = true;
     }
 
     fn answer(&mut self, accept: bool, cx: &mut PaneCx<Msg>) {
@@ -365,6 +373,8 @@ impl Pane for Bluetooth {
     }
 
     fn shown(&mut self, cx: &mut PaneCx<Msg>) {
+        self.showing = true;
+        self.looking = false;
         if matches!(self.bt, Bt::None) {
             let wake = cx.wake();
             self.bt = if cx.sample() {
@@ -387,6 +397,8 @@ impl Pane for Bluetooth {
             let tx = cx.stream();
             let responders = self.responders.clone();
             let counter = Arc::new(std::sync::atomic::AtomicU64::new(1_000));
+            // On the agent's own thread: BlueZ can take seconds to answer,
+            // and the window must keep moving and drawing meanwhile.
             let registered = b.register_agent(move |p: PairingPrompt| {
                 let id = counter.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 responders.lock().unwrap_or_else(|e| e.into_inner()).insert(id, p.responder);
@@ -398,15 +410,22 @@ impl Pane for Bluetooth {
                     typed: String::new(),
                 }));
             });
-            match registered {
-                Ok(()) => self.agent = true,
-                Err(e) => log::info!("no Bluetooth pairing agent: {e}"),
-            }
+            self.agent = true;
+            cx.wait(registered, Msg::Agent);
         }
         self.look(cx, false);
     }
 
+    fn system_changed(&mut self, cx: &mut PaneCx<Msg>) {
+        // BlueZ's adapter may only be known a moment after the pane shows.
+        if self.showing && !self.looking {
+            self.look(cx, false);
+        }
+    }
+
     fn hidden(&mut self, cx: &mut PaneCx<Msg>) {
+        self.showing = false;
+        self.looking = false;
         if let Bt::Live(b) = &self.bt {
             if let Some(a) = b.snapshot().default_adapter().cloned() {
                 let t = b.stop_discovery(&a.path);
@@ -417,7 +436,8 @@ impl Pane for Bluetooth {
                 }
             }
             self.made_discoverable = false;
-            b.unregister_agent();
+            // Done after the registration, on the agent's thread.
+            let _ = b.unregister_agent();
             self.agent = false;
         }
     }
@@ -538,6 +558,12 @@ impl Pane for Bluetooth {
                 }
             }
             Msg::Answer(accept) => self.answer(accept, cx),
+            Msg::Agent(result) => {
+                if let Err(e) = result {
+                    log::info!("no Bluetooth pairing agent: {e}");
+                    self.agent = false;
+                }
+            }
             Msg::Done(what, device, result) => {
                 if !device.is_empty() {
                     self.busy.remove(&device);

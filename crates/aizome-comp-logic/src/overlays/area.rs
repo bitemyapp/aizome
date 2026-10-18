@@ -5,11 +5,11 @@ use smithay::input::keyboard::{Keysym, keysyms};
 use smithay::input::pointer::CursorIcon;
 use smithay::output::Output;
 
-use super::painter::{Box2, Painter, mono};
 use crate::decor::DecorCache;
 use crate::prelude::*;
 use crate::wm::{Rect, WinId};
 use aizome_comp_core::logic::KeyDecision;
+use aizome_comp_core::painter::{Box2, Painter, mono};
 
 pub struct AreaPick {
     pub start: Option<(f64, f64)>,
@@ -107,7 +107,7 @@ pub fn key(state: &mut State, syms: &[Keysym], pressed: bool) -> Option<KeyDecis
 }
 
 pub fn items(st: &mut State, output: &Output, scale: f64) -> aizome_comp_core::scene::Scene {
-    let (az, l) = (&st.az, st.lg.m());
+    let (az, l) = (&mut st.az, st.lg.m());
     let Some(mut a) = l.overlays.area.take() else { return Vec::new() };
     let geo = az.output_geometry(output);
     let origin = (geo.loc.x as f64, geo.loc.y as f64);
@@ -115,12 +115,14 @@ pub fn items(st: &mut State, output: &Output, scale: f64) -> aizome_comp_core::s
     let p = az.palette;
     let (rect, label) = if a.window_mode {
         let w = l.wm.shown_stacking().into_iter().rev().find(|id| {
-            l.decor_layout(*id)
+            l.decor_layout(&mut az.labels, *id)
                 .map(|l| l.bounds())
                 .or_else(|| l.wm.get(*id).map(|w| w.rect))
                 .is_some_and(|r| r.contains(a.pos.0, a.pos.1))
         });
-        let r = w.and_then(|id| l.decor_layout(id).map(|l| l.bounds()).or_else(|| l.wm.get(id).map(|w| w.rect)));
+        let r = w.and_then(|id| {
+            l.decor_layout(&mut az.labels, id).map(|l| l.bounds()).or_else(|| l.wm.get(id).map(|w| w.rect))
+        });
         (r, "click a window · Space for an area · Esc".to_string())
     } else if let Some(s) = a.start {
         let r = band(s, a.pos);
@@ -135,10 +137,10 @@ pub fn items(st: &mut State, output: &Output, scale: f64) -> aizome_comp_core::s
     }
     let lb = Box2::new(a.pos.0 + 14.0, a.pos.1 + 14.0, 10.0, 20.0);
     if geo.to_f64().contains(smithay::utils::Point::from(a.pos)) {
-        let (tw, _) = l.labels.measure(&label, crate::text::Face::Mono, 11.0);
+        let (tw, _) = az.labels.measure(&label, aizome_comp_core::text::Face::Mono, 11.0);
         let chip = Box2::new(lb.x, lb.y, tw.ceil() + 12.0, 20.0);
         pt.fill(chip, p.menu_title);
-        pt.text_center(l, &label, mono(11.0, p.on_menu_title), chip);
+        pt.text_center(&mut az.labels, &label, mono(11.0, p.on_menu_title), chip);
     }
     let out = pt.finish(&mut a.cache);
     l.overlays.area = Some(a);

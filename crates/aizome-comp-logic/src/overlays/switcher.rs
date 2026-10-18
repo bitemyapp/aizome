@@ -11,13 +11,13 @@
 use smithay::input::keyboard::{Keysym, keysyms};
 use smithay::output::Output;
 
-use super::painter::{Box2, Painter, bold, mono, semibold};
 use crate::bindings::Mods;
 use crate::decor::DecorCache;
-use crate::icons::Tint;
 use crate::prelude::*;
 use crate::wm::WinId;
+use aizome_comp_core::icons::Tint;
 use aizome_comp_core::logic::KeyDecision;
+use aizome_comp_core::painter::{Box2, Painter, bold, mono, semibold};
 
 pub struct App {
     pub app_id: String,
@@ -63,7 +63,7 @@ pub fn open(state: &mut State, reverse: bool, held: bool) {
         l.wm.apps_mru()
             .into_iter()
             .map(|(app_id, windows)| {
-                let name = l.icons.app_name(&app_id).unwrap_or_else(|| short_name(&app_id));
+                let name = state.az.icons.app_name(&app_id).unwrap_or_else(|| short_name(&app_id));
                 App { app_id, name, windows }
             })
             .collect();
@@ -226,7 +226,7 @@ pub fn click(state: &mut State, x: f64, y: f64) -> bool {
 }
 
 pub fn items(st: &mut State, output: &Output, scale: f64) -> aizome_comp_core::scene::Scene {
-    let (az, l) = (&st.az, st.lg.m());
+    let (az, l) = (&mut st.az, st.lg.m());
     let Some(mut sw) = l.overlays.switcher.take() else { return Vec::new() };
     if &sw.output != output {
         l.overlays.switcher = Some(sw);
@@ -287,8 +287,13 @@ pub fn items(st: &mut State, output: &Output, scale: f64) -> aizome_comp_core::s
         };
         let all_hidden = app.windows.iter().all(|w| l.wm.get(*w).is_some_and(|w| w.hidden || w.minimised));
         let icon_alpha = if all_hidden { 0.45 } else { 1.0 };
-        pt.icon(l, &app.app_id, Tint::Color, x + (TILE_W - ICON as f64) / 2.0, y + 8.0, ICON, icon_alpha);
-        pt.text_center(l, &app.name, semibold(12.0, ink), Box2::new(x + 4.0, y + 62.0, TILE_W - 8.0, 16.0));
+        pt.icon(&mut az.icons, &app.app_id, Tint::Color, x + (TILE_W - ICON as f64) / 2.0, y + 8.0, ICON, icon_alpha);
+        pt.text_center(
+            &mut az.labels,
+            &app.name,
+            semibold(12.0, ink),
+            Box2::new(x + 4.0, y + 62.0, TILE_W - 8.0, 16.0),
+        );
         let n = app.windows.len();
         let count = if all_hidden {
             "hidden".to_string()
@@ -297,7 +302,7 @@ pub fn items(st: &mut State, output: &Output, scale: f64) -> aizome_comp_core::s
         } else {
             format!("{n} windows")
         };
-        pt.text_center(l, &count, mono(10.5, sub), Box2::new(x + 2.0, y + 80.0, TILE_W - 4.0, 14.0));
+        pt.text_center(&mut az.labels, &count, mono(10.5, sub), Box2::new(x + 2.0, y + 80.0, TILE_W - 4.0, 14.0));
         x += TILE_W + GAP;
     }
 
@@ -309,13 +314,13 @@ pub fn items(st: &mut State, output: &Output, scale: f64) -> aizome_comp_core::s
     // The chosen app's windows.
     let app = &sw.apps[sw.app];
     let hy = dy + 8.0;
-    let nw = pt.text_mid(l, &app.name, bold(13.0, p.text), x0 + PAD, hy, 28.0, 240.0);
+    let nw = pt.text_mid(&mut az.labels, &app.name, bold(13.0, p.text), x0 + PAD, hy, 28.0, 240.0);
     let n = app.windows.len();
     let hint = format!(
         "{} · ↓ or keep holding to pick one",
         if n == 1 { "1 window".to_string() } else { format!("{n} windows") }
     );
-    pt.text_mid(l, &hint, mono(11.0, p.text3), x0 + PAD + nw + 10.0, hy, 28.0, w - 2.0 * PAD - nw - 10.0);
+    pt.text_mid(&mut az.labels, &hint, mono(11.0, p.text3), x0 + PAD + nw + 10.0, hy, 28.0, w - 2.0 * PAD - nw - 10.0);
     sw.win_boxes.clear();
     let cy = hy + 30.0;
     let first_card = if sw.windows_tier { sw.win.saturating_sub(MAX_CARDS - 1) } else { 0 };
@@ -338,7 +343,7 @@ pub fn items(st: &mut State, output: &Output, scale: f64) -> aizome_comp_core::s
             pt.outline(Box2::new(cx - 3.0, cy - 3.0, CARD_W + 6.0, CARD_H + 6.0), 2.0, p.focus);
         }
         let title = w_info.as_ref().map(|w| w.title.clone()).unwrap_or_default();
-        pt.text(l, &title, semibold(12.0, p.text), cx + 2.0, cy + THUMB_H + 6.0, CARD_W - 4.0);
+        pt.text(&mut az.labels, &title, semibold(12.0, p.text), cx + 2.0, cy + THUMB_H + 6.0, CARD_W - 4.0);
         let place = match &w_info {
             Some(w) if w.minimised => "Minimised".to_string(),
             Some(w) if w.hidden => "Hidden".to_string(),
@@ -351,7 +356,7 @@ pub fn items(st: &mut State, output: &Output, scale: f64) -> aizome_comp_core::s
             }
             None => String::new(),
         };
-        pt.text(l, &place, mono(11.0, p.text3), cx + 2.0, cy + THUMB_H + 25.0, CARD_W - 4.0);
+        pt.text(&mut az.labels, &place, mono(11.0, p.text3), cx + 2.0, cy + THUMB_H + 25.0, CARD_W - 4.0);
         cx += CARD_W + 12.0;
     }
 
@@ -368,14 +373,14 @@ pub fn items(st: &mut State, output: &Output, scale: f64) -> aizome_comp_core::s
         ("Q", "quit app"),
         ("Esc", "cancel"),
     ] {
-        let (cw, _) = l.labels.measure(cap, crate::text::Face::Mono, 11.0);
+        let (cw, _) = az.labels.measure(cap, aizome_comp_core::text::Face::Mono, 11.0);
         let capbox = Box2::new(hx, hy, cw.ceil() + 10.0, 20.0);
         if capbox.right() > x0 + w - PAD {
             break;
         }
         pt.outline(capbox, 1.0, p.line2);
-        pt.text_center(l, cap, mono(11.0, p.text2), capbox);
-        let tw = pt.text_mid(l, what, mono(11.0, p.text3), capbox.right() + 6.0, hy, 20.0, 160.0);
+        pt.text_center(&mut az.labels, cap, mono(11.0, p.text2), capbox);
+        let tw = pt.text_mid(&mut az.labels, what, mono(11.0, p.text3), capbox.right() + 6.0, hy, 20.0, 160.0);
         hx = capbox.right() + 6.0 + tw + 16.0;
     }
 

@@ -422,7 +422,7 @@ impl Udev {
                 match renderer {
                     Ok(mut r) => {
                         let (elements, clear) = scene_for::<_, GlesRenderbuffer>(&mut r, az, output, &scene, clear);
-                        match drm.render_frame(&mut r, &elements, clear, FrameFlags::DEFAULT) {
+                        match drm.render_frame(&mut r, &elements, clear, frame_flags(az)) {
                             Ok(res) => {
                                 let damaged = !res.is_empty;
                                 let states = res.states;
@@ -440,7 +440,7 @@ impl Udev {
             (Renderers::Pixman(r), SurfaceOutput::Pixman(drm)) => {
                 let (elements, clear) =
                     scene_for::<_, smithay::reexports::pixman::Image<'static, 'static>>(r, az, output, &scene, clear);
-                match drm.render_frame(r, &elements, clear, FrameFlags::DEFAULT) {
+                match drm.render_frame(r, &elements, clear, frame_flags(az)) {
                     Ok(res) => {
                         let damaged = !res.is_empty;
                         let states = res.states;
@@ -1064,6 +1064,12 @@ fn apply_device_settings(d: &mut libinput::Device, input: &aizome_config::Input)
             ClickMethod::ButtonAreas => libinput::ClickMethod::ButtonAreas,
         });
     }
+}
+
+/// Direct scanout (a full-screen client's buffer straight to a plane) is
+/// off while the recovery overlay shows, so it shows above everything.
+fn frame_flags(az: &Aizome) -> FrameFlags {
+    if az.recovery.is_open() { FrameFlags::ALLOW_CURSOR_PLANE_SCANOUT } else { FrameFlags::DEFAULT }
 }
 
 #[cfg(test)]

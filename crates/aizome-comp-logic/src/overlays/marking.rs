@@ -18,12 +18,12 @@ use smithay::input::pointer::{
 use smithay::output::Output;
 use smithay::utils::{Logical, Point, Serial};
 
-use super::painter::{Box2, Painter, mono};
 use crate::decor::DecorCache;
 use crate::prelude::*;
 use crate::wm::{DeskId, Side, WinId};
 use aizome_comp_core::focus::Focus;
 use aizome_comp_core::logic::KeyDecision;
+use aizome_comp_core::painter::{Box2, Painter, mono};
 
 /// The pause before the menu shows.
 pub const PAUSE: Duration = Duration::from_millis(250);
@@ -406,7 +406,7 @@ pub fn key(state: &mut State, syms: &[Keysym], pressed: bool) -> Option<KeyDecis
 }
 
 pub fn items(st: &mut State, output: &Output, scale: f64) -> aizome_comp_core::scene::Scene {
-    let (az, l) = (&st.az, st.lg.m());
+    let (az, l) = (&mut st.az, st.lg.m());
     let Some(mut m) = l.overlays.marking.take() else { return Vec::new() };
     if m.output.as_ref() != Some(output) || !m.shown {
         l.overlays.marking = Some(m);
@@ -438,20 +438,20 @@ pub fn items(st: &mut State, output: &Output, scale: f64) -> aizome_comp_core::s
     // The centre.
     let centre = Box2::new(cx - 28.0, cy - 11.0, 56.0, 22.0);
     pt.panel(centre, p.chrome, &p, shadows);
-    pt.text_center(l, "window", mono(10.5, p.text3), centre);
+    pt.text_center(&mut az.labels, "window", mono(10.5, p.text3), centre);
     // The verbs.
     let mut todesk_box = None;
     for v in Verb::ALL {
         let a = v.angle();
         let label = v.label();
-        let (tw, _) = l.labels.measure(label, crate::text::Face::Mono, 12.0);
+        let (tw, _) = az.labels.measure(label, aizome_comp_core::text::Face::Mono, 12.0);
         let w = tw.ceil() + 20.0;
         let (vx, vy) = (cx + RADIUS * a.cos(), cy + RADIUS * a.sin());
         let b = Box2::new((vx - w / 2.0).round(), (vy - 12.0).round(), w, 24.0);
         let hot = m.hover == Some(v) && m.desk_hover.is_none();
         let (fill, ink) = if hot { (p.selection, p.on_selection) } else { (p.raised, p.text) };
         pt.panel(b, fill, &p, shadows);
-        pt.text_center(l, label, mono(12.0, ink), b);
+        pt.text_center(&mut az.labels, label, mono(12.0, ink), b);
         if v == Verb::ToDesk {
             todesk_box = Some(b);
         }
@@ -468,7 +468,7 @@ pub fn items(st: &mut State, output: &Output, scale: f64) -> aizome_comp_core::s
         let x = tb.right() + 24.0;
         for (i, (d, name)) in desks.iter().enumerate() {
             let label = format!("{} {}", i + 1, name);
-            let (tw, _) = l.labels.measure(&label, crate::text::Face::Mono, 12.0);
+            let (tw, _) = az.labels.measure(&label, aizome_comp_core::text::Face::Mono, 12.0);
             let b = Box2::new(x, y, tw.ceil() + 24.0, 24.0);
             let hot = m.desk_hover == Some(*d);
             let (fill, ink) = if hot {
@@ -479,7 +479,7 @@ pub fn items(st: &mut State, output: &Output, scale: f64) -> aizome_comp_core::s
                 (p.raised, p.text)
             };
             pt.panel(b, fill, &p, shadows);
-            pt.text_center(l, &label, mono(12.0, ink), b);
+            pt.text_center(&mut az.labels, &label, mono(12.0, ink), b);
             m.desk_boxes.push((*d, b));
             y += 28.0;
         }

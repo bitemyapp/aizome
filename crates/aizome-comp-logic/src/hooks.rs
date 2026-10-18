@@ -63,7 +63,6 @@ fn init(st: &mut State, saved: Option<&[u8]>) -> Result<(), String> {
         for (id, size) in saved.requested_sizes {
             logic.data(id).requested_size = Some(size);
         }
-        logic.access.latched = saved.latched;
     }
     install(&mut st.lg, logic);
     crate::actions::adopt_windows(st);
@@ -78,7 +77,6 @@ fn save(st: &mut State) -> Result<Vec<u8>, String> {
     let saved = Saved {
         model: Some(l.wm.clone()),
         requested_sizes: l.wins.iter().filter_map(|(id, d)| d.requested_size.map(|s| (*id, s))).collect(),
-        latched: l.access.latched.clone(),
     };
     serde_json::to_vec(&saved).map_err(|e| e.to_string())
 }
@@ -89,6 +87,10 @@ fn quiesce(st: &mut State) {
     l.interactive = Default::default();
     l.pending_action = None;
     l.anims = Default::default();
+    let access = std::mem::take(&mut l.access);
+    for t in access.slow.into_values().flatten() {
+        st.cancel_timer(t);
+    }
     st.az.cursor_override = None;
 }
 
@@ -114,6 +116,7 @@ pub fn publish(st: &mut State) {
     let view = View {
         focused: l.wm.focused(),
         stacking: l.wm.shown_stacking(),
+        mru: l.wm.mru().to_vec(),
         grabs_keyboard: grabs,
         animating,
         outset: crate::decor::OUTSET,
@@ -225,8 +228,8 @@ fn scene(st: &mut State, output: &Output, purpose: Purpose) -> Scene {
 
 fn window_bounds(st: &mut State, id: WinId) -> Option<Rect> {
     let shadows = st.az.settings.appearance.effects.shadows();
-    let l = st.lg.m();
-    match l.decor_layout(id) {
+    let l = st.lg.r();
+    match l.decor_layout(&mut st.az.labels, id) {
         Some(layout) => {
             let mut r = layout.frame;
             for t in &layout.tabs {
@@ -267,5 +270,5 @@ fn settings_changed(st: &mut State, old: &Settings) {
 
 fn loop_iteration(st: &mut State) {
     crate::actions::flush_ipc_events(st);
-    st.lg.m().labels.gc();
+    st.az.labels.gc();
 }

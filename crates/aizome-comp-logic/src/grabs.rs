@@ -1,7 +1,12 @@
 //! Pointer grabs: moving windows (by the tab, ⌃❖-drag or the client's
 //! request), dragging tabs into and out of groups, resizing by the frame,
 //! sliding a tab along the top edge (⇧-drag), and the close and zoom boxes.
+//!
+//! Each ends when the button that started it comes up, whatever else the
+//! seat thinks is held and whatever any client is doing ([`ends`]), and
+//! if that button is pressed again (its release went missing).
 
+use smithay::backend::input::ButtonState;
 use smithay::input::Seat;
 use smithay::input::pointer::{
     AxisFrame, ButtonEvent, CursorIcon, Focus as PointerFocusMode, GestureHoldBeginEvent, GestureHoldEndEvent,
@@ -113,6 +118,18 @@ fn start_data(pos: Point<f64, Logical>, button: u32) -> GrabStartData<State> {
     GrabStartData { focus: None, button, location: pos }
 }
 
+/// Whether a button event ends a grab the compositor holds: the release of
+/// the button that started it (or of the last button held), or a press of
+/// that button, which means its release never came. Grabs never wait for
+/// every button the seat may wrongly think is held, nor for any client.
+pub fn ends(start: &GrabStartData<State>, handle: &PointerInnerHandle<'_, State>, event: &ButtonEvent) -> bool {
+    let own = event.button == start.button;
+    match event.state {
+        ButtonState::Released => own || handle.current_pressed().is_empty(),
+        ButtonState::Pressed => own,
+    }
+}
+
 // ---- move --------------------------------------------------------------
 
 pub struct MoveGrab {
@@ -126,7 +143,15 @@ pub struct MoveGrab {
     moved: bool,
 }
 
-pub fn start_move(state: &mut State, win: WinId, pos: Point<f64, Logical>, serial: Serial, _time: u32, tab: bool) {
+pub fn start_move(
+    state: &mut State,
+    win: WinId,
+    pos: Point<f64, Logical>,
+    button: u32,
+    serial: Serial,
+    _time: u32,
+    tab: bool,
+) {
     let Some(w) = state.lg.m().wm.get(win) else { return };
     let rect = w.rect;
     let grouped = w.group.is_some();
@@ -134,7 +159,7 @@ pub fn start_move(state: &mut State, win: WinId, pos: Point<f64, Logical>, seria
     // ⌥-drag tears the showing tab out of its group too.
     let alt = state.az.seat.get_keyboard().is_some_and(|k| k.modifier_state().alt);
     let grab = MoveGrab {
-        start: start_data(pos, aizome_comp_core::input::BTN_LEFT),
+        start: start_data(pos, button),
         win,
         start_rect: rect,
         tab,
@@ -168,9 +193,9 @@ impl PointerGrab<State> for MoveGrab {
             }
             // Out of the group, following the pointer by its tab.
             self.pending_tear = false;
-            let tab = data.lg.m().decor_tab_rect(self.win);
+            let tab = data.lg.r().decor_tab_rect(&mut data.az.labels, self.win);
             data.unstack(self.win, Some((self.start_rect.x, self.start_rect.y)));
-            if let (Some(t0), Some(t1)) = (tab, data.lg.m().decor_tab_rect(self.win)) {
+            if let (Some(t0), Some(t1)) = (tab, data.lg.r().decor_tab_rect(&mut data.az.labels, self.win)) {
                 // Keep the grabbed point of the tab under the pointer.
                 let dx = t0.x - t1.x;
                 self.start_rect.x += dx;
@@ -195,16 +220,18 @@ impl PointerGrab<State> for MoveGrab {
 
     fn button(&mut self, data: &mut State, handle: &mut PointerInnerHandle<'_, State>, event: &ButtonEvent) {
         handle.button(data, event);
-        if !handle.current_pressed().is_empty() {
+        if !ends(&self.start, handle, event) {
             return;
         }
-        if self.pending_tear && !self.moved {
-            // A click on a background tab shows it.
-            data.show_group_member(self.win);
-        }
         let drop = data.lg.m().interactive.drag.take();
-        if let Some(TabDrag { target: Some(target), .. }) = drop {
-            data.stack(target, self.win);
+        if event.state == ButtonState::Released {
+            if self.pending_tear && !self.moved {
+                // A click on a background tab shows it.
+                data.show_group_member(self.win);
+            }
+            if let Some(TabDrag { target: Some(target), .. }) = drop {
+                data.stack(target, self.win);
+            }
         }
         data.az.cursor_override = None;
         data.az.queue_redraw_all();
@@ -227,12 +254,12 @@ fn update_drop_target(state: &mut State, win: WinId, pos: Point<f64, Logical>) {
         if dragged.contains(&id) {
             continue;
         }
-        let Some(l) = state.lg.m().decor_layout(id) else { continue };
+        let Some(l) = state.lg.r().decor_layout(&mut state.az.labels, id) else { continue };
         let strip = l.tabs.iter().fold(Rect::default(), |r, t| r.union(t.rect));
         // The strip, and a little beyond its end where the slot goes.
         let reach = Rect::new(strip.x, strip.y - 6, strip.w + 140, strip.h + 12);
         if reach.contains(pos.x, pos.y) {
-            let w = state.lg.m().decor_tab_rect(win).map(|r| r.w).unwrap_or(100);
+            let w = state.lg.r().decor_tab_rect(&mut state.az.labels, win).map(|r| r.w).unwrap_or(100);
             let slot = Rect::new(strip.right(), strip.y, w.min((l.frame.right() - strip.right()).max(48)), strip.h);
             found = Some((l.win, slot));
             break;
@@ -264,7 +291,15 @@ pub struct ResizeGrab {
     start_rect: Rect,
 }
 
-pub fn start_resize(state: &mut State, win: WinId, edges: Edges, pos: Point<f64, Logical>, serial: Serial, _time: u32) {
+pub fn start_resize(
+    state: &mut State,
+    win: WinId,
+    edges: Edges,
+    pos: Point<f64, Logical>,
+    button: u32,
+    serial: Serial,
+    _time: u32,
+) {
     let Some(w) = state.lg.m().wm.get(win) else { return };
     if w.fullscreen() {
         return;
@@ -286,7 +321,7 @@ pub fn start_resize(state: &mut State, win: WinId, edges: Edges, pos: Point<f64,
             w.restore = None;
         }
     }
-    let grab = ResizeGrab { start: start_data(pos, aizome_comp_core::input::BTN_LEFT), win, edges, start_rect };
+    let grab = ResizeGrab { start: start_data(pos, button), win, edges, start_rect };
     state.az.cursor_override = Some(edges.cursor());
     state.set_logic_pointer_grab(grab, serial, PointerFocusMode::Clear);
 }
@@ -337,7 +372,7 @@ impl PointerGrab<State> for ResizeGrab {
 
     fn button(&mut self, data: &mut State, handle: &mut PointerInnerHandle<'_, State>, event: &ButtonEvent) {
         handle.button(data, event);
-        if !handle.current_pressed().is_empty() {
+        if !ends(&self.start, handle, event) {
             return;
         }
         handle.unset_grab(self, data, event.serial, event.time, true);
@@ -366,8 +401,12 @@ pub struct TabSlideGrab {
 
 pub fn start_tab_slide(state: &mut State, win: WinId, pos: Point<f64, Logical>, serial: Serial, _time: u32) {
     // The offset the tab shows at (the layout clamps the stored one).
-    let start_offset =
-        state.lg.m().decor_layout(win).map(|l| l.tabs.first().map(|t| t.rect.x - l.frame.x).unwrap_or(0)).unwrap_or(0);
+    let start_offset = state
+        .lg
+        .r()
+        .decor_layout(&mut state.az.labels, win)
+        .map(|l| l.tabs.first().map(|t| t.rect.x - l.frame.x).unwrap_or(0))
+        .unwrap_or(0);
     let grab = TabSlideGrab { start: start_data(pos, aizome_comp_core::input::BTN_LEFT), win, start_offset };
     state.az.cursor_override = Some(CursorIcon::EwResize);
     state.set_logic_pointer_grab(grab, serial, PointerFocusMode::Clear);
@@ -390,7 +429,11 @@ impl PointerGrab<State> for TabSlideGrab {
             }
         }
         // Store what the layout will show, so it never drifts past the end.
-        let shown = data.lg.m().decor_layout(self.win).and_then(|l| l.tabs.first().map(|t| t.rect.x - l.frame.x));
+        let shown = data
+            .lg
+            .r()
+            .decor_layout(&mut data.az.labels, self.win)
+            .and_then(|l| l.tabs.first().map(|t| t.rect.x - l.frame.x));
         if let Some(s) = shown {
             for m in data.lg.m().wm.group_members(self.win) {
                 if let Some(w) = data.lg.m().wm.get_mut(m) {
@@ -403,7 +446,7 @@ impl PointerGrab<State> for TabSlideGrab {
 
     fn button(&mut self, data: &mut State, handle: &mut PointerInnerHandle<'_, State>, event: &ButtonEvent) {
         handle.button(data, event);
-        if handle.current_pressed().is_empty() {
+        if ends(&self.start, handle, event) {
             handle.unset_grab(self, data, event.serial, event.time, true);
         }
     }
@@ -441,13 +484,14 @@ impl PointerGrab<State> for BoxGrab {
 
     fn button(&mut self, data: &mut State, handle: &mut PointerInnerHandle<'_, State>, event: &ButtonEvent) {
         handle.button(data, event);
-        if !handle.current_pressed().is_empty() {
+        if !ends(&self.start, handle, event) {
             return;
         }
         let pos = handle.current_location();
         handle.unset_grab(self, data, event.serial, event.time, true);
         // Only if released over the same box.
-        let still = matches!(data.under(pos), crate::input::Under::Decor(_, h) if h == self.hit);
+        let still = event.state == ButtonState::Released
+            && matches!(data.under(pos), crate::input::Under::Decor(_, h) if h == self.hit);
         if still {
             match self.hit {
                 Hit::Close(w) => data.close_window(w),
@@ -471,7 +515,7 @@ pub fn start_client_move(state: &mut State, seat: &Seat<State>, win: WinId, seri
     }
     let Some(start) = pointer.grab_start_data() else { return };
     // The client's own title bar: a move like the tab's (stacking too).
-    start_move(state, win, start.location, serial, 0, true);
+    start_move(state, win, start.location, start.button, serial, 0, true);
 }
 
 pub fn start_client_resize(state: &mut State, seat: &Seat<State>, win: WinId, serial: Serial, edges: Edges) {
@@ -480,7 +524,7 @@ pub fn start_client_resize(state: &mut State, seat: &Seat<State>, win: WinId, se
         return;
     }
     let Some(start) = pointer.grab_start_data() else { return };
-    start_resize(state, win, edges, start.location, serial, 0);
+    start_resize(state, win, edges, start.location, start.button, serial, 0);
 }
 
 pub fn edges_from_xdg(e: xdg_toplevel::ResizeEdge) -> Edges {

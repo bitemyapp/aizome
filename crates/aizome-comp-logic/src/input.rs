@@ -14,10 +14,10 @@ use aizome_comp_core::focus::Focus;
 use aizome_comp_core::input::{BTN_LEFT, BTN_MIDDLE, BTN_RIGHT, MODIFIER_KEYS, Owner, layer_under};
 use aizome_comp_core::logic::{AxisEvent, KeyDecision, KeyEvent};
 use aizome_comp_core::timers::TimerId;
-use smithay::backend::input::{Axis, AxisSource, ButtonState};
+use smithay::backend::input::{Axis, AxisSource};
 use smithay::desktop::{WindowSurfaceType, layer_map_for_output};
 use smithay::input::keyboard::{ModifiersState, keysyms};
-use smithay::input::pointer::{AxisFrame, ButtonEvent, CursorIcon, MotionEvent};
+use smithay::input::pointer::{AxisFrame, CursorIcon, MotionEvent};
 use smithay::utils::{Logical, Point, SERIAL_COUNTER, Serial};
 use smithay::wayland::keyboard_shortcuts_inhibit::KeyboardShortcutsInhibitorSeat;
 use smithay::wayland::shell::wlr_layer::{KeyboardInteractivity, Layer};
@@ -111,7 +111,6 @@ impl InputExt for State {
     fn logic_pointer_button(&mut self, button: u32, pressed: bool, time: u32) {
         let Some(pointer) = self.az.seat.get_pointer() else { return };
         let serial = SERIAL_COUNTER.next_serial();
-        let state = if pressed { ButtonState::Pressed } else { ButtonState::Released };
         if pressed {
             let pos = pointer.current_location();
             let under = match self.under(pos) {
@@ -158,11 +157,17 @@ impl InputExt for State {
                 }
                 _ => {}
             }
-        } else if !pressed && crate::overlays::pointer_button(self, button, false, pointer.current_location()) {
+        } else if !pressed
+            && !self.az.forwarded_buttons.contains(&button)
+            && !pointer.is_grabbed()
+            && crate::overlays::pointer_button(self, button, false, pointer.current_location())
+        {
+            // A release for an overlay that took its press. One whose
+            // press the seat saw goes to the seat, or its grabs (and the
+            // pointer) stay stuck.
             return;
         }
-        pointer.button(self, &ButtonEvent { button, state, serial, time });
-        pointer.frame(self);
+        self.forward_button(button, pressed, serial, time);
     }
 
     fn logic_pointer_axis(&mut self, a: &AxisEvent) {
@@ -480,7 +485,7 @@ fn window_under(st: &mut State, id: WinId, pos: Point<f64, Logical>) -> Option<U
     let geo = st.az.windows.get(&id)?.window.geometry();
     let origin = Point::<f64, Logical>::from(((rect.x - geo.loc.x) as f64, (rect.y - geo.loc.y) as f64));
     if !fullscreen
-        && let Some(layout) = st.lg.m().decor_layout(id)
+        && let Some(layout) = st.lg.r().decor_layout(&mut st.az.labels, id)
         && let Some(hit) = crate::decor::hit(&layout, pos.x, pos.y)
     {
         return Some(Under::Decor(id, hit));
@@ -510,11 +515,11 @@ fn press_binding(st: &mut State, button: u32, pos: Point<f64, Logical>, serial: 
         let Some(id) = target else { return false };
         st.focus_window(Some(id));
         match button {
-            BTN_LEFT => crate::grabs::start_move(st, id, pos, serial, time, false),
+            BTN_LEFT => crate::grabs::start_move(st, id, pos, BTN_LEFT, serial, time, false),
             BTN_RIGHT => {
                 let edges =
                     st.lg.r().wm.get(id).map(|w| nearest_corner(w.rect, pos)).unwrap_or(Edges::BOTTOM | Edges::RIGHT);
-                crate::grabs::start_resize(st, id, edges, pos, serial, time);
+                crate::grabs::start_resize(st, id, edges, pos, BTN_RIGHT, serial, time);
             }
             _ => return false,
         }
@@ -567,12 +572,12 @@ fn decor_press(st: &mut State, id: WinId, hit: Hit, button: u32, pos: Point<f64,
             if shift {
                 crate::grabs::start_tab_slide(st, w, pos, serial, time);
             } else {
-                crate::grabs::start_move(st, w, pos, serial, time, true);
+                crate::grabs::start_move(st, w, pos, BTN_LEFT, serial, time, true);
             }
         }
         (BTN_LEFT, Hit::Edge(w, edges)) => {
             st.focus_window(Some(w));
-            crate::grabs::start_resize(st, w, edges, pos, serial, time);
+            crate::grabs::start_resize(st, w, edges, pos, BTN_LEFT, serial, time);
         }
         (BTN_MIDDLE, Hit::Tab(w)) | (BTN_MIDDLE, Hit::Close(w)) | (BTN_MIDDLE, Hit::Zoom(w)) => {
             st.lower_window(w);

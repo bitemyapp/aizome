@@ -38,6 +38,8 @@ pub struct View {
     pub focused: Option<WinId>,
     /// The windows that show, bottom to top.
     pub stacking: Vec<WinId>,
+    /// Every window, most recently focused first.
+    pub mru: Vec<WinId>,
     /// An overlay (the switcher, the overview, the area picker) has the
     /// keyboard, so no surface does.
     pub grabs_keyboard: bool,
@@ -54,6 +56,7 @@ impl Default for View {
         View {
             focused: None,
             stacking: Vec::new(),
+            mru: Vec::new(),
             grabs_keyboard: false,
             animating: false,
             outset: 48,

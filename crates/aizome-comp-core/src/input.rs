@@ -50,8 +50,6 @@ pub enum CoreAction {
     ChangeVt(i32),
     /// Reload what changed (⌃❖R).
     Reload,
-    /// The recovery overlay (⌃⌥Delete).
-    Recovery,
 }
 
 /// How a key was decided.
@@ -278,6 +276,9 @@ impl State {
         let pos = self.clamp_to_outputs(pos);
         let old = self.az.pointer_pos;
         self.az.pointer_pos = pos;
+        if crate::recovery::pointer_moved(self, old, pos, time) {
+            return;
+        }
         if self.lg.healthy() {
             self.lg_call((), |vt, st| (vt.pointer_motion)(st, pos, time));
         } else {
@@ -286,6 +287,7 @@ impl State {
         // Activate a pointer constraint the client asked for.
         if let Some(pointer) = self.az.seat.get_pointer()
             && let Some(f) = pointer.current_focus()
+            && crate::recovery::may_constrain(&self.az, &f.0)
         {
             with_pointer_constraint(&f.0, &pointer, |c| {
                 if let Some(c) = c
@@ -324,7 +326,7 @@ impl State {
 
     pub fn pointer_button(&mut self, button: u32, pressed: bool, time: u32) {
         self.note_activity();
-        if self.az.recovery.is_some() && crate::fallback::recovery_button(self, button, pressed) {
+        if crate::recovery::pointer_button(self, button, pressed) {
             return;
         }
         if self.lg.healthy() {
@@ -336,6 +338,9 @@ impl State {
 
     pub fn pointer_axis(&mut self, axis: &AxisEvent) {
         self.note_activity();
+        if crate::recovery::scroll(self, axis.v) {
+            return;
+        }
         if self.lg.healthy() {
             self.lg_call((), |vt, st| (vt.pointer_axis)(st, axis));
         } else {
@@ -415,22 +420,24 @@ impl State {
         mods: &ModifiersState,
         handle: &KeysymHandle<'_>,
     ) -> Decision {
-        // A swallowed press swallows its release.
-        if !pressed && self.az.suppressed_keys.remove(&keycode) {
-            return Decision::Swallow;
-        }
         let mut syms: Vec<Keysym> = Vec::new();
         if let Some(s) = handle.raw_latin_sym_or_raw_current_sym() {
             syms.push(s);
         }
         syms.push(handle.modified_sym());
         syms.extend(handle.raw_syms());
+        // Ctrl+Alt+Del, before anything else: bindings, inhibitors, the
+        // lock, overlays and grabs.
+        if let Some(d) = crate::recovery::key(self, keycode, pressed, mods, &syms) {
+            return d;
+        }
+        // A swallowed press swallows its release.
+        if !pressed && self.az.suppressed_keys.remove(&keycode) {
+            return Decision::Swallow;
+        }
         if pressed && let Some(a) = core_binding(mods, &syms, self.az.lock.is_locked()) {
             self.az.suppressed_keys.insert(keycode);
             return Decision::Core(a);
-        }
-        if self.az.recovery.is_some() {
-            return crate::fallback::recovery_key(self, keycode, pressed, &syms);
         }
         if !self.lg.healthy() {
             if !pressed {
@@ -461,7 +468,31 @@ impl State {
             // Not now: logic code may be on the stack. At the end of the
             // iteration.
             CoreAction::Reload => self.lg.pending_reload = true,
-            CoreAction::Recovery => crate::fallback::toggle_recovery(self),
+        }
+    }
+
+    /// Hands a button to the seat (and so to the client under the pointer,
+    /// or the grab in force), keeping count of the buttons it holds.
+    pub fn forward_button(&mut self, button: u32, pressed: bool, serial: smithay::utils::Serial, time: u32) {
+        let Some(pointer) = self.az.seat.get_pointer() else { return };
+        if pressed {
+            self.az.forwarded_buttons.insert(button);
+        } else {
+            self.az.forwarded_buttons.remove(&button);
+        }
+        let state = if pressed {
+            smithay::backend::input::ButtonState::Pressed
+        } else {
+            smithay::backend::input::ButtonState::Released
+        };
+        pointer.button(self, &smithay::input::pointer::ButtonEvent { button, state, serial, time });
+        pointer.frame(self);
+    }
+
+    /// Asks a window to close.
+    pub fn close_window(&mut self, id: WinId) {
+        if let Some(m) = self.az.windows.get(&id) {
+            m.toplevel().send_close();
         }
     }
 
@@ -472,8 +503,8 @@ impl State {
     }
 }
 
-/// The keys the core keeps: VT switching (even when locked), ⌃❖R to
-/// reload, ⌃⌥Delete for the recovery overlay.
+/// The keys the core keeps besides ⌃⌥Delete (the recovery overlay's): VT
+/// switching (even when locked) and ⌃❖R to reload.
 fn core_binding(mods: &ModifiersState, syms: &[Keysym], locked: bool) -> Option<CoreAction> {
     for s in syms {
         let r = s.raw();
@@ -487,9 +518,6 @@ fn core_binding(mods: &ModifiersState, syms: &[Keysym], locked: bool) -> Option<
     let is = |k: u32| syms.iter().any(|s| s.raw() == k);
     if mods.ctrl && mods.logo && !mods.alt && !mods.shift && (is(keysyms::KEY_r) || is(keysyms::KEY_R)) {
         return Some(CoreAction::Reload);
-    }
-    if mods.ctrl && mods.alt && !mods.logo && (is(keysyms::KEY_Delete) || is(keysyms::KEY_KP_Delete)) {
-        return Some(CoreAction::Recovery);
     }
     None
 }

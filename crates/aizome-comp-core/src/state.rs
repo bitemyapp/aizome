@@ -279,6 +279,13 @@ pub struct Aizome {
 
     pub settings: Settings,
     pub palette: Palette,
+    /// Ctrl+Alt+Del's overlay, drawn and run by the core so it works
+    /// whatever the logic does.
+    pub recovery: crate::recovery::Recovery,
+    /// Text and app icons, for the core's overlays and the logic's
+    /// decorations alike (kept across reloads).
+    pub labels: crate::text::Labels,
+    pub icons: crate::icons::Icons,
     pub ipc: IpcServer,
 
     pub cursor_status: CursorImageStatus,
@@ -311,8 +318,12 @@ pub struct Aizome {
     pub valid_tokens: HashSet<String>,
     pub idle: crate::idle::IdleState,
     pub children: crate::session::Children,
-    /// The recovery overlay, while it's open (⌃⌥Delete).
-    pub recovery: Option<crate::fallback::Recovery>,
+    /// Buttons whose presses the seat was given and whose releases it
+    /// hasn't been yet. The seat ends its grabs (a client's implicit grab,
+    /// a drag and drop) only when it holds no button, so every press it
+    /// sees must be followed by its release, whatever overlay comes up in
+    /// between ([`State::forward_button`]).
+    pub forwarded_buttons: HashSet<u32>,
 }
 
 impl State {
@@ -490,6 +501,13 @@ impl State {
             view: View::default(),
             window_outputs_dirty: false,
             outputs_dirty: false,
+            recovery: Default::default(),
+            labels: {
+                let mut l = crate::text::Labels::new();
+                l.warm_up();
+                l
+            },
+            icons: crate::icons::Icons::new(),
             ipc,
             palette,
             settings,
@@ -509,7 +527,7 @@ impl State {
             valid_tokens: HashSet::new(),
             idle: Default::default(),
             children: Default::default(),
-            recovery: None,
+            forwarded_buttons: HashSet::new(),
         };
         State { backend, az, lg: LogicHost::default() }
     }
@@ -704,6 +722,46 @@ impl Aizome {
     /// Where the logic last put a window (its content), if it shows.
     pub fn window_rect(&self, id: WinId) -> Option<Rect> {
         self.windows.get(&id).map(|m| m.view.rect)
+    }
+
+    /// A window's app id (what its client says).
+    pub fn window_app(&self, id: WinId) -> Option<String> {
+        self.windows.get(&id).map(|m| crate::shell::toplevel_ids(m.toplevel()).0)
+    }
+
+    /// The process behind a window (its client's credentials).
+    pub fn window_pid(&self, id: WinId) -> Option<i32> {
+        let m = self.windows.get(&id)?;
+        use smithay::reexports::wayland_server::Resource;
+        let client = self.dh.get_client(m.surface().id()).ok()?;
+        client.get_credentials(&self.dh).ok().map(|c| c.pid)
+    }
+
+    /// An app's windows.
+    pub fn windows_of_app(&self, app: &str) -> Vec<WinId> {
+        let mut v: Vec<WinId> =
+            self.windows.keys().copied().filter(|id| self.window_app(*id).as_deref() == Some(app)).collect();
+        v.sort();
+        v
+    }
+
+    /// Apps with windows, most recently used first, each with its windows
+    /// in focus order (every window, on every Desk), as the logic last
+    /// said.
+    pub fn apps_mru(&self) -> Vec<(String, Vec<WinId>)> {
+        let mut order: Vec<WinId> = self.view.mru.iter().copied().filter(|id| self.windows.contains_key(id)).collect();
+        let mut rest: Vec<WinId> = self.windows.keys().copied().filter(|id| !order.contains(id)).collect();
+        rest.sort();
+        order.extend(rest);
+        let mut apps: Vec<(String, Vec<WinId>)> = Vec::new();
+        for id in order {
+            let app = self.window_app(id).unwrap_or_default();
+            match apps.iter_mut().find(|(a, _)| *a == app) {
+                Some((_, ws)) => ws.push(id),
+                None => apps.push((app, vec![id])),
+            }
+        }
+        apps
     }
 
     /// Whether a window shows now (as the logic last said).

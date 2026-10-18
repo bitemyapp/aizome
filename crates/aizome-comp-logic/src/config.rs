@@ -8,13 +8,13 @@ use crate::prelude::*;
 /// Settings were applied (the old ones given).
 pub fn settings_changed(st: &mut State, old: &Settings) {
     let s = st.az.settings.clone();
-    let l = st.lg.m();
     // Installed apps and icon themes may have changed too.
-    l.icons.clear();
+    st.az.icons.clear();
     // The theme and focus colour: labels are drawn again.
     if old.appearance != s.appearance {
-        l.labels.clear();
+        st.az.labels.clear();
     }
+    let l = st.lg.m();
     if old.keys != s.keys {
         l.bindings = crate::bindings::Bindings::new(&s.keys.bindings);
     }

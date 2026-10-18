@@ -292,6 +292,10 @@ impl Aizome {
     /// locked, else the topmost mapped layer surface on the overlay or top
     /// layer with exclusive keyboard interactivity.
     pub fn exclusive_keyboard_target(&self) -> Option<Option<WlSurface>> {
+        // Ctrl+Alt+Del's overlay has the keys while it shows.
+        if self.recovery.is_open() {
+            return Some(None);
+        }
         if self.lock.is_locked() {
             let out = self.active_output();
             let lock = out
@@ -325,7 +329,7 @@ impl Aizome {
         if let Some(t) = self.exclusive_keyboard_target() {
             return t;
         }
-        let overlay_keys = self.view.grabs_keyboard || self.recovery.is_some();
+        let overlay_keys = self.view.grabs_keyboard;
         if let Some(g) = &self.popup_grab
             && g.live()
             && !overlay_keys

@@ -249,6 +249,8 @@ pub struct LogicHost {
     pub last_error: Option<String>,
     /// A reload asked for by a key: done at the end of the iteration.
     pub(crate) pending_reload: bool,
+    /// Calls into the logic on the stack now.
+    depth: u32,
 }
 
 impl Default for LogicHost {
@@ -268,6 +270,7 @@ impl Default for LogicHost {
             rollbacks: 0,
             last_error: None,
             pending_reload: false,
+            depth: 0,
         }
     }
 }
@@ -297,6 +300,11 @@ impl LogicHost {
         self.generation
     }
 
+    /// Logic code is on the stack: nothing may swap it now.
+    pub fn in_call(&self) -> bool {
+        self.depth > 0
+    }
+
     /// A logic is loaded and well.
     pub fn healthy(&self) -> bool {
         self.vt.is_some() && self.poisoned.is_none()
@@ -323,7 +331,10 @@ impl State {
         if self.lg.poisoned.is_some() {
             return default;
         }
-        match catch_unwind(AssertUnwindSafe(|| f(vt, self))) {
+        self.lg.depth += 1;
+        let r = catch_unwind(AssertUnwindSafe(|| f(vt, self)));
+        self.lg.depth -= 1;
+        match r {
             Ok(r) => r,
             Err(payload) => {
                 let message = panic_message(&payload);

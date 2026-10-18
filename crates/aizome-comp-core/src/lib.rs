@@ -23,14 +23,19 @@ pub mod fallback;
 pub mod focus;
 pub mod geom;
 pub mod handlers;
+pub mod icons;
 pub mod idle;
 pub mod input;
 pub mod ipc;
 pub mod logic;
 pub mod night;
 pub mod outputs;
+pub mod painter;
+pub mod pieces;
 pub mod popups;
 pub mod protocols;
+pub mod recovery;
+pub mod reload;
 pub mod render;
 pub mod requests;
 pub mod scene;
@@ -39,8 +44,11 @@ pub mod session;
 pub mod shell;
 pub mod state;
 pub mod stats;
+pub mod svg;
+pub mod text;
 pub mod timers;
 pub mod view;
+pub mod watchdog;
 
 pub use aizome_config;
 pub use aizome_ipc;
@@ -190,6 +198,8 @@ pub fn run() -> ExitCode {
     state.place_pointer_on_primary();
     state.update_night_light(true);
     idle::start(&mut state);
+    watchdog::start(&mut state);
+    recovery::start(&mut state);
 
     // The logic: the one asked for, else the installed one. Without it the
     // session still runs (the recovery path), and a reload brings it.
@@ -205,7 +215,10 @@ pub fn run() -> ExitCode {
     }
     session::start(&mut state);
 
-    if let Err(e) = event_loop.run(None, &mut state, |state| state.on_loop_iteration()) {
+    if let Err(e) = event_loop.run(None, &mut state, |state| {
+        watchdog::beat();
+        state.on_loop_iteration()
+    }) {
         error!("event loop: {e}");
     }
     session::stop_children(&mut state.az);

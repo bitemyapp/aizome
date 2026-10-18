@@ -361,6 +361,31 @@ pub enum Request {
         #[serde(default)]
         check: bool,
     },
+    /// Opens or closes the recovery overlay (Ctrl+Alt+Del); left out, it
+    /// toggles.
+    Recovery {
+        #[serde(default)]
+        state: Option<bool>,
+    },
+    /// What the recovery overlay shows. → [`Response::Recovery`].
+    RecoveryState,
+    /// Does one of the recovery overlay's actions, whether or not it is
+    /// open: `force-quit`, `close` (with `app_id`), `reset-input`,
+    /// `restart-shell`, `reload-compositor`, `lock`, `log-out`,
+    /// `text-console`. → [`Response::Message`].
+    RecoveryAction {
+        action: String,
+        #[serde(default)]
+        app_id: Option<String>,
+    },
+    /// The seat's grabs, pressed buttons and keys, pointer constraint and
+    /// cursor. → [`Response::InputState`].
+    InputState,
+    /// Blocks the compositor's main loop for a while (at most 60 s), to
+    /// try the watchdog: nothing draws or answers meanwhile.
+    DebugStall {
+        seconds: u32,
+    },
 }
 
 /// An input event for [`Request::Synthesize`].
@@ -393,17 +418,51 @@ fn yes() -> bool {
 #[serde(tag = "response", rename_all = "kebab-case")]
 pub enum Response {
     Ok,
-    Error { message: String },
-    Version { version: String, protocol: u32 },
-    Outputs { outputs: Vec<OutputInfo> },
-    Windows { windows: Vec<WindowInfo> },
-    Window { window: Option<WindowInfo> },
-    Desks { desks: Vec<DeskInfo>, current: u32 },
-    Stats { stats: Stats },
-    Screenshot { path: String },
-    Spawned { pid: u32 },
-    NightLight { state: NightLightState },
-    Reload { report: ReloadReport },
+    Error {
+        message: String,
+    },
+    Version {
+        version: String,
+        protocol: u32,
+    },
+    Outputs {
+        outputs: Vec<OutputInfo>,
+    },
+    Windows {
+        windows: Vec<WindowInfo>,
+    },
+    Window {
+        window: Option<WindowInfo>,
+    },
+    Desks {
+        desks: Vec<DeskInfo>,
+        current: u32,
+    },
+    Stats {
+        stats: Stats,
+    },
+    Screenshot {
+        path: String,
+    },
+    Spawned {
+        pid: u32,
+    },
+    NightLight {
+        state: NightLightState,
+    },
+    Recovery {
+        state: RecoveryState,
+    },
+    /// What an action did, in a sentence.
+    Message {
+        message: String,
+    },
+    InputState {
+        state: InputState,
+    },
+    Reload {
+        report: ReloadReport,
+    },
 }
 
 /// What a reload did (or, checking, would do), part by part.
@@ -450,6 +509,66 @@ pub struct LogicStats {
     pub last_error: Option<String>,
     /// The core's ABI fingerprint, which a logic must be built against.
     pub core_abi: String,
+}
+
+/// The recovery overlay, as `recovery-state` reports it.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct RecoveryState {
+    pub open: bool,
+    /// The session is locked: only safe actions are offered and no apps
+    /// are listed.
+    pub locked: bool,
+    /// One row per app, as the overlay lists them (problems first).
+    pub apps: Vec<RecoveryApp>,
+    /// The selected row's app ID.
+    pub selected: Option<String>,
+    /// The actions offered, in order (`force-quit`, `reset-input`, …).
+    pub actions: Vec<String>,
+    /// The last action's result, or a notice (a restart after a stall).
+    pub message: Option<String>,
+    /// Where the panel is, in the global layout, while open.
+    #[serde(default)]
+    pub panel: Option<Rect>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct RecoveryApp {
+    pub app_id: String,
+    pub name: String,
+    pub windows: u32,
+    /// The processes behind its windows (Wayland credentials).
+    pub pids: Vec<i32>,
+    /// The systemd units (scopes) or cgroups Force Quit would kill.
+    pub units: Vec<String>,
+    /// CPU use over the last second, percent of one core (`None` until
+    /// measured).
+    pub cpu_percent: Option<f64>,
+    pub memory_bytes: Option<u64>,
+    /// An xdg_wm_base ping has gone unanswered for a while.
+    pub not_responding: bool,
+    /// Its process is gone, a zombie, stopped or dumping core while its
+    /// windows linger.
+    pub crashed: bool,
+}
+
+/// The seat's input state, for tests and for seeing what is stuck.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct InputState {
+    /// The pointer grab in force: `move`, `resize`, `click`, `popup`,
+    /// `dnd`, `marking`… or `None`.
+    pub pointer_grab: Option<String>,
+    /// Buttons the seat holds as pressed (evdev codes).
+    pub pressed_buttons: Vec<u32>,
+    pub keyboard_grab: bool,
+    /// Keys the seat holds as pressed (evdev codes).
+    pub pressed_keys: Vec<u32>,
+    /// The focused surface's pointer constraint while active: `locked` or
+    /// `confined`.
+    pub pointer_constraint: Option<String>,
+    pub cursor_hidden: bool,
+    /// The app whose surface has the pointer, and the keyboard.
+    pub pointer_focus: Option<String>,
+    pub keyboard_focus: Option<String>,
 }
 
 impl Response {

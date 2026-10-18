@@ -20,7 +20,7 @@ use smithay::wayland::shell::wlr_layer::Layer;
 
 use crate::decor::{self, Layout, TabLook};
 use crate::prelude::*;
-use crate::text::{Face, Style};
+use aizome_comp_core::text::{Face, Labels, Style};
 
 /// Everything an output shows under the pointer, front first.
 pub fn scene(st: &mut State, output: &Output, _purpose: Purpose) -> Scene {
@@ -112,7 +112,7 @@ pub fn window_items(
     if fullscreen {
         return;
     }
-    let Some(layout) = st.lg.m().decor_layout(id) else { return };
+    let Some(layout) = st.lg.r().decor_layout(&mut st.az.labels, id) else { return };
     let layout = shift_layout(&layout, offset);
     decoration_items(st, &layout, origin, scale, alpha, out);
 }
@@ -142,6 +142,7 @@ pub fn decoration_items(st: &mut State, layout: &Layout, origin: (f64, f64), sca
     if crate::VARIANT == Some("red") {
         palette.focus = aizome_theme::Rgba::hex(0xff0000);
     }
+    let (labels, icons) = (&mut st.az.labels, &mut st.az.icons);
     let l = st.lg.m();
     // Tabs sliding into a group draw at their animated place.
     let mut layout = layout.clone();
@@ -166,12 +167,14 @@ pub fn decoration_items(st: &mut State, layout: &Layout, origin: (f64, f64), sca
             let app_id = l.wm.get(t.win).map(|w| w.app_id.clone()).unwrap_or_default();
             let glyph_x = t.close.x as f64 - 1.0;
             let glyph_y = t.rect.y as f64 + 1.0 + (TAB_INNER - decor::GLYPH) / 2.0;
-            if let Some(e) = crate::icons::glyph_item(l, &app_id, ink, (glyph_x, glyph_y), origin, scale, alpha) {
+            if let Some(e) =
+                aizome_comp_core::icons::glyph_item(icons, &app_id, ink, (glyph_x, glyph_y), origin, scale, alpha)
+            {
                 out.push(e);
             }
         }
-        let title = l.labels.fit(&title, face, typeface::TAB, t.title_max_w);
-        if let Some(label) = l.labels.get(&title, style, scale, t.title_max_w + 1.0) {
+        let title = labels.fit(&title, face, typeface::TAB, t.title_max_w);
+        if let Some(label) = labels.get(&title, style, scale, t.title_max_w + 1.0) {
             let x = t.title_x;
             let y = t.rect.y as f64 + 1.0 + ((TAB_INNER - label.h as f64) / 2.0).round();
             let loc: Point<i32, Physical> =
@@ -196,7 +199,7 @@ const TAB_INNER: f64 = (decor::TAB_H - decor::BORDER) as f64;
 impl Logic {
     /// A window's decoration layout (its group's, when stacked), or none
     /// for full-screen windows.
-    pub fn decor_layout(&mut self, id: WinId) -> Option<Layout> {
+    pub fn decor_layout(&self, labels: &mut Labels, id: WinId) -> Option<Layout> {
         let w = self.wm.get(id)?;
         if w.fullscreen() {
             return None;
@@ -208,7 +211,7 @@ impl Logic {
         let titles: Vec<(WinId, String)> =
             members.iter().map(|m| (*m, self.wm.get(*m).map(|w| w.title.clone()).unwrap_or_default())).collect();
         let widths: Vec<(WinId, f64)> =
-            titles.iter().map(|(m, t)| (*m, self.labels.measure(t, Face::Tab, typeface::TAB).0)).collect();
+            titles.iter().map(|(m, t)| (*m, labels.measure(t, Face::Tab, typeface::TAB).0)).collect();
         Some(decor::layout(content, ssd, focused, &widths, active, offset))
     }
 }

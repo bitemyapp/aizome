@@ -5,7 +5,7 @@
 //! It holds window management and placement (`wm/`, `actions.rs`), tab
 //! groups and Desks, key and pointer bindings and the command key
 //! (`bindings.rs`, `input.rs`), focus policy, decorations and how they're
-//! drawn (`decor.rs`, `text.rs`, `icons.rs`), the overlays (switcher,
+//! drawn (`decor.rs`; text and icons come from the core), the overlays (switcher,
 //! overview, marking menu, area picker), motion (`anim.rs`), and each
 //! frame's scene (`render.rs`).
 //!
@@ -33,14 +33,11 @@ pub mod config;
 pub mod decor;
 pub mod grabs;
 pub mod hooks;
-pub mod icons;
 pub mod input;
 pub mod memory;
 pub mod overlays;
 pub mod render;
 pub mod requests;
-pub mod svg;
-pub mod text;
 pub mod wm;
 
 use std::collections::{HashMap, HashSet};
@@ -77,8 +74,6 @@ pub struct Logic {
     /// Last size and position per app_id.
     pub remembered: memory::Remembered,
     pub bindings: bindings::Bindings,
-    pub labels: text::Labels,
-    pub icons: icons::Icons,
     pub anims: anim::Animations,
     pub overlays: overlays::Overlays,
     pub interactive: input::Interactive,
@@ -116,23 +111,17 @@ pub struct ResizeAnchor {
 pub struct Saved {
     pub model: Option<wm::Model>,
     pub requested_sizes: HashMap<WinId, (i32, i32)>,
-    /// Sticky keys latched.
-    pub latched: Vec<u32>,
 }
 
 impl Logic {
     pub fn new(settings: &aizome_comp_core::aizome_config::Settings) -> Logic {
         let desks = settings.desks_or_default().into_iter().map(|d| (d.name, d.folder));
-        let mut labels = text::Labels::new();
-        labels.warm_up();
         Logic {
             wm: wm::Model::new(desks),
             wins: HashMap::new(),
             dirty_windows: HashSet::new(),
             remembered: memory::Remembered::load(),
             bindings: bindings::Bindings::new(&settings.keys.bindings),
-            labels,
-            icons: icons::Icons::new(),
             anims: anim::Animations::default(),
             overlays: overlays::Overlays::default(),
             interactive: input::Interactive::default(),

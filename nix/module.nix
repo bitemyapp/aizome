@@ -114,6 +114,16 @@ in
     services.displayManager.sessionPackages = [ session ];
     systemd.packages = [ cfg.package ];
 
+    # Under load, the session (the compositor, which also weighs 1000 within
+    # it, pipewire, the portals) runs before apps, so the desktop keeps
+    # drawing and answering and Ctrl+Alt+Del opens at once. Raising
+    # session.slice rather than lowering app.slice keeps apps ahead of
+    # background.slice (30): 400 : 100 : 30.
+    systemd.user.slices.session.sliceConfig = {
+      CPUWeight = lib.mkDefault 400;
+      IOWeight = lib.mkDefault 400;
+    };
+
     # In Aizome, Settings owns the time zone and the computer's name:
     # Sekka lets its desktop configure more than a desktop usually does.
     # The time zone starts from the one the system is set to now (NixOS's

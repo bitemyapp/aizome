@@ -53,6 +53,8 @@ impl State {
         if cursor {
             cursor_items(&mut self.az, output, scale, &mut out);
         }
+        // Ctrl+Alt+Del's overlay, above everything (the lock screen too).
+        out.extend(crate::recovery::items(&mut self.az, output, scale));
         drag_icon_items(&self.az, output, scale, &mut out);
         if self.az.lock.is_locked() {
             if let Some(lock) = self.az.out.get(output).and_then(|o| o.lock_surface.clone()) {
@@ -65,7 +67,6 @@ impl State {
             }
             return out;
         }
-        crate::fallback::recovery_items(self, output, scale, &mut out);
         if self.lg.healthy() {
             let scene = self.lg_call(None, |vt, st| Some((vt.scene)(st, output, purpose)));
             if let Some(scene) = scene {

@@ -14,10 +14,8 @@
 //! the damage tracker redraws only what moved or changed colour.
 
 use aizome_theme::{Palette, Rgba, metrics};
-use smithay::backend::renderer::element::solid::SolidColorRenderElement;
-use smithay::backend::renderer::element::{Id, Kind};
-use smithay::backend::renderer::utils::CommitCounter;
-use smithay::utils::{Physical, Rectangle};
+
+pub use aizome_comp_core::pieces::{DecorCache, Piece, to_physical};
 
 use crate::wm::{Insets, Rect, WinId};
 
@@ -39,7 +37,7 @@ pub const TAB_CHROME: f64 = 2.0 * (1.0 + TAB_EDGE + BOX + GAP);
 /// Corners: this far along an edge from a corner resizes both ways.
 pub const CORNER: i32 = 16;
 /// The idle app glyph in place of the close box.
-pub const GLYPH: f64 = 13.0;
+pub const GLYPH: f64 = aizome_comp_core::icons::GLYPH;
 
 /// The space decorations take around a window's content.
 pub fn insets(ssd: bool) -> Insets {
@@ -273,26 +271,6 @@ pub fn hit(l: &Layout, x: f64, y: f64) -> Option<Hit> {
     (!e.is_empty()).then_some(Hit::Edge(l.win, e))
 }
 
-/// A flat rectangle of colour, in points (fractions allowed for strokes
-/// that round to whole pixels).
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct Piece {
-    pub x: f64,
-    pub y: f64,
-    pub w: f64,
-    pub h: f64,
-    pub color: Rgba,
-}
-
-impl Piece {
-    pub fn new(x: f64, y: f64, w: f64, h: f64, color: Rgba) -> Piece {
-        Piece { x, y, w, h, color }
-    }
-    pub fn rect(r: Rect, color: Rgba) -> Piece {
-        Piece::new(r.x as f64, r.y as f64, r.w as f64, r.h as f64, color)
-    }
-}
-
 /// How thick a box outline's stroke is at a scale, in points: 1.5pt
 /// rounded to whole pixels.
 pub fn stroke(scale: f64) -> f64 {
@@ -388,83 +366,6 @@ pub fn blend(bottom: Rgba, top: Rgba) -> Rgba {
     let a = top.a as f32 / 255.0;
     let m = |b: u8, t: u8| (b as f32 * (1.0 - a) + t as f32 * a).round() as u8;
     Rgba { r: m(bottom.r, top.r), g: m(bottom.g, top.g), b: m(bottom.b, top.b), a: 255 }
-}
-
-/// Snaps a piece in points to whole pixels at a scale, relative to an
-/// output's origin: edges round independently, so neighbours meet.
-pub fn to_physical(x: f64, y: f64, w: f64, h: f64, origin: (f64, f64), scale: f64) -> Rectangle<i32, Physical> {
-    let x0 = ((x - origin.0) * scale).round() as i32;
-    let y0 = ((y - origin.1) * scale).round() as i32;
-    let x1 = ((x + w - origin.0) * scale).round() as i32;
-    let y1 = ((y + h - origin.1) * scale).round() as i32;
-    Rectangle::new((x0, y0).into(), ((x1 - x0).max(0), (y1 - y0).max(0)).into())
-}
-
-/// Stable identities for a window's decoration pieces, so unchanged pieces
-/// cause no damage.
-#[derive(Debug, Default)]
-pub struct DecorCache {
-    slots: Vec<(Id, CommitCounter, Rgba)>,
-}
-
-impl DecorCache {
-    /// One piece's element in slot `index` (overlays number their pieces
-    /// in drawing order, so unchanged pieces keep their identity).
-    pub fn element(
-        &mut self,
-        index: usize,
-        piece: &Piece,
-        origin: (f64, f64),
-        scale: f64,
-        alpha: f32,
-    ) -> Option<SolidColorRenderElement> {
-        while self.slots.len() <= index {
-            self.slots.push((Id::new(), CommitCounter::default(), Rgba::hex(0)));
-        }
-        let slot = &mut self.slots[index];
-        if slot.2 != piece.color {
-            slot.2 = piece.color;
-            slot.1.increment();
-        }
-        let geo = to_physical(piece.x, piece.y, piece.w, piece.h, origin, scale);
-        if geo.size.w <= 0 || geo.size.h <= 0 {
-            return None;
-        }
-        let c = piece.color.to_premultiplied_f32();
-        let color = [c[0] * alpha, c[1] * alpha, c[2] * alpha, c[3] * alpha];
-        Some(SolidColorRenderElement::new(slot.0.clone(), geo, slot.1, color, Kind::Unspecified))
-    }
-
-    /// Render elements for pieces (given back to front), front first as
-    /// smithay wants them.
-    pub fn elements(
-        &mut self,
-        pieces: &[Piece],
-        origin: (f64, f64),
-        scale: f64,
-        alpha: f32,
-    ) -> Vec<SolidColorRenderElement> {
-        while self.slots.len() < pieces.len() {
-            self.slots.push((Id::new(), CommitCounter::default(), Rgba::hex(0)));
-        }
-        let mut out = Vec::with_capacity(pieces.len());
-        for (i, piece) in pieces.iter().enumerate() {
-            let slot = &mut self.slots[i];
-            if slot.2 != piece.color {
-                slot.2 = piece.color;
-                slot.1.increment();
-            }
-            let geo = to_physical(piece.x, piece.y, piece.w, piece.h, origin, scale);
-            if geo.size.w <= 0 || geo.size.h <= 0 {
-                continue;
-            }
-            let c = piece.color.to_premultiplied_f32();
-            let color = [c[0] * alpha, c[1] * alpha, c[2] * alpha, c[3] * alpha];
-            out.push(SolidColorRenderElement::new(slot.0.clone(), geo, slot.1, color, Kind::Unspecified));
-        }
-        out.reverse();
-        out
-    }
 }
 
 #[cfg(test)]

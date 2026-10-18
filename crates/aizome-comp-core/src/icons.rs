@@ -10,7 +10,6 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use aizome_comp_core::scene::SceneItem;
 use aizome_theme::Rgba;
 use sidestep_ui::kurbo::{Rect as KRect, Size};
 use sidestep_ui::{Appearance, Color, Image, StrokeStyle};
@@ -18,6 +17,8 @@ use smithay::backend::allocator::Fourcc;
 use smithay::backend::renderer::element::Kind;
 use smithay::backend::renderer::element::memory::MemoryRenderBuffer;
 use smithay::utils::{Logical, Point, Transform};
+
+use crate::scene::SceneItem;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Tint {
@@ -105,9 +106,12 @@ impl Icons {
     }
 }
 
+/// The size of the glyph an idle tab shows.
+pub const GLYPH: f64 = 13.0;
+
 /// The glyph an idle tab shows in place of its close box.
 pub fn glyph_item(
-    l: &mut crate::Logic,
+    icons: &mut Icons,
     app_id: &str,
     ink: Rgba,
     at: (f64, f64),
@@ -115,8 +119,8 @@ pub fn glyph_item(
     scale: f64,
     alpha: f32,
 ) -> Option<SceneItem> {
-    let size = crate::decor::GLYPH as i32;
-    let tex = l.icons.texture(app_id, size, scale.ceil().max(1.0) as u32, Tint::Ink(ink))?;
+    let size = GLYPH as i32;
+    let tex = icons.texture(app_id, size, scale.ceil().max(1.0) as u32, Tint::Ink(ink))?;
     Some(icon_item(tex, at, origin, scale, alpha))
 }
 
