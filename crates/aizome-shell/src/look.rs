@@ -114,11 +114,12 @@ pub fn shadow_left(canvas: &mut Canvas, t: &Theme, r: Rect) {
     }
 }
 
-/// A floating panel's face: `raised`, the 1pt `bevel_lo` edge and the top
+/// A floating panel's face: `raised` (frosted in Full), the 1pt `bevel_lo` edge and the top
 /// highlight, with its shadow.
 pub fn panel(canvas: &mut Canvas, t: &Theme, r: Rect) {
     shadow(canvas, t, r);
-    canvas.fill_rect(r, t.raised());
+    // Frosted where the effects are Full (translucent, a fine grain).
+    draw::frost(canvas, t, r, t.raised());
     draw::border(canvas, r, t.bevel_lo(), 1.0);
     draw::top(canvas, r.inset(-1.0), t.bevel_hi(), 1.0);
 }

@@ -5,6 +5,7 @@ mod common;
 
 use aizome_kit::prelude::*;
 use aizome_shell::desktop::DesktopMsg;
+use aizome_shell::menubar::{BarMsg, Slot};
 use aizome_shell::shell::Msg;
 use aizome_shell::widgets::drawn::DragPhase;
 use common::*;
@@ -81,5 +82,58 @@ fn the_whole_screen() {
         aizome_kit::testing::write_png(&shots().join(name), w, hh, &px).unwrap();
         let only = if day { "desktop-icons-day.png" } else { "desktop-icons-night.png" };
         aizome_kit::testing::assert_golden(&mut h, desk, golden(only), 1.0);
+    }
+}
+
+/// Lay a popup's picture (premultiplied) over `px` at `at` (points, 2×).
+fn over(px: &mut [u8], width: u32, img: &aizome_kit::Image, at: Point) {
+    let (w, hh) = img.pixel_size();
+    let src = img.to_premultiplied_rgba8().expect("pixels");
+    let (ox, oy) = ((at.x * 2.0) as u32, (at.y * 2.0) as u32);
+    for y in 0..hh {
+        for x in 0..w {
+            let (dx, dy) = (ox + x, oy + y);
+            if dx >= width || (dy * width + dx) as usize * 4 >= px.len() {
+                continue;
+            }
+            let s = ((y * w + x) * 4) as usize;
+            let d = ((dy * width + dx) * 4) as usize;
+            let a = src[s + 3] as u32;
+            for c in 0..3 {
+                px[d + c] = (src[s + c] as u32 + px[d + c] as u32 * (255 - a) / 255).min(255) as u8;
+            }
+        }
+    }
+}
+
+#[test]
+fn full_effects_frost_what_floats_over_the_wallpaper() {
+    use aizome_kit::sidestep_ui::{Modifiers, NamedKey};
+    for day in [false, true] {
+        let mut h = board_desktop(day);
+        let mut look = appearance(day);
+        look.effects = aizome_kit::theme::Effects::Full;
+        h.set_appearance(look);
+        h.program_mut().panels_fixture = None;
+        let desk = window_titled(&h, "Desktop");
+        let bar = window_titled(&h, "Menu bar");
+        let db = window_titled(&h, "Deskbar");
+        let size = aizome_shell::deskbar::size(&h.program().deskbar_model());
+        h.resize(db, size);
+        h.send(Msg::Run(aizome_shell::actions::Action::Palette { scope: None, query: String::new() }));
+        let pal = window_titled(&h, "Palette");
+        let ps = h.size(pal);
+        let pal_at = Point::new(((W - ps.width) / 2.0).round(), 160.0);
+        let (w, hh, mut px) =
+            compose(&mut h, &[(desk, Point::ZERO), (bar, Point::ZERO), (db, Point::new(W - size.width, 24.0)), (pal, pal_at)], Size::new(W, H), 2.0);
+        // The Toolchest, open over the desktop's left.
+        h.send(Msg::Palette(aizome_shell::palette::PaletteEvent::Ui(aizome_shell::palette::view::PaletteMsg::Close)));
+        h.send(Msg::Bar(bar, BarMsg::Press(Slot::Toolchest, Rect::new(0.0, 0.0, 92.0, 24.0))));
+        let (menu, at) = h.popups(bar)[0];
+        h.named(bar, NamedKey::ArrowDown, Modifiers::NONE);
+        let img = h.render_popup(menu, 2.0);
+        over(&mut px, w, &img, at.origin());
+        let name = if day { "frosted-day.png" } else { "frosted-night.png" };
+        aizome_kit::testing::write_png(&shots().join(name), w, hh, &px).unwrap();
     }
 }

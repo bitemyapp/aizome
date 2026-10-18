@@ -348,7 +348,7 @@ pub fn view(m: &DeskbarModel) -> Element<DeskbarMsg> {
         let s = SHADOW;
         let face = Rect::new(s, 0.0, b.x1, b.y1 - s);
         look::shadow_left(cx.canvas, t, face);
-        cx.canvas.fill_rect(face, t.chrome());
+        aizome_kit::draw::frost(cx.canvas, t, face, t.chrome());
         cx.canvas.fill_rect(Rect::new(face.x0, 0.0, face.x0 + 1.0, face.y1), t.bevel_lo());
         cx.canvas.fill_rect(Rect::new(face.x0 + 1.0, 0.0, face.x0 + 2.0, face.y1 - 1.0), t.bevel_hi());
         cx.canvas.fill_rect(Rect::new(face.x0, face.y1 - 1.0, face.x1, face.y1), t.bevel_lo());

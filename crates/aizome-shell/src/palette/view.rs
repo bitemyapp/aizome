@@ -327,7 +327,7 @@ fn detail(d: &Option<Detail>) -> Element<PaletteMsg> {
     drawn(DETAIL, body_height(), format!("{d:?}"), move |cx| {
         let t = cx.theme();
         let b = cx.bounds();
-        cx.canvas.fill_rect(b, t.sunk());
+        aizome_kit::draw::frost(cx.canvas, t, b, t.sunk());
         cx.canvas.fill_rect(Rect::new(0.0, 0.0, 1.0, b.y1), t.line());
         let (x0, x1) = (20.0, b.x1 - 20.0);
         let mut y = 22.0;
