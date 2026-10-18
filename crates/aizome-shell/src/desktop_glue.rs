@@ -16,7 +16,19 @@ use crate::widgets::drawn::DragPhase;
 
 impl Shell {
     pub fn desktop_icons(&self) -> Vec<DeskIcon> {
-        let volumes = self.sys.disks.as_ref().map(|d| d.snapshot().volumes()).unwrap_or_default();
+        let home = aizome_config::home_dir();
+        let mut volumes = self
+            .sys
+            .disks
+            .as_ref()
+            .map(|d| d.snapshot().desktop_volumes(&home.to_string_lossy()))
+            .unwrap_or_default();
+        // The system's disk from the mounts, where UDisks didn't say.
+        if !volumes.iter().any(|v| v.system)
+            && let Some(v) = &self.system_disk_fallback
+        {
+            volumes.insert(0, v.clone());
+        }
         let volumes = if volumes.is_empty() { self.volumes_fixture.clone() } else { volumes };
         let cfg = &self.desktop_cfg;
         // The home folder, disks and Trash as `[desktop]` says.
@@ -156,40 +168,7 @@ impl Shell {
             DesktopMsg::IconMenu(key, at) => {
                 let Some(icon) = self.icon(&key) else { return };
                 let Some(w) = self.screens.iter().find(|s| s.output.id == output).and_then(|s| s.bar) else { return };
-                let open = Action::Palette { scope: None, query: String::new() };
-                let _ = open;
-                let entries = match &icon.kind {
-                    IconKind::Home(p) => vec![Entry::action("Open", Action::Open { path: p.clone() })],
-                    IconKind::Volume { block, mount, ejectable, drive, .. } => {
-                        let mut v = vec![
-                            Entry::action("Open", Action::Disk { device: block.clone(), verb: DiskVerb::Mount }),
-                            Entry::separator(),
-                            Entry::action("Unmount", Action::Disk { device: block.clone(), verb: DiskVerb::Unmount })
-                                .enabled(mount.is_some()),
-                        ];
-                        if *ejectable && let Some(d) = drive {
-                            v.push(Entry::action("Eject", Action::Disk { device: d.clone(), verb: DiskVerb::Eject }));
-                        }
-                        v.push(Entry::separator());
-                        v.push(Entry::action(
-                            "Open in Tansu",
-                            Action::Disk { device: block.clone(), verb: DiskVerb::OpenInTansu },
-                        ));
-                        v
-                    }
-                    IconKind::Trash { full } => vec![
-                        Entry::action("Open", Action::Open { path: crate::launch::trash_dir().join("files") }),
-                        Entry::separator(),
-                        Entry::action("Empty Trash", Action::EmptyTrash).enabled(*full),
-                    ],
-                    IconKind::Item { path, .. } => vec![
-                        Entry::action("Open", Action::Open { path: path.clone() }),
-                        Entry::action("Show in Hako", Action::Reveal { path: path.clone() }),
-                        Entry::action("Copy Path", Action::Copy { text: path.to_string_lossy().into_owned() }),
-                        Entry::separator(),
-                        Entry::action("Move to Trash", Action::MoveToTrash { path: path.clone() }),
-                    ],
-                };
+                let entries = self.icon_menu(&icon);
                 let menu = ShellMenu::new(icon.label.clone(), entries);
                 self.show_menu(w, at_point(at), &menu, MenuStyle::at_point(), cx);
             }
@@ -262,12 +241,69 @@ impl Shell {
         }
     }
 
+    /// What an icon's menu offers.
+    pub fn icon_menu(&self, icon: &DeskIcon) -> Vec<Entry> {
+        match &icon.kind {
+            IconKind::Home(p) => vec![Entry::action("Open", Action::Open { path: p.clone() })],
+            IconKind::Volume { block, mount, drive, system: true, .. } => {
+                // The system's disk: opened and looked into, never
+                // unmounted or ejected.
+                let at = PathBuf::from(mount.clone().unwrap_or_else(|| "/".into()));
+                vec![
+                    Entry::action("Open", Action::Open { path: PathBuf::from("/") }),
+                    Entry::separator(),
+                    Entry::action(
+                        "Show in Disks",
+                        Action::Disk {
+                            device: drive.clone().unwrap_or_else(|| block.clone()),
+                            verb: DiskVerb::OpenInTansu,
+                        },
+                    ),
+                    Entry::action(
+                        "Disk Usage",
+                        Action::Spawn { argv: vec!["aizome-kura".into(), at.to_string_lossy().into_owned()] },
+                    ),
+                ]
+            }
+            IconKind::Volume { block, mount, ejectable, drive, .. } => {
+                let mut v = vec![
+                    Entry::action("Open", Action::Disk { device: block.clone(), verb: DiskVerb::Mount }),
+                    Entry::separator(),
+                    Entry::action("Unmount", Action::Disk { device: block.clone(), verb: DiskVerb::Unmount })
+                        .enabled(mount.is_some()),
+                ];
+                if *ejectable && let Some(d) = drive {
+                    v.push(Entry::action("Eject", Action::Disk { device: d.clone(), verb: DiskVerb::Eject }));
+                }
+                v.push(Entry::separator());
+                v.push(Entry::action(
+                    "Show in Disks",
+                    Action::Disk { device: block.clone(), verb: DiskVerb::OpenInTansu },
+                ));
+                v
+            }
+            IconKind::Trash { full } => vec![
+                Entry::action("Open", Action::Open { path: crate::launch::trash_dir().join("files") }),
+                Entry::separator(),
+                Entry::action("Empty Trash", Action::EmptyTrash).enabled(*full),
+            ],
+            IconKind::Item { path, .. } => vec![
+                Entry::action("Open", Action::Open { path: path.clone() }),
+                Entry::action("Show in Hako", Action::Reveal { path: path.clone() }),
+                Entry::action("Copy Path", Action::Copy { text: path.to_string_lossy().into_owned() }),
+                Entry::separator(),
+                Entry::action("Move to Trash", Action::MoveToTrash { path: path.clone() }),
+            ],
+        }
+    }
+
     fn open_icon(&mut self, key: &str, cx: &mut Cx<Msg>) {
         let Some(icon) = self.icon(key) else { return };
         match icon.kind {
             IconKind::Home(p) => self.run(Action::Open { path: p }, cx),
             IconKind::Trash { .. } => self.run(Action::Open { path: crate::launch::trash_dir().join("files") }, cx),
             IconKind::Item { path, .. } => self.run(Action::Open { path }, cx),
+            IconKind::Volume { system: true, .. } => self.run(Action::Open { path: PathBuf::from("/") }, cx),
             IconKind::Volume { block, mount: Some(m), .. } => {
                 let _ = block;
                 self.run(Action::Open { path: PathBuf::from(m) }, cx);
@@ -281,7 +317,11 @@ impl Shell {
     /// Mount, unmount, eject, or open a disk in Tansu.
     pub fn disk(&mut self, device: String, verb: DiskVerb, cx: &mut Cx<Msg>) {
         match verb {
-            DiskVerb::OpenInTansu => self.launch(crate::launch::Launch::Argv(vec!["aizome-tansu".into(), device]), cx),
+            // Tansu's arguments are images to attach; `--show=` picks the
+            // disk holding a device (or a drive) instead.
+            DiskVerb::OpenInTansu => {
+                self.launch(crate::launch::Launch::Argv(vec!["aizome-tansu".into(), format!("--show={device}")]), cx)
+            }
             DiskVerb::Mount => {
                 let mounted = self
                     .sys
@@ -306,6 +346,10 @@ impl Shell {
                     }
                 }
             }
+            // Never the system's own disk, whoever asks.
+            DiskVerb::Unmount | DiskVerb::Eject if self.is_system_disk(&device) => {
+                log::warn!("not unmounting or ejecting the system's disk ({device})");
+            }
             DiskVerb::Unmount => {
                 if let Some(d) = &self.sys.disks {
                     let _ = d.unmount(&device, false);
@@ -317,6 +361,14 @@ impl Shell {
                 }
             }
         }
+    }
+
+    /// Whether a block device or drive is (or holds) the system's disk.
+    fn is_system_disk(&self, device: &str) -> bool {
+        self.desktop_icons().iter().any(|i| match &i.kind {
+            IconKind::Volume { block, drive, system: true, .. } => block == device || drive.as_deref() == Some(device),
+            _ => false,
+        })
     }
 
     /// Read `~/Desktop` again (and whether the Trash is full), on a thread.

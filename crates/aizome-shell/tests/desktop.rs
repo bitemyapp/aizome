@@ -62,6 +62,38 @@ fn icons_line_up_and_select() {
 }
 
 #[test]
+fn the_systems_disk_opens_and_never_unmounts() {
+    use aizome_shell::actions::{Action, DiskVerb};
+    let mut h = board_desktop(false);
+    {
+        let s = h.program_mut();
+        s.volumes_fixture[0].system = true;
+        s.volumes_fixture[0].mount_point = Some("/".into());
+        s.volumes_fixture[0].drive = Some("/org/freedesktop/UDisks2/drives/nvme".into());
+        // Even if UDisks called its drive ejectable.
+        s.volumes_fixture[0].ejectable = true;
+    }
+    h.send(Msg::Nothing);
+    let icons = h.program().desktop_icons();
+    let disk = icons.iter().find(|i| i.label == "nvme0").expect("the system's disk");
+    assert_eq!(disk.glyph, aizome_kit::Icon::HardDrive);
+    let menu = h.program().icon_menu(disk);
+    let labels: Vec<&str> = menu.iter().map(|e| e.label.as_str()).filter(|l| !l.is_empty()).collect();
+    assert_eq!(labels, ["Open", "Show in Disks", "Disk Usage"]);
+    assert_eq!(menu[0].action, Action::Open { path: "/".into() });
+    assert!(menu.iter().all(|e| !matches!(e.action, Action::Disk { verb: DiskVerb::Unmount | DiskVerb::Eject, .. })));
+    // The image beside it: the disc, its file's name.
+    let iso = icons.iter().find(|i| i.label == "sekka-nightly.iso").expect("the image");
+    assert_eq!(iso.glyph, aizome_kit::Icon::Disc);
+    // `[desktop] show_disks = false` hides both.
+    let mut d = h.program().settings.desktop_settings();
+    d.show_disks = false;
+    h.program_mut().settings.set_shell_section("desktop", &d);
+    h.send(Msg::SettingsChanged);
+    assert!(h.program().desktop_icons().iter().all(|i| i.label != "nvme0" && i.label != "sekka-nightly.iso"));
+}
+
+#[test]
 fn icons_move_where_theyre_dropped() {
     let mut h = board_desktop(false);
     h.send(Msg::Desktop(1, DesktopMsg::IconDrag("home".into(), DragPhase::Start(Point::new(40.0, 60.0)))));

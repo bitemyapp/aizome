@@ -29,7 +29,9 @@ pub const STEP: f64 = 88.0;
 #[derive(Clone, Debug, PartialEq)]
 pub enum IconKind {
     Home(PathBuf),
-    Volume { block: String, mount: Option<String>, ejectable: bool, drive: Option<String>, image: bool },
+    /// A disk or image. `system`: the disk the system runs from, which is
+    /// opened but never unmounted or ejected.
+    Volume { block: String, mount: Option<String>, ejectable: bool, drive: Option<String>, image: bool, system: bool },
     Trash { full: bool },
     Item { path: PathBuf, dir: bool },
 }
@@ -145,7 +147,7 @@ pub fn icons(
                 .unwrap_or_else(|| vol.name.clone()),
             glyph: if image {
                 Icon::Disc
-            } else if vol.ejectable {
+            } else if vol.ejectable && !vol.system {
                 Icon::Usb
             } else {
                 Icon::HardDrive
@@ -154,9 +156,10 @@ pub fn icons(
             kind: IconKind::Volume {
                 block: vol.block.clone(),
                 mount: vol.mount_point.clone(),
-                ejectable: vol.ejectable,
+                ejectable: vol.ejectable && !vol.system,
                 drive: vol.drive.clone(),
                 image,
+                system: vol.system,
             },
         });
     }
@@ -376,6 +379,7 @@ mod tests {
         let icons = icons("callen", &[v, img], false, &[]);
         let labels: Vec<&str> = icons.iter().map(|i| i.label.as_str()).collect();
         assert_eq!(labels, ["callen", "nvme0", "sekka-nightly.iso", "Trash"]);
+        assert_eq!(icons[1].glyph, Icon::HardDrive);
         assert_eq!(icons[2].glyph, Icon::Disc);
     }
 }

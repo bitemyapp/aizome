@@ -241,6 +241,9 @@ pub struct Shell {
     pub(crate) drag_grab: aizome_kit::Vec2,
     /// Volumes to show when the system has none (tests and pictures).
     pub volumes_fixture: Vec<aizome_sys::disks::Volume>,
+    /// The system's disk read from the mounts, for when UDisks isn't
+    /// there to say.
+    pub system_disk_fallback: Option<aizome_sys::disks::Volume>,
     pub lock: crate::lock::LockState,
     pub authenticator: Arc<dyn crate::pam::Authenticator>,
     pub user_picture: Option<aizome_kit::Image>,
@@ -345,6 +348,7 @@ impl Shell {
             user: crate::pam::current_user(),
             drag_grab: aizome_kit::Vec2::ZERO,
             volumes_fixture: Vec::new(),
+            system_disk_fallback: None,
             lock: Default::default(),
             authenticator: Arc::new(crate::pam::Pam::new("aizome")),
             user_picture: None,
@@ -815,6 +819,14 @@ impl Shell {
         self.frecency = aizome_search::frecency::Frecency::load(aizome_search::frecency::Frecency::default_path());
         self.shelf = crate::shelf::Shelf::load(&crate::shelf::Shelf::default_dir());
         self.desktop.load_positions(&crate::desktop::DesktopState::path());
+        self.system_disk_fallback = std::fs::read_to_string("/proc/self/mountinfo").ok().and_then(|m| {
+            let home = aizome_config::home_dir();
+            aizome_sys::disks::system_volume_from_mounts(
+                &m,
+                &home.to_string_lossy(),
+                std::path::Path::new("/sys/class/block"),
+            )
+        });
         self.tearoffs = crate::tearoff::load(&crate::tearoff::store_path());
         self.recent = aizome_search::recent::load(aizome_search::recent::default_path())
             .into_iter()
