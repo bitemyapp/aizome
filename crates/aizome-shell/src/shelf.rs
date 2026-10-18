@@ -85,9 +85,9 @@ impl ShelfItem {
     /// The URI a drag out carries, for files and links.
     pub fn as_uri(&self, dir: &Path) -> Option<String> {
         match self {
-            ShelfItem::File { path } | ShelfItem::Folder { path } => Some(format!("file://{}", path.display())),
+            ShelfItem::File { path } | ShelfItem::Folder { path } => Some(file_url(path)),
             ShelfItem::Link { url } => Some(url.clone()),
-            ShelfItem::Image { file, .. } => Some(format!("file://{}", dir.join(file).display())),
+            ShelfItem::Image { file, .. } => Some(file_url(&dir.join(file))),
             ShelfItem::Text { .. } => None,
         }
     }
@@ -182,6 +182,29 @@ impl Shelf {
     pub fn remove(&mut self, index: usize) -> Option<ShelfItem> {
         (index < self.items.len()).then(|| self.items.remove(index))
     }
+}
+
+/// A path as a `file://` URL, what isn't plain encoded (`%20`).
+pub fn file_url(path: &Path) -> String {
+    let mut s = String::from("file://");
+    for b in path.to_string_lossy().bytes() {
+        if b.is_ascii_alphanumeric() || b"/-._~".contains(&b) {
+            s.push(b as char);
+        } else {
+            s.push_str(&format!("%{b:02X}"));
+        }
+    }
+    s
+}
+
+/// What dragging an item out of the Shelf carries: its URL (files and
+/// links), and its text.
+pub fn drag_source(uri: Option<&str>, text: &str) -> aizome_kit::sidestep_ui::DragSource {
+    let mut s = aizome_kit::sidestep_ui::DragSource::new();
+    if let Some(u) = uri {
+        s = s.urls([u]);
+    }
+    s.text(text)
 }
 
 #[cfg(test)]

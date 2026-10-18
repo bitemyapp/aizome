@@ -83,7 +83,14 @@ impl Shell {
             .iter()
             .map(|i| {
                 let (glyph, hue) = i.glyph();
-                ShelfRow { label: i.label(), glyph, hue, dim: matches!(i, ShelfItem::Text { .. }) }
+                ShelfRow {
+                    label: i.label(),
+                    glyph,
+                    hue,
+                    dim: matches!(i, ShelfItem::Text { .. }),
+                    uri: i.as_uri(&self.shelf.dir),
+                    drag_text: i.as_text(&self.shelf.dir),
+                }
             })
             .collect();
         DeskbarModel { apps, shelf, hide_shelf: !self.deskbar_cfg.show_shelf }

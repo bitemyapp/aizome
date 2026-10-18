@@ -92,6 +92,9 @@ pub struct ShelfRow {
     pub glyph: Icon,
     pub hue: Hue,
     pub dim: bool,
+    /// What dragging it out carries: its URL (files, links) and text.
+    pub uri: Option<String>,
+    pub drag_text: String,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -282,6 +285,7 @@ fn caption() -> Element<DeskbarMsg> {
 
 fn shelf_row(i: usize, r: &ShelfRow) -> Element<DeskbarMsg> {
     let (label, glyph, hue, dim) = (r.label.clone(), r.glyph, r.hue, r.dim);
+    let (uri, drag_text) = (r.uri.clone(), r.drag_text.clone());
     let text = label.clone();
     drawn(WIDTH - 20.0, SHELF_ROW, (label.clone(), glyph, hue, dim), move |cx| {
         let t = cx.theme();
@@ -294,6 +298,8 @@ fn shelf_row(i: usize, r: &ShelfRow) -> Element<DeskbarMsg> {
         cx.draw_text_in(&label, &s, Rect::new(31.0, 0.0, b.x1 - 8.0, SHELF_ROW), Align::Start);
     })
     .on_double_click(DeskbarMsg::ShelfOpen(i))
+    // Out to Hako, an editor, a mail: a copy (it stays on the Shelf).
+    .drag_out(move || crate::shelf::drag_source(uri.as_deref(), &drag_text))
     .on_right_click(move |p: Press| DeskbarMsg::ShelfMenu(i, p.at))
     .text(text, SemanticRole::ListItem)
     .key(("shelf", i))

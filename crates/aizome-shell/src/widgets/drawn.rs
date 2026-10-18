@@ -64,6 +64,7 @@ pub fn drawn<Msg>(width: f64, height: f64, hash: impl std::hash::Hash, paint: im
             hovered_msg: None,
             pad: aizome_kit::Padding::default(),
             drop: None,
+            drag_out: None,
             overflow: 0.0,
         },
         common: aizome_kit::element::Common::default(),
@@ -131,6 +132,13 @@ impl<Msg: Clone + Send + 'static> Drawn<Msg> {
 }
 
 impl<Msg> Drawn<Msg> {
+    /// Dragging it (with the left button) drags `source` out to other
+    /// programs: the Shelf's items.
+    pub fn drag_out(mut self, source: impl Fn() -> aizome_kit::sidestep_ui::DragSource + 'static) -> Self {
+        self.w.drag_out = Some(Rc::new(source));
+        self
+    }
+
     /// Repaints when hovered (it shows hover) even without a handler.
     pub fn hoverable(mut self) -> Self {
         self.w.hover = true;
@@ -204,6 +212,8 @@ struct DrawnWidget {
     overflow: f64,
     /// Takes drops: files' URLs and text.
     drop: Option<MsgMap<(Vec<String>, Option<String>)>>,
+    /// What a drag out of it carries.
+    drag_out: Option<Rc<dyn Fn() -> aizome_kit::sidestep_ui::DragSource>>,
 }
 
 /// A press under way.
@@ -252,7 +262,7 @@ impl Widget for DrawnWidget {
     }
 
     fn hit(&self) -> bool {
-        self.hover || self.drag.is_some() || self.middle.is_some() || self.drop.is_some()
+        self.hover || self.drag.is_some() || self.middle.is_some() || self.drop.is_some() || self.drag_out.is_some()
     }
 
     fn hover_paints(&self) -> bool {
@@ -304,6 +314,19 @@ impl Widget for DrawnWidget {
                     if let Some(m) = &self.hovered_msg {
                         cx.emit(m);
                     }
+                }
+                // Out to other programs: the system takes the drag over.
+                if let Some(out) = &self.drag_out {
+                    let s = cx.state::<PressState>();
+                    if let Some(from) = s.from
+                        && !s.dragging
+                        && (pos.x - from.x).hypot(pos.y - from.y) >= 4.0
+                    {
+                        s.dragging = true;
+                        let source = out();
+                        cx.start_drag(source);
+                    }
+                    return Status::Handled;
                 }
                 let Some(drag) = &self.drag else { return Status::Ignored };
                 let s = cx.state::<PressState>();

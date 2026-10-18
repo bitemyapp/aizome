@@ -76,3 +76,20 @@ fn a_window_dragged_onto_a_desk_of_the_strip_finds_it() {
     assert!(hits.contains(&Some(1)) && hits.contains(&Some(2)) && hits.contains(&Some(3)), "{hits:?}");
     assert_eq!(s.desk_at_deskbar_point(Point::new(40.0, 40.0)), None, "inside the Deskbar");
 }
+
+#[test]
+fn shelf_items_drag_out_to_other_programs() {
+    let mut h = scene(false);
+    with_mail_and_shelf(&mut h);
+    let db = window_titled(&h, "Deskbar");
+    let size = aizome_shell::deskbar::size(&h.program().deskbar_model());
+    h.resize(db, size);
+    let row = h.find(db, "wallpaper-draft.png").expect("the Shelf's file");
+    let from = row.center();
+    h.drag(db, from, aizome_kit::layout::Point::new(from.x - 200.0, from.y), 6);
+    assert_eq!(h.platform.drags.len(), 1, "a drag out started");
+    let what = format!("{:?}", h.platform.drags[0].1);
+    assert!(what.contains("text/uri-list") && what.contains("text/plain"), "{what}");
+    assert_eq!(h.program().shelf.items.len(), 3, "a copy: it stays on the Shelf");
+    assert_eq!(aizome_shell::shelf::file_url(std::path::Path::new("/home/u/My Notes/ä.md")), "file:///home/u/My%20Notes/%C3%A4.md");
+}
