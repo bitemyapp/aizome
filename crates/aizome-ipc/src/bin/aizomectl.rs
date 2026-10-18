@@ -534,6 +534,10 @@ fn print_response(r: &Response) -> ExitCode {
                     println!("  gpu {}", fmt_pct(g));
                 }
             }
+            if let Some(s) = &stats.screencopy {
+                println!("screencopy: {} copies, {} samples", s.frames_rendered, s.samples);
+                println!("  cpu {}", fmt_pct(&s.cpu_us));
+            }
         }
         Response::Screenshot { path } => println!("{path}"),
         Response::Spawned { pid } => println!("{pid}"),

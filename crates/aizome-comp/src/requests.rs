@@ -314,11 +314,13 @@ impl State {
                     outputs,
                     renderer_setting: renderer_setting.into(),
                     renderer_after_restart,
+                    screencopy: self.az.screencopy.active().then(|| self.az.screencopy.stats.report("screencopy")),
                 };
                 if reset {
                     for o in self.az.out.values_mut() {
                         o.stats.reset();
                     }
+                    self.az.screencopy.stats.reset();
                 }
                 Response::Stats { stats }
             }

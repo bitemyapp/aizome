@@ -120,6 +120,28 @@ impl Backend {
         }
     }
 
+    /// Makes a wlr-screencopy copy with the renderer (protocols/screencopy).
+    pub fn screencopy(
+        &mut self,
+        az: &mut Aizome,
+        job: &mut crate::protocols::screencopy::Job,
+    ) -> Result<crate::protocols::screencopy::Outcome, String> {
+        match self {
+            Backend::Headless(h) => h.screencopy(az, job),
+            Backend::Winit(w) => w.screencopy(az, job),
+            Backend::Udev(u) => u.screencopy(az, job),
+        }
+    }
+
+    /// The dmabuf format screencopy can render into (GLES), if any.
+    pub fn screencopy_dmabuf_format(&mut self) -> Option<Fourcc> {
+        match self {
+            Backend::Headless(h) => h.screencopy_dmabuf_format(),
+            Backend::Winit(w) => w.screencopy_dmabuf_format(),
+            Backend::Udev(u) => u.screencopy_dmabuf_format(),
+        }
+    }
+
     /// Turns displays off or on (DPMS); a no-op off udev.
     pub fn set_power(&mut self, az: &mut Aizome, on: bool) {
         if let Backend::Udev(u) = self {

@@ -509,6 +509,10 @@ pub struct Stats {
     /// applies after logging out and in.
     #[serde(default)]
     pub renderer_after_restart: bool,
+    /// wlr-screencopy copies (screencasts, recorders): CPU time per copy,
+    /// once a client has made one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub screencopy: Option<OutputStats>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]

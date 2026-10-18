@@ -156,7 +156,10 @@ damage), `cpu_us` and `gpu_us` (when measurable) as `{p50, p95, p99, max,
 mean}` in microseconds over the last 4096 frames, `samples`.
 `renderer_setting` is `[performance] renderer` (`auto`, `gpu`, `software`);
 it applies at the next start, and `renderer_after_restart` says it asks for
-another renderer than the one running.
+another renderer than the one running. `screencopy`, once a client has
+made a wlr-screencopy copy, is the same record for the copies (`cpu_us`
+per copy: collecting the scene, rendering it into the client's buffer,
+and for wl_shm reading it back).
 
 ## Events
 
