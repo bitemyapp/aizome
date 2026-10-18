@@ -431,6 +431,11 @@ impl Widget for Arrangement {
         }
     }
 
+    /// Each display's tile, by its connector, where it's drawn.
+    fn parts(&self) -> Vec<(String, Rect)> {
+        self.tiles.iter().map(|t| (t.name.clone(), self.fit.to_widget(t.rect))).collect()
+    }
+
     fn semantics(&self) -> Option<Semantics> {
         let value = self
             .tiles
