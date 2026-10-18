@@ -115,6 +115,21 @@ fn a_panel_reserves_its_exclusive_zone() {
 }
 
 #[test]
+fn a_see_through_surface_shows_what_is_under_it() {
+    // A layer surface with a transparent background (a menu's shadow
+    // corners, the Full effects' frost) shows the desktop where it draws
+    // nothing, and blends where it draws translucently.
+    let c = Compositor::start(Options::default());
+    let _p = run(&c, "glass");
+    wait_px(&c, 150, 150, BAR, "the solid half");
+    let img = c.screenshot();
+    assert_px(&img, 250, 120, rgb(0x16161e), "the desktop through the undrawn part");
+    let (bar, desk) = (rgb(BAR), rgb(0x16161e));
+    let half: [u8; 3] = std::array::from_fn(|i| ((bar[i] as u16 + desk[i] as u16) / 2) as u8);
+    assert!(near(img.px(250, 180), half), "half the bar over the desktop: {:?}, not {half:?}", img.px(250, 180));
+}
+
+#[test]
 fn a_sidestep_lock_screen_covers_everything_and_holds() {
     let c = Compositor::start(Options::default());
     let _a = c.client(Spec::new("test.a", 0xcc2222));

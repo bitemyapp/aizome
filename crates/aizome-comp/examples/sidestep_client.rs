@@ -5,13 +5,15 @@
 //! (paced by frame callbacks on its content subsurface) magenta;
 //! `panel` puts a 30pt bar along the top with an exclusive zone;
 //! `lock` locks the session with a lock surface per output, then unlocks
-//! after a second.
+//! after a second; `glass` puts a see-through 200 × 100pt layer surface
+//! at (100, 100): its left half solid, its right half's top undrawn and
+//! its bottom at half alpha.
 
 use std::time::Duration;
 
 use sidestep_ui::kurbo::Rect;
-use sidestep_ui::layer_shell::{Anchors, Layer, LayerOptions};
-use sidestep_ui::{App, Canvas, Color, Cx, Handler, TimerId, WindowId, WindowOptions};
+use sidestep_ui::layer_shell::{Anchors, Layer, LayerOptions, Margins};
+use sidestep_ui::{App, Background, Canvas, Color, Cx, Handler, TimerId, WindowId, WindowOptions};
 
 pub const GREEN: Color = Color::rgb8(0x26, 0xa2, 0x69);
 pub const MAGENTA: Color = Color::rgb8(0xc0, 0x26, 0x8a);
@@ -48,6 +50,13 @@ impl Handler for Client {
                     .anchors(Anchors::TOP | Anchors::LEFT | Anchors::RIGHT)
                     .exclusive_zone(30);
                 let w = cx.open_window(WindowOptions::layer(opts).size(0.0, 30.0));
+                self.windows.push(w);
+            }
+            "glass" => {
+                let opts = LayerOptions::new(Layer::Top, "aizome-test-glass")
+                    .anchors(Anchors::TOP | Anchors::LEFT)
+                    .margins(Margins { top: 100, right: 0, bottom: 0, left: 100 });
+                let w = cx.open_window(WindowOptions::layer(opts).size(200.0, 100.0).background(Background::Transparent));
                 self.windows.push(w);
             }
             "lock" => cx.lock_session(),
@@ -99,6 +108,11 @@ impl Handler for Client {
 
     fn draw(&mut self, _cx: &mut Cx, _window: WindowId, canvas: &mut Canvas) {
         let s = canvas.size();
+        if self.mode == "glass" {
+            canvas.fill_rect(Rect::new(0.0, 0.0, s.width / 2.0, s.height), BAR);
+            canvas.fill_rect(Rect::new(s.width / 2.0, s.height / 2.0, s.width, s.height), BAR.with_alpha(0.5));
+            return;
+        }
         let color = match self.mode.as_str() {
             "panel" => BAR,
             "lock" => LOCK,
