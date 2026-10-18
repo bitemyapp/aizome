@@ -496,7 +496,9 @@ damage drawn) and compares it with the window drawn whole: `differs` is 0
 when the damage was right; `damaged` is the area drawn and `moves` the
 regions moved. Drags out: `drags()` (each with what it carries),
 `drag_data(drag, mime)`, `end_drag(drag, action)`.
-Pictures: `render(window, scale)`, `render_rect`, `render_popup`,
+Pictures: `render(window, scale)`, `render_rect`, `render_damage(window,
+rects, scale)` (only those rectangles, drawn once, as a frame redrawing
+that damage draws them: what to time a frame by), `render_popup`,
 `render_rgba` (the window with its popups where they'd show), `save_png`,
 and `assert_golden` (`AIZOME_UPDATE_GOLDENS=1` rewrites them). Popups:
 `popups(window)`, `click_popup`, `popup_keyboard`, `texts_in`. Drops:

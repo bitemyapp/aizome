@@ -536,9 +536,9 @@ fn frame(h: &mut Harness<Kura>, act: impl FnOnce(&mut Harness<Kura>)) -> Option<
     h.take_damage(w);
     let start = std::time::Instant::now();
     act(h);
+    // The damage's rectangles, as the window's renderer draws them.
     let damage = h.take_damage(w);
-    let bounds = damage.into_iter().reduce(|a, b| a.union(b))?;
-    let _ = h.render_rect(w, bounds, 2.0);
+    let _ = h.render_damage(w, &damage, 2.0)?;
     Some(start.elapsed())
 }
 

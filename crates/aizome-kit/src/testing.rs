@@ -891,6 +891,23 @@ impl<P: Program> Harness<P> {
         })
     }
 
+    /// Draw only `damage` of the window (rectangles, as a frame redrawing
+    /// it would: drawn once, each rectangle rasterized and nothing between
+    /// them), in an image the size of the rectangle around them: what a
+    /// frame costs a window. `None` for no damage.
+    pub fn render_damage(&mut self, key: WindowKey, damage: &[Rect], scale: f64) -> Option<Image> {
+        let bounds = damage.iter().copied().reduce(|a, b| a.union(b))?;
+        let win = self.win(key);
+        let look = self.look();
+        let core = &mut self.rt.core;
+        let offset = bounds.origin().to_vec2();
+        let local: Vec<Rect> = damage.iter().map(|r| *r - offset).collect();
+        Some(sidestep_ui::offscreen::render_damage(bounds.size(), scale, look, &local, |c| {
+            c.translate(-offset);
+            core.paint(win, c);
+        }))
+    }
+
     /// The window with its popups composited where they'd show, as RGBA.
     pub fn render_rgba(&mut self, key: WindowKey, scale: f64) -> (u32, u32, Vec<u8>) {
         let image = self.render(key, scale);
