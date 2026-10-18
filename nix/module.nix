@@ -277,7 +277,8 @@ in
         "${cfg.package}/share/applications/org.aizome.Annai.Welcome.desktop";
     };
 
-    # Screenshots and screencasts through wlr-screencopy; files, settings
+    # Screenshots and screencasts (browsers' screen and window sharing)
+    # through the compositor's ext-image-copy-capture; files, settings
     # and the rest through GTK's portal.
     xdg.portal = {
       enable = true;

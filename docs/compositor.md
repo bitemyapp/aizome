@@ -94,8 +94,10 @@ virtual-keyboard, security-context, content-type, tablet, alpha-modifier,
 fifo, commit-timing, xdg-toplevel-icon, xdg-system-bell (rung as the
 shell's `bell` binding), ext-foreign-toplevel-list,
 wlr-foreign-toplevel-management (3), wlr-output-management (4),
-wlr-screencopy (3) and wlr-gamma-control (1). Privileged ones (layer shell,
+wlr-screencopy (3), ext-image-copy-capture (1) with ext-image-capture-source
+(1) and wlr-gamma-control (1). Privileged ones (layer shell,
 session lock, data control, input method, virtual keyboard, screencopy,
+image copy capture and its sources,
 foreign toplevel management, output management, foreign toplevel list,
 gamma control) aren't offered
 inside a security context.
@@ -133,8 +135,7 @@ Notes for client authors:
 - ext-session-lock: `locked` is sent once every output has drawn a frame
   without the desktop; lock surfaces get the output's size and all input.
   A locker that dies leaves the session locked.
-- wlr-screencopy (what wf-recorder, grim and xdg-desktop-portal-wlr's
-  screencasts, so browsers' screen sharing, use): each frame offers
+- wlr-screencopy (what wf-recorder and grim use): each frame offers
   wl_shm XRGB8888 and, under GLES on a render node (or a GPU on udev), a
   linux-dmabuf XRGB8888 buffer too (`linux_dmabuf`, then `buffer_done`).
   A dmabuf, in any modifier the GPU renders to, is bound as the render
@@ -148,10 +149,30 @@ Notes for client authors:
   keeps its own damage tracker: `copy_with_damage` answers at once for its
   first frame, then after the first output frame that changed something
   in its region, with `damage` events for what did; an idle screen copies
-  nothing. `aizomectl stats` reports each copy's CPU time.
-- ext-image-copy-capture is not offered: smithay 0.7 has only the
-  protocol's bindings, no implementation; xdg-desktop-portal-wlr 0.8
-  falls back to wlr-screencopy, which takes the same GPU path.
+  nothing. `aizomectl stats` reports each copy's CPU time (both capture
+  protocols', as `screencopy`).
+- ext-image-copy-capture (1) with ext-image-capture-source (1), for
+  outputs and for windows (from ext-foreign-toplevel-list handles): what
+  xdg-desktop-portal-wlr 0.8 uses, so browsers' screen and window
+  sharing. Its wlr-screencopy path froze after the first frame with
+  PipeWire 1.x: it drives its stream and, after a frame, only queues the
+  buffer, which runs one cycle and never asks it for the next; its
+  ext-image-copy-capture path triggers each cycle itself. Sessions take
+  the same copies as screencopy: constraints offer wl_shm XRGB8888 and
+  ARGB8888 and, under GLES, the render node (`dmabuf_device`) with
+  XRGB8888 and ARGB8888 in every modifier the GPU renders to. A session's
+  first frame comes at once with full damage, later ones once its source
+  changes (an output drew something, a window's surfaces committed), with
+  damage; frames are upright (`transform` normal). A window's frames hold
+  its surfaces and its popups, without its frame or what covers it, at its
+  output's scale, sized to its geometry; the pointer is painted onto
+  outputs only (`paint_cursors`). A resize sends new constraints (a frame
+  waiting with an old buffer fails with `buffer_constraints`); a source
+  that goes stops the session. Cursor sessions are accepted but stop at
+  once. The portal can make a frame before destroying its last when its
+  stream pauses and resumes as a consumer links: the newer frame takes
+  over (and the older is never answered) instead of a `duplicate_frame`
+  error ending its connection.
 
 ## Displays
 
@@ -218,7 +239,7 @@ Notes for client authors:
 | `overlays/` | Stack-drop feedback, marking menu, switcher, overview, area picker. |
 | `input.rs`, `grabs.rs`, `bindings.rs` | Input from libinput, winit or IPC; move, resize, tab slide and box grabs; the binding table and ❖ translation. |
 | `shell.rs`, `handlers.rs` | Surfaces, xdg-shell, layer shell, session lock and the smaller protocols. |
-| `protocols/` | wlr-screencopy (wl_shm and dmabuf, per-stream damage), wlr foreign toplevel management, wlr output management, wlr gamma control, xdg-toplevel-icon. |
+| `protocols/` | wlr-screencopy and ext-image-copy-capture with its output and window sources (`capture`: the streams and copies they share, wl_shm and dmabuf, per-stream damage), wlr foreign toplevel management, wlr output management, wlr gamma control, xdg-toplevel-icon. |
 | `backend/` | headless (GLES on a render node or pixman, 60 Hz pacing only while damaged), winit, udev (DRM/KMS, multi-GPU GLES or pixman dumb buffers). |
 | `ipc.rs`, `requests.rs` | The IPC socket and its requests. |
 | `session.rs`, `idle.rs`, `config.rs` | Start-up, supervision, idle events, live settings. |
@@ -262,6 +283,14 @@ nix develop --command cargo test -p aizome-comp
   for a stream's first frame and then only after a change (not for the
   pointer when it isn't captured); and, with a render node, a GBM dmabuf
   rendered into on the GPU and read back upright.
+- `tests/image_copy_capture.rs`: ext-image-copy-capture as
+  xdg-desktop-portal-wlr uses it (the regression test for the frozen
+  screen sharing): an output's and a window's sessions, constraints, a
+  first frame at once with full damage, then a frame per change for
+  several changes and none without one, into wl_shm under pixman and GLES
+  and into a dmabuf on the render node; a window's content alone, new
+  constraints on a resize and a stop when it closes; a second frame
+  taking over from the first.
 - `tests/focus.rs`: a shell-like wayland-client (layer surfaces and their
   popups): exclusive and on-demand keyboard interactivity, grabbing menus
   getting the keys and giving them back, menus closing for an exclusive
