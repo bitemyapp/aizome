@@ -32,7 +32,30 @@ pub fn page(p: &Displays, vcx: &ViewCx) -> Element<Msg> {
     if let Some(d) = ds.iter().find(|d| d.name == p.selected_now()) {
         sections.extend(display_sections(p, vcx, d));
     }
+    sections.extend(night_section(p, vcx));
     form::page(sections)
+}
+
+/// Night Light, for every display that can show it; where none can, why
+/// there's no switch.
+fn night_section(p: &Displays, vcx: &ViewCx) -> Option<Element<Msg>> {
+    let n = p.night.as_ref()?;
+    let row = if n.outputs.is_empty() {
+        form::value("Night Light", "Not on these displays").help(
+            "Night Light warms the colours through a display's gamma table, which these displays don't have \
+             (virtual displays and some external ones). It shows here for a display that has one.",
+        )
+    } else {
+        let s = &vcx.settings().night_light;
+        let when = match s.schedule {
+            aizome_config::NightSchedule::Sunset => "From sunset to sunrise".to_owned(),
+            aizome_config::NightSchedule::Manual => format!("From {} to {}", s.from, s.to),
+            aizome_config::NightSchedule::Always => "All the time".to_owned(),
+        };
+        form::row("Night Light", toggle(s.enabled).on_toggle(Msg::NightLight))
+            .help(format!("{when}, warmer colours, easier on the eyes at night."))
+    };
+    Some(vcx.section("Night Light", vec![row.entry("night-light")]))
 }
 
 /// A display's name, with its connector when another has the same name.
