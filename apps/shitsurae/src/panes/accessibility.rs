@@ -71,26 +71,8 @@ impl Pane for Accessibility {
 
     fn update(&mut self, msg: Msg, cx: &mut PaneCx<Msg>) {
         match msg {
-            Msg::HighContrast(on) => cx.change(|s| {
-                let a = &mut s.appearance;
-                if on {
-                    // Remember what it was, to go back to.
-                    let was = match a.theme {
-                        ThemeChoice::Day => "day",
-                        ThemeChoice::Auto => "auto",
-                        _ => "night",
-                    };
-                    a.extra.insert("theme_before_contrast".into(), toml::Value::String(was.into()));
-                    a.theme = ThemeChoice::HighContrast;
-                } else {
-                    a.theme = match a.extra.remove("theme_before_contrast").as_ref().and_then(toml::Value::as_str) {
-                        Some("day") => ThemeChoice::Day,
-                        Some("auto") => ThemeChoice::Auto,
-                        _ => ThemeChoice::Night,
-                    };
-                }
-            }),
-            Msg::Larger(on) => cx.change(|s| s.appearance.size = if on { UiSize::Large } else { UiSize::Medium }),
+            Msg::HighContrast(on) => cx.change(|s| set_high_contrast(&mut s.appearance, on)),
+            Msg::Larger(on) => cx.change(|s| set_larger(&mut s.appearance, on)),
             Msg::ReducedMotion(on) => cx.change(|s| s.appearance.reduced_motion = on),
             Msg::Cursor(v) => cx.change(|s| {
                 let i = (v.round() as usize).min(CURSOR_SIZES.len() - 1);
@@ -187,5 +169,71 @@ impl Pane for Accessibility {
             ),
             vcx.section("Typing", typing),
         ])
+    }
+}
+
+/// Larger text on (remembering the size before, to go back to) or off.
+pub fn set_larger(a: &mut aizome_config::Appearance, on: bool) {
+    if on {
+        if a.size != UiSize::Large {
+            let was = if a.size == UiSize::Small { "small" } else { "medium" };
+            a.extra.insert("size_before_larger".into(), toml::Value::String(was.into()));
+        }
+        a.size = UiSize::Large;
+    } else {
+        a.size = match a.extra.remove("size_before_larger").as_ref().and_then(toml::Value::as_str) {
+            Some("small") => UiSize::Small,
+            _ => UiSize::Medium,
+        };
+    }
+}
+
+/// High Contrast on (remembering the theme before, to go back to) or off
+/// (back to it): from Accessibility, and from Appearance's cards.
+pub fn set_high_contrast(a: &mut aizome_config::Appearance, on: bool) {
+    if on {
+        if a.theme != ThemeChoice::HighContrast {
+            let was = match a.theme {
+                ThemeChoice::Day => "day",
+                ThemeChoice::Auto => "auto",
+                _ => "night",
+            };
+            a.extra.insert("theme_before_contrast".into(), toml::Value::String(was.into()));
+        }
+        a.theme = ThemeChoice::HighContrast;
+    } else {
+        a.theme = match a.extra.remove("theme_before_contrast").as_ref().and_then(toml::Value::as_str) {
+            Some("day") => ThemeChoice::Day,
+            Some("auto") => ThemeChoice::Auto,
+            _ => ThemeChoice::Night,
+        };
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use aizome_config::{Appearance, ThemeChoice, UiSize};
+
+    use super::{set_high_contrast, set_larger};
+
+    #[test]
+    fn larger_text_goes_back_to_the_size_before() {
+        let mut a = Appearance { size: UiSize::Small, ..Appearance::default() };
+        set_larger(&mut a, true);
+        assert_eq!(a.size, UiSize::Large);
+        set_larger(&mut a, false);
+        assert_eq!(a.size, UiSize::Small);
+    }
+
+    #[test]
+    fn high_contrast_goes_back_to_the_theme_before_wherever_it_was_chosen() {
+        let mut a = Appearance { theme: ThemeChoice::Day, ..Appearance::default() };
+        set_high_contrast(&mut a, true);
+        // Chosen again (Appearance's card while it's on) changes nothing.
+        set_high_contrast(&mut a, true);
+        assert_eq!(a.theme, ThemeChoice::HighContrast);
+        set_high_contrast(&mut a, false);
+        assert_eq!(a.theme, ThemeChoice::Day);
+        assert!(!a.extra.contains_key("theme_before_contrast"));
     }
 }

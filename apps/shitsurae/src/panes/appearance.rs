@@ -291,7 +291,16 @@ impl Pane for Appearance {
 
     fn update(&mut self, msg: Msg, cx: &mut PaneCx<Msg>) {
         match msg {
-            Msg::Theme(t) => cx.change(|s| s.appearance.theme = t),
+            Msg::Theme(t) => cx.change(|s| {
+                // High Contrast remembers the theme before it, so turning it
+                // off in Accessibility goes back there.
+                if t == ThemeChoice::HighContrast {
+                    super::accessibility::set_high_contrast(&mut s.appearance, true);
+                } else {
+                    s.appearance.extra.remove("theme_before_contrast");
+                    s.appearance.theme = t;
+                }
+            }),
             Msg::FollowSunset(on) => cx.change(|s| s.appearance.follow_sunset = on),
             Msg::Focus(f) => cx.change(|s| s.appearance.focus = f),
             Msg::Effects(e) => cx.change(|s| s.appearance.effects = e),
