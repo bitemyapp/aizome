@@ -572,7 +572,7 @@ fn build_index(root: &Path, home: &Path, shared: bool) -> aizome_search::files::
     {
         return i;
     }
-    FileIndex::build(&[root.to_path_buf()], &Limits { max_entries: 200_000, max_depth: 16, folders: true })
+    FileIndex::build(&[root.to_path_buf()], &Limits { max_entries: 200_000, max_depth: 16, ..Limits::default() })
 }
 
 impl Hako {
