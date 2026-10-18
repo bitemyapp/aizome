@@ -272,6 +272,9 @@ fn results(k: &Kura) -> Element<Msg> {
             let h = &k.analysis.hints[i];
             (h.title.clone(), h.frees())
         }),
+        rings: k.rings.clone(),
+        rings_gen: k.rings_gen,
+        ask: k.ask.clone(),
     };
     let burst: Element<Msg> = aizome_kit::canvas(state, |c, bounds, st: &Burst, theme| st.draw(c, bounds, theme))
         .on_event(|ev, size, st: &Burst| st.event(ev, size))

@@ -31,6 +31,20 @@ fn golden(name: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden").join(name)
 }
 
+/// The window against its golden picture, once the rings' smooth drawing
+/// (made on a worker; plain until it comes) is there.
+fn golden_settled(h: &mut Harness<Kura>, w: aizome_kit::WindowKey, path: PathBuf, scale: f64) {
+    let _ = h.render(w, scale);
+    for _ in 0..1000 {
+        if h.program().rings.borrow().settled() {
+            return assert_golden(h, w, path, scale);
+        }
+        std::thread::sleep(Duration::from_millis(2));
+        h.send(Msg::Poll);
+    }
+    panic!("the rings were never drawn");
+}
+
 /// A made-up home: what a developer's often holds.
 enum Fake {
     F(&'static str, u64),
@@ -308,9 +322,9 @@ fn results_draw_and_drill() {
     with_results(&mut h);
     let texts = h.texts(w);
     assert!(texts.iter().any(|t| t == "work"), "the list shows the top level: {texts:?}");
-    assert_golden(&mut h, w, golden("results-night.png"), 2.0);
+    golden_settled(&mut h, w, golden("results-night.png"), 2.0);
     h.set_appearance(day());
-    assert_golden(&mut h, w, golden("results-day.png"), 2.0);
+    golden_settled(&mut h, w, golden("results-day.png"), 2.0);
     h.set_appearance(night());
 
     // A click on a folder's segment goes into it; the middle goes back up.
@@ -362,7 +376,7 @@ fn hovering_and_collecting() {
     h.move_to(w, point_on(&h, "Pictures"));
     let texts = h.texts(w);
     assert!(texts.iter().any(|t| t == "Move to Trash…"));
-    assert_golden(&mut h, w, golden("results-hover-collector-night.png"), 2.0);
+    golden_settled(&mut h, w, golden("results-hover-collector-night.png"), 2.0);
 }
 
 #[test]
@@ -381,7 +395,7 @@ fn dragging_a_segment_into_the_collector() {
     let to = zone.center();
     h.move_to(w, to);
     assert!(h.program().drag_over);
-    assert_golden(&mut h, w, golden("results-drag-night.png"), 2.0);
+    golden_settled(&mut h, w, golden("results-drag-night.png"), 2.0);
     h.release(w, to, PointerButton::Left);
     let k = h.program();
     assert!(k.dragging.is_none());
@@ -708,6 +722,9 @@ fn what_drawing_the_rings_costs() {
         marks: Rc::default(),
         highlight_gen: 0,
         hint: None,
+        rings: Rc::default(),
+        rings_gen: 0,
+        ask: None,
     };
     let size = Size::new(730.0, 565.0);
     let bounds = aizome_kit::Rect::from_origin_size(Point::ZERO, size);
@@ -1039,9 +1056,9 @@ fn suggestions_list_the_hints_and_light_their_paths() {
     assert_eq!(k.highlight.len(), 2);
     assert!(k.marks.contains(&kura::ui::sunburst::Mark::Lit));
     assert!(k.marks.contains(&kura::ui::sunburst::Mark::Dim));
-    assert_golden(&mut h, w, golden("suggestions-night.png"), 2.0);
+    golden_settled(&mut h, w, golden("suggestions-night.png"), 2.0);
     h.set_appearance(day());
-    assert_golden(&mut h, w, golden("suggestions-day.png"), 2.0);
+    golden_settled(&mut h, w, golden("suggestions-day.png"), 2.0);
     h.set_appearance(night());
 
     // Old downloads and duplicates opened: ticks, and copies side by side.
@@ -1055,7 +1072,7 @@ fn suggestions_list_the_hints_and_light_their_paths() {
     assert!(texts.iter().any(|x| x == "sekka-nightly.iso"));
     h.send(Msg::Choose("/home/sekka/Downloads/sekka-nightly.iso".into(), true));
     assert!(h.texts(w).iter().any(|x| x == "Move 1 item to Trash…"));
-    assert_golden(&mut h, w, golden("suggestions-downloads-night.png"), 2.0);
+    golden_settled(&mut h, w, golden("suggestions-downloads-night.png"), 2.0);
     // Duplicates, near the end: the copies side by side, one kept.
     h.send(Msg::ExpandHint(d, false));
     h.send(Msg::ExpandHint(g, true));
@@ -1063,9 +1080,9 @@ fn suggestions_list_the_hints_and_light_their_paths() {
     assert!(texts.iter().any(|x| x == "IMG-001.jpg") && texts.iter().any(|x| x == "scan-001.jpg"));
     let panel = h.find_id(w, "suggestions").unwrap();
     h.scroll(w, panel.center(), aizome_kit::Vec2::new(0.0, 5000.0));
-    assert_golden(&mut h, w, golden("suggestions-duplicates-night.png"), 2.0);
+    golden_settled(&mut h, w, golden("suggestions-duplicates-night.png"), 2.0);
     h.set_appearance(day());
-    assert_golden(&mut h, w, golden("suggestions-duplicates-day.png"), 2.0);
+    golden_settled(&mut h, w, golden("suggestions-duplicates-day.png"), 2.0);
     h.set_appearance(night());
 
     // Containers: the command, copied.
