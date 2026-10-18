@@ -100,7 +100,8 @@ apps, as ⌘ does on a Mac. The system takes only:
 | ❖Return | Terminal (foot) in the Desk's folder |
 | ⌃❖Q | Lock |
 | ⌃⌥Del | Recovery: force quit stuck apps, reset input, restart the shell (`docs/recovery.md`) |
-| ❖⇧3, ❖⇧4, ❖⇧5, Print | Screenshot: screen, area, window/tool |
+| ❖⇧3, ❖⇧4, ❖⇧5, Print | Screenshot: screen, area, window/tool (❖⇧5: the Capture menu, recordings too) |
+| ⌥Print | Record an area or a display; again, stop |
 | ❖-right-click | The focused app's whole menu at the pointer (NeXT) |
 | ⌃❖-drag, ⌃❖-right-drag | Move, resize |
 | media keys | Volume, mute, brightness, players, with the OSD |
@@ -148,7 +149,8 @@ Sections: `appearance` (theme, follow sunset, focus colour, effects, size,
 reduced motion, wallpaper), `input` (keyboard layouts, repeat, pointer,
 touchpad), `outputs` (by make/model/serial: mode, scale, position,
 transform), `desks` (names, folders), `keys` (overrides), `menubar`,
-`deskbar`, `notifications`, `lock`, `power`, `apps` (defaults), `sound`.
+`deskbar`, `notifications`, `lock`, `power`, `apps` (defaults), `sound`,
+`recording` (screen recordings).
 
 ## Rendering and the 4ms budget
 

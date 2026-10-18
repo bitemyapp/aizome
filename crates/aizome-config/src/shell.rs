@@ -1,5 +1,5 @@
 //! The shell's sections, typed: `[menubar]`, `[deskbar]`, `[notifications]`,
-//! `[lock]`, `[palette]`, `[desktop]`, `[power]` and `[sound]`.
+//! `[lock]`, `[palette]`, `[desktop]`, `[power]`, `[sound]` and `[recording]`.
 //!
 //! [`Settings`](crate::Settings) keeps these sections as plain tables (so
 //! a load and save never loses a key this version doesn't know); the
@@ -261,6 +261,86 @@ pub struct SoundSettings {
     pub visual_alert: bool,
 }
 
+/// The container a screen recording is written in.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum RecordingFormat {
+    /// H.264 in MP4: plays anywhere, browsers and chat apps included.
+    #[default]
+    Mp4,
+    /// H.264 in Matroska: survives a recorder that dies mid-file.
+    Mkv,
+}
+
+impl RecordingFormat {
+    pub fn extension(self) -> &'static str {
+        match self {
+            RecordingFormat::Mp4 => "mp4",
+            RecordingFormat::Mkv => "mkv",
+        }
+    }
+}
+
+/// How hard the encoder works for the picture (constant quality).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum RecordingQuality {
+    Medium,
+    High,
+    #[default]
+    VeryHigh,
+    Ultra,
+}
+
+/// What records.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Recorder {
+    /// gpu-screen-recorder (KMS capture, hardware encoding), else
+    /// wf-recorder through the compositor's screencopy.
+    #[default]
+    Auto,
+    GpuScreenRecorder,
+    WfRecorder,
+}
+
+/// `[recording]`: screen recordings (the palette's Record Screen and
+/// Record Area, ⌥Print, ❖⇧5's Capture menu).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct RecordingSettings {
+    pub format: RecordingFormat,
+    /// Frames per second, 1–240.
+    pub framerate: u32,
+    pub quality: RecordingQuality,
+    /// Draw the pointer into the video.
+    pub cursor: bool,
+    /// Record what the computer plays (the default output's monitor)
+    /// when Record Screen or Record Area doesn't say.
+    pub desktop_audio: bool,
+    /// Record the default input (the microphone) when not said.
+    pub microphone: bool,
+    /// Where recordings go; unset, `Recordings` in the Videos folder
+    /// (`XDG_VIDEOS_DIR`).
+    pub folder: Option<String>,
+    pub recorder: Recorder,
+}
+
+impl Default for RecordingSettings {
+    fn default() -> Self {
+        RecordingSettings {
+            format: RecordingFormat::Mp4,
+            framerate: 60,
+            quality: RecordingQuality::VeryHigh,
+            cursor: true,
+            desktop_audio: false,
+            microphone: false,
+            folder: None,
+            recorder: Recorder::Auto,
+        }
+    }
+}
+
 /// Reads a section's table as `T`, a field of the wrong type taking its
 /// default rather than spoiling the rest.
 pub(crate) fn read<T: Default + Serialize + for<'de> Deserialize<'de>>(table: Option<&toml::Table>) -> T {
@@ -310,6 +390,24 @@ mod tests {
         assert_eq!(s.notification_settings().banner_seconds, 5);
         assert_eq!(s.lock_settings().pam_service, "aizome");
         assert_eq!(s.palette_settings().reindex_minutes, 10);
+    }
+
+    #[test]
+    fn recording_reads_with_defaults() {
+        let d = Settings::default().recording_settings();
+        assert_eq!(
+            (d.format, d.framerate, d.quality, d.cursor),
+            (RecordingFormat::Mp4, 60, RecordingQuality::VeryHigh, true)
+        );
+        assert!(!d.desktop_audio && !d.microphone && d.folder.is_none());
+        let s = Settings::from_toml(
+            "[recording]\nformat = \"mkv\"\nframerate = 30\nquality = \"ultra\"\nmicrophone = true\nrecorder = \"wf-recorder\"\n",
+        )
+        .unwrap();
+        let r = s.recording_settings();
+        assert_eq!(r.format.extension(), "mkv");
+        assert_eq!((r.framerate, r.quality, r.recorder), (30, RecordingQuality::Ultra, Recorder::WfRecorder));
+        assert!(r.microphone && !r.desktop_audio);
     }
 
     #[test]

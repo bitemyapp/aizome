@@ -95,6 +95,10 @@ pub enum Msg {
     ToolchestHandedOver,
     /// The bar's notification line has shown long enough.
     BannerDone(u32),
+    /// What a recording's thread says (the recording's serial).
+    Recording(u64, crate::recording::run::Event),
+    /// The recording indicator's second turned (recording, tick).
+    RecordTick(u64, u64),
     /// Nothing: a message to wake the loop.
     Nothing,
 }
@@ -284,6 +288,9 @@ pub struct Shell {
     pub logind_power_key: Option<String>,
     /// Night Light, as the compositor last told.
     pub night: Option<aizome_ipc::NightLightState>,
+    /// The screen recording going, if any (one at a time).
+    pub recording: Option<crate::recording::Live>,
+    pub(crate) record_gen: u64,
     pub text: aizome_kit::text::TextCache,
     launches: HashMap<ActivationRequest, (Launch, Option<PathBuf>)>,
     stream: Option<MsgSender<Msg>>,
@@ -372,6 +379,8 @@ impl Shell {
             power_inhibit: None,
             logind_power_key: None,
             night: None,
+            recording: None,
+            record_gen: 0,
             text: aizome_kit::text::TextCache::default(),
             launches: HashMap::new(),
             stream: None,
@@ -519,6 +528,7 @@ impl Shell {
             unread: self.notes.unread_count(),
             banner: if primary { self.banner_view() } else { None },
             primary,
+            recording: if primary { self.record_badge() } else { None },
         }
     }
 
@@ -747,6 +757,8 @@ impl Shell {
                 area: None,
                 clipboard: false,
             }),
+            Action::Record(ask) => self.record(ask, cx),
+            Action::StopRecording => self.stop_recording(cx),
             Action::About { app_id: None } => self.run(Action::Settings { pane: "about".into(), anchor: None }, cx),
             Action::About { app_id: Some(app_id) } => self.about_app(&app_id, cx),
             Action::Palette { scope, query } => self.open_palette(scope, query, cx),
@@ -902,6 +914,7 @@ impl Shell {
         self.icon_lookup = Some(aizome_sys::apps::IconLookup::from_env());
         self.start_lock();
         self.sync_power_key();
+        self.adopt_recording();
         self.read_logind_power_key(cx);
         self.start_polkit();
     }
@@ -924,6 +937,7 @@ impl Shell {
                     Event::Idle { kind } if kind == "monitors-off" && self.lock_cfg.after_monitors_off => self.lock(cx),
                     Event::ScreenshotTaken { path } => self.screenshot_taken(PathBuf::from(path), cx),
                     Event::NightLightChanged { state } => self.night = Some(state),
+                    Event::AreaPicked { tag, area, output, .. } => self.area_picked(&tag, area, output.as_deref(), cx),
                     _ => {}
                 }
             }
@@ -944,6 +958,20 @@ impl Shell {
             "palette" => self.toggle_palette(None, String::new(), cx),
             "lock" => self.lock(cx),
             "power-key" => self.power_key(cx),
+            "record" => self.toggle_recording(cx),
+            "record-screen" => {
+                // The display under the pointer, as a key gives it.
+                let target = match output.clone() {
+                    Some(o) => crate::recording::Target::Output(o),
+                    None => crate::recording::Target::Screen,
+                };
+                self.record(crate::recording::Ask { target, audio: None }, cx)
+            }
+            "record-area" => {
+                self.record(crate::recording::Ask { target: crate::recording::Target::Pick, audio: None }, cx)
+            }
+            "stop-recording" => self.stop_recording(cx),
+            "screenshot-tool" => self.open_capture_menu(output.as_deref(), cx),
             "bell" => self.bell(output.as_deref(), cx),
             "app-menu" => {
                 if let Some((x, y)) = pointer {
@@ -1079,6 +1107,33 @@ impl Shell {
                 self.bell(output.as_deref(), cx);
                 (true, String::new())
             }
+            proto::ShellRequest::Record { target, desktop_audio, microphone } => {
+                if self.recording.is_some() {
+                    return (false, "a recording is already going".into());
+                }
+                let target = match target.as_deref() {
+                    None | Some("screen") => crate::recording::Target::Screen,
+                    Some("area") => crate::recording::Target::Pick,
+                    Some(output) => crate::recording::Target::Output(output.to_owned()),
+                };
+                let audio = match (desktop_audio, microphone) {
+                    (None, None) => None,
+                    (d, m) => {
+                        let s = self.settings.recording_settings();
+                        Some(crate::recording::Audio {
+                            desktop: d.unwrap_or(s.desktop_audio),
+                            microphone: m.unwrap_or(s.microphone),
+                        })
+                    }
+                };
+                self.run(Action::Record(crate::recording::Ask { target, audio }), cx);
+                (true, String::new())
+            }
+            proto::ShellRequest::StopRecording => {
+                let going = self.recording.is_some();
+                self.run(Action::StopRecording, cx);
+                (going, if going { String::new() } else { "no recording is going".into() })
+            }
             proto::ShellRequest::MenuBar { output } => {
                 let ok = self.focus_menu_bar(output.as_deref(), cx);
                 (ok, if ok { String::new() } else { "no menu bar there".into() })
@@ -1098,6 +1153,7 @@ impl Shell {
             "menu": self.bar_menu.map(|m| format!("{:?}", m.slot)),
             "palette": self.palette.as_ref().map(|p| p.query.clone()),
             "panel": self.panel.as_ref().map(|p| p.widget.name()),
+            "recording": self.recording_json(),
         })
         .to_string()
     }
@@ -1185,6 +1241,8 @@ impl Program for Shell {
             }
             Msg::Note(e) => self.take_note(e, cx),
             Msg::BannerDone(id) => self.banner_done(id, cx),
+            Msg::Recording(serial, e) => self.recording_event(serial, e, cx),
+            Msg::RecordTick(serial, tick) => self.record_tick(serial, tick, cx),
             Msg::MenuClosed(n) => self.menu_closed(n),
             Msg::Agenda(a) => self.agenda = a,
             Msg::FlashDone(n) => self.flash_done(n, cx),

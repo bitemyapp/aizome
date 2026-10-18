@@ -142,8 +142,10 @@ pub fn close_switcher(state: &mut State, activate: bool) {
     switcher::close(state, activate);
 }
 
-pub fn start_area_pick(state: &mut State) {
-    area::start(state);
+/// The area picker: for a screenshot, or (`report`) to tell the shell what was
+/// picked under that tag.
+pub fn start_area_pick(state: &mut State, report: Option<String>) {
+    area::start(state, report);
 }
 
 /// A window closed: overlays forget it.

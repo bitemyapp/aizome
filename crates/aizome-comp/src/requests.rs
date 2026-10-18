@@ -317,11 +317,13 @@ impl State {
                     outputs,
                     renderer_setting: renderer_setting.into(),
                     renderer_after_restart,
+                    screencopy: self.az.screencopy.active().then(|| self.az.screencopy.stats.report("screencopy")),
                 };
                 if reset {
                     for o in self.az.out.values_mut() {
                         o.stats.reset();
                     }
+                    self.az.screencopy.stats.reset();
                 }
                 Response::Stats { stats }
             }
@@ -342,6 +344,10 @@ impl State {
                 Response::Ok
             }
             Request::Subscribe => Response::Ok,
+            Request::PickArea { tag } => {
+                crate::overlays::start_area_pick(self, Some(tag));
+                Response::Ok
+            }
             Request::Action { action } => {
                 let a = crate::bindings::Action::parse(&action).ok_or_else(|| format!("unknown action {action}"))?;
                 self.run_action(a);

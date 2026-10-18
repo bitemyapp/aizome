@@ -258,6 +258,28 @@ impl Headless {
         }
     }
 
+    pub fn screencopy(
+        &mut self,
+        az: &mut Aizome,
+        job: &mut crate::protocols::screencopy::Job,
+    ) -> Result<crate::protocols::screencopy::Outcome, String> {
+        use crate::protocols::screencopy::{copy_gpu, copy_pixman};
+        match &mut self.renderer {
+            HeadlessRenderer::Gles(r) => copy_gpu::<GlesRenderer, GlesRenderbuffer>(r.as_mut(), az, job),
+            HeadlessRenderer::Pixman(r) => copy_pixman(r, az, job),
+        }
+    }
+
+    pub fn screencopy_dmabuf_format(&mut self) -> Option<Fourcc> {
+        match &self.renderer {
+            // Only with a render node clients can allocate on.
+            HeadlessRenderer::Gles(r) if self.render_node.is_some() => {
+                crate::protocols::screencopy::renderable_dmabuf_format(r.as_ref())
+            }
+            _ => None,
+        }
+    }
+
     pub fn capture(&mut self, az: &mut Aizome, output: &Output, cursor: bool) -> Result<Capture, String> {
         match &mut self.renderer {
             HeadlessRenderer::Gles(r) => capture_with::<GlesRenderer, GlesRenderbuffer>(r.as_mut(), az, output, cursor),

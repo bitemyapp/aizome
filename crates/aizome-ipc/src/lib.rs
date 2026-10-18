@@ -367,6 +367,15 @@ pub enum Request {
     DebugStall {
         seconds: u32,
     },
+    /// Lets the person pick an area with the screenshot picker (drag over
+    /// an area, click for the whole display under the pointer, Space and a
+    /// click for a window, Esc to give up), and reports the pick to
+    /// subscribers as [`Event::AreaPicked`] with this `tag` instead of
+    /// taking a screenshot. Answered at once with `ok`.
+    PickArea {
+        #[serde(default)]
+        tag: String,
+    },
 }
 
 /// An input event for [`Request::Synthesize`].
@@ -626,6 +635,10 @@ pub struct Stats {
     /// applies after logging out and in.
     #[serde(default)]
     pub renderer_after_restart: bool,
+    /// wlr-screencopy copies (screencasts, recorders): CPU time per copy,
+    /// once a client has made one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub screencopy: Option<OutputStats>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -710,6 +723,22 @@ pub enum Event {
     /// Night Light turned on or off, warmed or cooled.
     NightLightChanged {
         state: NightLightState,
+    },
+    /// What a [`Request::PickArea`] picked, or `area: null` when the
+    /// person gave up (Esc).
+    AreaPicked {
+        tag: String,
+        /// In the global layout, in points; a whole output's rectangle
+        /// when it was clicked.
+        #[serde(default)]
+        area: Option<Rect>,
+        /// The output holding the area's centre.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        output: Option<String>,
+        /// The window picked (Space, then a click): `area` is its frame
+        /// with the tab.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        window: Option<WindowId>,
     },
 }
 
@@ -854,6 +883,15 @@ mod tests {
         assert_eq!(serde_json::from_str::<Response>(&s).unwrap(), r);
         let e = Event::Binding { action: "palette".into(), pointer: None, output: None };
         assert_eq!(serde_json::to_string(&e).unwrap(), r#"{"event":"binding","action":"palette"}"#);
+        let r: Request = serde_json::from_str(r#"{"request":"pick-area","tag":"record"}"#).unwrap();
+        assert_eq!(r, Request::PickArea { tag: "record".into() });
+        let e = Event::AreaPicked { tag: "record".into(), area: None, output: None, window: None };
+        assert_eq!(serde_json::to_string(&e).unwrap(), r#"{"event":"area-picked","tag":"record","area":null}"#);
+        assert_eq!(serde_json::from_str::<Event>(r#"{"event":"area-picked","tag":"t"}"#).unwrap(), e_tag("t"));
+    }
+
+    fn e_tag(tag: &str) -> Event {
+        Event::AreaPicked { tag: tag.into(), area: None, output: None, window: None }
     }
 
     #[test]

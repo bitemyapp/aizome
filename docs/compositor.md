@@ -133,6 +133,25 @@ Notes for client authors:
 - ext-session-lock: `locked` is sent once every output has drawn a frame
   without the desktop; lock surfaces get the output's size and all input.
   A locker that dies leaves the session locked.
+- wlr-screencopy (what wf-recorder, grim and xdg-desktop-portal-wlr's
+  screencasts, so browsers' screen sharing, use): each frame offers
+  wl_shm XRGB8888 and, under GLES on a render node (or a GPU on udev), a
+  linux-dmabuf XRGB8888 buffer too (`linux_dmabuf`, then `buffer_done`).
+  A dmabuf, in any modifier the GPU renders to, is bound as the render
+  target, so a screencast stays on the GPU end to end (wf-recorder with a
+  VA-API codec hands it straight to the encoder); `ready` is sent when the
+  GPU's fence signals, and the compositor never waits for it. wl_shm goes
+  through an offscreen buffer kept per stream, read back as BGRA (GLES
+  swizzles as it reads; pixman copies from the image). Frames are
+  upright (the output's transform undone, no `y_invert`). A stream (one
+  client's captures of one output region, with or without the pointer)
+  keeps its own damage tracker: `copy_with_damage` answers at once for its
+  first frame, then after the first output frame that changed something
+  in its region, with `damage` events for what did; an idle screen copies
+  nothing. `aizomectl stats` reports each copy's CPU time.
+- ext-image-copy-capture is not offered: smithay 0.7 has only the
+  protocol's bindings, no implementation; xdg-desktop-portal-wlr 0.8
+  falls back to wlr-screencopy, which takes the same GPU path.
 
 ## Displays
 
@@ -184,7 +203,9 @@ Notes for client authors:
   outputs; sticky windows show on all; switching slides over the motion
   time (none in Austere or with reduced motion).
 - **Overview** (⌃❖↑), **switcher** (❖Tab), **marking menu** (right press
-  on a tab), **area screenshots** (❖⇧4): see `docs/ipc.md` for their keys.
+  on a tab), **area screenshots** (❖⇧4; the shell borrows the picker with
+  IPC `pick-area` to choose what to record): see `docs/ipc.md` for their
+  keys.
 
 ## Inside
 
@@ -197,7 +218,7 @@ Notes for client authors:
 | `overlays/` | Stack-drop feedback, marking menu, switcher, overview, area picker. |
 | `input.rs`, `grabs.rs`, `bindings.rs` | Input from libinput, winit or IPC; move, resize, tab slide and box grabs; the binding table and ❖ translation. |
 | `shell.rs`, `handlers.rs` | Surfaces, xdg-shell, layer shell, session lock and the smaller protocols. |
-| `protocols/` | wlr-screencopy, wlr foreign toplevel management, wlr output management. |
+| `protocols/` | wlr-screencopy (wl_shm and dmabuf, per-stream damage), wlr foreign toplevel management, wlr output management, wlr gamma control, xdg-toplevel-icon. |
 | `backend/` | headless (GLES on a render node or pixman, 60 Hz pacing only while damaged), winit, udev (DRM/KMS, multi-GPU GLES or pixman dumb buffers). |
 | `ipc.rs`, `requests.rs` | The IPC socket and its requests. |
 | `session.rs`, `idle.rs`, `config.rs` | Start-up, supervision, idle events, live settings. |
@@ -220,7 +241,9 @@ nix develop --command cargo test -p aizome-comp
   fill, client-side decorations, idle frames, live settings, remembered
   places, ❖⇧3), under GLES and pixman; and grim, wlr-randr and lswt when
   installed.
-- `tests/overlays.rs`: the switcher, the overview and the marking menu.
+- `tests/overlays.rs`: the switcher, the overview, the marking menu, and
+  the area picker reporting its pick to the shell (`pick-area`): a drag,
+  a click for the display, Space for a window, Esc.
 - `tests/keys.rs`: ❖ as Ctrl, Ctrl+Shift in terminals, ❖ for kit apps,
   system and shell chords.
 - `tests/settings.rs`: tab double-click, scroll factor, sticky and slow
@@ -234,6 +257,11 @@ nix develop --command cargo test -p aizome-comp
   open theirs (an xdg-toplevel-icon set and destroyed before its buffer,
   either decoration mode, activation with their own token), and the icon
   protocol's errors.
+- `tests/screencopy.rs`: wlr-screencopy into wl_shm, a whole output and a
+  region, under pixman and GLES; `copy_with_damage` answering at once
+  for a stream's first frame and then only after a change (not for the
+  pointer when it isn't captured); and, with a render node, a GBM dmabuf
+  rendered into on the GPU and read back upright.
 - `tests/focus.rs`: a shell-like wayland-client (layer surfaces and their
   popups): exclusive and on-demand keyboard interactivity, grabbing menus
   getting the keys and giving them back, menus closing for an exclusive
