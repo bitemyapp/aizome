@@ -1565,6 +1565,12 @@ impl Shell {
 /// desktop): only then does it hold logind's sleep, serve polkit, and lock
 /// for logind.
 pub fn real_session() -> bool {
+    // The compositor says so (`AIZOME_SESSION`): headless and nested
+    // compositors run inside the user's real login session too, so the
+    // desktop's name alone doesn't tell.
+    if let Ok(v) = std::env::var("AIZOME_SESSION") {
+        return v == "1";
+    }
     std::env::var("XDG_CURRENT_DESKTOP").is_ok_and(|v| v.split(':').any(|d| d.eq_ignore_ascii_case("aizome")))
 }
 
