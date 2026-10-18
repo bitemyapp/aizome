@@ -129,6 +129,11 @@ impl<Msg: Clone + Send + 'static> Widget for Strip<Msg> {
                 continue;
             }
             cx.canvas.fill_rect(Rect::new(x - 1.0, 0.0, x, b.y1), if near { t.focus() } else { t.line() });
+            // The grip at its foot: two short rules either side.
+            let g = if near { t.focus() } else { t.text3() };
+            for dx in [-4.0, 3.0] {
+                cx.canvas.fill_rect(Rect::new(x + dx, b.y1 - GRIP + 5.0, x + dx + 1.0, b.y1 - 5.0), g);
+            }
         }
         // A thin bar while it moves.
         if self.content > self.viewport + 0.5
