@@ -47,6 +47,12 @@ pub struct Interactive {
     pub last_tab_click: Option<(Instant, WinId, (f64, f64))>,
     /// A tab being dragged: where it would stack.
     pub drag: Option<TabDrag>,
+    /// Buttons whose presses the seat was given and whose releases it
+    /// hasn't been yet. The seat ends its grabs (a client's implicit
+    /// grab, a drag and drop) only when it holds no button, so every press
+    /// it sees must be followed by its release, whatever overlay comes up
+    /// in between.
+    pub forwarded_buttons: HashSet<u32>,
 }
 
 #[derive(Clone, Debug)]
@@ -471,8 +477,20 @@ impl State {
                 }
                 _ => {}
             }
-        } else if !pressed && crate::overlays::pointer_button(self, button, false, pointer.current_location()) {
+        } else if !pressed
+            && !self.az.interactive.forwarded_buttons.contains(&button)
+            && !pointer.is_grabbed()
+            && crate::overlays::pointer_button(self, button, false, pointer.current_location())
+        {
+            // A release for an overlay that took its press. One whose
+            // press the seat saw goes to the seat, or its grabs (and the
+            // pointer) stay stuck.
             return;
+        }
+        if pressed {
+            self.az.interactive.forwarded_buttons.insert(button);
+        } else {
+            self.az.interactive.forwarded_buttons.remove(&button);
         }
         pointer.button(self, &ButtonEvent { button, state, serial, time });
         pointer.frame(self);
@@ -519,11 +537,11 @@ impl State {
             let Some(id) = target else { return false };
             self.focus_window(Some(id));
             match button {
-                BTN_LEFT => crate::grabs::start_move(self, id, pos, serial, time, false),
+                BTN_LEFT => crate::grabs::start_move(self, id, pos, BTN_LEFT, serial, time, false),
                 BTN_RIGHT => {
                     let edges =
                         self.az.wm.get(id).map(|w| nearest_corner(w.rect, pos)).unwrap_or(Edges::BOTTOM | Edges::RIGHT);
-                    crate::grabs::start_resize(self, id, edges, pos, serial, time);
+                    crate::grabs::start_resize(self, id, edges, pos, BTN_RIGHT, serial, time);
                 }
                 _ => return false,
             }
@@ -576,12 +594,12 @@ impl State {
                 if shift {
                     crate::grabs::start_tab_slide(self, w, pos, serial, time);
                 } else {
-                    crate::grabs::start_move(self, w, pos, serial, time, true);
+                    crate::grabs::start_move(self, w, pos, BTN_LEFT, serial, time, true);
                 }
             }
             (BTN_LEFT, Hit::Edge(w, edges)) => {
                 self.focus_window(Some(w));
-                crate::grabs::start_resize(self, w, edges, pos, serial, time);
+                crate::grabs::start_resize(self, w, edges, pos, BTN_LEFT, serial, time);
             }
             (BTN_MIDDLE, Hit::Tab(w)) | (BTN_MIDDLE, Hit::Close(w)) | (BTN_MIDDLE, Hit::Zoom(w)) => {
                 self.lower_window(w);
