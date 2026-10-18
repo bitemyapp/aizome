@@ -26,6 +26,9 @@ pub fn shell_role(role: &str, pid: Option<i32>) -> Option<Action> {
         "fill" => Action::Wm(Request::Fill { id: None, state: None }),
         "stack-with" => Action::Wm(Request::Action { action: "stack-with-behind".into() }),
         "bring-all-to-front" => Action::Wm(Request::ShowApp { app }),
+        // Help: the palette on the app's commands, and the tour.
+        "help-search" => Action::Palette { scope: Some(Scope::Command), query: String::new() },
+        "tour" => Action::Spawn { argv: vec!["aizome-annai".into()] },
         _ => return None,
     })
 }
@@ -131,8 +134,10 @@ pub fn desktop(desks: &[DeskInfo]) -> Vec<Menu> {
         Menu::new(
             "Help",
             vec![
-                Entry::action("Search Commands", Action::Palette { scope: Some(Scope::Command), query: String::new() }).shortcut(sc("❖", "Space")),
+                Entry::action("Search", Action::Palette { scope: Some(Scope::Command), query: String::new() }).shortcut(sc("❖", "Space")),
                 Entry::action("Aizome Help", Action::OpenUrl { url: "https://github.com/bitemyapp/aizome".into() }),
+                Entry::separator(),
+                Entry::action("Aizome Tour", Action::Spawn { argv: vec!["aizome-annai".into()] }),
             ],
         ),
     ]
@@ -437,11 +442,16 @@ mod tests {
             items: vec![
                 proto::Item { id: 3, label: "Minimise".into(), role: Some("minimise".into()), enabled: true, ..Default::default() },
                 proto::Item { id: 4, label: "Zoom In".into(), enabled: true, ..Default::default() },
+                proto::Item { id: 5, label: "Search".into(), role: Some("help-search".into()), enabled: true, ..Default::default() },
             ],
         }];
         let m = app_menus(&published, 9);
         assert_eq!(m[0].items[0].action, Action::Wm(Request::Minimise { id: None }));
         assert_eq!(m[0].items[1].action, Action::AppItem { pid: 9, id: 4 });
+        assert_eq!(m[0].items[2].action, Action::Palette { scope: Some(Scope::Command), query: String::new() });
+        let help = desktop(&desks()).pop().unwrap();
+        let tour = help.items.iter().find(|e| e.label == "Aizome Tour").unwrap();
+        assert_eq!(tour.action, Action::Spawn { argv: vec!["aizome-annai".into()] });
     }
 
     #[test]
