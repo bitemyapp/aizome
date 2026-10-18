@@ -301,6 +301,8 @@ pub struct Shell {
     /// The screen recording going, if any (one at a time).
     pub recording: Option<crate::recording::Live>,
     pub(crate) record_gen: u64,
+    /// Which recorders can record here (probed once, as the shell starts).
+    pub(crate) recorders: crate::recording::probe::Probes,
     pub text: aizome_kit::text::TextCache,
     launches: HashMap<ActivationRequest, (Launch, Option<PathBuf>)>,
     stream: Option<MsgSender<Msg>>,
@@ -394,6 +396,7 @@ impl Shell {
             night: None,
             recording: None,
             record_gen: 0,
+            recorders: Default::default(),
             text: aizome_kit::text::TextCache::default(),
             launches: HashMap::new(),
             stream: None,
@@ -965,6 +968,7 @@ impl Shell {
         self.start_lock();
         self.sync_power_key();
         self.adopt_recording();
+        self.recorders.start();
         self.read_logind_power_key(cx);
         self.start_polkit();
     }

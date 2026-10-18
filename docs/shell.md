@@ -256,13 +256,24 @@ time.
   through KMS (its `gsr-kms-server`, which the NixOS module gives
   CAP_SYS_ADMIN) and encoding H.264 on the GPU (VA-API, NVENC; x264 only
   where the GPU has no encoder), the pointer included: nothing per frame
-  for the compositor or the CPU. One that exits within 1.5 s, or later
-  without having written a frame, couldn't record here (no hardware
-  OpenGL, no capture rights), and wf-recorder takes over through the
-  compositor's wlr-screencopy: first with VA-API (dmabuf frames, still on
-  the GPU), then with x264 (wl_shm, read back; the `superfast` preset).
-  wf-recorder records one audio source (what the computer plays before the
-  microphone) and always the pointer.
+  for the compositor or the CPU. Where it can't record (no hardware
+  OpenGL, no capture rights) wf-recorder does, through the compositor's
+  wlr-screencopy: with VA-API (dmabuf frames, still on the GPU), else with
+  x264 (wl_shm, read back; the `superfast` preset). wf-recorder records
+  one audio source (what the computer plays before the microphone) and
+  always the pointer.
+- **Which recorder**: found once a session, in the background as the
+  shell starts, so a recording starts at once with one that works rather
+  than seconds into ones that can't (gpu-screen-recorder takes seconds to
+  give up on software OpenGL) while the indicator counts.
+  `gpu-screen-recorder --info` says whether it has hardware OpenGL, an
+  H.264 encoder and which displays it can capture (it's used for a
+  display it lists); `vainfo` on `/dev/dri/renderD128` whether
+  wf-recorder can encode there (without `vainfo` VA-API is tried). A
+  recording asked for before the probe is done waits for it, uncounted.
+  If the one chosen still fails (it exits within 1.5 s, or later without
+  having written a frame) the next takes over, and it isn't tried again
+  that session.
 - **Audio**: through PipeWire's PulseAudio server: the default output's
   monitor for what the computer plays, the default input for the
   microphone; gpu-screen-recorder mixes both into one track (AAC in MP4,

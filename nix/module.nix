@@ -135,6 +135,9 @@ in
       # OpenGL, as in a VM): through the compositor's wlr-screencopy. Ahead
       # of another desktop's (Tatami installs it too).
       (lib.hiPrio wf-recorder)
+      # vainfo: whether wf-recorder can encode on the GPU (VA-API), which
+      # the shell asks once a session rather than finding out mid-recording.
+      pkgs.libva-utils
     ];
     # Screen recording (the palette's Record Screen and Record Area, ⌥Print):
     # gpu-screen-recorder, with the capability wrapper its KMS capture needs
@@ -278,7 +281,8 @@ in
         "${cfg.package}/share/applications/org.aizome.Annai.Welcome.desktop";
     };
 
-    # Screenshots and screencasts through wlr-screencopy; files, settings
+    # Screenshots and screencasts (browsers' screen and window sharing)
+    # through the compositor's ext-image-copy-capture; files, settings
     # and the rest through GTK's portal.
     xdg.portal = {
       enable = true;
