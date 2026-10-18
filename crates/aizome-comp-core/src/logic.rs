@@ -247,8 +247,9 @@ pub struct LogicHost {
     pub reloads: u32,
     pub rollbacks: u32,
     pub last_error: Option<String>,
-    /// A reload asked for by a key: done at the end of the iteration.
-    pub(crate) pending_reload: bool,
+    /// A reload asked for by a key (or from inside a logic call): done at
+    /// the end of the iteration.
+    pub(crate) pending_reload: Option<crate::requests::ReloadArgs>,
     /// Calls into the logic on the stack now.
     depth: u32,
 }
@@ -269,7 +270,7 @@ impl Default for LogicHost {
             reloads: 0,
             rollbacks: 0,
             last_error: None,
-            pending_reload: false,
+            pending_reload: None,
             depth: 0,
         }
     }
@@ -469,9 +470,8 @@ impl State {
     /// aside for the recovery path. A reload asked for by a key happens
     /// here too.
     pub fn recover_logic(&mut self) {
-        if self.lg.pending_reload {
-            self.lg.pending_reload = false;
-            let report = self.reload(&crate::requests::ReloadArgs::default());
+        if let Some(args) = self.lg.pending_reload.take() {
+            let report = self.reload(&args);
             let text = crate::requests::reload_summary(&report);
             self.notify("Aizome reloaded", &text);
         }

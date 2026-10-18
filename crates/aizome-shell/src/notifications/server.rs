@@ -160,6 +160,9 @@ fn image_data(v: &OwnedValue) -> Option<NoteImage> {
 /// The server, while it holds the name.
 pub struct NoteServer {
     tx: std::sync::mpsc::Sender<Signal>,
+    /// The next id to give, shared with the D-Bus interface: the shell's own
+    /// notifications take theirs from here too, so no two share one.
+    next: Arc<AtomicU32>,
 }
 
 enum Signal {
@@ -174,7 +177,8 @@ impl NoteServer {
     /// restarted shell takes it over from the old one without a gap.
     pub fn start(first: u32, sink: impl Fn(NoteEvent) + Send + Sync + 'static) -> zbus::Result<NoteServer> {
         let sink: Arc<dyn Fn(NoteEvent) + Send + Sync> = Arc::new(sink);
-        let iface = Notifications { next: Arc::new(AtomicU32::new(first.max(1))), sink: sink.clone() };
+        let next = Arc::new(AtomicU32::new(first.max(1)));
+        let iface = Notifications { next: next.clone(), sink: sink.clone() };
         let conn =
             zbus::block_on(async { zbus::connection::Builder::session()?.serve_at(PATH, iface)?.build().await })?;
         {
@@ -204,7 +208,12 @@ impl NoteServer {
                 }
             })
             .map_err(|e| zbus::Error::Failure(e.to_string()))?;
-        Ok(NoteServer { tx })
+        Ok(NoteServer { tx, next })
+    }
+
+    /// An id for a notification of the shell's own.
+    pub fn fresh_id(&self) -> u32 {
+        self.next.fetch_add(1, Ordering::Relaxed).max(1)
     }
 
     pub fn closed(&self, id: u32, reason: CloseReason) {

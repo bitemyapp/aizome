@@ -358,6 +358,11 @@ pub enum Request {
         /// system's, after an update).
         #[serde(default)]
         from: Option<String>,
+        /// The shell to restart into (a build of one's own); default: the
+        /// installed one. It stays the session's shell until a reload
+        /// without it.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        shell_from: Option<String>,
         #[serde(default)]
         check: bool,
     },

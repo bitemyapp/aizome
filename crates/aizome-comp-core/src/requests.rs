@@ -161,8 +161,14 @@ impl State {
                 let report = self.reload(&ReloadArgs::default());
                 Response::Reload { report }
             }
-            Request::Reload { logic, shell, from, check } => {
-                let args = ReloadArgs { logic, shell, from: from.map(PathBuf::from), check };
+            Request::Reload { logic, shell, from, shell_from, check } => {
+                let args = ReloadArgs {
+                    logic,
+                    shell,
+                    from: from.map(PathBuf::from),
+                    shell_from: shell_from.map(PathBuf::from),
+                    check,
+                };
                 Response::Reload { report: self.reload(&args) }
             }
             Request::DebugStall { seconds } => {
@@ -238,7 +244,7 @@ impl State {
     /// the logic, the shell, the settings. With `check`, says what would
     /// happen and does nothing.
     pub fn reload(&mut self, args: &ReloadArgs) -> ReloadReport {
-        let everything = !args.logic && !args.shell && args.from.is_none();
+        let everything = !args.logic && !args.shell && args.from.is_none() && args.shell_from.is_none();
         let mut report = ReloadReport::default();
 
         // The core can't be reloaded: the installed one (after an update)
@@ -295,13 +301,19 @@ impl State {
         };
 
         // The shell.
-        report.shell = if args.shell || everything {
+        report.shell = if args.shell || args.shell_from.is_some() || everything {
             let changed = crate::session::shell_binary_changed(&self.az);
             match changed {
                 None => ReloadPart::new("skipped", "no shell is running"),
                 Some(false) if everything => ReloadPart::new("unchanged", "the running shell is the installed one"),
-                Some(_) if args.check => ReloadPart::new("would-reload", "restart the shell"),
-                Some(_) => match self.restart_shell() {
+                Some(_) if args.check => match &args.shell_from {
+                    Some(p) if !crate::session::is_executable(p) => {
+                        ReloadPart::new("refused", format!("{} isn't a program", p.display()))
+                    }
+                    Some(p) => ReloadPart::new("would-reload", format!("restart the shell as {}", p.display())),
+                    None => ReloadPart::new("would-reload", "restart the shell"),
+                },
+                Some(_) => match self.restart_shell(args.shell_from.clone()) {
                     Ok(d) => ReloadPart::new("restarted", d),
                     Err(e) => ReloadPart::new("failed", e),
                 },
@@ -348,6 +360,7 @@ pub struct ReloadArgs {
     pub logic: bool,
     pub shell: bool,
     pub from: Option<PathBuf>,
+    pub shell_from: Option<PathBuf>,
     pub check: bool,
 }
 

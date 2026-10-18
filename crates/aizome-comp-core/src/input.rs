@@ -467,7 +467,7 @@ impl State {
             CoreAction::ChangeVt(vt) => self.backend.change_vt(vt),
             // Not now: logic code may be on the stack. At the end of the
             // iteration.
-            CoreAction::Reload => self.lg.pending_reload = true,
+            CoreAction::Reload => self.lg.pending_reload = Some(Default::default()),
         }
     }
 

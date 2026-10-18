@@ -116,7 +116,7 @@ pub fn which(name: &str) -> Option<PathBuf> {
     std::env::split_paths(&path).map(|d| d.join(name)).find(|p| is_executable(p))
 }
 
-fn is_executable(p: &Path) -> bool {
+pub fn is_executable(p: &Path) -> bool {
     use std::os::unix::fs::PermissionsExt;
     std::fs::metadata(p).is_ok_and(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
 }
@@ -269,8 +269,9 @@ impl State {
     /// Restarts the shell beside the old one (see [`Handover`]): the apps
     /// and their windows don't notice; the shell's notifications and other
     /// state carry over (it saves them, and the new one takes over its bus
-    /// name).
-    pub fn restart_shell(&mut self) -> Result<String, String> {
+    /// name). `bin`: a shell of one's own build, else the installed one;
+    /// it stays the one started again after a crash.
+    pub fn restart_shell(&mut self, bin: Option<PathBuf>) -> Result<String, String> {
         if self.az.children.handover.is_some() {
             return Err("a shell restart is already under way".into());
         }
@@ -282,7 +283,11 @@ impl State {
         let env = session_env(&self.az);
         let i =
             self.az.children.supervised.iter().position(|s| s.name == "aizome-shell").ok_or("no shell is running")?;
-        let bin = shell_binary().ok_or("aizome-shell isn't installed")?;
+        let bin = match bin {
+            Some(p) if is_executable(&p) => p,
+            Some(p) => return Err(format!("{} isn't a program", p.display())),
+            None => shell_binary().ok_or("aizome-shell isn't installed")?,
+        };
         let s = &mut self.az.children.supervised[i];
         s.argv[0] = bin.to_string_lossy().into_owned();
         let old = s.child.take();

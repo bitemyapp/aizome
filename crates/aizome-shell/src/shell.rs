@@ -861,7 +861,10 @@ impl Shell {
         let previous = crate::carry::previous_shell();
         if let Some(c) = crate::carry::load() {
             log::info!("taking up {} notifications from the shell before (pid {})", c.notes.len(), c.pid);
-            self.notes.restore(c.notes, c.next_id);
+            // In a restart, ids go on well past the last the old shell gave,
+            // as it may give a few more meanwhile.
+            let skip = if previous.is_some() { 1000 } else { 0 };
+            self.notes.restore(c.notes, c.next_id + skip);
             self.folded = c.folded.into_iter().collect();
             self.notes_open = c.notes_open;
         }
@@ -926,9 +929,8 @@ impl Shell {
         }
         {
             let tx = tx.clone();
-            // Ids go on from the last one given; in a restart, well past it,
-            // as the old shell may give a few more meanwhile.
-            let first = self.notes.next_id() + 1 + if previous.is_some() { 1000 } else { 0 };
+            // Ids go on from the last one given.
+            let first = self.notes.next_id() + 1;
             match crate::notifications::server::NoteServer::start(first, move |e| {
                 tx.send(Msg::Note(e));
             }) {
@@ -1083,7 +1085,7 @@ impl Shell {
             }
             proto::ShellRequest::Notify { app, summary, body } => {
                 let n = crate::notifications::store::Incoming { app_name: app, summary, body, ..Default::default() };
-                let id = self.notes.fresh_id();
+                let id = self.fresh_note_id();
                 self.take_note(crate::notifications::server::NoteEvent::Notify(id, Box::new(n)), cx);
                 (true, id.to_string())
             }
@@ -1490,7 +1492,7 @@ impl Shell {
             desktop_entry: Some(app_id.to_owned()),
             ..Default::default()
         };
-        let id = self.notes.fresh_id();
+        let id = self.fresh_note_id();
         self.take_note(crate::notifications::server::NoteEvent::Notify(id, Box::new(n)), cx);
     }
 

@@ -190,6 +190,15 @@ impl Shell {
 }
 
 impl Shell {
+    /// An id for a notification of the shell's own: from the same counter
+    /// as the ones apps send over D-Bus, so neither replaces the other.
+    pub fn fresh_note_id(&mut self) -> u32 {
+        match &self.note_server {
+            Some(s) => s.fresh_id(),
+            None => self.notes.fresh_id(),
+        }
+    }
+
     /// A notification of the shell's own, its actions the shell's.
     pub fn shell_note(
         &mut self,
@@ -197,7 +206,7 @@ impl Shell {
         actions: Vec<(String, String, crate::actions::Action)>,
         cx: &mut Cx<Msg>,
     ) -> u32 {
-        let id = self.notes.fresh_id();
+        let id = self.fresh_note_id();
         let mut n = n;
         n.actions = actions.iter().map(|(k, l, _)| (k.clone(), l.clone())).collect();
         for (k, _, a) in actions {

@@ -11,7 +11,7 @@ use crate::state::State;
 pub fn reload_compositor(state: &mut State) -> Result<String, String> {
     if state.lg.in_call() {
         // Logic code is on the stack: at the end of this iteration.
-        state.lg.pending_reload = true;
+        state.lg.pending_reload = Some(ReloadArgs { logic: true, ..Default::default() });
         return Ok("Reloading Aizome".into());
     }
     let report = state.reload(&ReloadArgs { logic: true, ..Default::default() });

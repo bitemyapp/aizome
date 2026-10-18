@@ -241,6 +241,7 @@ fn reloading_the_logic_keeps_every_client_and_the_desktop() {
         logic: true,
         shell: false,
         from: Some(b.red.to_string_lossy().into()),
+        shell_from: None,
         check: false,
     }) {
         Response::Reload { report } => report,
@@ -319,6 +320,7 @@ fn without_a_logic_windows_still_show_and_a_reload_brings_it() {
         logic: true,
         shell: false,
         from: Some(b.base.to_string_lossy().into()),
+        shell_from: None,
         check: false,
     }) {
         Response::Reload { report } => assert_eq!(report.logic.action, "reloaded", "{report:?}"),
@@ -353,6 +355,7 @@ fn a_library_built_against_another_core_is_refused() {
         logic: true,
         shell: false,
         from: Some(other.to_string_lossy().into()),
+        shell_from: None,
         check: true,
     }) {
         Response::Reload { report } => report,
@@ -363,6 +366,7 @@ fn a_library_built_against_another_core_is_refused() {
         logic: true,
         shell: false,
         from: Some(other.to_string_lossy().into()),
+        shell_from: None,
         check: false,
     }) {
         Response::Reload { report } => report,
@@ -587,11 +591,18 @@ fn restarting_the_shell_keeps_apps_and_notifications() {
     let colours: Vec<_> = points.iter().map(|&(x, y)| before.px(x, y)).collect();
 
     // Restart it.
-    let report = match c.request(Request::Reload { logic: false, shell: true, from: None, check: false }) {
+    let report = match c.request(Request::Reload {
+        logic: false,
+        shell: false,
+        from: None,
+        shell_from: Some(shell_bin.clone()),
+        check: false,
+    }) {
         Response::Reload { report } => report,
         r => panic!("{r:?}"),
     };
     assert_eq!(report.shell.action, "restarted", "{report:?}\n{}", c.log_text());
+    assert!(report.shell.detail.contains(&shell_bin), "the shell asked for: {report:?}");
     assert_eq!(report.logic.action, "skipped", "{report:?}");
     // One comes in while the two shells overlap.
     let n2 = notify(&conn, "During the restart");

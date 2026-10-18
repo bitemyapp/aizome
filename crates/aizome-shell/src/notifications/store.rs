@@ -224,6 +224,7 @@ impl Store {
                 None => break,
             }
         }
+        self.next_id = self.next_id.max(id);
         Posted { id, replaced, banner: critical || !quiet, card: critical }
     }
 

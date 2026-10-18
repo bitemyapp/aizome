@@ -68,8 +68,10 @@ session
                                 the compositor's logic (a new build, swapped
                                 between frames), the shell (restarted, its
                                 notifications kept) and the settings. With no
-                                flag, whatever changed; --from loads that
-                                logic library; --check says what would
+                                flag, whatever changed (back to the installed
+                                builds); --from takes a logic library, a shell
+                                binary, or a build directory holding either
+                                (aizome-dev uses it); --check says what would
                                 happen. Also ⌃❖R, and Reload Aizome in the
                                 palette
 
@@ -229,12 +231,15 @@ fn parse(command: &str, mut args: Vec<String>) -> Result<Request, String> {
             let logic = flag(&mut args, "--logic");
             let shell = flag(&mut args, "--shell");
             let check = flag(&mut args, "--check");
-            let from = opt(&mut args, "--from")?
-                .map(|p| std::fs::canonicalize(&p).map(|p| p.to_string_lossy().into_owned()).unwrap_or(p));
+            let from = opt(&mut args, "--from")?;
             if let Some(a) = args.first() {
                 return Err(format!("reload: unknown argument {a}"));
             }
-            Request::Reload { logic, shell, from, check }
+            let (from, shell_from) = match from {
+                Some(p) => reload_sources(std::path::Path::new(&p), logic, shell)?,
+                None => (None, None),
+            };
+            Request::Reload { logic, shell, from, shell_from, check }
         }
         "events" | "subscribe" => Request::Subscribe,
         "focus" => {
@@ -659,6 +664,41 @@ fn print_response(r: &Response) -> ExitCode {
         }
     }
     ExitCode::SUCCESS
+}
+
+/// What `reload --from PATH` loads: a logic library (`.so`), a shell
+/// binary, or a build directory with either in it (`--logic` or `--shell`
+/// picking one). Absolute, for the compositor.
+fn reload_sources(
+    path: &std::path::Path,
+    logic: bool,
+    shell: bool,
+) -> Result<(Option<String>, Option<String>), String> {
+    let abs = std::fs::canonicalize(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let s = |p: &std::path::Path| Some(p.to_string_lossy().into_owned());
+    if abs.is_dir() {
+        let lib = abs.join("libaizome_comp_logic.so");
+        let bin = abs.join("aizome-shell");
+        let want_logic = logic || !shell;
+        let want_shell = shell || !logic;
+        let from = if want_logic && lib.is_file() { s(&lib) } else { None };
+        let shell_from = if want_shell && bin.is_file() { s(&bin) } else { None };
+        if from.is_none() && shell_from.is_none() {
+            return Err(format!("{} holds no libaizome_comp_logic.so or aizome-shell", abs.display()));
+        }
+        return Ok((from, shell_from));
+    }
+    let is_library = abs.extension().is_some_and(|e| e == "so");
+    match (is_library, logic, shell) {
+        (true, _, false) => Ok((s(&abs), None)),
+        (false, false, _) => Ok((None, s(&abs))),
+        _ => Err(format!(
+            "{} is a {}; --{} doesn't go with it",
+            abs.display(),
+            if is_library { "library" } else { "program" },
+            if is_library { "shell" } else { "logic" }
+        )),
+    }
 }
 
 /// What a reload did, part by part; fails if a part failed or was
