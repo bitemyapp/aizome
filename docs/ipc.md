@@ -77,6 +77,7 @@ Protocol version: **1** (`version` reports it).
 | `mirror-output` | `name`, `source?` | `ok`; `name` shows `source`'s picture, scaled to fit and letterboxed in black, and leaves the layout (no wl_output, no windows or layer surfaces of its own); `source: null` gives it its own picture back, right of the others. For this session; Settings writes `mirror = "…"` in the output's `[[outputs]]` entry |
 | `set-primary-output` | `name` | `ok`; the main display for this session (Settings writes `primary = true`) |
 | `night-light` | `enabled?`, `temperature?` (Kelvin, 1900–6500) | `night-light {state: NightLightState}`, after changing what's given for this session (Settings writes `[night_light]`) |
+| `pick-area` | `tag?` | `ok` at once; the screenshot picker opens (drag over an area, click for the whole display under the pointer, Space and a click for a window, Esc to give up) and its pick is sent to subscribers as `area-picked` with this tag, not taken as a screenshot. The shell uses it to choose what to record |
 
 `desk` is a 1-based position (`2`) or a name (`"Mail"`). `transform` is
 `normal`, `90`, `180`, `270`, `flipped`, `flipped-90`, `flipped-180` or
@@ -179,6 +180,7 @@ and for wl_shm reading it back).
 | `resumed` | | input after `idle` |
 | `lock-state-changed` | `locked` | an ext-session-lock client locked or unlocked |
 | `night-light-changed` | `state` | Night Light turned on or off, or warmed or cooled (the schedule) |
+| `area-picked` | `tag`, `area?` (`{x,y,w,h}` in points; `null` when given up), `output?` (the one holding its centre), `window?` (when a window was picked) | the picker opened by `pick-area` closed |
 
 ## Bindings
 

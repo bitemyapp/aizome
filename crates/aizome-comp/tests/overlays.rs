@@ -128,3 +128,52 @@ fn a_marking_menu_shows_after_a_pause_and_picks() {
     c.wait_windows("parked", |ws| ws[0].minimised);
     let _ = a;
 }
+
+/// The shell borrows the screenshot picker to choose what to record: the
+/// pick comes back as an `area-picked` event, not a screenshot.
+#[test]
+fn the_area_picker_reports_to_the_shell() {
+    use aizome_ipc::{Event, Rect};
+    let c = Compositor::start(Options::default());
+    let mut events = aizome_ipc::Client::connect_to(&c.ipc).unwrap().events().unwrap();
+    events.stream().set_read_timeout(Some(std::time::Duration::from_secs(10))).unwrap();
+    let mut next_pick = || {
+        events.by_ref().find_map(|e| match e {
+            Ok(Event::AreaPicked { tag, area, output, window }) => Some((tag, area, output, window)),
+            _ => None,
+        })
+    };
+    let motion = |x: f64, y: f64| Synthetic::PointerMotion { x, y };
+    let button = |pressed| Synthetic::PointerButton { button: "left".into(), pressed };
+    // A drag: that area.
+    c.ok(Request::PickArea { tag: "record".into() });
+    c.ok(Request::Synthesize { events: vec![motion(100.0, 120.0), button(true), motion(500.0, 420.0), button(false)] });
+    let (tag, area, output, window) = next_pick().unwrap();
+    assert_eq!(tag, "record");
+    assert_eq!(area, Some(Rect::new(100, 120, 400, 300)));
+    assert_eq!((output.as_deref(), window), (Some("HEADLESS-1"), None));
+    // A click: the whole display under the pointer.
+    c.ok(Request::PickArea { tag: "record".into() });
+    c.ok(Request::Synthesize { events: vec![motion(300.0, 300.0), button(true), button(false)] });
+    assert_eq!(next_pick().unwrap().1, Some(Rect::new(0, 0, 1280, 800)));
+    // Space, then a click on a window: its frame and tab.
+    let _a = c.client(Spec::new("org.example.alpha", 0x2222cc));
+    let w = c.wait_window("org.example.alpha");
+    c.settle();
+    c.ok(Request::PickArea { tag: "record".into() });
+    let (cx, cy) = ((w.geometry.x + 20) as f64, (w.geometry.y + 20) as f64);
+    c.ok(Request::Synthesize {
+        events: vec![key("space", true), key("space", false), motion(cx, cy), button(true), button(false)],
+    });
+    let (_, area, _, window) = next_pick().unwrap();
+    let area = area.expect("the window's bounds");
+    assert_eq!(window, Some(w.id));
+    assert!(area.x <= w.geometry.x && area.y < w.geometry.y, "the tab and frame are in: {area:?} {:?}", w.geometry);
+    assert!(area.w >= w.geometry.w && area.h > w.geometry.h);
+    // Esc: nothing, and the picker is gone (a click then is a click).
+    c.ok(Request::PickArea { tag: "record".into() });
+    c.ok(Request::Synthesize { events: vec![key("escape", true), key("escape", false)] });
+    assert_eq!(next_pick().unwrap().1, None);
+    // No screenshot was taken along the way.
+    assert!(!c.dir.join("home/Pictures/Screenshots").exists());
+}

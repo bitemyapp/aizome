@@ -1003,7 +1003,7 @@ impl State {
                     tracing::warn!("screenshot: {e}");
                 }
             }
-            Action::ScreenshotArea => crate::overlays::start_area_pick(self),
+            Action::ScreenshotArea => crate::overlays::start_area_pick(self, None),
             Action::ScreenshotWindow => {
                 if let Some(id) = focused
                     && let Err(e) = crate::screenshot::take(self, crate::screenshot::What::Window(id), None, true)

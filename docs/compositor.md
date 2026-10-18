@@ -181,7 +181,9 @@ Notes for client authors:
   outputs; sticky windows show on all; switching slides over the motion
   time (none in Austere or with reduced motion).
 - **Overview** (⌃❖↑), **switcher** (❖Tab), **marking menu** (right press
-  on a tab), **area screenshots** (❖⇧4): see `docs/ipc.md` for their keys.
+  on a tab), **area screenshots** (❖⇧4; the shell borrows the picker with
+  IPC `pick-area` to choose what to record): see `docs/ipc.md` for their
+  keys.
 
 ## Inside
 
@@ -214,7 +216,9 @@ nix develop --command cargo test -p aizome-comp
   fill, client-side decorations, idle frames, live settings, remembered
   places, ❖⇧3), under GLES and pixman; and grim, wlr-randr and lswt when
   installed.
-- `tests/overlays.rs`: the switcher, the overview and the marking menu.
+- `tests/overlays.rs`: the switcher, the overview, the marking menu, and
+  the area picker reporting its pick to the shell (`pick-area`): a drag,
+  a click for the display, Space for a window, Esc.
 - `tests/keys.rs`: ❖ as Ctrl, Ctrl+Shift in terminals, ❖ for kit apps,
   system and shell chords.
 - `tests/settings.rs`: tab double-click, scroll factor, sticky and slow
