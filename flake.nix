@@ -80,6 +80,9 @@
       # up (nix/vm-test.nix).
       checks = forAll (pkgs: {
         session = import ./nix/vm-test.nix { inherit pkgs self; };
+        # Changes something in every pane of Settings and checks the
+        # system took it (nix/vm-settings-test.nix).
+        settings = import ./nix/vm-settings-test.nix { inherit pkgs self; };
       });
 
       devShells = forAll (pkgs: {
