@@ -94,13 +94,21 @@ impl Shell {
             tick: 0,
         };
         if self.opts.live {
-            let attempts = crate::recording::attempts(&plan, crate::recording::on_path);
-            log::info!(
-                "recording {:?} to {} with {:?}",
-                plan.capture,
-                path.display(),
-                attempts.iter().map(|a| a.recorder).collect::<Vec<_>>()
-            );
+            // What can record here, once the probe the shell started has
+            // said (a recording asked for sooner waits for it, uncounted).
+            let probes = self.recorders.clone();
+            probes.start();
+            let attempts = move || {
+                let found = probes.found()?;
+                let attempts = crate::recording::attempts(&plan, crate::recording::on_path, Some(&found));
+                log::info!(
+                    "recording {:?} to {} with {:?}",
+                    plan.capture,
+                    plan.path.display(),
+                    attempts.iter().map(|a| a.recorder).collect::<Vec<_>>()
+                );
+                Some(attempts)
+            };
             let tx = self.sender();
             live.handle = Some(run::start(
                 attempts,
@@ -163,6 +171,13 @@ impl Shell {
                     r.phase = Phase::Recording;
                 }
                 self.arm_record_tick(cx);
+            }
+            Event::GaveUp { recorder } => {
+                // Found able, yet it couldn't: the next recording starts
+                // with the one that could.
+                self.recorders.strike(&recorder);
+                r.recorder = None;
+                r.since = None;
             }
             Event::Ended(ending) => {
                 self.recording = None;

@@ -467,9 +467,9 @@ impl Udev {
     pub fn screencopy(
         &mut self,
         az: &mut Aizome,
-        job: &mut crate::protocols::screencopy::Job,
-    ) -> Result<crate::protocols::screencopy::Outcome, String> {
-        use crate::protocols::screencopy::{copy_gpu, copy_pixman};
+        job: &mut crate::protocols::capture::Job,
+    ) -> Result<crate::protocols::capture::Outcome, String> {
+        use crate::protocols::capture::{copy_gpu, copy_pixman};
         let primary = self.primary_gpu;
         match &mut self.renderers {
             Renderers::Gles(gpus) => {
@@ -480,12 +480,12 @@ impl Udev {
         }
     }
 
-    pub fn screencopy_dmabuf_format(&mut self) -> Option<smithay::backend::allocator::Fourcc> {
+    pub fn screencopy_dmabuf(&mut self) -> Option<crate::protocols::capture::DmabufTarget> {
         let primary = self.primary_gpu;
         match &mut self.renderers {
             Renderers::Gles(gpus) => {
                 let r = gpus.single_renderer(&primary).ok()?;
-                crate::protocols::screencopy::renderable_dmabuf_format(&r)
+                crate::protocols::capture::dmabuf_target(primary.dev_id(), &r)
             }
             Renderers::Pixman(_) => None,
         }

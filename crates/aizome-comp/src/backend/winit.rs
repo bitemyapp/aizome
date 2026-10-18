@@ -139,13 +139,16 @@ impl WinitBackend {
     pub fn screencopy(
         &mut self,
         az: &mut Aizome,
-        job: &mut crate::protocols::screencopy::Job,
-    ) -> Result<crate::protocols::screencopy::Outcome, String> {
-        crate::protocols::screencopy::copy_gpu::<GlesRenderer, GlesRenderbuffer>(self.backend.renderer(), az, job)
+        job: &mut crate::protocols::capture::Job,
+    ) -> Result<crate::protocols::capture::Outcome, String> {
+        crate::protocols::capture::copy_gpu::<GlesRenderer, GlesRenderbuffer>(self.backend.renderer(), az, job)
     }
 
-    pub fn screencopy_dmabuf_format(&mut self) -> Option<smithay::backend::allocator::Fourcc> {
-        crate::protocols::screencopy::renderable_dmabuf_format(self.backend.renderer())
+    pub fn screencopy_dmabuf(&mut self) -> Option<crate::protocols::capture::DmabufTarget> {
+        let node = EGLDevice::device_for_display(self.backend.renderer().egl_context().display())
+            .and_then(|d| d.try_get_render_node())
+            .ok()??;
+        crate::protocols::capture::dmabuf_target(node.dev_id(), self.backend.renderer())
     }
 
     pub fn capture(&mut self, az: &mut Aizome, output: &Output, cursor: bool) -> Result<Capture, String> {

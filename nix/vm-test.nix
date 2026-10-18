@@ -58,6 +58,18 @@ pkgs.testers.runNixOSTest {
         pkgs.wtype
         # ffprobe, for the screen recording.
         pkgs.ffmpeg
+        # Screen sharing as a browser does it: the ScreenCast portal and
+        # its PipeWire stream, read with GStreamer.
+        (pkgs.writeShellScriptBin "aizome-screencast-check" ''
+          export GST_PLUGIN_SYSTEM_PATH_1_0=${pkgs.gst_all_1.gstreamer.out}/lib/gstreamer-1.0:${pkgs.pipewire}/lib/gstreamer-1.0
+          export PATH=${pkgs.gst_all_1.gstreamer.bin}/bin:$PATH
+          exec ${
+            pkgs.python3.withPackages (ps: [
+              ps.dbus-python
+              ps.pygobject3
+            ])
+          }/bin/python3 ${./screencast-check.py} "$@"
+        '')
       ];
     };
 
@@ -215,28 +227,31 @@ pkgs.testers.runNixOSTest {
         machine.succeed(alice("aizomectl spawn -- foot sh -c 'while :; do date +%T.%N; sleep 0.05; done'"))
         # What the palette's Record Screen does.
         machine.succeed(record_screen)
-        machine.wait_until_succeeds(alice("aizome-shell msg state | grep -q '\"phase\":\"recording\"'"), timeout=30)
+        # (Until the shell's probe of the recorders is done, which can
+        # take gpu-screen-recorder seconds here, a recording waits for it.)
+        machine.wait_until_succeeds(alice("aizome-shell msg state | grep -q '\"phase\":\"recording\"'"), timeout=60)
         # One at a time.
         machine.fail(record_screen)
-        # gpu-screen-recorder takes seconds to give up on software OpenGL
-        # (eight at a heavy load), and wf-recorder with VA-API has no
-        # device here; the clock restarts with each recorder that takes
-        # over. Five seconds of the one that sticks in a VM, wf-recorder
-        # with x264:
-        def stuck():
+        # The shell found which recorder works here as it started:
+        # gpu-screen-recorder refuses virtio-gpu's software OpenGL and
+        # VA-API has no device, so wf-recorder with x264, at once, rather
+        # than seconds into the others while the indicator counts.
+        first = recording()
+        print(first)
+        assert first["recorder"] == "wf-recorder", first
+
+        def five_seconds():
             r = recording()
             return r is not None and r.get("recorder") == "wf-recorder" and r.get("seconds", 0) >= 5
 
-        for _ in range(90):
-            if stuck():
+        for _ in range(30):
+            if five_seconds():
                 break
             machine.sleep(1)
-        assert stuck(), recording()
+        assert five_seconds(), recording()
         going = recording()
-        print(going)
-        # gpu-screen-recorder refuses software OpenGL, so wf-recorder.
         print("recording with", going["recorder"])
-        assert going["recorder"] in ["gpu-screen-recorder", "wf-recorder (VA-API)", "wf-recorder"], going
+        assert going["path"] == first["path"], (first, going)
         capture("06-recording")
         machine.sleep(2)
         machine.succeed(alice("aizome-shell msg stop-recording"))
@@ -257,6 +272,23 @@ pkgs.testers.runNixOSTest {
         assert float(probe["format"]["duration"]) >= 4, probe
         assert int(stream["nb_read_frames"]) >= 100, stream
         capture("07-recording-saved")
+
+    with subtest("sharing the screen streams through the portal"):
+        # As a browser shares the screen: xdg-desktop-portal-wlr over the
+        # compositor's ext-image-copy-capture (wl_shm here, under pixman),
+        # and its PipeWire stream. Through wlr-screencopy it froze after
+        # one frame. The terminal above keeps the screen changing; no
+        # picker in the VM, so the portal takes the first display.
+        machine.succeed(alice(
+            "mkdir -p ~/.config/xdg-desktop-portal-wlr && "
+            "printf '[screencast]\\nchooser_type=none\\n' > ~/.config/xdg-desktop-portal-wlr/config && "
+            "(systemctl --user stop xdg-desktop-portal-wlr.service || true)"
+        ))
+        shared = machine.succeed(alice(
+            "export DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus; aizome-screencast-check 6 20"
+        ))
+        print(shared)
+        assert "frames:" in shared, shared
 
     with subtest("frame times stay inside the budget"):
         print(as_alice("aizomectl stats"))

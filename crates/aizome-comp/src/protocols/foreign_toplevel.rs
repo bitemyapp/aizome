@@ -8,6 +8,7 @@
 
 use std::collections::HashMap;
 
+use smithay::reexports::wayland_protocols::ext::foreign_toplevel_list::v1::server::ext_foreign_toplevel_handle_v1::ExtForeignToplevelHandleV1;
 use smithay::reexports::wayland_protocols_wlr::foreign_toplevel::v1::server::{
     zwlr_foreign_toplevel_handle_v1 as handle, zwlr_foreign_toplevel_manager_v1 as manager,
 };
@@ -142,6 +143,14 @@ pub fn window_closed(state: &mut State, id: WinId) {
     if let Some(h) = fm.ext.remove(&id) {
         state.az.foreign_toplevel_list.remove_toplevel(&h);
     }
+}
+
+/// The window an ext-foreign-toplevel-list handle stands for (for window
+/// capture sources).
+pub fn window_of(state: &State, handle: &ExtForeignToplevelHandleV1) -> Option<WinId> {
+    let identifier = ForeignToplevelHandle::from_resource(handle)?.identifier();
+    let ext = &state.az.foreign_toplevel_mgmt.ext;
+    ext.iter().find(|(_, h)| h.identifier() == identifier).map(|(id, _)| *id)
 }
 
 /// Changes are picked up by [`refresh`].

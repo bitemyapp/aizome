@@ -11,10 +11,15 @@
 //! with a VA-API encoder the frames stay in GPU memory (dmabuf), else
 //! they're read back and encoded with x264.
 //!
+//! Which of these can record here is found once a session, as the shell
+//! starts ([`probe`]), so a recording starts with that one; another is
+//! tried only if it then fails.
+//!
 //! This module decides what to run; [`run`] runs it and watches it; the
 //! shell's part (indicator, palette, menu, notification) is in
 //! `recording_glue`.
 
+pub mod probe;
 pub mod run;
 
 use std::path::{Path, PathBuf};
@@ -245,21 +250,34 @@ pub fn wf_argv(plan: &Plan, vaapi: bool) -> Vec<String> {
     argv
 }
 
+/// The recorders' names, as attempts and the indicator's state give them.
+pub const GSR: &str = "gpu-screen-recorder";
+pub const WF_VAAPI: &str = "wf-recorder (VA-API)";
+pub const WF: &str = "wf-recorder";
+
 /// What to try, in order: gpu-screen-recorder, then wf-recorder on the
 /// GPU's encoder, then wf-recorder with x264 (as the setting allows, and
-/// as `have` says is installed).
-pub fn attempts(plan: &Plan, have: impl Fn(&str) -> bool) -> Vec<run::Attempt> {
-    let mut out = Vec::new();
+/// as `have` says is installed). With what the probe `found`, only what
+/// can record here, unless nothing can (then everything, for its error).
+pub fn attempts(plan: &Plan, have: impl Fn(&str) -> bool, found: Option<&probe::Found>) -> Vec<run::Attempt> {
     let gsr = matches!(plan.settings.recorder, Recorder::Auto | Recorder::GpuScreenRecorder);
     let wf = matches!(plan.settings.recorder, Recorder::Auto | Recorder::WfRecorder);
-    if gsr && have("gpu-screen-recorder") {
-        out.push(run::Attempt { recorder: "gpu-screen-recorder", argv: gsr_argv(plan) });
+    let mut all = Vec::new();
+    if gsr && have(GSR) {
+        all.push(run::Attempt { recorder: GSR, argv: gsr_argv(plan) });
     }
-    if wf && have("wf-recorder") {
-        out.push(run::Attempt { recorder: "wf-recorder (VA-API)", argv: wf_argv(plan, true) });
-        out.push(run::Attempt { recorder: "wf-recorder", argv: wf_argv(plan, false) });
+    if wf && have(WF) {
+        all.push(run::Attempt { recorder: WF_VAAPI, argv: wf_argv(plan, true) });
+        all.push(run::Attempt { recorder: WF, argv: wf_argv(plan, false) });
     }
-    out
+    let Some(found) = found else { return all };
+    let able = |a: &run::Attempt| match a.recorder {
+        GSR => found.gsr_displays.iter().any(|d| d == plan.capture.output()),
+        WF_VAAPI => found.vaapi != Some(false),
+        _ => true,
+    };
+    let some: Vec<run::Attempt> = all.iter().filter(|a| able(a)).cloned().collect();
+    if some.is_empty() { all } else { some }
 }
 
 /// Whether a program is on `PATH`.
@@ -431,7 +449,7 @@ mod tests {
     fn what_to_try_follows_the_setting_and_whats_installed() {
         let p = plan(Capture::Output("eDP-1".into()), Audio::default());
         let names = |p: &Plan, have: &dyn Fn(&str) -> bool| {
-            attempts(p, have).into_iter().map(|a| a.recorder).collect::<Vec<_>>()
+            attempts(p, have, None).into_iter().map(|a| a.recorder).collect::<Vec<_>>()
         };
         assert_eq!(names(&p, &|_| true), ["gpu-screen-recorder", "wf-recorder (VA-API)", "wf-recorder"]);
         assert_eq!(names(&p, &|n| n == "wf-recorder"), ["wf-recorder (VA-API)", "wf-recorder"]);
@@ -439,6 +457,30 @@ mod tests {
         only_gsr.settings.recorder = Recorder::GpuScreenRecorder;
         assert_eq!(names(&only_gsr, &|_| true), ["gpu-screen-recorder"]);
         assert!(names(&p, &|_| false).is_empty());
+    }
+
+    /// With the probe's findings, a recording starts with what can record
+    /// here: no seconds lost to recorders that can't.
+    #[test]
+    fn what_to_try_follows_what_the_probe_found() {
+        let p = plan(Capture::Output("eDP-1".into()), Audio::default());
+        let names = |p: &Plan, found: probe::Found| {
+            attempts(p, |_| true, Some(&found)).into_iter().map(|a| a.recorder).collect::<Vec<_>>()
+        };
+        let found = |displays: &[&str], vaapi| probe::Found {
+            gsr_displays: displays.iter().map(|d| d.to_string()).collect(),
+            vaapi,
+        };
+        assert_eq!(names(&p, found(&["eDP-1"], Some(true))), [GSR, WF_VAAPI, WF]);
+        // A VM: no hardware OpenGL, no VA-API device.
+        assert_eq!(names(&p, found(&[], Some(false))), [WF]);
+        // gpu-screen-recorder can't capture this display (a nested session's).
+        assert_eq!(names(&p, found(&["DP-1"], None)), [WF_VAAPI, WF]);
+        // Asked for gpu-screen-recorder alone, which can't: tried anyway, for
+        // its error.
+        let mut only_gsr = p.clone();
+        only_gsr.settings.recorder = Recorder::GpuScreenRecorder;
+        assert_eq!(names(&only_gsr, found(&[], Some(false))), [GSR]);
     }
 
     #[test]
