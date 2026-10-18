@@ -244,33 +244,37 @@ impl TextCache {
 
     /// Rich text: `spans` over `base`.
     pub fn layout_spans(&mut self, theme: &Theme, spans: &[Span], base: &TextSpec, width: Option<f64>) -> TextLayout {
-        let mut h = Fx::default();
-        for s in spans {
-            s.hash_into(&mut h);
+        let key = spans_key(spans, base, width);
+        self.get(key, || spans_builder(theme, spans, base, width).build())
+    }
+
+    /// Lay out together each of `texts` (rich text, as
+    /// [`layout_spans`](Self::layout_spans) takes it) that isn't kept, for
+    /// the calls after to find: Sidestep shares the shaping out to its text
+    /// threads when there's enough of it. A view about to show many lines
+    /// nothing has shown (an editor after a jump) asks for them first.
+    pub fn prefetch_spans(&mut self, theme: &Theme, texts: &[(Vec<Span>, TextSpec, Option<f64>)]) {
+        let mut keys = Vec::new();
+        let mut builders = Vec::new();
+        for (spans, base, width) in texts {
+            let key = spans_key(spans, base, *width);
+            if self.map.contains_key(&key) || keys.contains(&key) {
+                continue;
+            }
+            keys.push(key);
+            builders.push(spans_builder(theme, spans, base, *width));
         }
-        base.hash_into(&mut h);
-        width.map(f64::to_bits).hash(&mut h);
-        let key = h.finish();
-        self.get(key, || {
-            let text: String = spans.iter().map(|s| s.text.as_str()).collect();
-            let mut b = TextLayout::builder(&text, &base.style(theme))
-                .width(width)
-                .wrap(base.wrap)
-                .alignment(base.align)
-                .max_lines(base.max_lines)
-                .ellipsis(base.max_lines > 0)
-                .line_height_multiple(base.line_height);
-            let mut at = 0;
-            for s in spans {
-                let end = at + s.text.len();
-                b = b.style(at..end, s.style(base, theme));
-                at = end;
+        if builders.len() < 2 {
+            return;
+        }
+        for (key, layout) in keys.into_iter().zip(sidestep_ui::TextLayoutBuilder::build_all(builders)) {
+            self.tick += 1;
+            self.misses += 1;
+            if self.map.len() >= self.capacity {
+                self.evict();
             }
-            for r in symbol_runs(&text) {
-                b = b.style(r, symbol_style(base, theme));
-            }
-            b.build()
-        })
+            self.map.insert(key, (layout, self.tick));
+        }
     }
 
     /// A layout by a key of the caller's, made by `make` if it isn't kept.
@@ -309,6 +313,39 @@ impl TextCache {
     pub fn clear(&mut self) {
         self.map.clear();
     }
+}
+
+/// What [`TextCache::layout_spans`] keeps a layout under.
+fn spans_key(spans: &[Span], base: &TextSpec, width: Option<f64>) -> u64 {
+    let mut h = Fx::default();
+    for s in spans {
+        s.hash_into(&mut h);
+    }
+    base.hash_into(&mut h);
+    width.map(f64::to_bits).hash(&mut h);
+    h.finish()
+}
+
+/// Rich text's layout, to build.
+fn spans_builder(theme: &Theme, spans: &[Span], base: &TextSpec, width: Option<f64>) -> sidestep_ui::TextLayoutBuilder {
+    let text: String = spans.iter().map(|s| s.text.as_str()).collect();
+    let mut b = TextLayout::builder(&text, &base.style(theme))
+        .width(width)
+        .wrap(base.wrap)
+        .alignment(base.align)
+        .max_lines(base.max_lines)
+        .ellipsis(base.max_lines > 0)
+        .line_height_multiple(base.line_height);
+    let mut at = 0;
+    for s in spans {
+        let end = at + s.text.len();
+        b = b.style(at..end, s.style(base, theme));
+        at = end;
+    }
+    for r in symbol_runs(&text) {
+        b = b.style(r, symbol_style(base, theme));
+    }
+    b
 }
 
 fn symbol_runs(text: &str) -> Vec<Range<usize>> {

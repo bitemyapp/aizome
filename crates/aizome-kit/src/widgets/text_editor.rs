@@ -244,6 +244,18 @@ impl<Msg> From<TextEditor<Msg>> for Element<Msg> {
 
 /// A line as laid out.
 #[derive(Clone)]
+/// A line's text in runs, ready to lay out ([`EditorWidget::parts`]).
+struct LineParts {
+    start: usize,
+    text: String,
+    preedit: Option<Range<usize>>,
+    selection: Option<Range<usize>>,
+    selects_break: bool,
+    base: TextSpec,
+    spans: Vec<Span>,
+    key: u64,
+}
+
 struct Laid {
     line: usize,
     /// Its first character.
@@ -358,7 +370,6 @@ impl EditorWidget {
 
     /// Lay `line` out at `width`, with the selection, what's composed and
     /// the program's styles.
-    #[allow(clippy::too_many_arguments)]
     fn lay(
         &self,
         t: &Theme,
@@ -368,6 +379,53 @@ impl EditorWidget {
         preedit: &str,
         focused: bool,
     ) -> Laid {
+        let p = self.parts(t, line, preedit, focused);
+        let layout = if p.spans.is_empty() {
+            cache.layout(t, "", &p.base, width)
+        } else {
+            cache.layout_spans(t, &p.spans, &p.base, width)
+        };
+        let lh = (self.font(t).size * self.opts.line_height).round();
+        let h = layout.size().height.max(lh).round();
+        Laid {
+            line,
+            start: p.start,
+            y: 0.0,
+            h,
+            layout,
+            text: p.text.into(),
+            preedit: p.preedit,
+            selection: p.selection,
+            selects_break: p.selects_break,
+            key: p.key,
+        }
+    }
+
+    /// Lay out `lines` together, ahead of their being laid out one by one
+    /// (see [`TextCache::prefetch_spans`]): the lines a jump shows, none
+    /// of which has shown before.
+    #[allow(clippy::too_many_arguments)]
+    fn prefetch(
+        &self,
+        t: &Theme,
+        cache: &mut TextCache,
+        lines: Range<usize>,
+        width: Option<f64>,
+        focused: bool,
+        caret_line: usize,
+        preedit: &str,
+    ) {
+        let texts: Vec<(Vec<Span>, TextSpec, Option<f64>)> = lines
+            .map(|l| self.parts(t, l, if l == caret_line { preedit } else { "" }, focused))
+            .filter(|p| !p.spans.is_empty())
+            .map(|p| (p.spans, p.base, width))
+            .collect();
+        cache.prefetch_spans(t, &texts);
+    }
+
+    /// What line `line` shows (with the selection, what's composed and the
+    /// program's styles), in runs, ready to lay out.
+    fn parts(&self, t: &Theme, line: usize, preedit: &str, focused: bool) -> LineParts {
         let rope = &self.snap.rope;
         let start = rope.line_to_char(line);
         let raw = line_text(rope, line);
@@ -457,13 +515,6 @@ impl EditorWidget {
             }
             spans.push(span);
         }
-        let layout = if spans.is_empty() {
-            cache.layout(t, "", &base, width)
-        } else {
-            cache.layout_spans(t, &spans, &base, width)
-        };
-        let lh = (self.font(t).size * self.opts.line_height).round();
-        let h = layout.size().height.max(lh).round();
         let mut fx = Fx::default();
         use std::hash::{Hash, Hasher};
         text.hash(&mut fx);
@@ -484,7 +535,7 @@ impl EditorWidget {
                 .hash(&mut fx);
         }
         let key = fx.finish();
-        Laid { line, start, y: 0.0, h, layout, text: text.into(), preedit: pre, selection, selects_break, key }
+        LineParts { start, text, preedit: pre, selection, selects_break, base, spans, key }
     }
 
     fn wrap_width(&self, t: &Theme, width: f64) -> Option<f64> {
@@ -843,6 +894,8 @@ impl Widget for EditorWidget {
         let width_changed = (st.width - size.width).abs() > 0.5;
         st.width = size.width;
         let mut top = st.top_line.min(lines.saturating_sub(1));
+        let st_top = top;
+        let mut prefetched = false;
         let mut off = st.top_offset;
         let mut scroll_x = st.scroll_x;
         let pad = self.opts.padding;
@@ -861,7 +914,14 @@ impl Widget for EditorWidget {
                 top = caret_line;
                 off = 0.0;
             } else {
-                // From the caret's line up, until the view is full.
+                // From the caret's line up, until the view is full: a
+                // screen of lines none of which showed, after a jump, laid
+                // out together first.
+                if caret_line > top + rows {
+                    let from = caret_line.saturating_sub(rows + 1);
+                    self.prefetch(t, cx.env.text, from..caret_line + 1, width, focused, caret_line, &preedit);
+                    prefetched = true;
+                }
                 let mut h = 0.0;
                 let mut first = caret_line;
                 loop {
@@ -880,6 +940,11 @@ impl Widget for EditorWidget {
                     off = 0.0;
                 }
             }
+        }
+        // Most of a screen of lines that didn't show (a jump, a page), laid
+        // out together first.
+        if !prefetched && top.abs_diff(st_top) > rows / 2 {
+            self.prefetch(t, cx.env.text, top..(top + rows + 2).min(lines), width, focused, caret_line, &preedit);
         }
         let mut laid = Vec::new();
         let mut y = pad - off;
