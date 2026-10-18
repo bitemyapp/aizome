@@ -1,12 +1,12 @@
-//! What Koyomi's typical interactions cost, from the input to its pixels
-//! at 2× (the program's update, the view, layout and diff, and drawing
+//! What Koyomi's typical interactions cost in CPU time, from the input to
+//! its pixels at 2× (the program's update, the view, layout and diff, and drawing
 //! what changed): switching months and weeks, and dragging an event
 //! across the week. Prints the percentiles (docs/performance.md) and
 //! holds the 95th to the 4 ms budget in an optimised build.
 
 mod common;
 
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use aizome_kit::sidestep_ui::{Modifiers, NamedKey, PointerButton};
 use aizome_kit::testing::Harness;
@@ -15,16 +15,26 @@ use aizome_kit::Vec2;
 use common::*;
 use koyomi::app::{Koyomi, Msg, View};
 
+/// This thread's CPU time: the budget is CPU time, and a busy machine
+/// (builds alongside) stretches wall-clock time without the frame costing
+/// more.
+fn cpu() -> Duration {
+    let mut ts = libc::timespec { tv_sec: 0, tv_nsec: 0 };
+    // SAFETY: clock_gettime writes only into `ts`.
+    unsafe { libc::clock_gettime(libc::CLOCK_THREAD_CPUTIME_ID, &mut ts) };
+    Duration::new(ts.tv_sec as u64, ts.tv_nsec as u32)
+}
+
 fn frame(h: &mut Harness<Koyomi>, act: impl FnOnce(&mut Harness<Koyomi>)) -> Duration {
     let w = h.window();
     h.take_damage(w);
-    let start = Instant::now();
+    let start = cpu();
     act(h);
     // Each damaged rectangle drawn, as a window's frame draws them.
     for d in h.take_damage(w) {
         let _ = h.render_rect(w, d, 2.0);
     }
-    start.elapsed()
+    cpu() - start
 }
 
 fn report(name: &str, mut v: Vec<Duration>) -> Duration {

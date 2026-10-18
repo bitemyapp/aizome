@@ -663,3 +663,34 @@ follow the typing), view, layout, diff and rasterising the damage.
 The notes folder is read again every 3 s (a few hundred small files cost
 a few milliseconds), and stickies' places are asked of the compositor on
 a thread of the kit's. No exceptions.
+
+## Koyomi (Calendar)
+
+`apps/koyomi/tests/perf.rs`, release build, at 2×, in the thread's CPU
+time (the machine had a load average of 15–21 from parallel builds, which
+stretches wall-clock time): from the key or pointer event through the
+update, the view, layout and diff, to rasterising each damaged rectangle
+through the offscreen renderer.
+
+| Interaction | p50 | p95 | max | |
+|---|---|---|---|---|
+| Next or previous month (← →) | 2.9 ms | 3.2 ms | 3.4 ms | 76% of the window redraws: every day changes |
+| Next or previous week | 1.5 ms | 1.7 ms | 1.8 ms | the grid, header and all-day strip redraw |
+| A step of dragging an event across the week | 0.001 ms | 0.14 ms | 0.24 ms | 240 steps: no update or view, only the ghost's old and new places redraw (most steps don't move it a 15-minute snap) |
+| Dropping it | 0.29 ms | 0.69 ms | 0.98 ms | the event moves; its old and new blocks, the status line and the sidebar's Up Next redraw; the file is written on a thread |
+
+Live, under headless sway (pixman) at 2× (2240 × 1480), switching months
+and weeks with `wtype`, Sidestep's frame stats: total p50 1.7–2.2 ms
+(record 0.1 ms, rasterise 1.5–1.8 ms), p95 4–9 ms on the loaded machine,
+where `present` alone reached 1–2 ms at p95 against 0.03 ms at p50.
+
+How the week view keeps a drag cheap: the time grid is one widget that
+draws the hours and columns, each event a child block it places, the
+now-line another child. During a drag the grid keeps the drag in its own
+state, draws the ghost over its children and invalidates only the ghost's
+old and new rectangles; nothing is viewed or laid out again until the
+drop. A month switch can't be cut much below one pass over the grid's
+pixels, so the month's days fill no ground of their own (the window's is
+already the surface).
+
+No exceptions.
