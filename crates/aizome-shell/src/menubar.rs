@@ -101,6 +101,9 @@ pub struct Tray {
     pub display: Option<f32>,
     /// Charge 0–100 and whether it's charging.
     pub battery: Option<(f32, bool)>,
+    /// The battery's glyph alone, without its percentage (`[menubar]
+    /// battery_percent = false`).
+    pub battery_glyph_only: bool,
     pub cpu: bool,
     pub memory: bool,
 }
@@ -141,6 +144,11 @@ pub fn sound_icon(volume: f32, muted: bool) -> Icon {
     } else {
         Icon::Volume2
     }
+}
+
+/// The percentage beside the battery's glyph, unless it's turned off.
+pub fn battery_text(tray: &Tray, percent: f32) -> Option<String> {
+    (!tray.battery_glyph_only).then(|| format!("{percent:.0}%"))
 }
 
 pub fn battery_icon(percent: f32, charging: bool) -> Icon {
@@ -605,7 +613,7 @@ fn header(model: &BarModel) -> Element<BarMsg> {
             items.push(tray_icon(
                 TrayWidget::Battery,
                 battery_icon(p, c),
-                Some(format!("{p:.0}%")),
+                battery_text(tray, p),
                 open(TrayWidget::Battery),
                 format!("Battery {p:.0}%"),
             ));
@@ -817,5 +825,13 @@ mod tests {
         assert_eq!(battery_icon(5.0, true), Icon::BatteryCharging);
         assert_eq!(NetGlyph::Wifi(4).icon(), Icon::Wifi);
         assert_eq!(TrayWidget::named("battery"), Some(TrayWidget::Battery));
+    }
+
+    #[test]
+    fn the_battery_percentage_can_be_turned_off() {
+        let mut tray = Tray { battery: Some((84.0, false)), ..Tray::default() };
+        assert_eq!(battery_text(&tray, 84.0).as_deref(), Some("84%"));
+        tray.battery_glyph_only = true;
+        assert_eq!(battery_text(&tray, 84.0), None);
     }
 }
