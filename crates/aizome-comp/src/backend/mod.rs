@@ -20,6 +20,7 @@ use smithay::desktop::utils::{
 use smithay::input::pointer::CursorImageStatus;
 use smithay::output::Output;
 use smithay::reexports::wayland_protocols::wp::presentation_time::server::wp_presentation_feedback;
+use smithay::reexports::wayland_server::protocol::wl_buffer::WlBuffer;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::utils::{Buffer as BufferCoords, Rectangle, Size, Transform};
 
@@ -78,6 +79,27 @@ impl Backend {
     pub fn early_import(&mut self, surface: &WlSurface) {
         if let Backend::Udev(u) = self {
             u.early_import(surface);
+        }
+    }
+
+    /// Under GLES a wl_shm buffer's pixels are copied into a texture when
+    /// it's imported, so the buffer can go back to the client then, not at
+    /// its next commit: import the tree now and release the buffers it just
+    /// attached (`fresh`). Pixman draws from the client's memory, and
+    /// several GPUs may each read it, so there they are kept.
+    ///
+    /// The client hears `release` once more when the next commit replaces
+    /// the buffer (smithay's own); by then its pixels are in the texture.
+    pub fn release_shm_after_import(&mut self, surface: &WlSurface, fresh: &[WlBuffer]) {
+        let imported = match self {
+            Backend::Headless(h) => h.import_shm_copies(surface),
+            Backend::Winit(w) => w.import_shm_copies(surface),
+            Backend::Udev(u) => u.import_shm_copies(surface),
+        };
+        if imported {
+            for b in fresh {
+                b.release();
+            }
         }
     }
 
@@ -310,4 +332,26 @@ where
         renderer.map_texture(&mapping).map_err(|e| format!("map: {e:?}"))?.to_vec()
     };
     Ok(Capture { width: size.w as u32, height: size.h as u32, rgba })
+}
+
+/// The wl_shm buffers a commit of this surface tree is about to make
+/// current (call before `on_commit_buffer_handler`, which takes them).
+pub fn fresh_shm_buffers(surface: &WlSurface) -> Vec<WlBuffer> {
+    use smithay::backend::renderer::{BufferType, buffer_type};
+    use smithay::wayland::compositor::{BufferAssignment, SurfaceAttributes, TraversalAction, with_surface_tree_upward};
+    let mut out = Vec::new();
+    with_surface_tree_upward(
+        surface,
+        (),
+        |_, _, _| TraversalAction::DoChildren(()),
+        |_, states, _| {
+            if let Some(BufferAssignment::NewBuffer(b)) = states.cached_state.get::<SurfaceAttributes>().current().buffer.as_ref()
+                && matches!(buffer_type(b), Some(BufferType::Shm))
+            {
+                out.push(b.clone());
+            }
+        },
+        |_, _, _| true,
+    );
+    out
 }

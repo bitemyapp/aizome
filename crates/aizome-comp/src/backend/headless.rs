@@ -13,7 +13,7 @@ use smithay::backend::egl::{EGLContext, EGLDisplay};
 use smithay::backend::renderer::damage::OutputDamageTracker;
 use smithay::backend::renderer::gles::{GlesRenderbuffer, GlesRenderer};
 use smithay::backend::renderer::pixman::PixmanRenderer;
-use smithay::backend::renderer::{Bind, ImportDma, Offscreen};
+use smithay::backend::renderer::{Bind, ImportDma, ImportMemWl, Offscreen};
 use smithay::output::{Mode, Output, PhysicalProperties, Subpixel};
 use smithay::reexports::calloop::RegistrationToken;
 use smithay::reexports::calloop::timer::{TimeoutAction, Timer};
@@ -78,6 +78,13 @@ impl Headless {
     pub fn init(state: &mut State) {
         let crate::backend::Backend::Headless(h) = &mut state.backend else { return };
         let configs = h.configs.clone();
+        // Every wl_shm format the renderer reads (ABGR and XBGR besides the
+        // two every compositor has).
+        let formats: Vec<_> = match &h.renderer {
+            HeadlessRenderer::Gles(r) => r.shm_formats().collect(),
+            HeadlessRenderer::Pixman(r) => r.shm_formats().collect(),
+        };
+        state.az.shm.update_formats(formats);
         if let (HeadlessRenderer::Gles(r), Some(node)) = (&mut h.renderer, h.render_node) {
             let formats = r.dmabuf_formats();
             match DmabufFeedbackBuilder::new(node.dev_id(), formats).build() {
@@ -139,6 +146,14 @@ impl Headless {
         self.add_target(&output);
         az.queue_redraw(&output);
         Ok(())
+    }
+
+    /// Imports a surface tree when the renderer copies wl_shm pixels (GLES).
+    pub fn import_shm_copies(&mut self, surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface) -> bool {
+        match &mut self.renderer {
+            HeadlessRenderer::Gles(r) => smithay::backend::renderer::utils::import_surface_tree(r.as_mut(), surface).is_ok(),
+            HeadlessRenderer::Pixman(_) => false,
+        }
     }
 
     pub fn import_dmabuf(&mut self, dmabuf: &Dmabuf) -> bool {

@@ -85,8 +85,12 @@ impl CompositorHandler for State {
     }
 
     fn commit(&mut self, surface: &WlSurface) {
+        let fresh_shm = crate::backend::fresh_shm_buffers(surface);
         on_commit_buffer_handler::<Self>(surface);
         self.backend.early_import(surface);
+        if !fresh_shm.is_empty() {
+            self.backend.release_shm_after_import(surface, &fresh_shm);
+        }
 
         if !is_sync_subsurface(surface) {
             let mut root = surface.clone();
@@ -385,10 +389,17 @@ impl State {
                     self.az.queue_redraw(&o);
                 }
             }
-        if self.az.dnd_icon.as_ref() == Some(surface)
-            && let Some(o) = self.az.active_output() {
+        if self.az.dnd_icon.as_ref() == Some(surface) {
+            // The icon moves by its offsets (wl_surface.offset, or attach's x
+            // and y before version 5) relative to the pointer.
+            let delta = with_states(surface, |states| states.cached_state.get::<SurfaceAttributes>().current().buffer_delta.take());
+            if let Some(d) = delta {
+                self.az.dnd_offset += d;
+            }
+            if let Some(o) = self.az.active_output() {
                 self.az.queue_redraw(&o);
             }
+        }
         let lock_out: Option<Output> = self
             .az
             .out

@@ -69,6 +69,7 @@ where
     if cursor {
         cursor_elements(az, renderer, output, scale, &mut out);
     }
+    drag_icon_elements(az, renderer, output, scale, &mut out);
 
     if az.lock.is_locked() {
         if let Some(lock) = az.out.get(output).and_then(|o| o.lock_surface.clone()) {
@@ -322,15 +323,6 @@ where
         return;
     }
     let rel = pos - geo.loc.to_f64();
-    // A drag-and-drop icon follows the pointer.
-    if let Some(icon) = az.dnd_icon.clone() {
-        let loc: Point<i32, Physical> = rel.to_physical_precise_round(scale);
-        out.extend(
-            render_elements_from_surface_tree(renderer, &icon, loc, scale, 1.0, Kind::Unspecified)
-                .into_iter()
-                .map(OutputElement::Surface),
-        );
-    }
     let named = match (&az.interactive.cursor_override, &az.cursor_status) {
         (Some(name), _) => Some(*name),
         (None, CursorImageStatus::Hidden) => return,
@@ -434,4 +426,26 @@ impl Aizome {
             titles.iter().map(|(m, t)| (*m, self.labels.measure(t, Face::Tab, typeface::TAB).0)).collect();
         Some(decor::layout(content, ssd, focused, &widths, active, offset))
     }
+}
+
+/// A drag-and-drop icon: at the pointer, moved by its offsets, above
+/// everything but the cursor (and in screenshots, as a window would be).
+fn drag_icon_elements<R>(az: &Aizome, renderer: &mut R, output: &Output, scale: f64, out: &mut Vec<OutputElement<R>>)
+where
+    R: Renderer + ImportAll + ImportMem,
+    R::TextureId: Clone + Send + 'static,
+{
+    let Some(icon) = az.dnd_icon.clone() else { return };
+    let geo = az.output_geometry(output);
+    let at = az.pointer_pos + az.dnd_offset.to_f64();
+    let bbox = smithay::desktop::utils::bbox_from_surface_tree(&icon, at.to_i32_round());
+    if !bbox.overlaps(geo) {
+        return;
+    }
+    let loc: Point<i32, Physical> = (at - geo.loc.to_f64()).to_physical_precise_round(scale);
+    out.extend(
+        render_elements_from_surface_tree(renderer, &icon, loc, scale, 1.0, Kind::Unspecified)
+            .into_iter()
+            .map(OutputElement::Surface),
+    );
 }

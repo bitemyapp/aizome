@@ -107,6 +107,7 @@ impl DataDeviceHandler for State {
 impl ClientDndGrabHandler for State {
     fn started(&mut self, _source: Option<WlDataSource>, icon: Option<WlSurface>, _seat: Seat<Self>) {
         self.az.dnd_icon = icon;
+        self.az.dnd_offset = (0, 0).into();
     }
     fn dropped(&mut self, _target: Option<WlSurface>, _validated: bool, _seat: Seat<Self>) {
         self.az.dnd_icon = None;

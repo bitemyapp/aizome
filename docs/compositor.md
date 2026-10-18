@@ -73,6 +73,16 @@ Notes for client authors:
 
 - Outputs use integer scales (2 for panels over ~180 dpi) unless the
   settings give a fractional one.
+- wl_shm takes every format the renderer reads (ABGR8888 and XBGR8888
+  besides ARGB and XRGB). Under GLES a shm buffer is released as soon as
+  its commit has been uploaded into a texture, not at the next commit, so
+  a client can draw into one buffer again at once (smithay adds a second
+  release when the next commit replaces it); under pixman, which draws
+  from the client's memory, it is kept until then.
+- Drag and drop: wl_data_device_manager 3 (source and offer actions),
+  and the drag icon moves with its wl_surface.offset (or attach x, y)
+  relative to the pointer; it shows above everything, in screenshots
+  too.
 - Frame callbacks fire after a frame that showed the surface, and roughly
   once a second for surfaces that don't show (other Desks, minimised).
   Nothing draws while nothing changes.
@@ -150,6 +160,8 @@ nix develop --command cargo test -p aizome-comp
 - `tests/overlays.rs`: the switcher, the overview and the marking menu.
 - `tests/keys.rs`: ❖ as Ctrl, Ctrl+Shift in terminals, ❖ for kit apps,
   system and shell chords.
+- `tests/protocols.rs`: wl_shm formats, shm buffers released after upload
+  (GLES) or kept (pixman), drag and drop with an icon and actions.
 - `tests/focus.rs`: a shell-like wayland-client (layer surfaces and their
   popups): exclusive and on-demand keyboard interactivity, grabbing menus
   getting the keys and giving them back, menus closing for an exclusive

@@ -277,6 +277,8 @@ pub struct Aizome {
     pub pointer_pos: Point<f64, Logical>,
     /// Shown in the stack-drop feedback and the grab cursors.
     pub dnd_icon: Option<WlSurface>,
+    /// Where the drag icon is, relative to the pointer.
+    pub dnd_offset: Point<i32, Logical>,
     /// A layer surface that took keyboard focus on demand (by a click).
     pub layer_focus: Option<WlSurface>,
     /// The popup grab in force, if any.
@@ -483,6 +485,7 @@ impl State {
             pointer_pos: Point::from((0.0, 0.0)),
             cursor_theme,
             dnd_icon: None,
+            dnd_offset: (0, 0).into(),
             layer_focus: None,
             popup_grab: None,
             popup_order: Vec::new(),

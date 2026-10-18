@@ -309,6 +309,18 @@ impl Udev {
             }
     }
 
+    /// With GLES on one GPU the early import copied wl_shm pixels into
+    /// textures already; import again (a no-op then) to know it worked.
+    pub fn import_shm_copies(&mut self, surface: &WlSurface) -> bool {
+        if self.devices.len() > 1 {
+            return false;
+        }
+        match &mut self.renderers {
+            Renderers::Gles(g) => g.early_import(self.primary_gpu, surface).is_ok(),
+            Renderers::Pixman(_) => false,
+        }
+    }
+
     pub fn import_dmabuf(&mut self, dmabuf: &Dmabuf) -> bool {
         match &mut self.renderers {
             Renderers::Gles(g) => {

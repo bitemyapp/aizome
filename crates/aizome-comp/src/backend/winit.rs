@@ -93,6 +93,11 @@ impl WinitBackend {
         self.backend.renderer().import_dmabuf(dmabuf, None).is_ok()
     }
 
+    /// Imports a surface tree (GLES copies wl_shm pixels).
+    pub fn import_shm_copies(&mut self, surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface) -> bool {
+        smithay::backend::renderer::utils::import_surface_tree(self.backend.renderer(), surface).is_ok()
+    }
+
     pub fn redraw(&mut self, az: &mut Aizome, output: &Output) {
         if let Some(o) = az.out.get_mut(output) {
             o.redraw_queued = false;
