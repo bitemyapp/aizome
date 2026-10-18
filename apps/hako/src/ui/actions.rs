@@ -204,12 +204,12 @@ impl Hako {
     /// `on_drop_urls`).
     pub(crate) fn drag_out(&mut self, cx: &mut Cx<Msg>, w: WindowKey, sources: Vec<PathBuf>) {
         let urls: Vec<String> = sources.iter().map(|p| uri::file_uri(p)).collect();
-        // The chip under the pointer: the item (or how many), drawn a
-        // pixel a point, as the desktop shows a drag's icon.
+        // The chip under the pointer: the item (or how many), drawn when
+        // the drag starts at the window's scale.
         let first = sources.first().and_then(|p| Entry::read(p).ok());
-        let chip = super::dragout::chip(cx.theme(), first.as_ref(), sources.len(), 1.0);
+        let (size, chip) = super::dragout::chip(cx.theme(), first.as_ref(), sources.len());
         let hotspot = Point::new(12.0, (super::dragout::HEIGHT / 2.0).round());
-        let source = DragSource::new().urls(urls).actions(true, false).icon(chip, hotspot);
+        let source = DragSource::new().urls(urls).actions(true, false).icon_drawn(size, hotspot, chip);
         if cx.start_drag(w, source).is_some() {
             self.outbound = Some(sources);
         }
