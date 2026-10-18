@@ -268,21 +268,25 @@ class Settings:
         """Click the button (or card, or row) a person knows by this name."""
         return self.click(self.button(label, **kw))
 
-    def button(self, label, **kw):
-        """A button (or card, or row) by the name a person knows it by, in view."""
-        for want in ({"role": "button", "label": label}, {"label": label}, {"text": label}):
-            if self.find(visible=False, **want, **kw):
-                return self.reveal(**want, **kw)
-        raise AssertionError(f"no button {label!r}")
+    def button(self, label, timeout=30, **kw):
+        """A button (or card, or row) by the name a person knows it by, in
+        view (waiting for it to show)."""
+        wants = ({"role": "button", "label": label}, {"label": label}, {"text": label})
+        want = until(
+            f"a button {label!r}",
+            lambda: next((w for w in wants if self.find(visible=False, **w, **kw)), None),
+            timeout=timeout,
+        )
+        return self.reveal(**want, **kw)
 
     def slide(self, e, fraction):
         """Drag a slider's knob to a fraction of its track."""
         self.focus()
         win = self.window()["geometry"]
         x, y, w, h = e["rect"]
-        lo, cur, hi = e["range"]
-        start = win["x"] + x + w * ((cur - lo) / (hi - lo) if hi > lo else 0)
-        to = win["x"] + x + w * fraction
+        lo, hi, cur = e["range"]
+        start = win["x"] + x + min(max(w * ((cur - lo) / (hi - lo) if hi > lo else 0), 1), w - 1)
+        to = win["x"] + x + min(max(w * fraction, 1), w - 1)
         cy = win["y"] + y + h / 2
         alice(
             f"aizomectl input motion {start:.1f} {cy:.1f} && aizomectl input button left down && "
@@ -293,8 +297,16 @@ class Settings:
 
     def choose(self, popup, item):
         """Open a pop-up button and pick an item by typing its name."""
-        self.click(popup)
-        until("the menu to open", lambda: self.doc("menu"))
+        for _ in range(3):
+            self.click(popup)
+            try:
+                until("the menu to open", lambda: self.doc("menu"), timeout=4)
+                break
+            except AssertionError:
+                # A click while a sheet went away; again.
+                popup = self.find(role="combobox", visible=False, inside=None) and popup
+        else:
+            raise AssertionError(f"{popup} opened no menu")
         type_text(item)
         key("return")
         until("the menu to close", lambda: self.doc("menu") is None)
@@ -309,9 +321,9 @@ class Settings:
             key("return")
         time.sleep(0.6)
 
-    def beside(self, label, role, **kw):
+    def beside(self, near, role, **kw):
         """The control on the same line as some text (a row without an entry)."""
-        t = self.reveal(text=label)
+        t = self.reveal(text=near)
         cy = t["rect"][1] + t["rect"][3] / 2
         best = None
         for e in self.all(role=role, visible=False, **kw):
@@ -319,7 +331,7 @@ class Settings:
             if e["rect"][0] > t["rect"][0] and abs(ey - cy) < 16:
                 if best is None or abs(ey - cy) < abs(best["rect"][1] + best["rect"][3] / 2 - cy):
                     best = e
-        assert best, f"no {role} beside {label!r}"
+        assert best, f"no {role} beside {near!r}"
         return best
 
     def segment(self, control, name):
@@ -693,6 +705,287 @@ def users():
     S.quit()
 
 
+@part("Keyboard: quick repeat and a German layout reach the compositor; Caps Lock as Escape is kept")
+def keyboard():
+    S.open("keyboard")
+
+    def held(ch="x", seconds=1.5):
+        """Hold a key in the "Try it" field; how many it typed."""
+        S.click(S.beside("Try it", "textinput"))
+        chord("super+a")
+        key("backspace")
+        alice(f"aizomectl input key {ch} down && sleep {seconds} && aizomectl input key {ch} up")
+        time.sleep(0.5)
+        return (S.beside("Try it", "textinput").get("value") or "").count(ch)
+
+    slow = held()
+    S.slide(S.control("keyboard", "repeat-delay", role="slider"), 1.0)
+    S.slide(S.control("keyboard", "repeat-rate", role="slider"), 1.0)
+    until("a short delay", lambda: (setting("input.keyboard.repeat_delay") or 600) <= 200)
+    until("a fast rate", lambda: (setting("input.keyboard.repeat_rate") or 25) >= 50)
+    fast = held()
+    print(f"a held key typed {slow} times, then {fast}")
+    assert fast > max(2 * slow, 30), (slow, fast)
+
+    S.choose(S.control("keyboard", "caps-lock", role="combobox"), "Escape")
+    until("caps:escape", lambda: "caps:escape" in str(setting("input.keyboard.options")))
+
+    S.press("Add a Layout…")
+    S.wait(text="Add a Keyboard Layout")
+    type_text("German")
+    S.click(S.wait(text="German", role="label"))
+    S.press("Add")
+    until("German added", lambda: "de" in (setting("input.keyboard.layouts") or []))
+    S.click(S.beside("German", "button", label="Move up"))
+    until("German first", lambda: (setting("input.keyboard.layouts") or [""])[0] == "de")
+    # The compositor's keymap is German now: the key labelled Y types z.
+    S.click(S.beside("Try it", "textinput"))
+    chord("super+a")
+    key("backspace")
+    key("y")
+    key("z")
+    until("German keys", lambda: S.beside("Try it", "textinput").get("value") == "zy")
+
+    reopen("keyboard")
+    first = " ".join(S.texts(S.row("keyboard", "layouts")))
+    assert "German" in first, first
+    assert S.control("keyboard", "caps-lock", role="combobox").get("value") == "Escape"
+    assert "150 ms" in " ".join(S.texts(S.row("keyboard", "repeat-delay")))
+    # Back to the US layout alone, before anything else is typed.
+    S.click(S.beside("German", "button", label="Remove"))
+    until("US alone", lambda: setting("input.keyboard.layouts") == ["us"])
+    S.choose(S.control("keyboard", "caps-lock", role="combobox"), "Caps Lock")
+    S.quit()
+
+
+def mouse_index(kind):
+    """QEMU's number for a mouse ("PS/2", "Tablet")."""
+    for line in machine.send_monitor_command("info mice").splitlines():
+        m = re.search(r"Mouse #(\d+): (.*)", line)
+        if m and kind in m.group(2):
+            return int(m.group(1))
+    raise AssertionError(f"no {kind} mouse")
+
+
+def sidebar_top():
+    """Where the sidebar's first pane is (it scrolls)."""
+    return S.find(text="Network", role="label", visible=False)["rect"][1]
+
+
+def scrolled_by_wheel(dz):
+    """Turn the real mouse's wheel (QEMU's PS/2 mouse, whose wheel libinput
+    can turn round itself) over Settings' sidebar; how far its list moved up."""
+    y0 = sidebar_top()
+    win = S.window()["geometry"]
+    move(win["x"] + 116, win["y"] + win["h"] / 2)
+    machine.send_monitor_command(f"mouse_set {mouse_index('PS/2')}")
+    for _ in range(2):
+        machine.send_monitor_command(f"mouse_move 0 0 {dz}")
+        time.sleep(0.2)
+    time.sleep(0.8)
+    return y0 - sidebar_top()
+
+
+def pointer_travel(dx):
+    """Move the real relative mouse (PS/2) right by dx; how far the pointer went."""
+    win = S.window()["geometry"]
+    move(win["x"] + 300, win["y"] + win["h"] / 2)
+    time.sleep(0.3)
+    start = S.doc()["pointer"][0]
+    machine.send_monitor_command(f"mouse_set {mouse_index('PS/2')}")
+    for _ in range(4):
+        machine.send_monitor_command(f"mouse_move {dx} 0")
+        time.sleep(0.15)
+    time.sleep(0.6)
+    return S.doc()["pointer"][0] - start
+
+
+@part("Mouse: natural scrolling turns the wheel around, and pointer speed changes how far the mouse goes")
+def mouse():
+    S.open("mouse")
+    # Flat, so speed alone sets how far a movement goes.
+    S.click(S.control("mouse", "acceleration", role="switch"))
+    until("a flat profile", lambda: setting("input.pointer.accel_profile") == "flat")
+    S.slide(S.control("mouse", "speed", role="slider"), 0.1)
+    until("a slow pointer", lambda: (setting("input.pointer.speed") or 0) < -0.5)
+    slow = pointer_travel(10)
+    S.slide(S.control("mouse", "speed", role="slider"), 0.95)
+    until("a fast pointer", lambda: (setting("input.pointer.speed") or 0) > 0.5)
+    fast = pointer_travel(10)
+    print(f"the same movement took the pointer {slow} then {fast} points")
+    assert fast > 1.5 * max(slow, 1), (slow, fast)
+
+    traditional = scrolled_by_wheel(1)
+    if traditional == 0:
+        traditional = scrolled_by_wheel(-1)
+    S.click(S.control("mouse", "natural-scroll", role="switch"))
+    until("natural_scroll = true", lambda: setting("input.pointer.natural_scroll") is True)
+    natural = scrolled_by_wheel(1 if traditional > 0 else -1)
+    print(f"the wheel moved the pane {traditional}, then {natural} with natural scrolling")
+    assert traditional * natural < 0, (traditional, natural)
+
+    reopen("mouse")
+    assert S.checked("mouse", "natural-scroll") is True
+    assert S.checked("mouse", "acceleration") is False
+    S.click(S.control("mouse", "natural-scroll", role="switch"))
+    S.click(S.control("mouse", "acceleration", role="switch"))
+    S.slide(S.control("mouse", "speed", role="slider"), 0.5)
+    until("adaptive again", lambda: setting("input.pointer.accel_profile") == "adaptive")
+    S.quit()
+
+
+@part("Trackpad: with none attached, its settings are still kept for when one is")
+def trackpad():
+    S.open("trackpad")
+    print("the Trackpad pane says:", S.texts())
+    S.click(S.control("trackpad", "tap", role="switch"))
+    until("tap changed", lambda: setting("input.touchpad.tap") is not None)
+    tap = setting("input.touchpad.tap")
+    reopen("trackpad")
+    assert S.checked("trackpad", "tap") == tap
+    S.click(S.control("trackpad", "tap", role="switch"))
+    S.quit()
+
+
+@part("Battery & Power: Power Saver reaches power-profiles-daemon; screen timings are kept; no battery is said")
+def battery():
+    S.open("battery")
+    texts = " ".join(S.texts())
+    assert "there's no battery to show" in texts, texts
+    mode = S.control("battery", "mode", role="tablist")
+    names = [p["name"] for p in mode.get("parts", [])]
+    assert names == ["Power Saver", "Balanced"], names
+    S.segment(mode, "Power Saver")
+    until("power-saver", lambda: machine.succeed("powerprofilesctl get").strip() == "power-saver")
+    S.choose(S.control("battery", "screen-off", role="combobox"), "5 minutes")
+    until("monitors off after 5", lambda: setting("idle.monitors_off_after_minutes") == 5)
+    reopen("battery")
+    assert S.control("battery", "mode", role="tablist").get("value") == "Power Saver"
+    assert S.control("battery", "screen-off", role="combobox").get("value") == "5 minutes"
+    assert not S.find(name="entry:battery.lid", visible=False), "a lid row on a computer without a lid"
+    S.segment(S.control("battery", "mode", role="tablist"), "Balanced")
+    until("balanced", lambda: machine.succeed("powerprofilesctl get").strip() == "balanced")
+    S.quit()
+
+
+def wpctl(args):
+    return alice(f"wpctl {args}")
+
+
+@part("Sound: the default output, its volume and mute reach PipeWire")
+def sound():
+    S.open("sound")
+    S.press("Desk Headphones")
+    until(
+        "the headphones as the default",
+        lambda: "aizome-headphones" in wpctl("inspect @DEFAULT_AUDIO_SINK@"),
+    )
+    S.slide(S.control("sound", "output-volume", role="slider"), 0.3)
+    until("about 30%", lambda: abs(float(wpctl("get-volume @DEFAULT_AUDIO_SINK@").split()[1]) - 0.3) < 0.06)
+    S.click(S.control("sound", "output-volume", role="button", label="Mute"))
+    until("muted", lambda: "MUTED" in wpctl("get-volume @DEFAULT_AUDIO_SINK@"))
+    reopen("sound")
+    chosen = S.reveal(label="Desk Headphones")
+    assert chosen.get("selected"), chosen
+    assert S.find(inside=S.row("sound", "output-volume"), role="button", label="Unmute"), "not shown muted"
+    S.click(S.control("sound", "output-volume", role="button", label="Unmute"))
+    until("unmuted", lambda: "MUTED" not in wpctl("get-volume @DEFAULT_AUDIO_SINK@"))
+    vol = S.control("sound", "output-volume", role="slider")
+    assert abs(vol["range"][2] - 0.3) < 0.06 or abs(vol["range"][2] - 30) < 6, vol
+    S.quit()
+
+
+@part("Network: joining a WPA2 network with its passphrase, airplane mode, and the wired details")
+def network():
+    S.open("network")
+    S.reveal(label="Aizome Test AP", role="button") if S.find(label="Aizome Test AP", visible=False) else None
+    ap = until("the access point listed", lambda: S.find(label="Aizome Test AP", role="button", visible=False), timeout=60)
+    S.click(S.reveal(label=ap["label"], role="button"))
+    field = S.wait(name="network-password")
+    assert field.get("focused"), field
+    type_text(WIFI_PASSPHRASE)
+    key("return")
+    until(
+        "NetworkManager connected",
+        lambda: "yes:Aizome Test AP" in machine.succeed("nmcli -t -f ACTIVE,SSID dev wifi list --rescan no || true"),
+        timeout=90,
+    )
+    until("the pane to say so", lambda: any("Connected to Aizome Test AP" in t for t in S.texts()), timeout=30)
+    shot("network-joined")
+
+    S.click(S.control("network", "airplane", role="switch"))
+    until("radios off", lambda: "disabled" in machine.succeed("nmcli radio wifi") or "blocked" in machine.succeed("rfkill -n -o SOFT"))
+    S.click(S.control("network", "airplane", role="switch"))
+    until("radios on", lambda: "enabled" in machine.succeed("nmcli radio wifi"))
+
+    addr = machine.succeed("nmcli -g IP4.ADDRESS dev show eth0").strip().split("/")[0]
+    wired = " ".join(S.texts(S.row("network", "wired")))
+    assert addr in wired, (addr, wired)
+
+    reopen("network")
+    until("Wi-Fi back", lambda: any("Connected to Aizome Test AP" in t for t in S.texts()), timeout=60)
+    assert S.find(text="Aizome Test AP", visible=False), "the network in use isn't shown"
+    S.quit()
+
+
+@part("Bluetooth: turning it off and on reaches BlueZ; the controller's name too; discovery runs while open")
+def bluetooth():
+    S.open("bluetooth")
+    show = lambda: machine.succeed("bluetoothctl show")  # noqa: E731
+    until("discovery while the pane is open", lambda: "Discovering: yes" in show(), timeout=30)
+    switch = S.control("bluetooth", "bluetooth", role="switch")
+    assert switch.get("checked") is ("Powered: yes" in show())
+    S.click(switch)
+    until("powered off", lambda: "Powered: no" in show())
+    # The switch is back to be used once the change is done.
+    off = until(
+        "the switch off and usable",
+        lambda: (lambda c: c if c.get("checked") is False and not c.get("disabled") else None)(
+            S.control("bluetooth", "bluetooth", role="switch")
+        ),
+    )
+    S.click(off)
+    until("powered on", lambda: "Powered: yes" in show())
+    S.field(S.wait(name="bluetooth-name"), "Alice's Aizome")
+    until("the new alias", lambda: "Alias: Alice's Aizome" in show())
+    reopen("bluetooth")
+    assert S.wait(name="bluetooth-name").get("value") == "Alice's Aizome"
+    S.quit()
+    until("discovery stopped with the pane", lambda: "Discovering: no" in show(), timeout=20)
+
+
+@part("Printers: the network's printer is set up and not offered twice; one added by its address is the default and prints")
+def printers():
+    started = time.monotonic()
+    S.open("printers")
+    S.button("Add Printer…")
+    print(f"the printers showed after {time.monotonic() - started:.1f} s")
+    # cups-browsed sets up the printer announced on the network by itself.
+    until("the network's printer listed", lambda: S.find(contains="Aizome_Test_Printer", visible=False), timeout=90)
+    S.press("Add Printer…")
+    S.wait(text="Add a Printer")
+    S.gone("the search to end", contains="Looking for printers", timeout=60)
+    assert not S.find(contains="cups-filters", role="button", visible=False), "the printer set up already is offered again"
+    S.click(S.wait(label="Add one by its address", role="checkbox"))
+    S.field(S.wait(name="printers-address"), "localhost:8631", submit=False)
+    S.press("Add")
+    added = until(
+        "CUPS to have it",
+        lambda: next((ln for ln in machine.succeed("lpstat -v").splitlines() if "ipp://localhost:8631/" in ln), None),
+        timeout=120,
+    )
+    name = added.split()[2].rstrip(":")
+    S.choose(S.control("printers", "default-printer", role="combobox"), name)
+    until("alice's default", lambda: name in alice("lpstat -d"))
+    # The new printer's row is open: print a test page on it.
+    S.press("Print Test Page")
+    until("the page printed", lambda: name in machine.succeed("lpstat -W completed -o 2>&1 || true"), timeout=90)
+    reopen("printers")
+    assert S.control("printers", "default-printer", role="combobox").get("value") == name
+    S.quit()
+
+
+
 # The session, then each part.
 
 machine.wait_for_unit("multi-user.target")
@@ -713,9 +1006,14 @@ ONLY = [w.strip().lower() for w in os.environ.get("AIZOME_TEST_ONLY", "").split(
 # separated by ;;).
 for probe in [p for p in os.environ.get("AIZOME_TEST_PROBE", "").split(";;") if p.strip()]:
     print("probe:", probe)
-    print(machine.execute(probe)[1])
+    if probe.strip().startswith("monitor:"):
+        print(machine.send_monitor_command(probe.strip()[len("monitor:") :]))
+    else:
+        print(machine.execute(probe)[1])
 for title, test in TESTS:
-    if ONLY and not any(w in title.lower() for w in ONLY):
+    if title.startswith("zprobe") and not ONLY:
+        continue
+    if ONLY and not any(w in title.split(":")[0].lower() for w in ONLY):
         continue
     with subtest(title):
         try:
@@ -730,3 +1028,4 @@ for title, test in TESTS:
             if S.running() and S.pid:
                 print(json.dumps(S.doc(), indent=None)[:20000])
             raise
+

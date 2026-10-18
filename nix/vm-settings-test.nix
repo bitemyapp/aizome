@@ -93,6 +93,9 @@ pkgs.testers.runNixOSTest {
         qemu.options = [
           "-vga none"
           "-device virtio-gpu-pci,max_outputs=2,xres=1440,yres=900"
+          # A plain PS/2 mouse (relative, so pointer speed applies to it)
+          # rather than VMware's absolute one.
+          "-machine vmport=off"
         ];
       };
       boot.kernelParams = [ "video=Virtual-2:1024x768e" ];
@@ -125,6 +128,9 @@ pkgs.testers.runNixOSTest {
         };
       };
       networking.networkmanager.unmanaged = [ "wlan0" ];
+      # The access point's side: its DHCP requests come in through the
+      # firewall.
+      networking.firewall.trustedInterfaces = [ "wlan0" ];
       # NetworkManager drives wpa_supplicant over D-Bus; the VM profile
       # turns it off.
       networking.wireless.enable = lib.mkOverride 0 true;
@@ -183,16 +189,26 @@ pkgs.testers.runNixOSTest {
             ];
       };
 
-      # Printers: a driverless IPP printer that announces itself.
+      # Printers: a driverless IPP printer that announces itself (Avahi
+      # lets programs announce services only when asked to), with a
+      # keychain for the TLS that CUPS asks for.
+      services.avahi.publish = {
+        enable = true;
+        userServices = true;
+      };
       systemd.services.aizome-test-printer = {
         description = "A driverless IPP printer";
         after = [
           "avahi-daemon.service"
           "network.target"
         ];
+        requires = [ "avahi-daemon.service" ];
         wantedBy = [ "multi-user.target" ];
         serviceConfig = {
-          ExecStart = "${pkgs.cups}/bin/ippeveprinter -p 8631 -r _print -M Aizome -m 'Test Printer' -f application/pdf,image/pwg-raster,image/urf 'Aizome Test Printer'";
+          # Avahi may not answer yet at boot.
+          Restart = "on-failure";
+          RestartSec = 2;
+          ExecStart = "${pkgs.cups}/bin/ippeveprinter -K /var/lib/aizome-test-printer -p 8631 -r _print -M Aizome -m 'Test Printer' -f application/pdf,image/pwg-raster,image/urf 'Aizome Test Printer'";
           DynamicUser = true;
           StateDirectory = "aizome-test-printer";
           WorkingDirectory = "/var/lib/aizome-test-printer";
@@ -202,6 +218,8 @@ pkgs.testers.runNixOSTest {
       environment.systemPackages = [
         pkgs.jq
         pkgs.wireplumber
+        pkgs.pulseaudio
+        pkgs.libinput
         pkgs.bluez
         pkgs.cups
         pkgs.dconf
