@@ -353,6 +353,11 @@ impl State {
                 }
                 Response::Ok
             }
+            Request::DebugStall { seconds } => {
+                tracing::warn!(seconds, "stalling the main loop, as asked");
+                std::thread::sleep(std::time::Duration::from_secs(seconds.min(60) as u64));
+                Response::Ok
+            }
             Request::Recovery { .. }
             | Request::RecoveryState
             | Request::RecoveryAction { .. }

@@ -261,6 +261,17 @@ impl Recovery {
 /// Starts the process thread and the ping timer.
 pub fn start(state: &mut State) {
     state.az.recovery.procinfo = ProcInfo::start(&state.az.lh, on_report);
+    if let Some(notice) = crate::watchdog::previous_stall() {
+        state.az.recovery.notice = Some(notice);
+        // Say it as soon as there is something to show it on.
+        let _ = state.az.lh.insert_source(Timer::from_duration(Duration::from_millis(500)), |_, _, state| {
+            if state.az.outputs.is_empty() {
+                return TimeoutAction::ToDuration(Duration::from_millis(500));
+            }
+            open(state);
+            TimeoutAction::Drop
+        });
+    }
     let _ = state.az.lh.insert_source(Timer::from_duration(PING_EVERY), |_, _, state: &mut State| {
         tick(state);
         TimeoutAction::ToDuration(if state.az.recovery.open { PING_EVERY_OPEN } else { PING_EVERY })

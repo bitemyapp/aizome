@@ -187,7 +187,7 @@ pub fn notify_stopping() {
     sd_notify("STOPPING=1");
 }
 
-fn sd_notify(msg: &str) {
+pub fn sd_notify(msg: &str) {
     let Some(path) = std::env::var_os("NOTIFY_SOCKET") else { return };
     let path = path.to_string_lossy().into_owned();
     let Ok(sock) = std::os::unix::net::UnixDatagram::unbound() else { return };

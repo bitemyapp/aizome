@@ -90,7 +90,8 @@ pub fn layout(az: &Aizome, output: &Output) -> Layout {
     let rows_of_acts = layout_rows(&acts);
     let system_rows = rows_of_acts.iter().filter(|r| !r[0].per_app()).count() as f64;
     let message = r.message.is_some() || locked;
-    let mut h = TITLE_H + if message { MESSAGE_H } else { 0.0 };
+    let message_h = if r.message.as_deref().is_some_and(|m| m.contains('\n')) { MESSAGE_H + 16.0 } else { MESSAGE_H };
+    let mut h = TITLE_H + if message { message_h } else { 0.0 };
     if !locked {
         h += HEAD_H + shown_rows * ROW_H + GAP + BUTTON_H + GAP + 4.0;
     }
@@ -102,8 +103,8 @@ pub fn layout(az: &Aizome, output: &Output) -> Layout {
     let title = Box2::new(x0, y, w, TITLE_H);
     y += TITLE_H;
     let message_box = message.then(|| {
-        let b = Box2::new(x0 + 1.0, y, w - 2.0, MESSAGE_H);
-        y += MESSAGE_H;
+        let b = Box2::new(x0 + 1.0, y, w - 2.0, message_h);
+        y += message_h;
         b
     });
     let mut rows = Vec::new();
@@ -293,7 +294,23 @@ where
             .clone()
             .unwrap_or_else(|| "The screen is locked: only what keeps it locked is offered.".to_string());
         let ink = if text.starts_with("Couldn't") { p.red } else { p.text2 };
-        pt.text_mid(az, renderer, &text, semibold(12.5, ink), b.x + PAD - 1.0, b.y, b.h, b.w - 2.0 * PAD);
+        let (first, second) = text.split_once('\n').unwrap_or((text.as_str(), ""));
+        if second.is_empty() {
+            pt.text_mid(az, renderer, first, semibold(12.5, ink), b.x + PAD - 1.0, b.y, b.h, b.w - 2.0 * PAD);
+        } else {
+            let half = (b.h - 8.0) / 2.0;
+            pt.text_mid(az, renderer, first, semibold(12.5, ink), b.x + PAD - 1.0, b.y + 4.0, half, b.w - 2.0 * PAD);
+            pt.text_mid(
+                az,
+                renderer,
+                second,
+                mono(11.0, p.text3),
+                b.x + PAD - 1.0,
+                b.y + 4.0 + half,
+                half,
+                b.w - 2.0 * PAD,
+            );
+        }
     }
 
     if let (Some(head), Some(list)) = (l.head, l.list) {

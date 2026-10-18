@@ -72,6 +72,8 @@ recovery (what Ctrl+Alt+Del opens)
   recovery reset-input | restart-shell | reload-compositor | lock | log-out
            | text-console      the overlay's other actions
   input-state                   grabs, pressed buttons and keys, constraint
+  debug-stall SECONDS           block the compositor's main loop (at most
+                                60 s) to try the watchdog
 
 input (through the compositor's own paths, for tests and scripts)
   input motion X Y | click [BUTTON] | button BUTTON [down|up]
@@ -393,6 +395,10 @@ fn parse(command: &str, mut args: Vec<String>) -> Result<Request, String> {
         "lock" => Request::Lock,
         "quit" => Request::Quit,
         "input-state" => Request::InputState,
+        "debug-stall" => {
+            need(&args, 1, "how many seconds")?;
+            Request::DebugStall { seconds: args[0].parse().map_err(|_| format!("not a number: {}", args[0]))? }
+        }
         "recovery" => match args.first().map(String::as_str) {
             None => Request::Recovery { state: None },
             Some("on") => Request::Recovery { state: Some(true) },

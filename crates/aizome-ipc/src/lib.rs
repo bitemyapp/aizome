@@ -362,6 +362,11 @@ pub enum Request {
     /// The seat's grabs, pressed buttons and keys, pointer constraint and
     /// cursor. → [`Response::InputState`].
     InputState,
+    /// Blocks the compositor's main loop for a while (at most 60 s), to
+    /// try the watchdog: nothing draws or answers meanwhile.
+    DebugStall {
+        seconds: u32,
+    },
 }
 
 /// An input event for [`Request::Synthesize`].

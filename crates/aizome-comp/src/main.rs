@@ -33,6 +33,7 @@ mod state;
 mod stats;
 mod svg;
 mod text;
+mod watchdog;
 mod wm;
 
 use std::process::ExitCode;
@@ -145,10 +146,14 @@ fn main() -> ExitCode {
     state.place_pointer_on_primary();
     state.update_night_light(true);
     idle::start(&mut state);
+    watchdog::start(&mut state);
     recovery::start(&mut state);
     session::start(&mut state);
 
-    if let Err(e) = event_loop.run(None, &mut state, |state| state.on_loop_iteration()) {
+    if let Err(e) = event_loop.run(None, &mut state, |state| {
+        watchdog::beat();
+        state.on_loop_iteration()
+    }) {
         error!("event loop: {e}");
     }
     session::stop_children(&mut state.az);
