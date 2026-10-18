@@ -397,7 +397,7 @@ mod tests {
 
     /// Asks GitHub; run with `cargo test -- --ignored` when online.
     #[test]
-    #[ignore]
+    #[ignore = "asks GitHub over the network"]
     fn sekka_targets_its_nightly() {
         let lock = FlakeLock::parse(
             r#"{ "root": "root", "version": 7, "nodes": {
