@@ -577,6 +577,17 @@ impl Program for Hako {
     fn menus(&self) -> MenuBar<Msg> {
         super::menus::menu_bar(self)
     }
+
+    /// A drag gone out to the desktop is over: a drop on a Hako window
+    /// came before this (it's finished only once Hako took it), so the
+    /// same files dropped from elsewhere later are another program's.
+    /// Hako offers only copies, so a drop leaves nothing to finish here.
+    fn drag_ended(&mut self, drag: DragId, action: DropAction, cx: &mut Cx<Msg>) {
+        if self.outbound.as_ref().is_some_and(|(d, _)| *d == drag) {
+            self.outbound = None;
+        }
+        let _ = (action, cx);
+    }
 }
 
 /// The thumbnails to change: taken out if no view holds them, else

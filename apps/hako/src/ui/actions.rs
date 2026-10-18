@@ -210,8 +210,8 @@ impl Hako {
         let (size, chip) = super::dragout::chip(cx.theme(), first.as_ref(), sources.len());
         let hotspot = Point::new(12.0, (super::dragout::HEIGHT / 2.0).round());
         let source = DragSource::new().urls(urls).actions(true, false).icon_drawn(size, hotspot, chip);
-        if cx.start_drag(w, source).is_some() {
-            self.outbound = Some(sources);
+        if let Some(drag) = cx.start_drag(w, source) {
+            self.outbound = Some((drag, sources));
         }
     }
 
@@ -237,7 +237,7 @@ impl Hako {
         // Hako's own drag, back from the desktop, moves within a disk as
         // drags inside a window do; what other programs drop is copied, as
         // they may still want it.
-        let ours = self.outbound.as_ref().is_some_and(|o| *o == sources);
+        let ours = self.outbound.as_ref().is_some_and(|(_, o)| *o == sources);
         match dest {
             Dest::Trash => self.start_job(cx, w, Work::Trash { paths: sources }),
             Dest::Folder(d) => {

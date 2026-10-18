@@ -301,9 +301,9 @@ pub struct Hako {
     pub focus_window: Option<WindowKey>,
     /// What a sandbox would have opened in other apps.
     pub opened: Vec<PathBuf>,
-    /// The files of Hako's own drag gone out to the desktop, to know them
-    /// if they're dropped back on one of its windows.
-    pub outbound: Option<Vec<PathBuf>>,
+    /// Hako's own drag gone out to the desktop, and its files, to know
+    /// them if they're dropped back on one of its windows before it ends.
+    pub outbound: Option<(DragId, Vec<PathBuf>)>,
     /// Free space by folder, as last asked (views ask often).
     pub(crate) space: std::cell::RefCell<HashMap<PathBuf, (Instant, Option<u64>)>>,
 }

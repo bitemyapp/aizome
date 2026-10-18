@@ -6,7 +6,7 @@ mod common;
 
 use std::path::PathBuf;
 
-use aizome_kit::sidestep_ui::{Key, Modifiers, NamedKey, PointerButton};
+use aizome_kit::sidestep_ui::{DropAction, Key, Modifiers, NamedKey, PointerButton};
 use aizome_kit::testing::Harness;
 use aizome_kit::theme::ThemeChoice;
 use aizome_kit::{Point, WindowKey};
@@ -510,19 +510,35 @@ fn a_drag_out_of_the_window_goes_on_as_the_desktop_s() {
     populate(&s);
     let (mut h, w) = open(&s, "work/notes.txt", Layout::Column);
     h.render(w, 1.0);
-    let from = row_at(&h, w, 1, names(&h, w, 1).iter().position(|n| n == "notes.txt").unwrap());
-    h.drag(w, from, Point::new(-40.0, from.y), 8);
+    let notes = s.home().join("work/notes.txt");
+    let url = format!("file://{}", notes.display());
+    let drag_out = |h: &mut Harness<Hako>| {
+        let from = row_at(h, w, 1, names(h, w, 1).iter().position(|n| n == "notes.txt").unwrap());
+        h.drag(w, from, Point::new(-40.0, from.y), 8);
+        settle(h);
+        h.program().outbound.clone().expect("Hako's drag went out")
+    };
+    let folder = |h: &Harness<Hako>, name: &str| row_at(h, w, 0, names(h, w, 0).iter().position(|n| n == name).unwrap());
+    let (first, files) = drag_out(&mut h);
+    assert_eq!(files, [notes.clone()]);
+    assert!(notes.exists(), "nothing moved");
+    // Dropped nowhere, it's over: the same files dropped later come from
+    // another program, and are copied.
+    h.end_drag(first, DropAction::None);
+    assert_eq!(h.program().outbound, None);
+    assert!(h.drop(w, folder(&h, "Music"), vec![url.clone()], None));
     settle(&mut h);
-    assert_eq!(h.program().outbound, Some(vec![s.home().join("work/notes.txt")]));
-    assert!(s.home().join("work/notes.txt").exists(), "nothing moved");
-    // Dropped back on a Hako window, it's Hako's own: it moves.
-    let docs = h.find_id(w, "col-0").unwrap();
-    let url = format!("file://{}", s.home().join("work/notes.txt").display());
-    let i = names(&h, w, 0).iter().position(|n| n == "Documents").unwrap();
-    assert!(h.drop(w, row_at(&h, w, 0, i), vec![url], None));
+    assert!(s.home().join("Music/notes.txt").exists() && notes.exists(), "copied");
+    // Out again and dropped back on a Hako window, it's Hako's own: it
+    // moves. The first drag's end, heard late, forgets nothing.
+    let (second, _) = drag_out(&mut h);
+    h.end_drag(first, DropAction::None);
+    assert!(h.program().outbound.is_some());
+    assert!(h.drop(w, folder(&h, "Documents"), vec![url], None));
     settle(&mut h);
-    assert!(s.home().join("Documents/notes.txt").exists() && !s.home().join("work/notes.txt").exists());
-    let _ = docs;
+    assert!(s.home().join("Documents/notes.txt").exists() && !notes.exists());
+    h.end_drag(second, DropAction::Copy);
+    assert_eq!(h.program().outbound, None);
 }
 
 #[test]
