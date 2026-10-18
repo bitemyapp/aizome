@@ -132,7 +132,9 @@ impl Shell {
     /// The menu a palette shows now.
     pub fn tear_menu(&self, t: &TearOff) -> Option<(String, ShellMenu)> {
         if t.app == TOOLCHEST {
-            return Some(("Toolchest".into(), self.toolchest_menu()));
+            let found = descend(self.toolchest_menu(), &t.path)?;
+            let title = if t.path.is_empty() { "Toolchest".to_owned() } else { found.title.clone() };
+            return Some((title, found));
         }
         let (name, menus) = if t.app == DESKTOP {
             ("Aizome".to_owned(), build::desktop(&self.wm.desks))
@@ -147,16 +149,16 @@ impl Shell {
                 }
             }
         };
-        if t.path.is_empty() {
-            let hide = crate::actions::Action::Wm(aizome_ipc::Request::HideApp { app: crate::shell::app_sel(&t.app) });
-            let quit = crate::actions::Action::QuitApp { app_id: t.app.clone() };
-            return Some((name.clone(), build::pointer_menu(&name, &menus, build::services(None), hide, quit)));
-        }
-        let mut found = menus.into_iter().find(|m| m.title == t.path[0])?;
-        for title in &t.path[1..] {
-            let i = found.items.iter().position(|e| e.kind == Kind::Submenu && e.label == *title)?;
-            found = found.at(&[i])?;
-        }
+        let hide = crate::actions::Action::Wm(aizome_ipc::Request::HideApp { app: crate::shell::app_sel(&t.app) });
+        let quit = crate::actions::Action::QuitApp { app_id: t.app.clone() };
+        let pointer = build::pointer_menu(&name, &menus, build::services(None), hide, quit);
+        let Some(first) = t.path.first() else { return Some((name, pointer)) };
+        // One of the app's menus (or a submenu down it); else one the menu
+        // at the pointer has of its own (Services).
+        let found = match menus.into_iter().find(|m| m.title == *first) {
+            Some(m) => descend(m, &t.path[1..])?,
+            None => descend(pointer, &t.path)?,
+        };
         Some((found.title.clone(), found))
     }
 
@@ -235,7 +237,7 @@ impl Shell {
         let (Some(t), Some(shown)) = (self.tearoffs.get(i), self.tear_shown.get(&i)) else { return aizome_kit::space(0.0) };
         let Some((title, menu)) = self.tear_menu(t) else { return aizome_kit::space(0.0) };
         let kit = build::to_kit(&menu, &Msg::Run);
-        view(i, kit, &title, t.pinned, shown.size, t.app == TOOLCHEST)
+        view(i, kit, &title, t.pinned, shown.size, t.app == TOOLCHEST && t.path.is_empty())
     }
 
     pub fn tear_msg(&mut self, m: TearMsg, cx: &mut Cx<Msg>) {
@@ -284,4 +286,43 @@ impl Shell {
 /// A palette's frame, to check its look apart from the kit's menu.
 pub fn strip_rect(size: Size) -> Rect {
     Rect::new(1.0, 1.0, size.width - aizome_theme::metrics::SHADOW - 1.0, 23.0)
+}
+
+/// The submenu of `menu` down the titles `path` (`menu` itself for none).
+pub fn descend(menu: ShellMenu, path: &[String]) -> Option<ShellMenu> {
+    let mut found = menu;
+    for title in path {
+        let i = found.items.iter().position(|e| e.kind == Kind::Submenu && e.label == *title)?;
+        found = found.at(&[i])?;
+    }
+    Some(found)
+}
+
+/// The titles down to the submenu at `path` (by index) of `menu`, as a
+/// palette remembers its place. The menu at the pointer calls the app
+/// menu Info; it's remembered by its own title, `app_menu`.
+pub fn titles_at(menu: &ShellMenu, path: &[usize], app_menu: Option<&str>) -> Option<Vec<String>> {
+    let mut out = Vec::new();
+    let mut items = &menu.items;
+    for (n, &i) in path.iter().enumerate() {
+        let e = items.get(i).filter(|e| e.kind == Kind::Submenu)?;
+        let label = match app_menu {
+            Some(a) if n == 0 && e.label == "Info" => a.to_owned(),
+            _ => e.label.clone(),
+        };
+        out.push(label);
+        items = &e.items;
+    }
+    Some(out)
+}
+
+/// What tearing off a submenu of `root` sends: a palette of `app`'s,
+/// `prefix` the titles down to `root`, placed where the submenu was
+/// (`root`'s top left on `output` is `at`).
+pub fn tear_sub(app: String, root: ShellMenu, prefix: Vec<String>, app_menu: Option<String>, output: String, at: Point) -> impl Fn(Vec<usize>, aizome_kit::Vec2) -> Msg + 'static {
+    move |path, off| {
+        let mut titles = prefix.clone();
+        titles.extend(titles_at(&root, &path, app_menu.as_deref()).unwrap_or_default());
+        Msg::TearOff { app: app.clone(), path: titles, output: output.clone(), at: Point::new(at.x + off.x, at.y + off.y) }
+    }
 }

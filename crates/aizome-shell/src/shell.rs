@@ -482,8 +482,15 @@ impl Shell {
                 let menu = self.toolchest_menu();
                 let anchor = Rect::new(rect.x0, rect.y0, rect.x1, crate::menubar::HEIGHT - 1.0);
                 let output = self.screen_of(win).map(|s| s.name()).unwrap_or_default();
-                let tear = Msg::TearOff { app: crate::tearoff::TOOLCHEST.into(), path: vec![], output, at: Point::new(rect.x0 + 12.0, crate::menubar::HEIGHT + 12.0) };
-                let style = MenuStyle::below().titled("Toolchest").mark().min_width(rect.width()).on_tear_off(tear).on_type(Msg::ToolchestTyped);
+                let tear = Msg::TearOff { app: crate::tearoff::TOOLCHEST.into(), path: vec![], output: output.clone(), at: Point::new(rect.x0 + 12.0, crate::menubar::HEIGHT + 12.0) };
+                let subs = crate::tearoff::tear_sub(crate::tearoff::TOOLCHEST.into(), menu.clone(), vec![], None, output, Point::new(rect.x0, crate::menubar::HEIGHT));
+                let style = MenuStyle::below()
+                    .titled("Toolchest")
+                    .mark()
+                    .min_width(rect.width())
+                    .on_tear_off(tear)
+                    .on_tear_off_sub(subs)
+                    .on_type(Msg::ToolchestTyped);
                 let style = self.as_bar_menu(style, win, slot, keyboard);
                 self.show_menu(win, anchor, &menu, style, cx);
             }
@@ -494,7 +501,11 @@ impl Shell {
                     self.about_to_show(pid, id);
                 }
                 let anchor = Rect::new(rect.x0, rect.y0, rect.x1, crate::menubar::HEIGHT - 1.0);
-                let style = self.as_bar_menu(MenuStyle::below(), win, slot, keyboard);
+                // Its submenus tear off into the app's palettes.
+                let app = self.wm.focused_window().map_or_else(|| crate::tearoff::DESKTOP.to_owned(), |w| w.app_id.clone());
+                let output = self.screen_of(win).map(|s| s.name()).unwrap_or_default();
+                let subs = crate::tearoff::tear_sub(app, menu.clone(), vec![menu.title.clone()], None, output, Point::new(rect.x0, crate::menubar::HEIGHT));
+                let style = self.as_bar_menu(MenuStyle::below().on_tear_off_sub(subs), win, slot, keyboard);
                 self.show_menu(win, anchor, menu, style, cx);
             }
             Slot::Tray(w) => {
@@ -1268,8 +1279,10 @@ impl Shell {
             Some(w) => w.app_id.clone(),
             None => crate::tearoff::DESKTOP.into(),
         };
-        let tear = Msg::TearOff { app, path: vec![], output: screen.name(), at };
-        let style = MenuStyle::at_point().titled(name.clone()).on_tear_off(tear);
+        let tear = Msg::TearOff { app: app.clone(), path: vec![], output: screen.name(), at };
+        let app_menu = menus.first().map(|m| m.title.clone());
+        let subs = crate::tearoff::tear_sub(app, menu.clone(), vec![], app_menu, screen.name(), at);
+        let style = MenuStyle::at_point().titled(name.clone()).on_tear_off(tear).on_tear_off_sub(subs);
         self.show_menu(bar, at_point(at), &menu, style, cx);
     }
 }

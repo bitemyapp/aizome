@@ -192,3 +192,54 @@ fn typing_in_the_toolchest_turns_it_into_the_palette() {
     assert_eq!(h.program().palette.as_ref().map(|p| p.query.as_str()), Some("w"));
     let _ = p;
 }
+
+/// Tear off the submenu open over the bar by its strip's pin.
+fn tear_open_submenu(h: &mut aizome_kit::testing::Harness<aizome_shell::shell::Shell>, bar: WindowKey) {
+    let popups = h.popups(bar);
+    assert_eq!(popups.len(), 2, "a submenu is open");
+    let (sub, r) = popups[1];
+    h.click_popup(sub, Point::new(r.width() - 3.0 - 12.0, 12.0));
+    assert!(h.popups(bar).is_empty(), "the menus closed");
+}
+
+#[test]
+fn submenus_tear_off_into_palettes_of_their_own() {
+    use aizome_kit::sidestep_ui::{Modifiers, NamedKey};
+    let mut h = scene(false);
+    let bar = window_titled(&h, "Menu bar");
+    let down = |h: &mut aizome_kit::testing::Harness<aizome_shell::shell::Shell>, n: usize| {
+        for _ in 0..n {
+            h.named(bar, NamedKey::ArrowDown, Modifiers::NONE);
+        }
+        h.named(bar, NamedKey::ArrowRight, Modifiers::NONE);
+    };
+    // The Toolchest's Places ▸ (Applications ▸ is empty here, so ↓ skips it).
+    let t = titles(&mut h, bar);
+    h.click(bar, center_of(&t, Slot::Toolchest));
+    down(&mut h, 1);
+    tear_open_submenu(&mut h, bar);
+    let torn = h.program().tearoffs[0].clone();
+    assert_eq!((torn.app.as_str(), torn.path.clone()), ("toolchest", vec!["Places".to_owned()]));
+    assert!(torn.x > 100.0, "beside the Toolchest, where Places opened: {torn:?}");
+    let (title, menu) = h.program().tear_menu(&torn).expect("its menu");
+    assert_eq!(title, "Places");
+    assert!(menu.items.iter().any(|e| e.label == "Home"));
+
+    // The menu at the pointer's Format ▸, and its Info ▸ (the app menu,
+    // remembered by its own title).
+    pointer_menu(&mut h, 600.0, 300.0);
+    down(&mut h, 5);
+    tear_open_submenu(&mut h, bar);
+    pointer_menu(&mut h, 600.0, 300.0);
+    down(&mut h, 1);
+    tear_open_submenu(&mut h, bar);
+    let paths: Vec<Vec<String>> = h.program().tearoffs.iter().map(|t| t.path.clone()).collect();
+    assert_eq!(paths[1..], [vec!["Format".to_owned()], vec!["Editor".to_owned()]]);
+    let (title, menu) = h.program().tear_menu(&h.program().tearoffs[1]).expect("Format");
+    assert_eq!(title, "Format");
+    assert!(menu.items.iter().any(|e| e.label == "Bold"));
+    assert!(h.program().tearoffs[1].x > 600.0 && h.program().tearoffs[1].y > 300.0);
+    let (title, _) = h.program().tear_menu(&h.program().tearoffs[2]).expect("the app menu");
+    assert_eq!(title, "Editor");
+    assert_eq!(h.windows().iter().filter(|k| h.title(**k) == "Palette (torn off)").count(), 3);
+}
