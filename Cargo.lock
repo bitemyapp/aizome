@@ -79,6 +79,7 @@ dependencies = [
  "toml",
  "tracing",
  "tracing-subscriber",
+ "x11rb",
  "xcursor",
 ]
 

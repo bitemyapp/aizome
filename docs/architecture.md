@@ -99,6 +99,7 @@ apps, as ⌘ does on a Mac. The system takes only:
 | ⌃❖F | Full screen |
 | ❖Return | Terminal (foot) in the Desk's folder |
 | ⌃❖Q | Lock |
+| ⌃⌥Del | Recovery: force quit stuck apps, reset input, restart the shell (`docs/recovery.md`) |
 | ❖⇧3, ❖⇧4, ❖⇧5, Print | Screenshot: screen, area, window/tool |
 | ❖-right-click | The focused app's whole menu at the pointer (NeXT) |
 | ⌃❖-drag, ⌃❖-right-drag | Move, resize |

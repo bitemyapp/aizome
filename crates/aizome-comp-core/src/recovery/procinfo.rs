@@ -30,6 +30,38 @@ use crate::state::State;
 pub struct AppProcs {
     pub key: String,
     pub pids: Vec<i32>,
+    /// xwayland-satellite, when it runs: its process (the owner of every
+    /// X11 app's windows) and its X display.
+    pub x11: Option<X11>,
+}
+
+#[derive(Clone, Debug)]
+pub struct X11 {
+    pub satellite: i32,
+    pub display: String,
+}
+
+impl AppProcs {
+    /// Its processes, with satellite's replaced by the X clients' own
+    /// when the X server names them (else satellite's stays: the fallback
+    /// that stops every X11 app).
+    fn resolved(&self) -> AppProcs {
+        let mut pids = self.pids.clone();
+        if let Some(x) = &self.x11
+            && pids.contains(&x.satellite)
+        {
+            let clients = super::x11::pids_for(&x.display, &self.key);
+            if !clients.is_empty() {
+                pids.retain(|p| *p != x.satellite);
+                for c in clients {
+                    if !pids.contains(&c) {
+                        pids.push(c);
+                    }
+                }
+            }
+        }
+        AppProcs { key: self.key.clone(), pids, x11: None }
+    }
 }
 
 pub enum Request {
@@ -170,6 +202,7 @@ impl Meter {
         let now = Instant::now();
         let mut out = Vec::new();
         for app in apps {
+            let app = &app.resolved();
             let units = units_of(&app.key, &app.pids, self.own_cgroup.as_deref());
             let mut cpu_us = 0u64;
             let mut memory = 0u64;
@@ -354,6 +387,7 @@ fn protected(pid: i32) -> bool {
 /// SIGKILL to an app: each cgroup of its own at once (`cgroup.kill`, or
 /// each process in it), and processes without one by PID.
 fn kill(app: &AppProcs, own: &Option<String>) -> Result<String, String> {
+    let app = &app.resolved();
     let units = units_of(&app.key, &app.pids, own.as_deref());
     if units.is_empty() {
         return Err(format!("{} has no processes to stop", app.key));
@@ -447,13 +481,13 @@ mod tests {
         assert!(protected(me));
         assert!(protected(1));
         let mut m = Meter::new();
-        let s = m.sample(&[AppProcs { key: "me".into(), pids: vec![me] }]);
+        let s = m.sample(&[AppProcs { key: "me".into(), pids: vec![me], x11: None }]);
         assert_eq!(s.len(), 1);
         assert!(s[0].memory.is_some_and(|m| m > 0));
         assert!(s[0].cpu_percent.is_some());
         assert!(!s[0].crashed);
         // A process that doesn't exist counts as crashed.
-        let s = m.sample(&[AppProcs { key: "gone".into(), pids: vec![i32::MAX - 7] }]);
+        let s = m.sample(&[AppProcs { key: "gone".into(), pids: vec![i32::MAX - 7], x11: None }]);
         assert!(s[0].crashed);
     }
 }

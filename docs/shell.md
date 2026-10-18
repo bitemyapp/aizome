@@ -249,6 +249,12 @@ A background surface per output:
 
 ## Lock screen
 
+The compositor's recovery overlay (Ctrl+Alt+Del) can restart the shell
+(Restart Shell; Restart Lock Screen while locked): it SIGKILLs and starts
+it again without the usual backoff, and while the session is locked it
+sends the new shell a `lock` binding once a second (for up to 20 s) until
+a lock surface shows: the session stays locked, black, without one.
+
 Locks on ⌃❖Q, on the compositor's `idle` event (config
 `idle.lock_after_minutes`), before sleep (logind PrepareForSleep, holding a
 delay inhibitor until locked), and on logind's Lock signal (`loginctl

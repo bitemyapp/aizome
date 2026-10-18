@@ -243,6 +243,8 @@ impl KeyboardShortcutsInhibitHandler for State {
 
 impl PointerConstraintsHandler for State {
     fn new_constraint(&mut self, surface: &WlSurface, pointer: &PointerHandle<Self>) {
+        // Asked for anew: a reset no longer holds it off.
+        crate::recovery::constraint_requested(&mut self.az, surface);
         if pointer.current_focus().is_some_and(|f| &f.0 == surface) {
             with_pointer_constraint(surface, pointer, |c| {
                 if let Some(c) = c {

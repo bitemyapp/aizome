@@ -32,6 +32,10 @@ xcursor = "0.3"
 libc = "0.2"
 bitflags = "2"
 libloading.workspace = true
+# The processes behind X11 apps' windows (xwayland-satellite owns them on
+# the Wayland side): X-Resource client IDs, for the recovery overlay's
+# Force Quit. Pure Rust, no libxcb.
+x11rb = { version = "0.13", default-features = false, features = ["res"] }
 
 [build-dependencies]
 sha2 = "0.10"

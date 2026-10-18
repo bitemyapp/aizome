@@ -77,6 +77,11 @@ Protocol version: **1** (`version` reports it).
 | `mirror-output` | `name`, `source?` | `ok`; `name` shows `source`'s picture, scaled to fit and letterboxed in black, and leaves the layout (no wl_output, no windows or layer surfaces of its own); `source: null` gives it its own picture back, right of the others. For this session; Settings writes `mirror = "…"` in the output's `[[outputs]]` entry |
 | `set-primary-output` | `name` | `ok`; the main display for this session (Settings writes `primary = true`) |
 | `night-light` | `enabled?`, `temperature?` (Kelvin, 1900–6500) | `night-light {state: NightLightState}`, after changing what's given for this session (Settings writes `[night_light]`) |
+| `recovery` | `state?` | `ok`; opens or closes the recovery overlay (Ctrl+Alt+Del); left out, toggles |
+| `recovery-state` | | `recovery {state: RecoveryState}` |
+| `recovery-action` | `action`, `app_id?` | `message {message}` or `error`; does one of the overlay's actions, open or not: `force-quit` and `close` (with `app_id`), `reset-input`, `restart-shell`, `reload-compositor`, `lock`, `log-out`, `text-console`. Over the lock screen only `reset-input`, `restart-shell` and `text-console` |
+| `input-state` | | `input-state {state: InputState}` |
+| `debug-stall` | `seconds` | `ok` after blocking the main loop that long (at most 60 s), to try the watchdog (`docs/recovery.md`) |
 
 `desk` is a 1-based position (`2`) or a name (`"Mail"`). `transform` is
 `normal`, `90`, `180`, `270`, `flipped`, `flipped-90`, `flipped-180` or
@@ -103,6 +108,23 @@ US layout needs it (capitals, `!` `(` `*` `+` `?` and the like).
 ## Responses
 
 `ok`, `error {message}`, and the ones named above.
+
+### RecoveryState
+
+`open`, `locked` (only safe actions, no apps), `apps` (one per app ID,
+apps in trouble first: `app_id`, `name`, `windows`, `pids` (the windows'
+clients), `units` (the scopes or processes Force Quit kills), `cpu_percent`
+(of one core, over the last second, while open), `memory_bytes`,
+`not_responding` (a ping unanswered for 2.5 s), `crashed`), `selected`,
+`actions` (offered, in order), `message` (the last action's result, or
+the notice after a restart), `panel` (its rectangle while open).
+
+### InputState
+
+`pointer_grab` (`popup`, or the button and whose surface, or none),
+`pressed_buttons` and `pressed_keys` (evdev codes the seat holds),
+`keyboard_grab`, `pointer_constraint` (`locked`, `confined`),
+`cursor_hidden`, `pointer_focus` and `keyboard_focus` (app IDs).
 
 ### WindowInfo
 
@@ -188,6 +210,7 @@ Handled by the compositor:
 
 | Chord | Action name |
 |---|---|
+| Ctrl+Alt+Del (always: before every other binding, inhibitor, grab and the lock; not rebindable) | the recovery overlay |
 | ❖Tab, ❖⇧Tab | `switcher`, `switcher-reverse` |
 | ❖\` | `next-window-of-app` |
 | ❖H, ❖⌥H, ❖M | `hide-app`, `hide-others`, `minimise` |
