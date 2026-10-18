@@ -22,7 +22,8 @@ pub mod compositor;
 pub mod shell;
 pub use compositor::{NightLight, NightSchedule, RendererChoice, Sun, TabDoubleClick, sun_times, temperature_rgb};
 pub use shell::{
-    ClockFormat, DeskbarSettings, LockSettings, MenubarSettings, NotificationSettings, PaletteSettings, SYSTRAY_WIDGETS,
+    ClockFormat, DeskbarSettings, DesktopSettings, LockSettings, MenubarSettings, NotificationSettings, PALETTE_SCOPES, PaletteSettings,
+    PowerKey, PowerSettings, SYSTRAY_WIDGETS, SoundSettings, names_app,
 };
 use serde::{Deserialize, Serialize};
 
@@ -563,15 +564,32 @@ impl Settings {
         shell::read(self.extra.get("palette").and_then(|v| v.as_table()))
     }
 
+    /// `[desktop]`, typed (kept among the top level's extra keys).
+    pub fn desktop_settings(&self) -> DesktopSettings {
+        shell::read(self.extra.get("desktop").and_then(|v| v.as_table()))
+    }
+
+    /// `[power]`, typed.
+    pub fn power_settings(&self) -> PowerSettings {
+        shell::read(Some(&self.power))
+    }
+
+    /// `[sound]`'s keys for the shell, typed.
+    pub fn sound_settings(&self) -> SoundSettings {
+        shell::read(Some(&self.sound))
+    }
+
     /// Write one of the shell's sections (`"menubar"`, `"deskbar"`,
-    /// `"notifications"`, `"lock"` or `"palette"`) over its table, keeping
-    /// the keys it doesn't know.
+    /// `"notifications"`, `"lock"`, `"palette"`, `"desktop"`, `"power"` or
+    /// `"sound"`) over its table, keeping the keys it doesn't know.
     pub fn set_shell_section<T: Serialize>(&mut self, section: &str, value: &T) {
         let table = match section {
             "menubar" => &mut self.menubar,
             "deskbar" => &mut self.deskbar,
             "notifications" => &mut self.notifications,
             "lock" => &mut self.lock,
+            "power" => &mut self.power,
+            "sound" => &mut self.sound,
             other => {
                 let v = self.extra.entry(other.to_owned()).or_insert_with(|| toml::Value::Table(toml::Table::new()));
                 if !v.is_table() {

@@ -1,5 +1,5 @@
 //! The shell's sections, typed: `[menubar]`, `[deskbar]`, `[notifications]`,
-//! `[lock]` and `[palette]`.
+//! `[lock]`, `[palette]`, `[desktop]`, `[power]` and `[sound]`.
 //!
 //! [`Settings`](crate::Settings) keeps these sections as plain tables (so
 //! a load and save never loses a key this version doesn't know); the
@@ -60,13 +60,38 @@ impl MenubarSettings {
 }
 
 /// `[deskbar]`.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct DeskbarSettings {
     /// Folded into the bar's `N apps ⌄` control.
     pub collapsed: bool,
     /// App ids kept in the Deskbar while not running ("Keep in Deskbar").
     pub pinned: Vec<String>,
+    /// The Shelf under the apps.
+    pub show_shelf: bool,
+}
+
+impl Default for DeskbarSettings {
+    fn default() -> Self {
+        DeskbarSettings { collapsed: false, pinned: Vec::new(), show_shelf: true }
+    }
+}
+
+/// `[desktop]`: the desktop's icons.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct DesktopSettings {
+    /// The home folder's icon.
+    pub show_home: bool,
+    /// Disks and mounted images.
+    pub show_disks: bool,
+    pub show_trash: bool,
+}
+
+impl Default for DesktopSettings {
+    fn default() -> Self {
+        DesktopSettings { show_home: true, show_disks: true, show_trash: true }
+    }
 }
 
 /// `[notifications]`.
@@ -83,6 +108,12 @@ pub struct NotificationSettings {
     pub banner_seconds: u32,
     /// Apps (by app id or name) whose notifications are filed silently.
     pub muted_apps: Vec<String>,
+    /// The lock screen shows notifications' text (else only whose they are).
+    pub previews_when_locked: bool,
+    /// Apps (by app id, desktop entry or name) whose notifications are dropped.
+    pub blocked_apps: Vec<String>,
+    /// Apps whose notifications make no sound.
+    pub silent_apps: Vec<String>,
 }
 
 impl Default for NotificationSettings {
@@ -93,8 +124,21 @@ impl Default for NotificationSettings {
             quiet_until: None,
             banner_seconds: 5,
             muted_apps: Vec::new(),
+            previews_when_locked: false,
+            blocked_apps: Vec::new(),
+            silent_apps: Vec::new(),
         }
     }
+}
+
+/// Whether `list` names an app, by any of `names` (its app id, desktop
+/// entry, name), ignoring case and a `.desktop` ending.
+pub fn names_app(list: &[String], names: &[&str]) -> bool {
+    let norm = |s: &str| s.trim().trim_end_matches(".desktop").to_ascii_lowercase();
+    list.iter().any(|l| {
+        let l = norm(l);
+        !l.is_empty() && names.iter().any(|n| norm(n) == l)
+    })
 }
 
 impl NotificationSettings {
@@ -129,13 +173,20 @@ pub struct LockSettings {
     pub show_picture: bool,
     /// The PAM service the lock screen authenticates with.
     pub pam_service: String,
+    /// The time and date on the lock screen.
+    pub show_clock: bool,
+    /// Lock when the compositor turns the monitors off for idleness.
+    pub after_monitors_off: bool,
 }
 
 impl Default for LockSettings {
     fn default() -> Self {
-        LockSettings { before_sleep: true, show_picture: true, pam_service: "aizome".into() }
+        LockSettings { before_sleep: true, show_picture: true, pam_service: "aizome".into(), show_clock: true, after_monitors_off: true }
     }
 }
+
+/// The palette's scopes, by the names `[palette] scopes` uses.
+pub const PALETTE_SCOPES: [&str; 6] = ["commands", "windows", "files", "apps", "settings", "actions"];
 
 /// `[palette]`.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -147,12 +198,60 @@ pub struct PaletteSettings {
     pub reindex_minutes: u32,
     /// Most rows shown per section under All.
     pub per_section: u32,
+    /// What the palette finds, from [`PALETTE_SCOPES`].
+    pub scopes: Vec<String>,
+    /// Folders the file index skips ("~" is the home folder).
+    pub exclude: Vec<String>,
 }
 
 impl Default for PaletteSettings {
     fn default() -> Self {
-        PaletteSettings { roots: vec!["~".into()], reindex_minutes: 10, per_section: 4 }
+        PaletteSettings {
+            roots: vec!["~".into()],
+            reindex_minutes: 10,
+            per_section: 4,
+            scopes: PALETTE_SCOPES.iter().map(|s| s.to_string()).collect(),
+            exclude: Vec::new(),
+        }
     }
+}
+
+impl PaletteSettings {
+    /// Whether the palette finds `scope` (a name from [`PALETTE_SCOPES`]).
+    pub fn finds(&self, scope: &str) -> bool {
+        self.scopes.iter().any(|s| s == scope)
+    }
+}
+
+/// What the power key does, where the session handles it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum PowerKey {
+    /// Ask: sleep, restart or shut down (the shut-down dialog).
+    Ask,
+    Sleep,
+    /// Lock the screen.
+    Lock,
+    /// Shut down.
+    Off,
+    Nothing,
+}
+
+/// `[power]`.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct PowerSettings {
+    /// What the power key does; unset leaves it to the system (logind's
+    /// `HandlePowerKey`, the session asking where that's `ignore`).
+    pub power_key: Option<PowerKey>,
+}
+
+/// `[sound]`, the shell's part.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SoundSettings {
+    /// Flash the screen's edge for the system bell instead of sounding it.
+    pub visual_alert: bool,
 }
 
 /// Reads a section's table as `T`, a field of the wrong type taking its
@@ -228,6 +327,45 @@ mod tests {
         again.set_shell_section("palette", &p);
         let back = Settings::from_toml(&again.to_toml().unwrap()).unwrap();
         assert_eq!(back.palette_settings().per_section, 6);
+    }
+
+    #[test]
+    fn the_keys_settings_writes_read_typed() {
+        // As Shitsurae writes them (apps/shitsurae/src/extra.rs).
+        let s = Settings::from_toml(
+            "[notifications]\npreviews_when_locked = true\nblocked_apps = [\"firefox.desktop\"]\nsilent_apps = [\"org.aizome.Fusen\"]\n\
+             [deskbar]\nshow_shelf = false\n[desktop]\nshow_disks = false\n[lock]\nshow_clock = false\nafter_monitors_off = false\n\
+             [power]\npower_key = \"lock\"\n[palette]\nscopes = [\"commands\", \"apps\"]\nexclude = [\"~/Private\"]\n[sound]\nvisual_alert = true\nvolume_step = 5\n",
+        )
+        .unwrap();
+        let n = s.notification_settings();
+        assert!(n.previews_when_locked);
+        assert!(names_app(&n.blocked_apps, &["Firefox", "firefox"]));
+        assert!(names_app(&n.silent_apps, &["org.aizome.Fusen"]));
+        assert!(!names_app(&n.silent_apps, &["org.aizome.Sumi", ""]));
+        assert!(!s.deskbar_settings().show_shelf);
+        let d = s.desktop_settings();
+        assert!(d.show_home && !d.show_disks && d.show_trash);
+        let l = s.lock_settings();
+        assert!(!l.show_clock && !l.after_monitors_off);
+        assert_eq!(s.power_settings().power_key, Some(PowerKey::Lock));
+        let p = s.palette_settings();
+        assert!(p.finds("apps") && !p.finds("files"));
+        assert_eq!(p.exclude, ["~/Private"]);
+        assert!(s.sound_settings().visual_alert);
+        // Left out, the defaults: everything shows, the system has the key.
+        let s = Settings::default();
+        assert!(s.deskbar_settings().show_shelf && s.desktop_settings().show_trash && s.lock_settings().show_clock);
+        assert_eq!(s.power_settings().power_key, None);
+        assert_eq!(s.palette_settings().scopes.len(), PALETTE_SCOPES.len());
+        // Written back, [power] and [sound] stay their own sections.
+        let mut s = Settings::from_toml("[sound]\nvolume_step = 5\n").unwrap();
+        s.set_shell_section("power", &PowerSettings { power_key: Some(PowerKey::Ask) });
+        s.set_shell_section("sound", &SoundSettings { visual_alert: true });
+        let back = Settings::from_toml(&s.to_toml().unwrap()).unwrap();
+        assert_eq!(back.power_settings().power_key, Some(PowerKey::Ask));
+        assert!(back.sound_settings().visual_alert);
+        assert_eq!(back.sound.get("volume_step").and_then(|v| v.as_integer()), Some(5));
     }
 
     #[test]

@@ -14,7 +14,7 @@
 //! | `[desktop]` | `show_home`, `show_disks`, `show_trash` (bool, true) | the desktop's icons |
 //! | `[windows]` | `tab_double_click` (`"fill"`, `"minimise"`, `"nothing"`) | what double-clicking a tab does |
 //! | `[lock]` | `show_clock` (bool, true), `after_monitors_off` (bool, true) | |
-//! | `[power]` | `power_key` (`"ask"`, `"sleep"`, `"off"`, `"nothing"`) | when logind leaves the key to the session |
+//! | `[power]` | `power_key` (`"ask"`, `"sleep"`, `"lock"`, `"off"`, `"nothing"`) | what the power key does; the shell holds logind's `handle-power-key` while it's set |
 //! | `[palette]` | `scopes` (list), `exclude` (list) | the palette's scopes; folders the file index skips |
 //! | `[performance]` | `renderer` (`"auto"`, `"gpu"`, `"software"`) | the compositor's renderer at the next login |
 //! | `[input.pointer]`, `[input.touchpad]` | `scroll_factor` (float, 1.0) | scrolling distance |

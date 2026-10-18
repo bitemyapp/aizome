@@ -62,7 +62,8 @@ pub enum Msg {
     Done(&'static str, Result<(), String>),
 }
 
-pub const POWER_KEY: [(&str, &str); 4] = [("ask", "Ask what to do"), ("sleep", "Sleep"), ("off", "Shut down"), ("nothing", "Nothing")];
+pub const POWER_KEY: [(&str, &str); 5] =
+    [("ask", "Ask what to do"), ("sleep", "Sleep"), ("lock", "Lock the screen"), ("off", "Shut down"), ("nothing", "Nothing")];
 
 /// logind.conf's settings, from the file and its drop-ins (later wins).
 pub fn read_logind() -> Logind {
@@ -303,7 +304,7 @@ impl Pane for Battery {
             }
             Msg::ScreenOff(i) => cx.change(|s| s.idle.monitors_off_after_minutes = minutes_at(s.idle.monitors_off_after_minutes, i)),
             Msg::LockAfter(i) => cx.change(|s| s.idle.lock_after_minutes = minutes_at(s.idle.lock_after_minutes, i)),
-            Msg::PowerKey(i) => cx.change(|s| extra::set(&mut s.power, "power_key", POWER_KEY[i.min(3)].0)),
+            Msg::PowerKey(i) => cx.change(|s| extra::set(&mut s.power, "power_key", POWER_KEY[i.min(POWER_KEY.len() - 1)].0)),
             Msg::Percent(on) => cx.change(|s| {
                 let mut m = s.menubar_settings();
                 m.battery_percent = on;
