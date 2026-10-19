@@ -16,6 +16,8 @@ use aizome_kit::widget::{
 };
 use aizome_kit::{Align, Element, Layoutable, Length};
 
+use crate::grouped::{self, Cut};
+
 /// A bit's cell.
 pub const CELL: f64 = 24.0;
 /// Between the two bytes of a row.
@@ -83,17 +85,9 @@ impl Widget for RadixRow {
             if self.selected { t.text() } else { t.text2() },
         );
         let room = Rect::new(r.x0 + 48.0, r.y0, r.x1 - 8.0, r.y1);
-        let w = cx.layout_text(&self.value, &vs, None).size().width;
-        let text = if w <= room.width() {
-            self.value.clone()
-        } else {
-            // The low digits matter most: cut from the left.
-            let chars: Vec<char> = self.value.chars().collect();
-            let per = w / chars.len().max(1) as f64;
-            let keep = ((room.width() / per).floor() as usize).saturating_sub(1).min(chars.len());
-            std::iter::once('…').chain(chars[chars.len() - keep..].iter().copied()).collect()
-        };
-        cx.draw_text_in(&text, &vs, room, Align::Start);
+        // The low digits matter most: cut from the left.
+        let text = grouped::fit(cx, &self.value, &vs, room.width(), Cut::Start);
+        grouped::draw_in(cx, &text, &vs, room, Align::Start);
     }
 
     fn hash(&self, h: &mut PaintHasher) {

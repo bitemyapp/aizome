@@ -7,6 +7,7 @@ pub mod app;
 pub mod bits;
 pub mod display;
 pub mod entry;
+pub mod grouped;
 pub mod instance;
 pub mod keypad;
 pub mod tape;
