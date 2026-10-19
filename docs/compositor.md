@@ -297,7 +297,7 @@ the desktop.
 | `wm/` | The model: windows, stacking, focus history, tab groups, Desks, placement, fill/split/full screen. Plain Rust, unit-tested; saved and restored across reloads. |
 | `actions.rs`, `hooks.rs` | Window lifecycle, placement and the hook table the core calls |
 | `decor.rs`, `render.rs` | Tab and frame layout and hit testing; the scene per output, front to back |
-| `overlays/` | Stack-drop feedback, marking menu, switcher, overview, area picker |
+| `overlays/` | Stack-drop feedback, marking menu, switcher, overview, area picker (screenshots, and the picks the shell and the share picker ask for, with the sharing banner) |
 | `input.rs`, `grabs.rs`, `bindings.rs`, `cmdkey.rs` | Key and pointer handling after the core's; move, resize, tab slide and box grabs; the binding table and ❖ translation |
 | `anim.rs`, `memory.rs`, `requests.rs`, `config.rs` | Motion; remembered places; the IPC requests about windows and Desks; settings |
 
