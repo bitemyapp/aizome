@@ -229,15 +229,24 @@ impl Network {
     }
 
     /// Join an enterprise (802.1X) network with a username and password.
+    /// A saved profile takes the new account in memory first and keeps it
+    /// only once joining works (as a new password does, [`Self::connect`]):
+    /// a refused account leaves the saved profile as it was.
     pub fn connect_enterprise(&self, network: &WifiNetwork, credentials: Enterprise) -> Task<()> {
         let network = network.clone();
         let saved = network.connection.as_ref().and_then(|uuid| self.snapshot().connection(uuid).cloned());
         self.task(move |bus| {
-            if let Some(saved) = &saved {
-                forget_paths(bus, std::slice::from_ref(&saved.path))?;
-            }
             let settings = wifi_settings(&network.ssid_bytes, Security::Enterprise, None, Some(&credentials), false);
-            add_and_wait(bus, settings, &network.device, &network.best_access_point)
+            match &saved {
+                Some(saved) => rejoin_with(
+                    bus,
+                    saved,
+                    |current| enterprise_account(current, &settings),
+                    &network.device,
+                    &network.best_access_point,
+                ),
+                None => add_and_wait(bus, settings, &network.device, &network.best_access_point),
+            }
         })
     }
 
@@ -565,11 +574,48 @@ fn rejoin(
     device: &str,
     access_point: &str,
 ) -> Result<()> {
-    let settings: ConnectionSettings = bus.call(NM, &saved.path, IFACE_CONNECTION, "GetSettings", &())?;
-    let mut updated = with_setting(&settings, group, key, Value::from(password.to_owned()));
-    if let Some(flags) = updated.get_mut(group) {
-        flags.insert(format!("{key}-flags"), Value::from(0u32));
+    rejoin_with(
+        bus,
+        saved,
+        |settings| {
+            let props = settings.entry(group.to_owned()).or_default();
+            props.insert(key.to_owned(), Value::from(password.to_owned()));
+            props.insert(format!("{key}-flags"), Value::from(0u32));
+        },
+        device,
+        access_point,
+    )
+}
+
+/// A saved profile's settings with a new enterprise account: the new
+/// `802-1x` setting in place of the old one, and WPA-EAP.
+fn enterprise_account(settings: &mut EditableSettings, new: &NewSettings<'_>) {
+    let owned = |props: &HashMap<&'static str, Value<'_>>| -> HashMap<String, Value<'static>> {
+        props.iter().filter_map(|(k, v)| Some(((*k).to_owned(), Value::from(v.try_to_owned().ok()?)))).collect()
+    };
+    if let Some(eap) = new.get("802-1x") {
+        settings.insert("802-1x".to_owned(), owned(eap));
     }
+    settings
+        .entry("802-11-wireless-security".to_owned())
+        .or_default()
+        .insert("key-mgmt".to_owned(), Value::from("wpa-eap"));
+}
+
+/// Join a saved network with its settings changed by `edit` (a new
+/// password, a new account): in memory first, saved to disk only once
+/// joining works, reloaded from disk otherwise, so a refused change never
+/// costs the profile that was saved.
+fn rejoin_with(
+    bus: &Bus,
+    saved: &SavedConnection,
+    edit: impl FnOnce(&mut EditableSettings),
+    device: &str,
+    access_point: &str,
+) -> Result<()> {
+    let settings: ConnectionSettings = bus.call(NM, &saved.path, IFACE_CONNECTION, "GetSettings", &())?;
+    let mut updated = editable(&settings);
+    edit(&mut updated);
     let args: HashMap<&str, Value> = HashMap::new();
     bus.call_with::<_, HashMap<String, OwnedValue>>(
         Opts::ACTION,

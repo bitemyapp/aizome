@@ -35,6 +35,8 @@ struct Log {
     deleted: Vec<String>,
     updated: Vec<(Settings, u32)>,
     activated: Vec<String>,
+    /// Connections saved to disk (`Save`).
+    saved: Vec<String>,
     scans: usize,
 }
 
@@ -45,10 +47,12 @@ struct Manager {
     next: u32,
 }
 
-/// Whether the fake accepts a connection: open, or the password "right".
+/// Whether the fake accepts a connection: open, or the password (an
+/// enterprise account's too) "right".
 fn accepted(settings: &Settings) -> bool {
-    match setting_str(settings, "802-11-wireless-security", "key-mgmt") {
+    match setting_str(settings, "802-11-wireless-security", "key-mgmt").as_deref() {
         None => true,
+        Some("wpa-eap") => setting_str(settings, "802-1x", "password").as_deref() == Some("right"),
         Some(_) => setting_str(settings, "802-11-wireless-security", "psk").as_deref() == Some("right"),
     }
 }
@@ -188,7 +192,7 @@ impl SettingsRoot {
         uuid: String,
         #[zbus(object_server)] server: &ObjectServer,
     ) -> fdo::Result<OwnedObjectPath> {
-        for n in [1, 101, 102, 103, 104, 105, 106] {
+        for n in [1, 2, 101, 102, 103, 104, 105, 106] {
             let p = format!("{NM_PATH}/Settings/{n}");
             if let Ok(connection) = server.interface::<_, Connection>(p.as_str()).await
                 && setting_str(&connection.get().await.settings, "connection", "uuid").as_deref() == Some(uuid.as_str())
@@ -240,7 +244,9 @@ impl Connection {
         Ok(HashMap::new())
     }
 
-    fn save(&self) {}
+    fn save(&self, #[zbus(header)] header: zbus::message::Header<'_>) {
+        self.log.lock().unwrap().saved.push(header.path().map(|p| p.to_string()).unwrap_or_default());
+    }
 
     #[zbus(signal)]
     async fn updated(emitter: &SignalEmitter<'_>) -> zbus::Result<()>;
@@ -281,17 +287,23 @@ impl Device {
 
 struct Wireless {
     log: Arc<Mutex<Log>>,
+    /// Campus, an enterprise network, is in range too.
+    campus: bool,
 }
 
 #[zbus::interface(name = "org.freedesktop.NetworkManager.Device.Wireless")]
 impl Wireless {
     #[zbus(property)]
     fn access_points(&self) -> Vec<OwnedObjectPath> {
-        vec![
+        let mut aps = vec![
             path("/org/freedesktop/NetworkManager/AccessPoint/1"),
             path("/org/freedesktop/NetworkManager/AccessPoint/2"),
             path("/org/freedesktop/NetworkManager/AccessPoint/3"),
-        ]
+        ];
+        if self.campus {
+            aps.push(path("/org/freedesktop/NetworkManager/AccessPoint/4"));
+        }
+        aps
     }
     fn request_scan(&self, _options: HashMap<String, OwnedValue>) {
         self.log.lock().unwrap().scans += 1;
@@ -378,6 +390,11 @@ fn value(v: impl Into<Value<'static>>) -> OwnedValue {
 /// Serve the fake: one Wi-Fi device seeing Home (WPA2, saved), Office
 /// (WPA2) and Cafe (open).
 fn serve(bus: &common::TestBus) -> (zbus::blocking::Connection, Arc<Mutex<Log>>) {
+    serve_with(bus, false)
+}
+
+/// The fake, with Campus (802.1X, saved with an account) in range too.
+fn serve_with(bus: &common::TestBus, campus: bool) -> (zbus::blocking::Connection, Arc<Mutex<Log>>) {
     let log = Arc::new(Mutex::new(Log::default()));
     let home: Settings = HashMap::from([
         (
@@ -409,7 +426,7 @@ fn serve(bus: &common::TestBus) -> (zbus::blocking::Connection, Arc<Mutex<Log>>)
         .unwrap()
         .serve_at(DEVICE, Device { reason: 0 })
         .unwrap()
-        .serve_at(DEVICE, Wireless { log: log.clone() })
+        .serve_at(DEVICE, Wireless { log: log.clone(), campus })
         .unwrap()
         .serve_at(
             "/org/freedesktop/NetworkManager/AccessPoint/1",
@@ -425,6 +442,36 @@ fn serve(bus: &common::TestBus) -> (zbus::blocking::Connection, Arc<Mutex<Log>>)
         .unwrap()
         .build()
         .unwrap();
+    if campus {
+        let saved: Settings = HashMap::from([
+            (
+                "connection".to_owned(),
+                HashMap::from([
+                    ("id".to_owned(), value("Campus")),
+                    ("uuid".to_owned(), value("22222222-2222-2222-2222-222222222222")),
+                    ("type".to_owned(), value("802-11-wireless")),
+                ]),
+            ),
+            ("802-11-wireless".to_owned(), HashMap::from([("ssid".to_owned(), value(b"Campus".to_vec()))])),
+            ("802-11-wireless-security".to_owned(), HashMap::from([("key-mgmt".to_owned(), value("wpa-eap"))])),
+            (
+                "802-1x".to_owned(),
+                HashMap::from([
+                    ("eap".to_owned(), value(vec!["peap"])),
+                    ("identity".to_owned(), value("alice")),
+                    ("password".to_owned(), value("old")),
+                ]),
+            ),
+        ]);
+        let server = conn.object_server();
+        server.at(format!("{NM_PATH}/Settings/2"), Connection { log: log.clone(), settings: saved }).unwrap();
+        server
+            .at(
+                "/org/freedesktop/NetworkManager/AccessPoint/4",
+                AccessPoint { ssid: "Campus", rsn: 0x200, strength: 80 },
+            )
+            .unwrap();
+    }
     (conn, log)
 }
 
@@ -617,4 +664,48 @@ fn profiles_read_whole_and_change_ipv6_and_the_private_address() {
     assert!(network.set_ipv6_method(&uuid, "sideways").wait().is_err());
     // Not up: nothing to reapply, and no error.
     assert!(!network.reapply(&uuid).wait().unwrap());
+}
+
+#[test]
+fn a_refused_account_keeps_the_saved_enterprise_profile() {
+    use aizome_sys::network::Enterprise;
+    let bus = test_bus!();
+    let (_fake, log) = serve_with(&bus, true);
+    let network = Network::with_bus(bus.bus(), Wake::none(), no_radios());
+    assert!(eventually(|| network.snapshot().network("Campus").is_some_and(|n| n.known)), "{:?}", network.snapshot());
+    let campus = network.snapshot().network("Campus").unwrap().clone();
+    assert_eq!(campus.security, Security::Enterprise);
+    let uuid = campus.connection.clone().unwrap();
+    let account = |password: &str| Enterprise {
+        method: "peap".into(),
+        phase2: "mschapv2".into(),
+        identity: "alice".into(),
+        password: password.into(),
+        validate_server: true,
+        domain: "example.org".into(),
+        ..Enterprise::default()
+    };
+
+    // A wrong password: refused, and the saved profile is still there,
+    // changed only in memory (NetworkManager reloads it from disk).
+    let result = network.connect_enterprise(&campus, account("wrong")).wait();
+    assert!(matches!(result, Err(Error::Rejected(_))), "{result:?}");
+    {
+        let log = log.lock().unwrap();
+        assert!(log.deleted.is_empty(), "nothing deleted: {:?}", log.deleted);
+        assert!(log.added.is_empty(), "nothing added in its place");
+        assert!(log.saved.is_empty(), "nothing saved");
+        let (settings, flags) = log.updated.last().expect("the account tried");
+        assert_eq!(*flags, 2, "in memory only");
+        assert_eq!(setting_str(settings, "802-1x", "password").as_deref(), Some("wrong"));
+        assert_eq!(setting_str(settings, "802-1x", "domain-suffix-match").as_deref(), Some("example.org"));
+        assert_eq!(setting_str(settings, "connection", "id").as_deref(), Some("Campus"), "the rest kept");
+    }
+    assert!(network.snapshot().connection(&uuid).is_some(), "the profile stays");
+
+    // The right one joins and is kept.
+    network.connect_enterprise(&campus, account("right")).wait().unwrap();
+    let log = log.lock().unwrap();
+    assert_eq!(log.saved, [format!("{NM_PATH}/Settings/2")]);
+    assert!(log.deleted.is_empty() && log.added.is_empty());
 }

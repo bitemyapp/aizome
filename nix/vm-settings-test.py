@@ -1198,14 +1198,41 @@ def loudness_during(act, seconds=4):
     return int(machine.succeed(f"python3 -c {shlex.quote(script)} {raw}").strip())
 
 
-@part("Network: joining a WPA2 network with its passphrase, airplane mode, and the wired details")
+def search_settings(words):
+    """Search Settings and open what it finds first, as a person does."""
+    S.click(S.wait(name="search"))
+    chord("super+a")
+    type_text(words)
+    key("return")
+    time.sleep(1)
+
+
+def revealed(entry):
+    """The option search opened, shown in the pane."""
+    return until(f"{entry} shown", lambda: S.find(name=entry))
+
+
+@part("Network: search reveals Add VPN and Other Network…; a wrong passphrase is asked again as typed; the hotspot")
 def network():
     S.open("network")
     S.reveal(label="Aizome Test AP", role="button") if S.find(label="Aizome Test AP", visible=False) else None
     ap = until("the access point listed", lambda: S.find(label="Aizome Test AP", role="button", visible=False), timeout=60)
+    # No VPNs here: Add VPN is the VPN section's only row, and found.
+    search_settings("Add VPN")
+    revealed("entry:network.add-vpn")
+    key("escape")
+    # A wrong passphrase: the sheet comes back with it, to be put right.
     S.click(S.reveal(label=ap["label"], role="button"))
     field = S.wait(name="network-password")
     assert field.get("focused"), field
+    type_text("not-the-passphrase")
+    key("return")
+    until("the sheet back", lambda: S.find(contains="Couldn't join: "), timeout=120)
+    field = S.wait(name="network-password")
+    assert field.get("text") == "not-the-passphrase", field
+    assert "Aizome Test AP" not in machine.succeed("nmcli -t -f NAME connection show"), "a refused network left behind"
+    S.click(field)
+    chord("super+a")
     type_text(WIFI_PASSPHRASE)
     key("return")
     until(
@@ -1225,8 +1252,34 @@ def network():
     wired = " ".join(S.texts(S.row("network", "wired")))
     assert addr in wired, (addr, wired)
 
+    # Wi-Fi off: search for Other Network… shows the switch that brings it.
+    S.click(S.control("network", "wifi", role="switch"))
+    until("Wi-Fi off", lambda: "disabled" in machine.succeed("nmcli radio wifi"))
+    search_settings("Other Network")
+    revealed("entry:network.join-other")
+    key("escape")
+    S.click(S.control("network", "wifi", role="switch"))
+    until("Wi-Fi on", lambda: "enabled" in machine.succeed("nmcli radio wifi"))
+    until("Wi-Fi back", lambda: any("Connected to Aizome Test AP" in t for t in S.texts()), timeout=90)
+
+    # The hotspot says the network's name, not its profile's ("Hotspot").
+    S.click(S.control("network", "hotspot", role="switch"))
+    name = S.wait(name="network-hotspot-name").get("value")
+    assert name and name != "Hotspot", name
+    S.click(S.wait(name="network-hotspot-password"))
+    type_text("hotspot-pass-1")
+    key("return")
+    until(
+        "the hotspot named",
+        lambda: f"Sharing as “{name}”" in " ".join(S.texts(S.row("network", "hotspot"))),
+        timeout=60,
+    )
+    shot("network-hotspot")
+    S.click(S.control("network", "hotspot", role="switch"))
+    until("the hotspot off", lambda: "Sharing as" not in " ".join(S.texts(S.row("network", "hotspot"))), timeout=30)
+
     reopen("network")
-    until("Wi-Fi back", lambda: any("Connected to Aizome Test AP" in t for t in S.texts()), timeout=60)
+    until("Wi-Fi back", lambda: any("Connected to Aizome Test AP" in t for t in S.texts()), timeout=90)
     assert S.find(text="Aizome Test AP", visible=False), "the network in use isn't shown"
     S.quit()
 
