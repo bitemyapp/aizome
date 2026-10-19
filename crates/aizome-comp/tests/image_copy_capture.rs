@@ -458,6 +458,41 @@ fn dmabuf_stream_under_gles() {
     }
 }
 
+/// A session that showed a frame is a share, which the shell hears of
+/// (IPC `shares`, `shares-changed`) and can stop: the session stops and a
+/// frame waiting fails, as when its source goes.
+#[test]
+fn shares_are_reported_and_can_be_stopped() {
+    use aizome_ipc::{Event, Request, Response};
+    let c = start("pixman");
+    let (_client, _) = window(&c, "org.test.capture");
+    let mut events = aizome_ipc::Client::connect_to(&c.ipc).unwrap().events().unwrap();
+    events.stream().set_read_timeout(Some(Duration::from_secs(10))).unwrap();
+    let mut next_shares = || {
+        events.by_ref().find_map(|e| match e {
+            Ok(Event::SharesChanged { shares }) => Some(shares),
+            _ => None,
+        })
+    };
+    let mut cap = Capturer::new(&c);
+    let session = cap.output_session();
+    // Not a share until a frame showed.
+    assert_eq!(c.request(Request::Shares), Response::Shares { shares: Vec::new() });
+    let frame = cap.start(&session);
+    cap.finish(&frame, Duration::from_secs(5)).expect("the first frame");
+    let shares = next_shares().expect("shares-changed");
+    assert_eq!(shares.len(), 1, "{shares:?}");
+    assert_eq!((shares[0].output.as_deref(), shares[0].window), (Some("HEADLESS-1"), None));
+    assert_eq!(c.request(Request::Shares), Response::Shares { shares: shares.clone() });
+    // Stopped from the shell's indicator.
+    let frame = cap.start(&session);
+    c.ok(Request::StopShare { id: Some(shares[0].id) });
+    cap.fails(&frame, FailureReason::Stopped);
+    assert!(cap.wait(Duration::from_secs(5), |h| h.stopped), "the session didn't stop");
+    assert_eq!(next_shares().expect("shares-changed"), Vec::new());
+    assert!(matches!(c.request(Request::StopShare { id: None }), Response::Error { .. }));
+}
+
 impl Dispatch<Session, ()> for Heard {
     fn event(
         h: &mut Self,

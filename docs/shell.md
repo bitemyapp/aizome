@@ -298,6 +298,32 @@ time.
   Record Area, off), `folder`, and `recorder` (`auto`,
   `gpu-screen-recorder`, `wf-recorder`).
 
+## Screen sharing
+
+What apps share (browsers' screen and window sharing, through
+xdg-desktop-portal-wlr):
+
+- **Choosing**: the portal asks `aizome-share-picker`, which opens the
+  compositor's picker with a banner across the top of each display
+  ("Choose a screen or window to share — Esc to cancel", or just a screen
+  or just a window, as the app asks) and the keys beneath it: click a
+  screen; Space, then click a window; Esc to cancel, and the app is told
+  the share was refused. A drag picks the screen it ends on, never an
+  area.
+- **The indicator**: while something is shared, the Deskbar's header
+  shows a chip in the accent blue with the screen-share glyph (a count
+  when several things are shared), left of the recording dot, as macOS
+  shows its purple one. A share appears once it has lasted a second, so a
+  screenshot tool's single frame never flashes it.
+- **Stopping**: pressing the indicator opens a menu saying what's shared
+  (the display, or the window's title) with Stop Sharing (one item per
+  share, and Stop All Sharing, when several are). The compositor stops
+  the share, the portal ends the stream, and the app hears that the
+  screen or window is no longer available.
+- `aizome-shell msg state` lists the shares under `sharing`; the
+  compositor's `aizomectl shares` and `aizomectl stop-share [ID]` do the
+  same from a terminal.
+
 ## OSD
 
 Volume, mute, brightness and keyboard-backlight keys (`Binding` events from

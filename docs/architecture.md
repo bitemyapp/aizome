@@ -184,7 +184,8 @@ transform), `desks` (names, folders), `keys` (overrides), `menubar`,
   every save of a checkout. Changes to the compositor's core need a new
   session; after `nixos-rebuild switch` a notification offers the rest.
 - Portals: xdg-desktop-portal-wlr for screenshots and screencasts (over
-  ext-image-copy-capture, for outputs and windows), xdg-desktop-portal-gtk
+  ext-image-copy-capture, for outputs and windows, chosen with
+  `aizome-share-picker`), xdg-desktop-portal-gtk
   for the rest (`aizome-portals.conf`).
 - Terminal: foot. Shell: Sekka's fish (set up as Omarchy sets it up).
 - The lock screen uses PAM service `aizome`.

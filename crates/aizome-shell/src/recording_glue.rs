@@ -36,7 +36,7 @@ impl Shell {
                     serial: self.record_gen,
                     tick: 0,
                 });
-                self.ipc.send(Request::PickArea { tag: PICK_TAG.into() });
+                self.ipc.send(Request::PickArea { tag: PICK_TAG.into(), prompt: None, targets: Vec::new() });
             }
             Target::Screen => {
                 let output = self.focused_screen().map(|s| s.name());
