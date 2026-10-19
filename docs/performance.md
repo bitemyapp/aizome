@@ -19,8 +19,16 @@ Mesa Intel graphics for GLES). Another agent's builds and tests shared the
 machine: the one-minute load average was 4–9 during the harness runs and
 the compositor's bench, 0.2–0.5 during the live Yukimi and Shashin runs
 and 9–15 during the live shell runs; an earlier pass at load 21–25 was
-thrown away (six of its budget tests failed). Two
-kinds of number:
+thrown away (six of its budget tests failed).
+
+Rows marked † were measured again on 18–19 October, after the
+frame-budget work, the recovery overlay, screen recording and sharing,
+live reload (the compositor is now a core and a reloadable logic, built
+without LTO) and the compositor's polish: interleaved before-and-after
+runs of the same binaries, at the load each note gives (other agents'
+builds shared the machine, load 4–34). The split costs GLES 0.04–0.08 ms
+a frame at the median, half of it from losing LTO; pixman is within
+noise (`docs/reload.md`). Two kinds of number:
 
 - **Harness**: each part's own test (the command is in its section below)
   times one frame from the event through update, view, layout and diff to
@@ -42,13 +50,19 @@ kinds of number:
 | Compositor, GLES | Moving a window | 0.46 | 0.61 | within |
 | | A client drawing every frame (800 × 500) | 0.37 | 0.56 | within |
 | | Switching Desks (slides) | 0.45 | 0.75 | within |
-| | The Desks overview opening and closing | 1.34 | 2.73 | within |
+| | The Desks overview opening and closing † | 0.60–0.75 | 1.4–1.8 | within |
 | | Ten windows, one moving | 0.76 | 0.95 | within |
 | | A full-screen client drawing every frame | 0.44 | 0.60 | within |
+| | A frosted menu (Full: blurred) over a moving window † | 0.70–0.85 | 0.93–1.6 | within |
+| | A frosted menu over a client drawing every frame † | 0.44–0.67 | 0.59–0.96 | within |
+| | The Ctrl+Alt+Del overlay opening, first time included † | 0.6 | | within |
+| | Its list updating each second † | | ≤ 0.8 | within |
+| | While a screencopy client records 60 fps † | 0.28 | 0.72 | within |
 | Compositor, pixman | Moving a window | 0.45 | 0.69 | within |
 | | A client drawing every frame (800 × 500) | 0.85 | 1.00 | within |
 | | Switching Desks (slides) | 0.57 | 1.04 | within |
-| | The Desks overview opening and closing | 4.8–6.9 | 19.1–19.7 | **over** (1) |
+| | The Desks overview opening and closing † | 1.8–2.9 | 4.5–4.6 | **at** (1) |
+| | The Ctrl+Alt+Del overlay opening † | 2.1 | | within |
 | | Ten windows, one moving | 0.75 | 0.96 | within |
 | | A full-screen client drawing every frame | 1.9–2.3 | 2.0–3.7 | within (2) |
 | Shell | The clock's tick (bar and Deskbar) | 0.11 | 0.13 | within |
@@ -56,7 +70,9 @@ kinds of number:
 | | A window opening or closing (the Deskbar and the bar) | 0.56 | 1.72 | within |
 | | A key typed in the palette | 0.74 | 1.80 | within |
 | | ↑ or ↓ in the palette | 0.23 | 0.29 | within |
-| | The palette's first opening (live) | 6.4 | | **once** (4) |
+| | The desktop's first frame (once per output) † | 3.1 (median; 0.8–9.1) | | **once** (4) |
+| | The recording indicator's tick † | 0.085 | 0.1–0.2 | within |
+| | The palette's first opening (live) † | 11.5 (median; 6.1–29.1) | | **once** (4) |
 | Kit | Toggling a switch | 0.04 | 0.04 | within |
 | | A character typed in a text field | 0.38 | 0.41 | within |
 | | A character typed in a 2,000-line editor | 0.29 | 0.51 | within |
@@ -73,15 +89,15 @@ kinds of number:
 | | Typing in Discover's search | 0.42 | 0.94 | within |
 | | Opening a generation in History | 1.26 | 1.83 | within |
 | | A frame of falling snow | 0.97 | 1.08 | within |
-| | Switching pages (harness) | 4.78 | 5.95 | **over** (6) |
-| | Switching pages (live) | 1.7–2.4 | 3.8–5.0 | **at** (6) |
+| | Switching pages (harness) † | 1.46–1.48 | 2.76–4.80 | **at** (6) |
+| | Switching pages (live) † | 0.62–0.99 | 0.96–2.11 | within |
 | Hako | ↓ in a column of 10,000 | 2.28 | 2.44 | within |
 | | Scrolling that column | 0.40 | 0.42 | within |
 | | ↓ in a list of 10,000 | 1.21 | 1.27 | within |
 | Sumi | Typing in the board's document | 0.75 | 0.88 | within |
 | | Scrolling it | 0.78 | 0.91 | within |
 | | Typing at the end of a 10 MB file | 2.03 | (max 7.6) | within |
-| | ❖↓ to the end of a 10 MB file | 8.7 | | **once** (7) |
+| | ❖↓ to the end of a 10 MB file † | 2.7 (median; 1.3–9.9) | | within at the median (7) |
 | Fusen | Typing in a note | 0.08 | 0.10 | within |
 | Koyomi | Next or previous month | 2.48 | 2.71 | within |
 | | Next or previous week | 2.46 | 2.92 | within |
@@ -97,21 +113,21 @@ kinds of number:
 | Tansu | A click on the partition map | 1.30 | 1.53 | within |
 | | ← → along the map | 0.62 | 0.65 | within |
 | | Queueing an operation and undoing it | 1.44 | 2.85 | within |
-| | Switching drives | 1.61 | 4.45 | **over** (8) |
+| | Switching drives † | 1.32–2.71 | 1.46–3.03 | within |
 | Kura | Moving over the rings | 0.92 | 1.41 | within |
 | | Arrow keys in the folder's list | 1.30 | 2.38 | within |
-| | Going into a folder and back up | 1.62 | 4.56 | **over** (9) |
-| | Opening or closing a hint's paths | 1.63 | 5.50 | **over** (9) |
+| | Going into a folder and back up † | 1.06–1.39 | 1.77–2.58 | within |
+| | Opening or closing a hint's paths † | 1.32–1.47 | 2.05–2.36 | within |
 | | Ticking a path | 0.18 | 0.39 | within |
-| | Picking a hint | 5.09 | 11.4 | **over** (9) |
+| | Picking a hint † | 1.33–1.36 | 1.71–1.88 | within |
 | Myaku | A new reading (600 processes) | 2.61 | 2.99 | within |
 | | A click on a row | 0.20 | 0.30 | within |
 | | Scrolling the table | 0.29 | 0.34 | within |
 | Shashin | Showing a fitted 3000 × 2000 photo | 3.30 | 3.68 | within (10) |
 | | Panning at 100% | 3.25 | 3.56 | within (10) |
-| | Pinching | 4.23 | 4.57 | **over** (10) |
+| | Pinching † | 2.81–2.84 | 3.22–3.65 | within (10) |
 | | A zoom step, ❖+ ❖− (live, 6000 × 4000 JPEG) | 1.2–1.5 | 1.6–2.2 | within (10) |
-| | The next picture | 3.27 | 3.98 | within |
+| | The next picture † | 2.48–3.25 | 2.70–3.73 | within |
 | Annai | A frame of a scene | 0.43 | 0.57 | within |
 | | Turning a page | 1.00 | 1.09 | within |
 
@@ -120,69 +136,65 @@ summary of six or seven frames is in effect its largest frame.
 
 ### Every exception
 
-1. **The Desks overview under pixman** (compositor). Opening and closing
-   it: p50 4.8–6.9 ms, p95 19.1–19.7 ms, max 20–30 ms over three runs at
-   load 0.2–7. Each of its frames damages the whole output and scales
-   every window's buffer into a thumbnail on the CPU. The evening run of
-   17 October had p95 14.8 ms; the compositor built from that run's commit
-   (`d4dcb61`) measures 21–29 ms at p95 today, so the overview's own code
-   hasn't got slower: the machine, or the Sidestep both build against, has.
-   *Accepted*: pixman is the fallback without a usable GPU, the overview
-   redraws only when it opens, closes, filters or takes a drop, and GLES
-   does the same frames in 1.3/2.7 ms.
+1. **The Desks overview under pixman** (compositor): opening and closing
+   it, p50 1.8–2.9 ms, p95 4.5–4.6 ms, p99 4.7–5.9 ms in the final
+   interleaved runs at load 6–11 (p95 2.9–3.5 ms at load 18–19 in
+   `--only overview` runs; 5.8–7.6 ms inside the full bench at load
+   4.6–14), against p95 14.9–19.5 ms before in the same runs. Its fade
+   frames used to blend every piece over the whole output; see-through
+   pieces on a flat colour are now filled as the colour they make, and
+   thumbnails are kept at their size and scaled again only where their
+   window drew. What's left are the opening and closing frames, which
+   repaint the whole output as a full-screen client's frame does.
+   *At the budget, accepted*: pixman is the fallback without a usable GPU,
+   and GLES does the same frames in 0.60–0.75/1.4–1.8 ms.
 2. **Full-output damage under pixman** (compositor): a full-screen client
-   redrawing every frame, p50 1.9–2.3 ms, p95 2.0–3.7 ms (3.6–4.4 ms
-   before; 11.6 ms on a busier machine once). *Within now*, but close: a
-   full-screen video or game without a GPU sits near the budget.
+   redrawing every frame, p50 1.9–2.3 ms, p95 2.0–3.7 ms. *Within*, but
+   close: a full-screen video or game without a GPU sits near the budget.
 3. **First frames of new labels** (compositor): a frame that first shows
-   a title or caption rasterises it offscreen; the overview's GLES
-   maximum, 5.9 ms (8–13 ms before), is its first opening. *Accepted*:
-   once per label, which is cached.
-4. **The palette's first opening** (shell): 6.4 ms live at load 9 (record
-   0.7, rasterise 5.1; 5.4 ms written before, at load 17), 6.3 ms in the
-   harness after 4.0 ms of warming at idle; opened again, 1.7 ms live.
-   Rasterising its whole 1446 × 966-pixel surface the first time is what's
-   left. *Accepted*: once per session. Another first frame, the desktop's
-   (its surface fills the output), measured 8.9–11 ms live today at load
-   9–15 (record 0.07 ms; the rest rasterising into a new 2880 × 1800
-   buffer), against 2.8 ms written before: once per output at start-up,
-   *open* (not investigated).
+   a title or caption rasterises it offscreen; the overview's cold first
+   opening under GLES is the p99 tail (about 5 ms). *Accepted*: once per
+   label, which is cached. The recovery overlay warms its own labels
+   offscreen, so even its first opening is 0.6 ms (GLES), 2.1 ms (pixman).
+4. **First frames of new surfaces** (shell). The memory of a screen's bar,
+   Deskbar and desktop (21.6 MB at 2880 × 1800, 2×) and of the palette
+   (5.6 MB) is now faulted in ahead (`Cx::reserve_buffers`), so their first
+   frames no longer take thousands of page faults. Live, release, load
+   15–34, interleaved with the 17 October build: the desktop's first
+   frame median 3.1 ms (0.8–9.1; 13.6 ms median before), the palette's
+   first opening median 11.5 ms (6.1–29.1; 19.1 ms median before). What's
+   left of the palette's is rasterising its whole 1446 × 966-pixel surface
+   the first time; opened again, 4.5–5.4 ms at that load (1.7 ms at idle).
+   *Accepted*: once per session, and within the budget only on an idle
+   machine.
 5. **The desktop's wallpaper frame** (shell): a 2880 × 1800 copy, 4.7 ms
-   under load, once per output size and theme. *Accepted*. (Not measured
-   again: the headless run had no wallpaper.)
-6. **Switching pages in Yukimi**: harness p50 4.78 ms, p95 5.95 ms (97%
-   of the window); live at 2×, the frames of a page switch every 1.2 s
-   were p50 1.7–2.4 ms with the largest 3.8–5.0 ms (rasterising 55–64% of
-   the window; Yukimi's update, view and layout 0.15–0.65 ms). Before
-   Sidestep's faster repaint it was 4.9/5.8 ms in the harness and p95
-   6.8–13 ms live. *Accepted*: a deliberate click a few times a minute, now
-   at the budget live.
-7. **❖↓ to the end of a 10 MB file in Sumi**: 8.7 ms once (8.9 ms before):
-   3 ms working out line colours, the rest shaping a screen of lines
-   nothing has shown yet; the colours settle over the next 15 frames.
-   *Accepted*. (Debug builds of typing and scrolling also exceed the budget
-   at p95; release builds don't.)
-8. **Switching drives in Tansu**: p50 1.61 ms, p95 4.45 ms (5.2 ms
-   before): the map, legend, table and details all change, 1744 × 1300
-   pixels at 2×. *Accepted*: a click in the sidebar.
-9. **Kura's rings**: going into a folder and back up p95 4.56 ms (the rings
-   move over the motion time, redrawn whole without antialiasing),
-   opening a hint's paths p95 5.50 ms (the panel lays out again), and
-   picking a hint p50 5.09 ms, p95 11.4 ms (20 ms before, at load 24): it
-   moves the rings to the hint's folder and dims the rest, drawing the
-   whole sunburst (about 4 ms at 2× by itself) and the panel. Lighting the
-   largest segments, which once set the hover p95, is 1.41 ms now.
-   *Accepted*: deliberate clicks, not under the hand.
-10. **Shashin's full-window pictures**: *fixed*. Before Sidestep drew
-    images landing one to one on whole pixels as row copies, any frame
-    redrawing a full-window photo at 2× took 18–30 ms (showing it 22/29 ms,
-    zoom steps live 24.7/30.8 ms). Now: showing a fitted photo 3.30/3.68 ms
-    and panning 3.25/3.56 ms in the harness (each paying the harness's
-    full-window buffer), and zoom steps live 1.2–1.5/1.6–2.2 ms. Left over:
-    pinching in the harness, 4.23/4.57 ms, drawn from what's there with
-    nearest-pixel scaling while the drawing for the new zoom is made; and
-    the harness's frame between a zoom step and its new drawing, 8.7/9.4
-    ms, which didn't show live (one frame per step).
+   under load, once per output size and theme. *Accepted*.
+6. **Switching pages in Yukimi**: harness p50 1.46–1.48 ms, p95 2.76–4.80
+   ms at load 6 (4.78/5.95 before), now timed as a window draws its damage
+   (the harness used to draw the damage's bounding box into a fresh image);
+   live p50 0.62–0.99 ms, p95 0.96–2.11 ms at load 3–5 (3.8–5.0 ms before).
+   Icons no longer hold a frame on one raster thread. *Within* live, *at*
+   the budget in the harness under load.
+7. **❖↓ to the end of a 10 MB file in Sumi**: median 2.7 ms over nine runs
+   at load 29 (1.3–9.9 ms; 8.7 ms before). A jump no longer colours lines
+   it can't reach; the rest of the colouring comes over the next frames
+   (exact about 65 ms later), and a screen of new lines is laid out
+   together on Sidestep's text threads. The tail is those threads not
+   being scheduled on an oversubscribed machine. *Within* at the median.
+8. **Switching drives in Tansu**: *fixed*, p50 1.32–2.71 ms, p95
+   1.46–3.03 ms (4.45 ms before): the SD card's hatched free space is drawn
+   once and copied after.
+9. **Kura's rings**: *fixed*. Going into a folder and back up p95
+   1.77–2.58 ms (4.56), opening a hint's paths p95 2.05–2.36 ms (5.50),
+   picking a hint p50 1.33–1.36, p95 1.71–1.88 ms (5.09/11.4): the
+   antialiased rings are drawn on a worker and copied after; a frame whose
+   rings aren't ready draws them plainly, as moving rings already were.
+10. **Shashin**: *fixed*. Pinching p50 2.81–2.84, p95 3.22–3.65 ms at load
+    9 (4.25–4.44/5.95–6.83 at load 24: full-window frames are memory-bound);
+    the next picture p95 2.70–3.73 ms (3.98 before; leaving a 3000 × 2000
+    photo used to free its 24 MB of pixels on the window's thread). One
+    frame of forty, the first pinch step below 100%, takes about 22 ms, not
+    yet explained.
 
 Within the budget now, though written up below as exceptions earlier:
 Hako's preview column (↓ p95 2.44 ms), Tenki's choosing a place (p95

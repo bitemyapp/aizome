@@ -101,9 +101,9 @@ tests, which were run after each fix.
 | Element | Status | How | Notes |
 |---|---|---|---|
 | CPU and memory meters | done | live | |
-| Network panel | partial | live (real NetworkManager, read only) | Shows Wi-Fi switch, the connected network, airplane mode, settings. The list of other networks was empty here; joining wasn't tried (not allowed on this machine) |
-| Sound panel | partial | live (private PipeWire, null sink) | Output and input sliders; no device list (one device) and no media player was running, so MPRIS controls weren't seen |
-| Bluetooth panel | partial | live (real BlueZ) | Switch and settings row; no devices listed |
+| Network panel | done | live (this laptop's NetworkManager through a read-only D-Bus filter); VM (`checks.settings`: hostapd WPA2 join, airplane mode, wired) | Its access points match `GetAllAccessPoints` and `nmcli --rescan no` exactly; an empty list earlier was NM's empty cache, not a bug |
+| Sound panel | done | live (private PipeWire: three null sinks, a test microphone, a test MPRIS player); VM (`wpctl`) | Device switching, volume, mute, the input meter, title and ⏯ ⏭ ⏮ following the player live. Real devices and Bluetooth audio wait for a real session |
+| Bluetooth panel | done | live (this laptop's BlueZ, read only); VM (`btvirt`: power, rename, discovery while open) | This laptop knows no devices, so its list is rightly empty; pairing between two virtual controllers didn't work in the VM |
 | Display panel | done | live | Night/Day/Auto and Size. Brightness hides on outputs without a built-in panel (**fixed**, `6fd37f5`); Night Light needs gamma, which headless lacks |
 | Battery panel | done | live (real UPower) | Charge, state, power mode |
 | Clock panel | done | live | Month with today in amber, Do Not Disturb; agenda empty |
@@ -183,12 +183,14 @@ All fourteen opened from the session and were looked at:
 | Frames, type, themes (Night/Day) | done | High Contrast too |
 | Strip's palette: scopes, shortcut coach, Toolchest typing, ❖Space, Services | done | |
 | Two-tier switcher, Desks overview, marking menu | done | |
-| Systray: sound, Bluetooth, network, display, battery, power | partial | panels work; device lists and media not exercised here (above) |
-| Settings, all panes | partial | every pane opens and has goldens; live changes only to Appearance |
+| Systray: sound, Bluetooth, network, display, battery, power | done | checked against this laptop's real devices, read only, and in VMs (above); a sharing indicator and a recording indicator join them while in use |
+| Settings, all panes | done | `checks.settings`: a VM drives every pane that has state, checks the system took the change, then reopens Settings and checks the pane shows it (`nix/vm-settings-test.py`, `docs/apps.md`) |
 | Apps (Yukimi, Calculator, Calendar, Clock, Disks, Disk Usage with its agent index, Notes, TextEdit, Weather, Files, Activity, Images, Welcome) | done | |
 | foot as the terminal, fish as the shell | done | foot with Aizome's `foot.ini`; fish from nixpkgs here (Sekka's module installs it) |
 | GPU and software rendering | done | GLES for the walkthrough; the same scene under pixman (`AIZOME_RENDERER=pixman`) |
-| The 4 ms budget | partial | below |
+| The 4 ms budget | done, with exceptions | `docs/performance.md`: every interaction within it, except once-per-session first frames (the palette's first opening, the wallpaper) and the pixman overview's opening and closing frames, at about 4.5 ms |
+| Recovery (Ctrl+Alt+Del), live reload, screen recording and sharing | done | asked for after the first login: `docs/recovery.md`, `docs/reload.md`, `docs/shell.md`; each has its VM test step |
+| Notification cards' slide, true blur in Full | done | the slide under both renderers; blur under GLES only (pixman keeps the frost), `docs/rendering.md` |
 | Super as the command key | done | ❖N, ❖W, ❖Z, ❖Space in the session; ❖ → Ctrl translation for foot and others in `keys` tests |
 
 ## Frame times
