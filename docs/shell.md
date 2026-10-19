@@ -157,6 +157,14 @@ on the right). Aizome's look: square, `raised`, 1pt `bevel_lo` edge, hard
 shadow, matched characters in `blue` and underlined, the selected row on
 `selection` with a 2pt `focus` rail at its left.
 
+Between openings its window is kept, hidden, and drawn ahead at idle as it
+would open (the empty query, All): three seconds after the shell starts, a
+second after the palette closes, and a second after what it opens with
+changes (the focused window, the windows, an app's menus, apps, settings,
+picks, the theme, the focused output's scale). Opening it then copies that
+drawing in and draws only what differs, rather than rasterising the whole
+surface (`Cx::prepare_window`; `docs/performance.md`, exception 4).
+
 Results:
 
 - **Commands**: every item of the focused app's menus (flattened, with its
