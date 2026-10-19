@@ -508,7 +508,13 @@ def sun():
     S.open("appearance")
     S.press("Auto")
     until("theme = auto", lambda: setting("appearance.theme") == "auto")
-    follow = S.control("appearance", "follow-sunset", role="switch")
+    # The switch is usable with Auto chosen.
+    follow = until(
+        "the switch usable",
+        lambda: (lambda c: c if not c.get("disabled") else None)(
+            S.control("appearance", "follow-sunset", role="switch")
+        ),
+    )
     assert follow.get("checked") is False, follow
     S.click(follow)
     until("follow_sunset = true", lambda: setting("appearance.follow_sunset") is True)
@@ -967,7 +973,7 @@ def users():
 
     # Another account, whose home isn't under /home: Remove names it, and
     # its type can change (accounts aren't fixed by the configuration here).
-    machine.succeed("useradd -m -d /srv/bob -c 'Bob Example' bob")
+    machine.succeed("useradd -m -d /srv/bob -s /run/current-system/sw/bin/bash -c 'Bob Example' bob")
     reopen("users")
     assert S.control("users", "name", role="textinput").get("value") == "Alice Pleasance Liddell"
     kind = until("Bob's account type", lambda: S.beside("Bob Example", "combobox"), timeout=30)
@@ -1132,7 +1138,10 @@ def mouse():
     assert traditional * natural < 0, (traditional, natural)
     # A mouse plugged in with natural scrolling already on (libinput can
     # turn a USB wheel round itself): turned round once, as the other is.
-    machine.send_monitor_command("device_add usb-mouse,bus=usb-bus.0,id=natmouse")
+    added = machine.send_monitor_command("device_add usb-mouse,bus=usb-bus.0,id=natmouse")
+    if "rror" in added or "not found" in added:
+        print("device_add on usb-bus.0:", added)
+        machine.send_monitor_command("device_add usb-mouse,id=natmouse")
     until("the USB mouse", lambda: mouse_index("USB Mouse") is not None)
     time.sleep(2)
     usb = scrolled_by_wheel(1 if traditional > 0 else -1, kind="USB Mouse")
@@ -1221,6 +1230,8 @@ def sound():
     assert quiet < 100, f"the bell sounded at no volume ({quiet})"
     S.slide(S.control("sound", "alert-volume", role="slider"), 0.7)
     until("alert_volume back", lambda: (setting("sound.alert_volume") or 0) > 0.5)
+    # (Letting go of the slider plays the alert, to hear it: let it end.)
+    time.sleep(3)
     # ...and with feedback on, the volume keys are heard at the new volume.
     silent = loudness_during(lambda: alice("aizomectl action volume-up"))
     assert silent < 100, f"feedback without asking ({silent})"
@@ -1269,6 +1280,14 @@ def revealed(entry):
     return until(f"{entry} shown", lambda: S.find(name=entry))
 
 
+def clear_search():
+    """Empty Settings' search field (Escape there could go Back instead)."""
+    S.click(S.wait(name="search"))
+    chord("super+a")
+    key("backspace")
+    time.sleep(0.5)
+
+
 @part("Network: search reveals Add VPN and Other Network…; a wrong passphrase is asked again as typed; the hotspot")
 def network():
     S.open("network")
@@ -1277,7 +1296,7 @@ def network():
     # No VPNs here: Add VPN is the VPN section's only row, and found.
     search_settings("Add VPN")
     revealed("entry:network.add-vpn")
-    key("escape")
+    clear_search()
     # A wrong passphrase: the sheet comes back with it, to be put right.
     S.click(S.reveal(label=ap["label"], role="button"))
     field = S.wait(name="network-password")
@@ -1332,7 +1351,7 @@ def network():
     until("Wi-Fi off", lambda: "disabled" in machine.succeed("nmcli radio wifi"))
     search_settings("Other Network")
     revealed("entry:network.join-other")
-    key("escape")
+    clear_search()
     S.click(S.control("network", "wifi", role="switch"))
     until("Wi-Fi on", lambda: "enabled" in machine.succeed("nmcli radio wifi"))
     until("Wi-Fi back", lambda: any("Connected to Aizome Test AP" in t for t in S.texts()), timeout=90)
