@@ -138,6 +138,20 @@ Notes for client authors:
 - Frame callbacks fire after a frame that showed the surface, and roughly
   once a second for surfaces that don't show (other Desks, minimised).
   Nothing draws while nothing changes.
+- The shell's notification cards (layer namespace `aizome-notifications`)
+  slide in from the screen's right edge when they come up and back out
+  when they go, over the motion time with its ease-out and no fade (120 ms
+  Full, 80 ms Lean, none in Austere or with reduced motion). Only the
+  drawing moves: where the cards take the pointer is their place
+  throughout. Going out shows the surface's last frame, which the core
+  draws into memory as the surface goes (the logic names such namespaces
+  in its view, `keep_on_unmap`).
+- In the Full effects tier, under GLES, what's behind the shell's frosted
+  surfaces (the Deskbar, torn-off menus, the palette, the notification
+  cards, and every popup of the shell's surfaces) is blurred where the
+  surface's own pixels are at least 75% opaque, so a 90%-opaque face shows
+  a blur through it and its hard shadow stays a plain shadow
+  (`docs/rendering.md`). Other clients' translucency is blended as drawn.
 - A toplevel's app_id should be set before its first commit; it picks the
   remembered size and place, the icon, and whether ❖ reaches it untouched
   (`org.aizome.…` apps) or as Ctrl.
@@ -262,6 +276,9 @@ connections and the way out depend on.
 | `logic.rs`, `reload.rs` | Loading, checking (the ABI fingerprint from `build.rs`), swapping and rolling back the logic; the hook table (`LogicVTable`); `reload` |
 | `view.rs`, `scene.rs` | What the logic publishes (windows' places, focus, stacking) and the renderer-free scene it returns each frame |
 | `render.rs` | Turning a scene into render elements: windows, layer surfaces, popups, thumbnails, the cursor and drag icon, the lock screen |
+| `thumbs.rs` | Under pixman, thumbnails (the overview's, the switcher's) kept as pictures at their size, scaled again only where their window drew |
+| `blur.rs` | Under GLES, the blur behind a scene's `Blur` items (dual Kawase, masked by the surface's own alpha), taken again only when what's under it changed |
+| `ghosts.rs` | Layer surfaces' last frames, kept for the logic to move away as they go |
 | `input.rs`, `focus.rs` | Input from libinput, winit or IPC; the core's keys (VT switching, ⌃❖R, Ctrl+Alt+Del) before the logic's; keyboard focus, popup grabs, grab wrappers |
 | `shell.rs`, `handlers.rs`, `popups.rs` | Surfaces, xdg-shell, layer shell, session lock and the smaller protocols; the window registry |
 | `protocols/` | wlr-screencopy and ext-image-copy-capture with its output and window sources (`capture`: the streams and copies they share, wl_shm and dmabuf, per-stream damage; an output's copy draws the logic's scene), wlr foreign toplevel management, wlr output management, wlr gamma control, xdg-toplevel-icon |
@@ -284,6 +301,8 @@ the desktop.
 | `overlays/` | Stack-drop feedback, marking menu, switcher, overview, area picker |
 | `input.rs`, `grabs.rs`, `bindings.rs`, `cmdkey.rs` | Key and pointer handling after the core's; move, resize, tab slide and box grabs; the binding table and ❖ translation |
 | `anim.rs`, `memory.rs`, `requests.rs`, `config.rs` | Motion; remembered places; the IPC requests about windows and Desks; settings |
+| `slides.rs` | The shell's notification cards sliding in and out (carried across reloads) |
+| `frost.rs` | Which surfaces get a blur behind them in Full (the shell's frosted ones and its menus) |
 
 ## Tests
 
@@ -335,7 +354,10 @@ nix develop --command cargo test -p aizome-comp
   surface or a click elsewhere, and the popup layer's stacking.
 - `tests/sidestep.rs`: a sidestep-ui client (`examples/sidestep_client`):
   server-side decorations, frame callbacks on the content subsurface, a
-  layer-shell panel's exclusive zone, the session lock.
+  layer-shell panel's exclusive zone, the session lock, a see-through
+  surface showing what's under it, and (with a render node) a frosted
+  panel in Full blurring a window's edge under its face while its shadow
+  and everything off it stay as in Lean.
 - `tests/recovery.rs`: Ctrl+Alt+Del over a full-screen client holding a
   keyboard-shortcuts inhibitor, Force Quit killing a client in a process
   of its own (and never the compositor's parent), Not responding, the
