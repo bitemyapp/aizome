@@ -191,14 +191,17 @@ Notes for client authors:
   once. The portal can make a frame before destroying its last when its
   stream pauses and resumes as a consumer links: the newer frame takes
   over (and the older is never answered) instead of a `duplicate_frame`
-  error ending its connection. A session that has shown a frame is a
-  share: IPC `shares` lists them, `shares-changed` tells the shell (its
-  Deskbar indicator), and `stop-share` stops one as if its source had
-  gone. In Aizome sessions the portal asks `aizome-share-picker` what to
-  share (the NixOS module sets it as the portal's `chooser_cmd`, with
-  `chooser_type=dmenu`): it reads the displays and windows the portal
-  offers, opens the picker (`pick-area` with displays and windows only,
-  and a banner saying what's being chosen), and prints the portal's line
+  error ending its connection. A session that has shown frames for a
+  second is a share (reported then, from a timer: an IPC event at the
+  first frame, while the portal and the app's PipeWire stream were still
+  starting, left the stream stuck after one frame in the VM): IPC `shares`
+  lists them, `shares-changed` tells the shell (its Deskbar indicator),
+  and `stop-share` stops one as if its source had gone. In Aizome sessions
+  the portal asks `aizome-share-picker` what to share (the NixOS module
+  sets it as the portal's `chooser_cmd`, with `chooser_type=dmenu`): it
+  reads the displays and windows the portal offers, opens the picker
+  (`pick-area` with displays and windows only, and a banner saying what's
+  being chosen), and prints the portal's line
   for the display clicked or the window clicked after Space (matched by
   its ext-foreign-toplevel identifier). Esc prints nothing, and the
   portal refuses the share. The portal reads its config only from
