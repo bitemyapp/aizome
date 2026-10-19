@@ -57,6 +57,8 @@ pub struct OpenSpec {
     pub background: Option<Color>,
     /// The app id the compositor groups it by.
     pub app_id: String,
+    /// Shown when it opens (else hidden, until `show_window`).
+    pub visible: bool,
 }
 
 pub trait Platform {
@@ -112,6 +114,13 @@ pub trait Platform {
     fn reserve_buffers(&mut self, bytes: usize) {
         let _ = bytes;
     }
+    /// Show window `id` (opened hidden, or hidden since), or hide it.
+    fn show_window(&mut self, id: WinId, shown: bool);
+    /// Keep `picture`, hidden window `id` drawn ahead, for its next
+    /// showing's first frame to start from, with what changed since it
+    /// shows drawn over it (see [`Cx::prepare_window`](crate::Cx::prepare_window));
+    /// none: drop what's kept.
+    fn keep_picture(&mut self, id: WinId, picture: Option<crate::ahead::Picture>);
 }
 
 /// A layer surface's placement, changed while it shows.

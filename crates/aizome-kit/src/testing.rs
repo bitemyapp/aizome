@@ -77,6 +77,16 @@ pub struct TestPlatform {
     frames: HashMap<WinId, (u32, u32, Vec<u8>)>,
     /// Each window's pixels as [`Harness::render_damage`] keeps them.
     kept: HashMap<WinId, Vec<u32>>,
+    /// Windows hidden (opened hidden, or hidden since).
+    pub hidden: std::collections::HashSet<WinId>,
+    /// Hidden windows' pictures drawn ahead, kept for their next showing.
+    pub pictures: HashMap<WinId, crate::ahead::Picture>,
+    /// Windows just shown from their pictures: the picture their first
+    /// frame starts from ([`Harness::render_frame`]).
+    pub first: HashMap<WinId, crate::ahead::Picture>,
+    /// What was drawn ahead into hidden windows (their pictures' bands),
+    /// since the test last took it ([`Harness::take_drawn_ahead`]).
+    pub ahead: HashMap<WinId, Vec<Rect>>,
 }
 
 impl TestPlatform {
@@ -105,6 +115,10 @@ impl TestPlatform {
             drags: Vec::new(),
             frames: HashMap::new(),
             kept: HashMap::new(),
+            hidden: Default::default(),
+            pictures: HashMap::new(),
+            first: HashMap::new(),
+            ahead: HashMap::new(),
         }
     }
 
@@ -117,11 +131,18 @@ impl TestPlatform {
 impl Platform for TestPlatform {
     fn open_window(&mut self, id: WinId, spec: &OpenSpec) {
         self.windows.insert(id, TestWindow { spec: spec.clone(), title: spec.title.clone() });
+        if !spec.visible {
+            self.hidden.insert(id);
+        }
     }
 
     fn close_window(&mut self, id: WinId) {
         self.windows.remove(&id);
         self.damage.remove(&id);
+        self.hidden.remove(&id);
+        self.pictures.remove(&id);
+        self.first.remove(&id);
+        self.ahead.remove(&id);
     }
 
     fn set_title(&mut self, id: WinId, title: &str) {
@@ -131,12 +152,17 @@ impl Platform for TestPlatform {
     }
 
     fn invalidate(&mut self, id: WinId, rect: Rect) {
+        // A hidden window draws nothing (it's drawn whole, or from its
+        // picture, when it shows).
+        if self.hidden.contains(&id) {
+            return;
+        }
         self.damage.entry(id).or_default().push(rect);
     }
 
     fn invalidate_all(&mut self, id: WinId) {
         let size = self.windows.get(&id).map_or(Size::new(4096.0, 4096.0), |w| w.spec.size);
-        self.damage.entry(id).or_default().push(Rect::from_origin_size(Point::ZERO, size));
+        self.invalidate(id, Rect::from_origin_size(Point::ZERO, size));
     }
 
     fn set_cursor(&mut self, id: WinId, cursor: Cursor) {
@@ -213,7 +239,12 @@ impl Platform for TestPlatform {
 
     fn scroll(&mut self, id: WinId, rect: Rect, delta: Vec2) {
         // As Sidestep does: what waits to be drawn in it moves along, and
-        // the strips it uncovers are drawn; a move out of it all draws it.
+        // the strips it uncovers are drawn; a move out of it all draws it,
+        // as does a move in a window that isn't showing.
+        if self.hidden.contains(&id) {
+            self.invalidate(id, rect);
+            return;
+        }
         let damage = self.damage.entry(id).or_default();
         if delta.x.abs() >= rect.width() || delta.y.abs() >= rect.height() {
             damage.push(rect);
@@ -278,6 +309,41 @@ impl Platform for TestPlatform {
     fn request_activation_token(&mut self, app_id: Option<&str>) -> u64 {
         self.activation_requests.push((self.activation_requests.len() as u64 + 1, app_id.map(str::to_owned)));
         self.activation_requests.len() as u64
+    }
+
+    fn show_window(&mut self, id: WinId, shown: bool) {
+        if !shown {
+            self.hidden.insert(id);
+            self.pictures.remove(&id);
+            self.first.remove(&id);
+            self.ahead.remove(&id);
+            self.damage.remove(&id);
+            return;
+        }
+        if !self.hidden.remove(&id) {
+            return;
+        }
+        // Drawn ahead, its first frame starts from the picture and draws
+        // only what changes from now on; else it draws whole, as a new
+        // showing does.
+        match self.pictures.remove(&id) {
+            Some(p) => {
+                self.first.insert(id, p);
+            }
+            None => self.invalidate_all(id),
+        }
+    }
+
+    fn keep_picture(&mut self, id: WinId, picture: Option<crate::ahead::Picture>) {
+        match picture {
+            Some(p) => {
+                self.ahead.entry(id).or_default().extend(p.bands.iter().map(|(r, _)| *r));
+                self.pictures.insert(id, p);
+            }
+            None => {
+                self.pictures.remove(&id);
+            }
+        }
     }
 }
 
@@ -738,6 +804,38 @@ impl<P: Program> Harness<P> {
         self.platform.damage.remove(&win).unwrap_or_default()
     }
 
+    /// What was drawn ahead into hidden window `key` since the last call
+    /// ([`Cx::prepare_window`](crate::Cx::prepare_window)): the damage its
+    /// next showing has drawn already.
+    pub fn take_drawn_ahead(&mut self, key: WindowKey) -> Vec<Rect> {
+        let win = self.win(key);
+        self.platform.ahead.remove(&win).unwrap_or_default()
+    }
+
+    /// Hidden window `key`'s picture drawn ahead, its bands put together:
+    /// width, height and straight RGBA at its scale; none until it's
+    /// drawn (at idle: [`advance`](Harness::advance)).
+    pub fn picture(&self, key: WindowKey) -> Option<(u32, u32, Vec<u8>)> {
+        let p = self.platform.pictures.get(&self.win(key))?;
+        let (w, h) = ((p.size.width * p.scale).ceil() as usize, (p.size.height * p.scale).ceil() as usize);
+        let mut out = vec![0; w * h * 4];
+        for (rect, image) in &p.bands {
+            let (bw, bh) = image.pixel_size();
+            let px = image.to_rgba8()?;
+            let top = (rect.y0 * p.scale).round() as usize;
+            for y in 0..(bh as usize).min(h.saturating_sub(top)) {
+                let n = (bw as usize).min(w) * 4;
+                out[(top + y) * w * 4..][..n].copy_from_slice(&px[y * bw as usize * 4..][..n]);
+            }
+        }
+        Some((w as u32, h as u32, out))
+    }
+
+    /// Whether window `key` shows (it isn't hidden).
+    pub fn is_shown(&self, key: WindowKey) -> bool {
+        !self.platform.hidden.contains(&self.win(key))
+    }
+
     /// The window's size.
     pub fn size(&self, key: WindowKey) -> Size {
         self.rt.core.wins.get(&self.win(key)).map_or(Size::ZERO, |w| w.size)
@@ -815,7 +913,8 @@ impl<P: Program> Harness<P> {
     /// Make the window's next frame as a buffer the compositor shows gets
     /// it (the last frame's pixels moved as scrolls asked, then the damage
     /// drawn), taking the damage, and compare it with the window drawn
-    /// whole: it differs nowhere when the damage was right.
+    /// whole: it differs nowhere when the damage was right. Of a hidden
+    /// window drawn ahead, the frame is what's drawn ahead (taking that).
     pub fn check_frame(&mut self, key: WindowKey) -> FrameCheck {
         let win = self.win(key);
         let (w, h, fresh) = {
@@ -823,7 +922,11 @@ impl<P: Program> Harness<P> {
             let (w, h) = img.pixel_size();
             (w, h, img.to_rgba8().expect("pixels"))
         };
-        let damage = self.platform.damage.remove(&win).unwrap_or_default();
+        let damage = if self.platform.hidden.contains(&win) {
+            self.platform.ahead.remove(&win).unwrap_or_default()
+        } else {
+            self.platform.damage.remove(&win).unwrap_or_default()
+        };
         let scrolls = self.platform.scrolls.remove(&win).unwrap_or_default();
         let at = |x: i64, y: i64| (y as usize * w as usize + x as usize) * 4;
         let bound = |r: Rect| {
@@ -911,6 +1014,37 @@ impl<P: Program> Harness<P> {
         let px = self.platform.kept.entry(win).or_default();
         sidestep_ui::offscreen::paint_damage(px, size, scale, look, &damage, |c| core.paint(win, c));
         Some(())
+    }
+
+    /// Draw window `key`'s next frame at `scale` as Sidestep draws it into
+    /// the window's buffer (kept from frame to frame), taking its damage:
+    /// the damage, or for a window just shown from its picture drawn ahead
+    /// ([`Cx::prepare_window`](crate::Cx::prepare_window)), the picture
+    /// copied in and what changed since drawn over it. What a frame costs
+    /// a window; whether it drew anything.
+    pub fn render_frame(&mut self, key: WindowKey, scale: f64) -> bool {
+        let win = self.win(key);
+        let damage = self.platform.damage.remove(&win).unwrap_or_default();
+        let size = self.size(key);
+        let picture = self.platform.first.remove(&win);
+        let changed = crate::ahead::changed(&damage, size);
+        match (picture, changed) {
+            (Some(p), Some(changed)) if p.scale == scale && p.size == size => {
+                let whole = [Rect::from_origin_size(Point::ZERO, size)];
+                let look = self.look();
+                let core = &mut self.rt.core;
+                let px = self.platform.kept.entry(win).or_default();
+                sidestep_ui::offscreen::paint_damage(px, size, scale, look, &whole, |c| {
+                    crate::ahead::draw(&p, &changed, c, |c| core.paint(win, c));
+                });
+                true
+            }
+            (Some(_), _) => {
+                let whole = [Rect::from_origin_size(Point::ZERO, size)];
+                self.render_damage(key, &whole, scale).is_some()
+            }
+            (None, _) => self.render_damage(key, &damage, scale).is_some(),
+        }
     }
 
     /// The window with its popups composited where they'd show, as RGBA.

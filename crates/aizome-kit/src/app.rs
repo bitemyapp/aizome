@@ -358,6 +358,18 @@ struct Maps {
     next_activation: u64,
     drags: HashMap<sidestep_ui::DragId, u64>,
     next_drag: u64,
+    /// Windows drawn ahead: the picture for each one's next showing, and
+    /// what changed since it showed (see [`crate::ahead`]).
+    pictures: HashMap<WinId, Kept>,
+}
+
+/// A hidden window's picture drawn ahead, kept for its next showing.
+struct Kept {
+    picture: crate::ahead::Picture,
+    /// It shows, and its first frame is still to come.
+    shown: bool,
+    /// What changed since it showed, to draw over the picture.
+    changed: Vec<Rect>,
 }
 
 struct Glue<P: Program> {
@@ -415,12 +427,13 @@ impl Platform for SidestepPlatform<'_> {
                 WindowOptions::popup(p, *anchor, spec.size, *grab).popup_position(position).background(background)
             }
         };
-        let sid = self.sx.open_window(options);
+        let sid = self.sx.open_window(options.visible(spec.visible));
         self.maps.to_side.insert(id, sid);
         self.maps.to_kit.insert(sid, id);
     }
 
     fn close_window(&mut self, id: WinId) {
+        self.maps.pictures.remove(&id);
         if let Some(sid) = self.maps.to_side.remove(&id) {
             self.maps.to_kit.remove(&sid);
             self.sx.close_window(sid);
@@ -434,12 +447,17 @@ impl Platform for SidestepPlatform<'_> {
     }
 
     fn invalidate(&mut self, id: WinId, rect: Rect) {
+        if let Some(k) = self.maps.pictures.get_mut(&id).filter(|k| k.shown) {
+            k.changed.push(rect);
+        }
         if let Some(mut w) = self.maps.to_side.get(&id).and_then(|s| self.sx.window(*s)) {
             w.invalidate(rect);
         }
     }
 
     fn invalidate_all(&mut self, id: WinId) {
+        // All of it changes: the picture drawn ahead is no use.
+        self.maps.pictures.remove(&id);
         if let Some(mut w) = self.maps.to_side.get(&id).and_then(|s| self.sx.window(*s)) {
             w.redraw();
         }
@@ -541,6 +559,32 @@ impl Platform for SidestepPlatform<'_> {
         }
     }
 
+    fn show_window(&mut self, id: WinId, shown: bool) {
+        let Some(&sid) = self.maps.to_side.get(&id) else { return };
+        if shown {
+            // Its first frame starts from the picture drawn ahead, if any.
+            if let Some(k) = self.maps.pictures.get_mut(&id) {
+                k.shown = true;
+                k.changed.clear();
+            }
+            self.sx.show_window(sid);
+        } else {
+            self.maps.pictures.remove(&id);
+            self.sx.hide_window(sid);
+        }
+    }
+
+    fn keep_picture(&mut self, id: WinId, picture: Option<crate::ahead::Picture>) {
+        match picture {
+            Some(picture) => {
+                self.maps.pictures.insert(id, Kept { picture, shown: false, changed: Vec::new() });
+            }
+            None => {
+                self.maps.pictures.remove(&id);
+            }
+        }
+    }
+
     fn set_input_region(&mut self, id: WinId, region: Option<Vec<Rect>>) {
         if let Some(mut w) = self.maps.to_side.get(&id).and_then(|s| self.sx.window(*s)) {
             w.set_input_region(region.as_deref());
@@ -560,6 +604,9 @@ impl Platform for SidestepPlatform<'_> {
     }
 
     fn scroll(&mut self, id: WinId, rect: Rect, delta: Vec2) {
+        if let Some(k) = self.maps.pictures.get_mut(&id).filter(|k| k.shown) {
+            k.changed.push(rect);
+        }
         if let Some(mut w) = self.maps.to_side.get(&id).and_then(|s| self.sx.window(*s)) {
             w.scroll(rect, delta);
         }
@@ -688,9 +735,18 @@ impl<P: Program> sidestep_ui::Handler for Glue<P> {
     }
 
     fn draw(&mut self, _cx: &mut sidestep_ui::Cx, window: WindowId, canvas: &mut Canvas) {
-        if let Some(&win) = self.maps.to_kit.get(&window) {
-            self.rt.core.paint(win, canvas);
+        let Some(&win) = self.maps.to_kit.get(&window) else { return };
+        // The first frame of a window drawn ahead, at the size and scale
+        // drawn: the picture, and what changed since drawn over it.
+        if let Some(k) = self.maps.pictures.remove(&win).filter(|k| k.shown)
+            && k.picture.fits(canvas.size(), canvas.scale(), &canvas.damage())
+            && let Some(changed) = crate::ahead::changed(&k.changed, canvas.size())
+        {
+            let core = &mut self.rt.core;
+            crate::ahead::draw(&k.picture, &changed, canvas, |c| core.paint(win, c));
+            return;
         }
+        self.rt.core.paint(win, canvas);
     }
 
     fn timer(&mut self, cx: &mut sidestep_ui::Cx, timer: TimerId) {

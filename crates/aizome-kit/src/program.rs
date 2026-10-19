@@ -235,6 +235,8 @@ pub struct WindowSpec {
     pub max_size: Option<Size>,
     pub resizable: bool,
     pub kind: WindowKind,
+    /// Opens hidden, until [`Cx::show_window`](crate::Cx::show_window).
+    pub hidden: bool,
 }
 
 impl WindowSpec {
@@ -246,7 +248,16 @@ impl WindowSpec {
             max_size: None,
             resizable: true,
             kind: WindowKind::Normal,
+            hidden: false,
         }
+    }
+
+    /// Open hidden: nothing shows, and its view isn't asked for, until
+    /// [`Cx::show_window`](crate::Cx::show_window) (or while it's drawn
+    /// ahead: [`Cx::prepare_window`](crate::Cx::prepare_window)).
+    pub fn hidden(mut self) -> Self {
+        self.hidden = true;
+        self
     }
 
     pub fn size(mut self, width: f64, height: f64) -> Self {
