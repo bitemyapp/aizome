@@ -24,7 +24,8 @@ pub use compositor::{NightLight, NightSchedule, RendererChoice, Sun, TabDoubleCl
 use serde::{Deserialize, Serialize};
 pub use shell::{
     ClockFormat, DeskbarSettings, DesktopSettings, LockSettings, MenubarSettings, NotificationSettings, PALETTE_SCOPES,
-    PaletteSettings, PowerKey, PowerSettings, SYSTRAY_WIDGETS, SoundSettings, names_app,
+    PaletteSettings, PowerKey, PowerSettings, Recorder, RecordingFormat, RecordingQuality, RecordingSettings,
+    SYSTRAY_WIDGETS, SoundSettings, names_app,
 };
 
 /// Everything in `settings.toml`.
@@ -577,6 +578,11 @@ impl Settings {
     /// `[sound]`'s keys for the shell, typed.
     pub fn sound_settings(&self) -> SoundSettings {
         shell::read(Some(&self.sound))
+    }
+
+    /// `[recording]`, typed (kept among the top level's extra keys).
+    pub fn recording_settings(&self) -> RecordingSettings {
+        shell::read(self.extra.get("recording").and_then(|v| v.as_table()))
     }
 
     /// Write one of the shell's sections (`"menubar"`, `"deskbar"`,

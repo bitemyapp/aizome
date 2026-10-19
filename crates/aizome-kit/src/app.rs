@@ -96,18 +96,30 @@ impl<P: Program> Runtime<P> {
     /// The shell came or went: the menus follow it, to the bar or into
     /// the windows. Whether anything changed.
     pub fn check_shell(&mut self, platform: &mut dyn Platform) -> bool {
-        if self.shell.as_ref().is_some_and(|s| !s.alive()) {
-            log::info!("the shell went away; menus go in the windows");
-            self.shell = None;
-            self.shell_watch = self.shell_place.as_ref().map(|p| ShellWatch::start(p, &self.core.info));
-            self.menus_go_in_windows(true, platform);
-            return true;
-        }
-        let Some(link) = self.shell_watch.as_ref().and_then(ShellWatch::take) else { return false };
-        log::info!("the shell is here; menus go to it");
+        let link = if self.shell.as_ref().is_some_and(|s| !s.alive()) {
+            // A restarted shell listens before the old one goes: straight to
+            // it, and the menus never leave the bar.
+            let again =
+                self.shell_place.as_ref().and_then(|p| ShellLink::reconnect(&p.path, &self.core.info, p.wake.clone()));
+            if again.is_none() {
+                log::info!("the shell went away; menus go in the windows");
+                self.shell = None;
+                self.shell_watch = self.shell_place.as_ref().map(|p| ShellWatch::start(p, &self.core.info));
+                self.menus_go_in_windows(true, platform);
+                return true;
+            }
+            log::info!("the shell restarted; menus go to the new one");
+            again.unwrap()
+        } else {
+            let Some(link) = self.shell_watch.as_ref().and_then(ShellWatch::take) else { return false };
+            log::info!("the shell is here; menus go to it");
+            link
+        };
         self.shell_watch = None;
         self.shell = Some(link);
-        self.menus_go_in_windows(false, platform);
+        if self.core.in_window_menus {
+            self.menus_go_in_windows(false, platform);
+        }
         // The menus as they are now, at once.
         let published = crate::shell::published(&self.core);
         self.menus_published = hash_of(&serde_json::to_string(&published).unwrap_or_default());

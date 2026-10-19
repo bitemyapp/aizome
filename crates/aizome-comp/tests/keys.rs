@@ -88,7 +88,10 @@ fn system_chords_stay_with_the_system_and_shell_ones_go_to_subscribers() {
     assert_eq!(got.as_deref(), Some("palette"));
     // ⌥❖M: the menu bar, and the power key: the shell's. (F10 stays with
     // this app: it isn't one of Aizome's.)
-    for (keys, want) in [("f10", None), ("super+alt+m", Some("menu-bar")), ("power", Some("power-key"))] {
+    // ⌥Print, recording: the shell's too.
+    for (keys, want) in
+        [("f10", None), ("super+alt+m", Some("menu-bar")), ("power", Some("power-key")), ("alt+print", Some("record"))]
+    {
         chord(&c, keys);
         if let Some(want) = want {
             let got = events.by_ref().find_map(|e| match e {

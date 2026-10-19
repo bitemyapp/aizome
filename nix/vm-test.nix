@@ -54,7 +54,23 @@ pkgs.testers.runNixOSTest {
       };
       # No bluetooth controller or printers in the VM; their services still
       # run and report nothing, which is what the widgets must handle.
-      environment.systemPackages = [ pkgs.wtype ];
+      environment.systemPackages = [
+        pkgs.wtype
+        # ffprobe, for the screen recording.
+        pkgs.ffmpeg
+        # Screen sharing as a browser does it: the ScreenCast portal and
+        # its PipeWire stream, read with GStreamer.
+        (pkgs.writeShellScriptBin "aizome-screencast-check" ''
+          export GST_PLUGIN_SYSTEM_PATH_1_0=${pkgs.gst_all_1.gstreamer.out}/lib/gstreamer-1.0:${pkgs.pipewire}/lib/gstreamer-1.0
+          export PATH=${pkgs.gst_all_1.gstreamer.bin}/bin:$PATH
+          exec ${
+            pkgs.python3.withPackages (ps: [
+              ps.dbus-python
+              ps.pygobject3
+            ])
+          }/bin/python3 ${./screencast-check.py} "$@"
+        '')
+      ];
     };
 
   enableOCR = false;
@@ -138,6 +154,31 @@ pkgs.testers.runNixOSTest {
         print(as_alice("aizomectl windows"))
         capture("03-apps")
 
+    with subtest("aizomectl reload swaps the window manager and the shell under the open apps"):
+        listed = ipc("windows")["windows"]
+        foot_ids = sorted(w["id"] for w in listed if w["app_id"] == "foot")
+        assert foot_ids, listed
+        compositor = machine.succeed("pgrep -u alice -x aizome").strip()
+        old_shell = machine.succeed("pgrep -u alice -x aizome-shell").split()[0]
+        # Nothing changed since the login: nothing to reload.
+        print(as_alice("aizomectl reload"))
+        # Asked for anyway: a fresh logic from its saved state, a new shell.
+        report = ipc("reload --logic --shell")["report"]
+        print(report)
+        assert report["logic"]["action"] == "reloaded", report
+        assert report["shell"]["action"] == "restarted", report
+        assert report["core"]["action"] == "same", report
+        machine.wait_until_fails(f"kill -0 {old_shell}", timeout=30)
+        new_shell = machine.wait_until_succeeds("pgrep -u alice -x aizome-shell", timeout=30).split()[0]
+        assert new_shell != old_shell
+        assert machine.succeed("pgrep -u alice -x aizome").strip() == compositor, "the compositor is the same"
+        listed = ipc("windows")["windows"]
+        assert sorted(w["id"] for w in listed if w["app_id"] == "foot") == foot_ids, listed
+        machine.succeed("pgrep -u alice -x foot")
+        logic = ipc("stats")["stats"]["logic"]
+        assert logic["reloads"] == 1 and logic["healthy"], logic
+        capture("03-reloaded")
+
     with subtest("the lock screen locks and unlocks with the password"):
         as_alice("aizomectl lock")
         machine.sleep(3)
@@ -147,6 +188,11 @@ pkgs.testers.runNixOSTest {
         capture("05-unlocked")
 
     with subtest("Settings can change the time zone and the computer's name"):
+        # A link left from time.timeZone (absolute, NixOS's) becomes the
+        # relative kind timedated writes, which Settings reads as its own.
+        machine.succeed("ln -sfn /etc/zoneinfo/Europe/Paris /etc/localtime")
+        machine.succeed("/run/current-system/activate")
+        assert machine.succeed("readlink /etc/localtime").strip() == "../etc/zoneinfo/Europe/Paris"
         machine.succeed("timedatectl set-timezone Asia/Tokyo")
         machine.succeed("readlink /etc/localtime | grep -q Asia/Tokyo")
         machine.succeed("hostnamectl set-hostname --pretty 'Aizome Test'")
@@ -183,6 +229,91 @@ pkgs.testers.runNixOSTest {
         capture("07-force-quit")
         as_alice("aizomectl input key escape")
         assert not ipc("recovery status")["state"]["open"]
+
+    with subtest("a screen recording starts, shows, stops and leaves a video"):
+        # gpu-screen-recorder can't run here (virtio-gpu has no hardware
+        # OpenGL), so this is the fallback: wf-recorder through the
+        # compositor's screencopy (wl_shm under pixman), x264.
+        import shlex
+
+        def alice(command):
+            env = (
+                "export XDG_RUNTIME_DIR=/run/user/1000; "
+                "export WAYLAND_DISPLAY=$(ls /run/user/1000 | grep -m1 '^wayland-[0-9]*$'); "
+                "export AIZOME_SOCKET=/run/user/1000/aizome.$WAYLAND_DISPLAY.sock; "
+            )
+            return "su - alice -c " + shlex.quote(env + command)
+
+        def recording():
+            return json.loads(machine.succeed(alice("aizome-shell msg state")))["recording"]
+
+        record_screen = alice("aizome-shell msg '{\"request\":\"record\",\"target\":\"screen\"}'")
+        # Something moving, so frames keep coming.
+        machine.succeed(alice("aizomectl spawn -- foot sh -c 'while :; do date +%T.%N; sleep 0.05; done'"))
+        # What the palette's Record Screen does.
+        machine.succeed(record_screen)
+        # (Until the shell's probe of the recorders is done, which can
+        # take gpu-screen-recorder seconds here, a recording waits for it.)
+        machine.wait_until_succeeds(alice("aizome-shell msg state | grep -q '\"phase\":\"recording\"'"), timeout=60)
+        # One at a time.
+        machine.fail(record_screen)
+        # The shell found which recorder works here as it started:
+        # gpu-screen-recorder refuses virtio-gpu's software OpenGL and
+        # VA-API has no device, so wf-recorder with x264, at once, rather
+        # than seconds into the others while the indicator counts.
+        first = recording()
+        print(first)
+        assert first["recorder"] == "wf-recorder", first
+
+        def five_seconds():
+            r = recording()
+            return r is not None and r.get("recorder") == "wf-recorder" and r.get("seconds", 0) >= 5
+
+        for _ in range(30):
+            if five_seconds():
+                break
+            machine.sleep(1)
+        assert five_seconds(), recording()
+        going = recording()
+        print("recording with", going["recorder"])
+        assert going["path"] == first["path"], (first, going)
+        capture("06-recording")
+        machine.sleep(2)
+        machine.succeed(alice("aizome-shell msg stop-recording"))
+        machine.wait_until_succeeds(alice("aizome-shell msg state | grep -q '\"recording\":null'"), timeout=30)
+        video = going["path"]
+        assert video.startswith("/home/alice/Videos/Recordings/screenrecording-"), video
+        probe = json.loads(machine.succeed(
+            "ffprobe -v error -select_streams v:0 -count_frames -show_entries "
+            "stream=codec_name,width,height,r_frame_rate,nb_read_frames:format=duration "
+            f"-of json '{video}'"
+        ))
+        print(probe)
+        stream = probe["streams"][0]
+        mode = ipc("outputs")["outputs"][0]["current_mode"]
+        assert stream["codec_name"] == "h264", stream
+        assert (stream["width"], stream["height"]) == (mode["width"], mode["height"]), stream
+        assert stream["r_frame_rate"] == "60/1", stream
+        assert float(probe["format"]["duration"]) >= 4, probe
+        assert int(stream["nb_read_frames"]) >= 100, stream
+        capture("07-recording-saved")
+
+    with subtest("sharing the screen streams through the portal"):
+        # As a browser shares the screen: xdg-desktop-portal-wlr over the
+        # compositor's ext-image-copy-capture (wl_shm here, under pixman),
+        # and its PipeWire stream. Through wlr-screencopy it froze after
+        # one frame. The terminal above keeps the screen changing; no
+        # picker in the VM, so the portal takes the first display.
+        machine.succeed(alice(
+            "mkdir -p ~/.config/xdg-desktop-portal-wlr && "
+            "printf '[screencast]\\nchooser_type=none\\n' > ~/.config/xdg-desktop-portal-wlr/config && "
+            "(systemctl --user stop xdg-desktop-portal-wlr.service || true)"
+        ))
+        shared = machine.succeed(alice(
+            "export DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus; aizome-screencast-check 6 20"
+        ))
+        print(shared)
+        assert "frames:" in shared, shared
 
     with subtest("frame times stay inside the budget"):
         print(as_alice("aizomectl stats"))

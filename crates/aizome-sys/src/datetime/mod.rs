@@ -77,8 +77,16 @@ fn in_store(path: &str) -> bool {
     if path.starts_with("/etc/static/") || path.starts_with("/nix/store/") {
         return true;
     }
-    // An /etc file that is a link into /etc/static (NixOS's environment.etc).
-    std::fs::read_link(path).is_ok_and(|target| target.starts_with("/etc/static") || target.starts_with("/nix/store"))
+    std::fs::read_link(path).is_ok_and(|target| pinned_link(&target))
+}
+
+/// Whether an /etc link is one NixOS made: into /etc/static or the store
+/// (`environment.etc`), or, for `/etc/localtime` with `time.timeZone` set,
+/// straight to `/etc/zoneinfo/ZONE` (a direct, absolute symlink).
+/// timedated writes its own link relative (`../…/zoneinfo/ZONE`), so a zone
+/// chosen in Settings doesn't read as pinned.
+fn pinned_link(target: &std::path::Path) -> bool {
+    target.starts_with("/etc/static") || target.starts_with("/nix/store") || target.starts_with("/etc/zoneinfo/")
 }
 
 // --- timedated -------------------------------------------------------------
@@ -447,6 +455,28 @@ mod tests {
         assert!(pinned(&env, "SYSTEMD_ETC_LOCALTIME", "/etc/localtime"));
         assert!(!pinned(&env, "SYSTEMD_ETC_MACHINE_INFO", "/etc/machine-info"));
         assert!(!pinned(&HashMap::new(), "SYSTEMD_ETC_HOSTNAME", "/nonexistent/hostname"));
+    }
+
+    #[test]
+    fn nixos_time_zone_link_is_pinned() {
+        let dir = std::env::temp_dir().join(format!("aizome-sys-localtime-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let link = |name: &str, target: &str| {
+            let path = dir.join(name);
+            let _ = std::fs::remove_file(&path);
+            std::os::unix::fs::symlink(target, &path).unwrap();
+            path.to_string_lossy().into_owned()
+        };
+        // `time.timeZone = "…"`: NixOS links /etc/localtime straight to
+        // /etc/zoneinfo (itself a link into /etc/static), one hop that
+        // isn't into /etc/static or the store.
+        let nixos = link("nixos", "/etc/zoneinfo/Europe/Lisbon");
+        // timedated's own link, after a change in Settings.
+        let timedated = link("timedated", "../etc/zoneinfo/Europe/Lisbon");
+        let none = HashMap::new();
+        assert!(pinned(&none, "SYSTEMD_ETC_LOCALTIME", &nixos));
+        assert!(!pinned(&none, "SYSTEMD_ETC_LOCALTIME", &timedated));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

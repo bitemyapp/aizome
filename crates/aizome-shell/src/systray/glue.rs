@@ -87,7 +87,7 @@ impl Shell {
                         .map(|d| (d.name.clone(), d.description.clone(), Some(&d.name) == s.default_sink.as_ref()))
                         .collect();
                 }
-                p.media = self.media.clone();
+                p.media = self.sys.media();
                 Panel::Sound(p)
             }
             TrayWidget::Bluetooth => {
@@ -330,7 +330,7 @@ impl Shell {
                     let _ = a.toggle_microphone_mute();
                 }
             }
-            PanelMsg::Media(verb) => crate::mpris::control(verb),
+            PanelMsg::Media(verb) => sys.media_control(verb),
             PanelMsg::Bluetooth(on) => {
                 if let Some(b) = &sys.bluetooth {
                     let s = b.snapshot();

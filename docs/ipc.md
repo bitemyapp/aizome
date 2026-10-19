@@ -33,7 +33,7 @@ Protocol version: **1** (`version` reports it).
 
 | Request | Fields | Response |
 |---|---|---|
-| `version` | | `version {version, protocol}` |
+| `version` | | `version {version, protocol, pid, exe, build}`: `build` is how the compositor's core was built (`aizome --build-info`), which a logic library must match |
 | `outputs` | | `outputs {outputs: [OutputInfo]}` |
 | `windows` | | `windows {windows: [WindowInfo]}`, bottom of the stack first |
 | `desks` | | `desks {desks: [DeskInfo], current}` (`current` is 1-based) |
@@ -67,7 +67,8 @@ Protocol version: **1** (`version` reports it).
 | `screenshot` | `output?`, `path?`, `window?`, `area? {x,y,w,h}`, `clipboard` (bool) | `screenshot {path}`; PNG of one output, a window (with its tab, frame and shadow), an area, or (none given) every output side by side; default path `~/Pictures/Screenshots/Screenshot YYYY-MM-DD at HH.MM.SS.png`; also emits `screenshot-taken` |
 | `reload-config` | | `ok`; re-reads `settings.toml`, applies it, emits `config-changed` |
 | `output-config` | `name`, `mode?` (`"WxH"` or `"WxH@Hz"`), `scale?`, `position? [x,y]`, `transform?`, `enabled?` | `ok`; for this session (Settings writes the file). `enabled: false` turns the output off (its CRTC disabled on udev; out of the layout, its windows moved to the main display); `true` turns it on again, at `position` or right of the others |
-| `stats` | `reset` (bool) | `stats {stats}`: frame times per output |
+| `stats` | `reset` (bool) | `stats {stats}`: frame times per output, and `logic` (the build running, where from, reloads, rollbacks, the last error) |
+| `reload` | `logic`, `shell` (bools), `from?` (a logic library), `shell_from?` (a shell binary), `check` | `reload {report}`: `logic`, `shell`, `settings` and `core`, each an `action` (`reloaded`, `restarted`, `unchanged`, `would-reload`, `refused`, `failed`, `skipped`, and for `core` `same` or `needs-restart`) and a `detail`. With none of `logic`, `shell`, `from`, `shell_from`: whatever changed since it was loaded. Emits `reloaded` (`docs/reload.md`) |
 | `quit` | | `ok`; ends the session |
 | `power-off-monitors` / `power-on-monitors` | | `ok` |
 | `lock` | | `ok`; tells the shell (a `binding` event with action `lock`) |
@@ -82,6 +83,7 @@ Protocol version: **1** (`version` reports it).
 | `recovery-action` | `action`, `app_id?` | `message {message}` or `error`; does one of the overlay's actions, open or not: `force-quit` and `close` (with `app_id`), `reset-input`, `restart-shell`, `reload-compositor`, `lock`, `log-out`, `text-console`. Over the lock screen only `reset-input`, `restart-shell` and `text-console` |
 | `input-state` | | `input-state {state: InputState}` |
 | `debug-stall` | `seconds` | `ok` after blocking the main loop that long (at most 60 s), to try the watchdog (`docs/recovery.md`) |
+| `pick-area` | `tag?` | `ok` at once; the screenshot picker opens (drag over an area, click for the whole display under the pointer, Space and a click for a window, Esc to give up) and its pick is sent to subscribers as `area-picked` with this tag, not taken as a screenshot. The shell uses it to choose what to record |
 
 `desk` is a 1-based position (`2`) or a name (`"Mail"`). `transform` is
 `normal`, `90`, `180`, `270`, `flipped`, `flipped-90`, `flipped-180` or
@@ -178,7 +180,10 @@ damage), `cpu_us` and `gpu_us` (when measurable) as `{p50, p95, p99, max,
 mean}` in microseconds over the last 4096 frames, `samples`.
 `renderer_setting` is `[performance] renderer` (`auto`, `gpu`, `software`);
 it applies at the next start, and `renderer_after_restart` says it asks for
-another renderer than the one running.
+another renderer than the one running. `screencopy`, once a client has
+made a wlr-screencopy copy, is the same record for the copies (`cpu_us`
+per copy: collecting the scene, rendering it into the client's buffer,
+and for wl_shm reading it back).
 
 ## Events
 
@@ -198,6 +203,9 @@ another renderer than the one running.
 | `resumed` | | input after `idle` |
 | `lock-state-changed` | `locked` | an ext-session-lock client locked or unlocked |
 | `night-light-changed` | `state` | Night Light turned on or off, or warmed or cooled (the schedule) |
+| `reloaded` | `report` | a `reload` did something (as its response says) |
+| `logic-failed` | `message`, `action` | the compositor's logic panicked, and what the core did (rolled back, restarted it, set it aside) |
+| `area-picked` | `tag`, `area?` (`{x,y,w,h}` in points; `null` when given up), `output?` (the one holding its centre), `window?` (when a window was picked) | the picker opened by `pick-area` closed |
 
 ## Bindings
 
@@ -224,6 +232,7 @@ Handled by the compositor:
 | ❖⇧3, Print | `screenshot-screen` |
 | ❖⇧4 | `screenshot-area` (a rubber band; Space picks a window; Esc cancels) |
 | XF86Switch_VT_N | `vt-N` |
+| ⌃❖R | `reload`: what changed (the core's own chord, so it works with the logic set aside; `reload` can be bound to another) |
 
 Sent to subscribers as `binding` events, for the shell:
 
@@ -235,7 +244,9 @@ Sent to subscribers as `binding` events, for the shell:
 | XF86PowerOff (the power key, when logind leaves it to the session) | `power-key` |
 | a client rings xdg-system-bell | `bell`, with the `output` (its window's, else the pointer's) |
 | ⌃❖Q | `lock` |
-| ❖⇧5 | `screenshot-tool` |
+| ❖⇧5 | `screenshot-tool` (the Capture menu: screenshots, recordings, Stop Recording) |
+| ⌥Print | `record` (stop the recording going, or pick an area or a display to record) |
+| — (for `[keys.bindings]`) | `record-screen`, `record-area`, `stop-recording` |
 | volume, mute, mic mute keys | `volume-up`, `volume-down`, `mute`, `mic-mute` |
 | brightness keys | `brightness-up`, `brightness-down` |
 | media keys | `play-pause`, `next`, `previous`, `stop` |

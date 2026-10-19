@@ -9,9 +9,10 @@ even that can't help, the kernel's SysRq keys are the last resort.
 
 ## The overlay
 
-The compositor draws it itself (`crates/aizome-comp/src/recovery/`, with
-the overlays' painter), so it works when the shell or an app is the
-problem.
+The compositor draws it itself (`crates/aizome-comp-core/src/recovery/`, with
+the core's painter), so it works when the shell or an app is the
+problem; it's part of the compositor's stable core, not the reloadable
+logic, so it works when the logic has failed too (`docs/reload.md`).
 
 - **Ctrl+Alt+Del** opens it from anywhere. It is checked before anything
   else looks at a key: key bindings, overlays, grabs (an app's menu, an
@@ -57,7 +58,7 @@ icon, name, window count, and
 | Force Quit | Delete, or Return on a row in trouble | SIGKILL to the app's scope (`cgroup.kill`, all of it at once) when it has one named for it, else to its processes. If its windows are still there 1.5 s later (a process stuck in the kernel), its Wayland connection is cut so they go anyway |
 | Reset Input | R | See below |
 | Restart Shell | S | Restarts `aizome-shell` now (SIGKILL, then a start without backoff); apps keep running. Over the lock screen it is Restart Lock Screen, and the new shell is asked to lock again |
-| Reload Aizome | A | `reload::reload_compositor`: reloads the compositor's logic in place (live reload); until that lands it says "not available yet" |
+| Reload Aizome | A | `reload::reload_compositor`: reloads the compositor's logic in place from its saved state, keeping every window (the installed build, even if it's the one running: also the way back from a logic that was set aside); `docs/reload.md` |
 | Lock | L | Asks the shell to lock |
 | Log Out | O, twice | Ends the session (the second press within 4 s confirms) |
 | Text Console | T | Switches to a text console (2–6, not the current one) through the session (libseat); Ctrl+Alt+F1 or F7 comes back |

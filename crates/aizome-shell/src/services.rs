@@ -92,7 +92,7 @@ impl Shell {
                         transient: true,
                         ..Default::default()
                     };
-                    let id = self.notes.fresh_id();
+                    let id = self.fresh_note_id();
                     self.take_note(crate::notifications::server::NoteEvent::Notify(id, Box::new(n)), cx);
                 }
             }
