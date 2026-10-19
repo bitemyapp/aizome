@@ -66,9 +66,23 @@ Aizome's look.
   sound, Bluetooth, display and battery widgets, each an icon (Lucide, 16pt,
   `text2`) and, for battery, the percentage in IBM Plex Mono. Hidden when
   their hardware is absent (no battery on a desktop, no Bluetooth adapter).
+- **Apps' status items**, between the meters and the network widget: the
+  icons apps put in a tray (Steam, Discord, Dropbox, Telegram), in the order
+  they came. The shell serves `org.kde.StatusNotifierWatcher`, the
+  StatusNotifierItem protocol libappindicator, libayatana-appindicator, Qt
+  and Electron speak; XEmbed tray icons (old GTK 2 and Wine apps) aren't
+  shown. Each is its icon at 16pt: by name from the app's own folder
+  (`IconThemePath`), then the icon theme, else the pixels it sent (PNGs;
+  SVGs don't read yet), a generic window glyph until one reads. Passive
+  items (the app says there's nothing to show) are hidden; while one asks
+  for attention it shows its attention icon. A click activates the item,
+  or opens its menu when it is only a menu (Steam's); a right click opens
+  its menu (`com.canonical.dbusmenu`, read whole as it opens, checks and
+  radio marks and disabled rows as the app says), or asks the app to show
+  its own when it has none; a middle click is its secondary action.
 - **The clock**, IBM Plex Mono 600, tabular digits, 24h by default (config).
 - When the Deskbar is collapsed: `N apps ⌄` before the clock, which expands
-  it.
+  it, in place of the widgets and status items.
 
 Each systray widget opens a panel (a popup under it, `raised`, hard 3pt
 shadow, 320pt wide) of quick controls, and its last row opens the matching

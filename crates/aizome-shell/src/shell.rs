@@ -109,6 +109,11 @@ pub enum Msg {
     Located(Result<(f64, f64), String>),
     /// Time to play the volume's feedback (it changed a moment ago).
     VolumeFeedback,
+    /// A status item that turned out to be only a menu was clicked: its
+    /// menu (bar, slot, where).
+    ItemMenuWanted(WindowKey, u64, Rect),
+    /// A status item's menu, read.
+    ItemMenu(WindowKey, u64, Rect, Result<aizome_sys::statusnotifier::MenuItem, String>),
     /// Nothing: a message to wake the loop.
     Nothing,
 }
@@ -296,6 +301,8 @@ pub struct Shell {
     pub(crate) deskbar_size: Option<aizome_kit::Size>,
     /// Apps' own icons (PNG), by app id, for apps the shell has no glyph for.
     pub(crate) icons: HashMap<String, Option<aizome_kit::Image>>,
+    /// Apps' status items' icons, read once per change.
+    pub(crate) item_icons: crate::systray::items::IconCache,
     pub(crate) icon_lookup: Option<aizome_sys::apps::IconLookup>,
     /// The primary bar's Desks, by where they are across it.
     pub(crate) desk_strip: Vec<(u32, Rect)>,
@@ -408,6 +415,7 @@ impl Shell {
             pending_actions: Vec::new(),
             deskbar_size: None,
             icons: HashMap::new(),
+            item_icons: HashMap::new(),
             icon_lookup: None,
             desk_strip: Vec::new(),
             bar_menu: None,
@@ -598,6 +606,7 @@ impl Shell {
                     self.open_slot(win, slot, rect, false, cx);
                 }
             }
+            BarMsg::Item(slot, click, rect) => self.item_click(win, slot, click, rect, cx),
             BarMsg::Hover(slot) => self.hover_title(win, slot, cx),
             BarMsg::RenameText(t) => {
                 if let Some((_, s)) = &mut self.renaming {
@@ -691,6 +700,7 @@ impl Shell {
             Slot::Tray(w) => {
                 self.toggle_panel(win, w, rect, cx);
             }
+            Slot::Item(s) => self.item_menu(win, s, rect, cx),
             Slot::Apps => self.run(Action::SetDeskbarCollapsed(false), cx),
             Slot::Sharing => self.open_share_menu(win, rect, cx),
         }
@@ -771,6 +781,7 @@ impl Shell {
             Action::OpenUrl { url } => self.launch(Launch::Argv(vec!["xdg-open".into(), url]), cx),
             Action::Settings { pane, anchor } => self.launch(crate::launch::settings(&pane, anchor.as_deref()), cx),
             Action::Copy { text } => cx.set_clipboard_text(&text),
+            Action::StatusMenuItem { key, id } => self.status_menu_item(&key, id),
             Action::NewDesk => {
                 let name = (self.wm.desks.len() + 1).to_string();
                 self.ipc.send(Request::AddDesk { name, folder: None, index: None });
@@ -1104,6 +1115,7 @@ impl Shell {
         self.read_settings();
         self.sync_power_key();
         self.tray = self.sys.tray(&self.bar_cfg);
+        self.sync_status_items();
         self.refresh_wall_paths();
         let day = self.settings.theme_now() == aizome_theme::ThemeName::Day;
         self.theme_changed(day);
@@ -1329,6 +1341,7 @@ impl Program for Shell {
             }
             Msg::Sys => {
                 self.tray = self.sys.tray(&self.bar_cfg);
+                self.sync_status_items();
                 self.session_events(cx);
             }
             Msg::Meters(r) => self.meters = r,
@@ -1415,6 +1428,8 @@ impl Program for Shell {
                     }
                 }
             }
+            Msg::ItemMenuWanted(bar, slot, rect) => self.item_menu(bar, slot, rect, cx),
+            Msg::ItemMenu(bar, slot, rect, menu) => self.show_item_menu(bar, slot, rect, menu, cx),
             Msg::Nothing => {}
         }
         self.after_update(cx);

@@ -69,6 +69,11 @@ pub enum Action {
     Copy {
         text: String,
     },
+    /// Pick row `id` of the menu of the status item listed as `key`.
+    StatusMenuItem {
+        key: String,
+        id: i32,
+    },
     Session(SessionVerb),
     /// Night and Day.
     SetTheme {

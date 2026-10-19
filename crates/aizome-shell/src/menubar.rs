@@ -1,7 +1,7 @@
 //! The global menu bar (C2-Desktop's header): the Toolchest button, the
 //! focused app's name and menus (or a notification's line), the Desks
 //! strip, and at the right the Deskbar's header: the systray's meters and
-//! widgets, `N apps ⌄` when the Deskbar is folded, and the clock.
+//! widgets, `N apps â` when the Deskbar is folded, and the clock.
 
 use aizome_ipc::DeskInfo;
 use aizome_kit::Icon;
@@ -22,6 +22,8 @@ use crate::widgets::drawn::{Press, around, drawn, split};
 pub enum BarMsg {
     /// A title, the Toolchest or a systray widget was pressed: its rectangle.
     Press(Slot, Rect),
+    /// An app's status item was clicked: which, how, and its rectangle.
+    Item(u64, ItemClick, Rect),
     /// The pointer came over a title while a menu is open.
     Hover(Slot),
     /// The notification line was clicked.
@@ -37,6 +39,8 @@ pub enum BarMsg {
 
 /// The bar's height.
 pub const HEIGHT: f64 = 24.0;
+/// A status item's icon, square.
+pub const ITEM: f64 = 16.0;
 /// The Deskbar's header at the bar's right: as wide as the Deskbar.
 pub const HEADER: f64 = aizome_theme::metrics::DESKBAR_WIDTH;
 
@@ -47,7 +51,9 @@ pub enum Slot {
     /// The focused app's menu `i` (0 is the app menu, under its name).
     Menu(usize),
     Tray(TrayWidget),
-    /// `N apps ⌄`.
+    /// An app's status item, by its key's hash ([`TrayItem::slot`]).
+    Item(u64),
+    /// `N apps â`.
     Apps,
     /// The sharing indicator: what's shared, and Stop Sharing.
     Sharing,
@@ -95,25 +101,53 @@ impl TrayWidget {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Tray {
     pub network: Option<NetGlyph>,
-    /// Output volume 0–1 and mute.
+    /// Output volume 0â1 and mute.
     pub sound: Option<(f32, bool)>,
     /// Powered, and a device connected.
     pub bluetooth: Option<(bool, bool)>,
-    /// The built-in panel's brightness 0–1.
+    /// The built-in panel's brightness 0â1.
     pub display: Option<f32>,
-    /// Charge 0–100 and whether it's charging.
+    /// Charge 0â100 and whether it's charging.
     pub battery: Option<(f32, bool)>,
     /// The battery's glyph alone, without its percentage (`[menubar]
     /// battery_percent = false`).
     pub battery_glyph_only: bool,
     pub cpu: bool,
     pub memory: bool,
+    /// Apps' status items (Steam, Discord…), in the order they came.
+    pub items: Vec<TrayItem>,
+}
+
+/// An app's status item in the systray.
+#[derive(Clone, Debug, PartialEq)]
+pub struct TrayItem {
+    /// The watcher's key for it.
+    pub key: String,
+    /// Its [`Slot::Item`].
+    pub slot: u64,
+    pub label: String,
+    /// Its icon, `None` until one reads (a generic glyph shows).
+    pub image: Option<look::Pic>,
+    /// Changes with the icon.
+    pub sig: u64,
+}
+
+/// How a status item was clicked.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum ItemClick {
+    /// The left button: activate it (or its menu, for items that are only
+    /// a menu).
+    Primary,
+    /// The middle button.
+    Secondary,
+    /// The right button: its menu.
+    Menu,
 }
 
 /// The network widget's glyph.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum NetGlyph {
-    /// Wi-Fi with 0–4 bars.
+    /// Wi-Fi with 0â4 bars.
     Wifi(u8),
     Wired,
     Vpn,
@@ -212,7 +246,7 @@ pub struct BarModel {
     pub tray: Tray,
     pub meters: Reading,
     pub clock: String,
-    /// `Some(n)` when the Deskbar is folded: `n apps ⌄`.
+    /// `Some(n)` when the Deskbar is folded: `n apps â`.
     pub folded_apps: Option<usize>,
     /// Unread notifications, counted on the `N apps` control when folded.
     pub unread: usize,
@@ -533,6 +567,39 @@ fn tray_icon(widget: TrayWidget, icon: Icon, text: Option<String>, open: bool, l
     .into()
 }
 
+/// An app's status item: its icon at 16pt (or a generic glyph until one
+/// reads); left click activates it, right click its menu, middle click its
+/// secondary action.
+fn status_item(item: &TrayItem, open: bool) -> Element<BarMsg> {
+    let slot = item.slot;
+    let image = item.image.clone();
+    drawn(ITEM, HEIGHT, (slot, item.sig, image.is_some(), open), move |cx| {
+        let t = cx.theme();
+        let face = Rect::new(0.0, 2.0, ITEM, HEIGHT - 3.0);
+        let fg = if open {
+            cx.canvas.fill_rect(face.inflate(3.0, 0.0), t.selection());
+            t.on_selection()
+        } else {
+            if cx.is_hovered() {
+                cx.canvas.fill_rect(face.inflate(3.0, 0.0), t.hover(t.bar()));
+            }
+            t.text2()
+        };
+        let top = ((HEIGHT - ITEM) / 2.0).round();
+        match &image {
+            Some(p) => cx.canvas.draw_image(&p.0, Rect::new(0.0, top, ITEM, top + ITEM)),
+            None => Icon::AppWindow.draw(cx.canvas, Point::new(0.5, top + 0.5), 15.0, fg),
+        }
+    })
+    .on_press(move |p: Press| BarMsg::Item(slot, ItemClick::Primary, p.rect))
+    .on_right_click(move |p: Press| BarMsg::Item(slot, ItemClick::Menu, p.rect))
+    .on_middle_click(BarMsg::Item(slot, ItemClick::Secondary, Rect::new(0.0, 0.0, 0.0, 0.0)))
+    .overflow(3.0)
+    .text(item.label.clone(), SemanticRole::Button)
+    .key(("item", slot))
+    .into()
+}
+
 /// The indicator's dot, its gap to the time, and the time's text.
 const DOT: f64 = 8.0;
 const DOT_GAP: f64 = 5.0;
@@ -649,7 +716,7 @@ fn clock(label: &str, open: bool) -> Element<BarMsg> {
     .into()
 }
 
-/// `N apps ⌄`: the folded Deskbar.
+/// `N apps â`: the folded Deskbar.
 fn apps_control(n: usize, unread: usize, open: bool) -> Element<BarMsg> {
     let label = if n == 1 { "1 app".to_owned() } else { format!("{n} apps") };
     let m = label.clone();
@@ -702,6 +769,9 @@ fn header(model: &BarModel) -> Element<BarMsg> {
     if let Some(n) = model.folded_apps {
         items.push(apps_control(n, model.unread, model.open == Some(Slot::Apps)));
     } else {
+        for item in &tray.items {
+            items.push(status_item(item, model.open == Some(Slot::Item(item.slot))));
+        }
         if let Some(g) = tray.network {
             items.push(tray_icon(TrayWidget::Network, g.icon(), None, open(TrayWidget::Network), "Network".into()));
         }
@@ -845,6 +915,7 @@ pub fn header_width(t: &aizome_kit::Theme, m: &mut Measure, model: &BarModel) ->
         }
         items.push(w.ceil());
     } else {
+        items.extend(tray.items.iter().map(|_| ITEM));
         for on in [tray.network.is_some(), tray.sound.is_some(), tray.bluetooth.is_some(), tray.display.is_some()] {
             if on {
                 items.push(15.0);

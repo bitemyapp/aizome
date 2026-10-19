@@ -1,3 +1,4 @@
+| Apps' status items | done | live watcher on the desktop's own session bus (Steam registered, its menu read); headless session on a private bus with an item carrying Steam's icon and menu: drawn, left click opens the menu, a row reaches the app; `statusnotifier` tests on a private bus | No XEmbed; SVG icons don't read; `Scroll` isn't sent (no wheel on drawn elements) |
 # Aizome against its design and brief
 
 What the end-to-end walkthrough of 17–18 October 2026 found: every element

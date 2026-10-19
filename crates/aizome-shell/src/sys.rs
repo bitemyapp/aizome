@@ -12,6 +12,7 @@ use aizome_sys::power::Backlight;
 use aizome_sys::power::Logind;
 use aizome_sys::power::PowerProfiles;
 use aizome_sys::power::Upower;
+use aizome_sys::statusnotifier::StatusNotifier;
 
 use crate::menubar::{NetGlyph, Tray};
 use crate::systray::panels::{Media, MediaVerb};
@@ -30,6 +31,9 @@ pub struct Sys {
     /// Media players on the session bus, followed as they change, for the
     /// sound panel and the media keys.
     pub mpris: Option<Mpris>,
+    /// Apps' status items: the shell serves the watcher they register
+    /// with.
+    pub status: Option<StatusNotifier>,
 }
 
 impl Sys {
@@ -46,6 +50,7 @@ impl Sys {
             logind: Some(Logind::new(w())),
             disks: Some(aizome_sys::disks::Disks::new(w())),
             mpris: Some(Mpris::new(w())),
+            status: Some(StatusNotifier::new(w())),
         }
     }
 
