@@ -96,19 +96,16 @@ impl Shell {
         }
     }
 
-    /// Make a notification's sound (in tests: note it).
+    /// Make a notification's sound, at the alert volume (in tests: note
+    /// it).
     pub fn make_sound(&mut self, s: &crate::notifications::store::NoteSound) {
         use crate::notifications::store::NoteSound;
         let file = match s {
             NoteSound::File(p) => Some(p.clone()),
             NoteSound::Named(name) => crate::sound::theme_file(name),
         };
-        self.last_sound = Some(format!("{s:?}"));
-        if self.opts.live
-            && let Some(f) = file
-        {
-            crate::sound::play(f);
-        }
+        let volume = self.sound_cfg.alert_level();
+        self.play_sound(&format!("{s:?}"), file, volume);
     }
 
     /// Whether the screen is locked (notifications are only filed then).

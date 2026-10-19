@@ -164,7 +164,7 @@ impl Pane for Accessibility {
                         toggle(extra::get_bool(&s.sound, "visual_alert", false)).on_toggle(Msg::Flash),
                     )
                     .entry("flash")
-                    .help("The menu bar flashes when the alert sound plays, so it's seen as well as heard."),
+                    .help("The screen's edge flashes when the alert sound plays, so it's seen as well as heard."),
                 ],
             ),
             vcx.section("Typing", typing),

@@ -209,6 +209,10 @@ impl Shell {
             }
             _ => return false,
         };
+        if matches!(action, "volume-up" | "volume-down") {
+            // Heard at the new volume, if Sound asks for feedback.
+            self.volume_feedback(osd.muted, cx);
+        }
         self.show_osd(osd, cx);
         true
     }

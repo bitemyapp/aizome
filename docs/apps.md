@@ -146,6 +146,13 @@ As built, beyond the above:
   a gamma table (the switch is `[night_light] enabled`, applied at once),
   with today's sunset and sunrise where the computer is; where none does,
   it says why there's no switch.
+- **Sound**: the alert sound and volume are the shell's: it plays the
+  alert for the system bell (xdg-system-bell, through the compositor),
+  notifications' sounds at the alert volume, and, with "Play feedback
+  when volume is changed", the theme's `audio-volume-change` at the new
+  volume after the volume keys or the Sound panel's slider; all from the
+  freedesktop sound theme with `pw-play`. Flash the screen for alerts
+  flashes its edge as well as sounding.
 - **Appearance**: Auto following sunset and sunrise turns at them where
   the computer is, and says when and where ("Day from sunrise (08:15) to
   sunset (18:57) in Paris"). Where it is: what GeoClue tells the shell

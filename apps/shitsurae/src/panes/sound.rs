@@ -6,8 +6,10 @@
 //!
 //! The alert settings live in `settings.toml`'s `[sound]` table, which
 //! this pane owns: `alert_sound` (a sound theme name such as `"bell"`),
-//! `alert_volume` (0.0–1.0) and `volume_feedback` (play the alert when the
-//! volume keys change the volume).
+//! `alert_volume` (0.0–1.0) and `volume_feedback` (a sound at the new
+//! volume when the volume keys or the Sound panel change it). The shell
+//! plays them through PipeWire: the alert for the system bell, the alert
+//! volume for notifications' sounds too.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -72,6 +74,8 @@ pub enum Msg {
     AppDevice(bool, u32, u32),
     AlertSound(usize),
     AlertVolume(f32),
+    /// The alert volume's slider let go: hear it.
+    AlertVolumeSet,
     Feedback(bool),
     Meter,
     Done(String, Result<(), Error>),
@@ -459,6 +463,7 @@ impl Pane for Sound {
                     s.sound.insert("alert_volume".into(), toml::Value::Float(v));
                 });
             }
+            Msg::AlertVolumeSet => self.alert(cx),
             Msg::Feedback(on) => cx.change(|s| {
                 s.sound.insert("volume_feedback".into(), toml::Value::Boolean(on));
             }),
@@ -836,7 +841,11 @@ fn alerts(p: &Sound, vcx: &ViewCx) -> Element<Msg> {
             "Alert volume",
             row![
                 icon(Icon::Volume1).size(14.0).role(Role::Text3),
-                slider(volume, 0.0..=1.0).step(0.05).on_change(|v| Msg::AlertVolume(v as f32)).width(200.0),
+                slider(volume, 0.0..=1.0)
+                    .step(0.05)
+                    .on_change(|v| Msg::AlertVolume(v as f32))
+                    .on_release(Msg::AlertVolumeSet)
+                    .width(200.0),
                 icon(Icon::Volume2).size(14.0).role(Role::Text3),
             ]
             .spacing(8.0)

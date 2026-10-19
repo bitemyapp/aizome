@@ -104,6 +104,8 @@ pub enum Msg {
     /// Where GeoClue says the computer is (latitude, longitude), or why
     /// it says nothing.
     Located(Result<(f64, f64), String>),
+    /// Time to play the volume's feedback (it changed a moment ago).
+    VolumeFeedback,
     /// Nothing: a message to wake the loop.
     Nothing,
 }
@@ -1313,6 +1315,7 @@ impl Program for Shell {
                 self.locate_if_wanted(cx);
             }
             Msg::Located(found) => self.located(found),
+            Msg::VolumeFeedback => self.play_feedback(),
             Msg::Run(a) => self.run(a, cx),
             Msg::Bar(w, m) => self.bar(w, m, cx),
             Msg::Deskbar(m) => self.deskbar_msg(m, cx),

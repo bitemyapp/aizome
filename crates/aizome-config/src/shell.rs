@@ -253,12 +253,35 @@ pub struct PowerSettings {
     pub power_key: Option<PowerKey>,
 }
 
-/// `[sound]`, the shell's part.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+/// `[sound]`, the shell's part (Settings' Sound and Accessibility panes
+/// write it).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct SoundSettings {
-    /// Flash the screen's edge for the system bell instead of sounding it.
+    /// Flash the screen's edge when the alert sounds (the system bell), so
+    /// it's seen as well as heard.
     pub visual_alert: bool,
+    /// The alert: a name in the freedesktop sound theme (`bell`).
+    pub alert_sound: String,
+    /// How loud alerts and notifications' sounds are, 0–1, of the output's
+    /// volume (0: silent).
+    pub alert_volume: f64,
+    /// Play a sound when the volume keys or the Sound panel change the
+    /// volume, at the new volume.
+    pub volume_feedback: bool,
+}
+
+impl Default for SoundSettings {
+    fn default() -> SoundSettings {
+        SoundSettings { visual_alert: false, alert_sound: "bell".into(), alert_volume: 0.7, volume_feedback: false }
+    }
+}
+
+impl SoundSettings {
+    /// The alert's volume, within 0–1.
+    pub fn alert_level(&self) -> f64 {
+        if self.alert_volume.is_finite() { self.alert_volume.clamp(0.0, 1.0) } else { 0.7 }
+    }
 }
 
 /// The container a screen recording is written in.
@@ -468,7 +491,7 @@ mod tests {
         let s = Settings::from_toml(
             "[notifications]\npreviews_when_locked = true\nblocked_apps = [\"firefox.desktop\"]\nsilent_apps = [\"org.aizome.Fusen\"]\n\
              [deskbar]\nshow_shelf = false\n[desktop]\nshow_disks = false\n[lock]\nshow_clock = false\nafter_monitors_off = false\n\
-             [power]\npower_key = \"lock\"\n[palette]\nscopes = [\"commands\", \"apps\"]\nexclude = [\"~/Private\"]\n[sound]\nvisual_alert = true\nvolume_step = 5\n",
+             [power]\npower_key = \"lock\"\n[palette]\nscopes = [\"commands\", \"apps\"]\nexclude = [\"~/Private\"]\n[sound]\nvisual_alert = true\nvolume_step = 5\nalert_sound = \"message\"\nalert_volume = 0.4\nvolume_feedback = true\n",
         )
         .unwrap();
         let n = s.notification_settings();
@@ -485,16 +508,20 @@ mod tests {
         let p = s.palette_settings();
         assert!(p.finds("apps") && !p.finds("files"));
         assert_eq!(p.exclude, ["~/Private"]);
-        assert!(s.sound_settings().visual_alert);
+        let snd = s.sound_settings();
+        assert!(snd.visual_alert && snd.volume_feedback);
+        assert_eq!((snd.alert_sound.as_str(), snd.alert_level()), ("message", 0.4));
         // Left out, the defaults: everything shows, the system has the key.
         let s = Settings::default();
+        let snd = s.sound_settings();
+        assert_eq!((snd.alert_sound.as_str(), snd.alert_level(), snd.volume_feedback), ("bell", 0.7, false));
         assert!(s.deskbar_settings().show_shelf && s.desktop_settings().show_trash && s.lock_settings().show_clock);
         assert_eq!(s.power_settings().power_key, None);
         assert_eq!(s.palette_settings().scopes.len(), PALETTE_SCOPES.len());
         // Written back, [power] and [sound] stay their own sections.
         let mut s = Settings::from_toml("[sound]\nvolume_step = 5\n").unwrap();
         s.set_shell_section("power", &PowerSettings { power_key: Some(PowerKey::Ask) });
-        s.set_shell_section("sound", &SoundSettings { visual_alert: true });
+        s.set_shell_section("sound", &SoundSettings { visual_alert: true, ..Default::default() });
         let back = Settings::from_toml(&s.to_toml().unwrap()).unwrap();
         assert_eq!(back.power_settings().power_key, Some(PowerKey::Ask));
         assert!(back.sound_settings().visual_alert);

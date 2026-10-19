@@ -32,6 +32,8 @@ pub enum PanelMsg {
     Vpn(String, bool),
     Airplane(bool),
     Volume(f32),
+    /// The output's volume slider let go (feedback plays then).
+    VolumeSet,
     Mute,
     Output(String),
     InputVolume(f32),
@@ -293,13 +295,27 @@ fn slider_row(
     on_change: impl Fn(f64) -> PanelMsg + 'static,
     right: Option<Element<PanelMsg>>,
 ) -> Element<PanelMsg> {
+    slider_row_released(icon, value, on_change, None, right)
+}
+
+fn slider_row_released(
+    icon: Icon,
+    value: f32,
+    on_change: impl Fn(f64) -> PanelMsg + 'static,
+    on_release: Option<PanelMsg>,
+    right: Option<Element<PanelMsg>>,
+) -> Element<PanelMsg> {
     let glyph = drawn(20.0, ROW, icon, move |cx| {
         let t = cx.theme();
         icon.draw(cx.canvas, Point::new(0.0, ((ROW - 16.0) / 2.0).round()), 16.0, t.text2());
     });
     let mut items: Vec<Element<PanelMsg>> = vec![
         glyph.into(),
-        Element::from(slider(value as f64, 0.0..=1.0).on_change(on_change)).width(aizome_kit::Length::Fill),
+        Element::from(match on_release {
+            Some(m) => slider(value as f64, 0.0..=1.0).on_change(on_change).on_release(m),
+            None => slider(value as f64, 0.0..=1.0).on_change(on_change),
+        })
+        .width(aizome_kit::Length::Fill),
     ];
     if let Some(r) = right {
         items.push(r);
@@ -406,10 +422,11 @@ fn sound(p: &SoundPanel) -> Vec<Element<PanelMsg>> {
     let mut v = vec![head("Sound", None)];
     if let Some((vol, muted)) = p.output {
         let icon = crate::menubar::sound_icon(vol, muted);
-        v.push(slider_row(
+        v.push(slider_row_released(
             icon,
             vol,
             |x| PanelMsg::Volume(x as f32),
+            Some(PanelMsg::VolumeSet),
             Some(icon_btn(if muted { Icon::VolumeX } else { Icon::Volume2 }, PanelMsg::Mute, "Mute")),
         ));
     }

@@ -1151,7 +1151,51 @@ def sound():
     until("unmuted", lambda: "MUTED" not in wpctl("get-volume @DEFAULT_AUDIO_SINK@"))
     vol = S.control("sound", "output-volume", role="slider")
     assert abs(vol["range"][2] - 0.3) < 0.06 or abs(vol["range"][2] - 30) < 6, vol
+
+    # Alerts, heard on the output (its monitor recorded): the bell plays
+    # the alert sound at the alert volume, silent at none...
+    bell = lambda: alice("aizomectl action bell")  # noqa: E731
+    loud = loudness_during(bell)
+    print(f"the bell peaked at {loud}")
+    assert loud > 300, f"the bell made no sound ({loud})"
+    S.slide(S.control("sound", "alert-volume", role="slider"), 0.0)
+    until("alert_volume = 0", lambda: setting("sound.alert_volume") == 0.0)
+    quiet = loudness_during(bell)
+    assert quiet < 100, f"the bell sounded at no volume ({quiet})"
+    S.slide(S.control("sound", "alert-volume", role="slider"), 0.7)
+    until("alert_volume back", lambda: (setting("sound.alert_volume") or 0) > 0.5)
+    # ...and with feedback on, the volume keys are heard at the new volume.
+    silent = loudness_during(lambda: alice("aizomectl action volume-up"))
+    assert silent < 100, f"feedback without asking ({silent})"
+    S.click(S.control("sound", "feedback", role="switch"))
+    until("volume_feedback = true", lambda: setting("sound.volume_feedback") is True)
+    heard = loudness_during(lambda: alice("aizomectl action volume-down"))
+    print(f"the volume key's feedback peaked at {heard}")
+    assert heard > 300, f"no feedback from the volume key ({heard})"
+    S.click(S.control("sound", "feedback", role="switch"))
+    until("volume_feedback = false", lambda: setting("sound.volume_feedback") is False)
     S.quit()
+
+
+def loudness_during(act, seconds=4):
+    """The loudest sample on the default output (its monitor) while `act`
+    runs, 0–32767."""
+    raw = "/tmp/aizome-monitor.raw"
+    alice(
+        f"rm -f {raw}; setsid timeout {seconds} parecord --device=@DEFAULT_MONITOR@ --raw --format=s16le "
+        f"--channels=1 --rate=16000 {raw} </dev/null >/dev/null 2>&1 &"
+    )
+    time.sleep(1)
+    act()
+    time.sleep(seconds)
+    script = (
+        "import array, sys\n"
+        "d = open(sys.argv[1], 'rb').read()\n"
+        "a = array.array('h')\n"
+        "a.frombytes(d[: len(d) // 2 * 2])\n"
+        "print(max(map(abs, a)) if a else 0)\n"
+    )
+    return int(machine.succeed(f"python3 -c {shlex.quote(script)} {raw}").strip())
 
 
 @part("Network: joining a WPA2 network with its passphrase, airplane mode, and the wired details")
