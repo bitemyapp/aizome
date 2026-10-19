@@ -32,7 +32,9 @@ aizome --build-info                      # how the core was built (what a logic 
   Light). Keys Shitsurae keeps in the sections' extra tables are honoured
   too: `[windows] tab_double_click` (`fill`, `minimise`, `nothing`),
   `[input.pointer]` and `[input.touchpad]` `scroll_factor` (scales axis
-  events, wheel and finger), `[input.keyboard]` `sticky_keys` (a modifier
+  events, wheel and finger; `natural_scroll` turns them round in the
+  compositor alone, libinput's own natural scrolling always off, so it's
+  turned round once on every device), `[input.keyboard]` `sticky_keys` (a modifier
   tapped alone latches for the next key; tapped again it lets go) and
   `slow_keys` with `slow_keys_ms` (a key counts once held that long; a
   brush is dropped), and `[performance] renderer` (at the next start).

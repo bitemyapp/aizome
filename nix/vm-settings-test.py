@@ -1041,13 +1041,13 @@ def sidebar_top():
     return S.find(text="Network", role="label", visible=False)["rect"][1]
 
 
-def scrolled_by_wheel(dz):
-    """Turn the real mouse's wheel (QEMU's PS/2 mouse, whose wheel libinput
-    can turn round itself) over Settings' sidebar; how far its list moved up."""
+def scrolled_by_wheel(dz, kind="PS/2"):
+    """Turn a real mouse's wheel (QEMU's PS/2 mouse, or another plugged in)
+    over Settings' sidebar; how far its list moved up."""
     y0 = sidebar_top()
     win = S.window()["geometry"]
     move(win["x"] + 116, win["y"] + win["h"] / 2)
-    machine.send_monitor_command(f"mouse_set {mouse_index('PS/2')}")
+    machine.send_monitor_command(f"mouse_set {mouse_index(kind)}")
     for _ in range(2):
         machine.send_monitor_command(f"mouse_move 0 0 {dz}")
         time.sleep(0.2)
@@ -1092,6 +1092,15 @@ def mouse():
     natural = scrolled_by_wheel(1 if traditional > 0 else -1)
     print(f"the wheel moved the pane {traditional}, then {natural} with natural scrolling")
     assert traditional * natural < 0, (traditional, natural)
+    # A mouse plugged in with natural scrolling already on (libinput can
+    # turn a USB wheel round itself): turned round once, as the other is.
+    machine.send_monitor_command("device_add usb-mouse,bus=usb-bus.0,id=natmouse")
+    until("the USB mouse", lambda: mouse_index("USB Mouse") is not None)
+    time.sleep(2)
+    usb = scrolled_by_wheel(1 if traditional > 0 else -1, kind="USB Mouse")
+    print(f"the USB mouse's wheel moved the pane {usb}")
+    machine.send_monitor_command("device_del natmouse")
+    assert usb * natural > 0, f"turned round twice: {usb} against {natural}"
 
     reopen("mouse")
     assert S.checked("mouse", "natural-scroll") is True

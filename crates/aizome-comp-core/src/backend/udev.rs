@@ -1059,22 +1059,41 @@ fn vblank(state: &mut State, node: DrmNode, crtc: crtc::Handle, metadata: &mut O
     }
 }
 
+/// What a device is told of the settings: its acceleration and speed, and
+/// whether libinput turns its scrolling round.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct DeviceScroll {
+    profile: aizome_config::AccelProfile,
+    speed: f64,
+    /// libinput's own natural scrolling: always off. The logic turns
+    /// scrolling round where the settings ask (`logic_pointer_axis`), for
+    /// every device the same way and for scrolls fed over IPC too; libinput
+    /// turning it round as well, where a device offers it (touchpads, most
+    /// wheels), would turn it back.
+    natural: bool,
+}
+
+fn device_scroll(input: &aizome_config::Input, touchpad: bool) -> DeviceScroll {
+    let (profile, speed) = if touchpad {
+        (input.touchpad.accel_profile, input.touchpad.speed)
+    } else {
+        (input.pointer.accel_profile, input.pointer.speed)
+    };
+    DeviceScroll { profile, speed: speed.clamp(-1.0, 1.0), natural: false }
+}
+
 /// Pointer acceleration, scrolling, tapping and the rest, from the
 /// settings.
 fn apply_device_settings(d: &mut libinput::Device, input: &aizome_config::Input) {
     use aizome_config::{AccelProfile, ClickMethod};
     let touchpad = d.config_tap_finger_count() > 0;
-    let (profile, speed, natural) = if touchpad {
-        (input.touchpad.accel_profile, input.touchpad.speed, input.touchpad.natural_scroll)
-    } else {
-        (input.pointer.accel_profile, input.pointer.speed, input.pointer.natural_scroll)
-    };
+    let DeviceScroll { profile, speed, natural } = device_scroll(input, touchpad);
     if d.config_accel_is_available() {
         let _ = d.config_accel_set_profile(match profile {
             AccelProfile::Flat => libinput::AccelProfile::Flat,
             AccelProfile::Adaptive => libinput::AccelProfile::Adaptive,
         });
-        let _ = d.config_accel_set_speed(speed.clamp(-1.0, 1.0));
+        let _ = d.config_accel_set_speed(speed);
     }
     if d.config_scroll_has_natural_scroll() {
         let _ = d.config_scroll_set_natural_scroll_enabled(natural);
@@ -1103,6 +1122,18 @@ fn frame_flags(az: &Aizome) -> FrameFlags {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn libinput_never_turns_scrolling_round_itself() {
+        let mut input = aizome_config::Input::default();
+        input.pointer.natural_scroll = true;
+        input.touchpad.natural_scroll = true;
+        input.pointer.speed = 3.0;
+        for touchpad in [false, true] {
+            assert!(!device_scroll(&input, touchpad).natural, "turned round twice (touchpad {touchpad})");
+        }
+        assert_eq!(device_scroll(&input, false).speed, 1.0);
+    }
 
     #[test]
     fn edid_names() {
