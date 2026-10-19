@@ -223,13 +223,8 @@ pkgs.testers.runNixOSTest {
         as_alice("aizomectl input key delete")
         machine.wait_until_fails(f"kill -0 {foot['pid']}", timeout=30)
         until("foot's window gone", lambda: not any(w["app_id"] == "foot" for w in windows()))
-        # The overlay's list catches up at its next refresh.
-        until(
-            "the overlay drops foot",
-            lambda: not any(a["app_id"] == "foot" for a in ipc("recovery status")["state"]["apps"]),
-            timeout=10,
-        )
         state = ipc("recovery status")["state"]
+        assert not any(a["app_id"] == "foot" for a in state["apps"]), state
         assert state["message"].startswith("Force quit"), state
         capture("07-force-quit")
         as_alice("aizomectl input key escape")
