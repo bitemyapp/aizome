@@ -170,7 +170,29 @@ As built, beyond the above:
 - **Trackpad** says when no trackpad is connected; its settings are kept
   for one.
 - **Users & Groups** reads a picture again when AccountsService replaces
-  it at the same path.
+  it at the same path. With `users.mutableUsers = false` the account
+  types show but can't change; Remove names the account's own home
+  folder.
+- **Network**: search finds every option whatever the pane shows (with
+  no VPNs, "Add VPN"; with Wi-Fi off, the network lists' options show the
+  Wi-Fi switch). A password sheet keeps what's typed while another join
+  goes, and a join that fails opens its sheet again as it was, with why.
+  A saved network's new password or enterprise account is tried in
+  memory and kept only once it joins, so a refused one costs nothing.
+  The hotspot says the network's name others see. Airplane mode where
+  `/dev/rfkill` can't be written switches NetworkManager's radios and
+  BlueZ's adapters off, and those back on after.
+- **Bluetooth**: a pairing sheet closes when BlueZ cancels it, when our
+  pairing ends (a code only shown included), and a device that asked to
+  pair (Authorize) leaves no spinner once answered.
+- **Displays** previews mirroring live under "Keep these display
+  settings?" as it does the other risky changes, and follows `[[outputs]]`
+  changed elsewhere while it's open (panes hear when `settings.toml`
+  changes on disk).
+- **Language & Region**: the formats preview follows the locale localed
+  has, whenever it changes.
+- **Search**: Forget removes the palette's history for good: the shell
+  records picks into the file and reads it again when it changed.
 - GTK and libadwaita apps follow the theme and the focus colour through
   dconf (`color-scheme`, `gtk-theme`, `accent-color`, high contrast),
   which the shell writes.
