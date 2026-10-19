@@ -701,6 +701,19 @@ pub struct NightLightState {
     pub current: u32,
     /// The outputs that can show it (DRM gamma); the others can't.
     pub outputs: Vec<String>,
+    /// When the schedule warms the displays today, local `"HH:MM"`: from
+    /// (sunset, for the sunset schedule) to (sunrise); none when it's
+    /// always or never.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub from: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub to: Option<String>,
+    /// What sunset and sunrise were reckoned for: a time zone
+    /// (`Europe/Paris`), `located` (GeoClue) or `settings` (set by hand);
+    /// none for the other schedules, or where it isn't known (19:00 to
+    /// 07:00 then).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub place: Option<String>,
 }
 
 /// Frame-time statistics, per output.

@@ -19,8 +19,10 @@ use std::time::{Duration, SystemTime};
 pub use aizome_theme::{Effects, FocusColor, ThemeName};
 
 pub mod compositor;
+pub mod location;
 pub mod shell;
 pub use compositor::{NightLight, NightSchedule, RendererChoice, Sun, TabDoubleClick, sun_times, temperature_rgb};
+pub use location::{LocalNow, Location, Place, PlaceSource, Span, daylight, hm, system_timezone};
 use serde::{Deserialize, Serialize};
 pub use shell::{
     ClockFormat, DeskbarSettings, DesktopSettings, LockSettings, MenubarSettings, NotificationSettings, PALETTE_SCOPES,
@@ -43,6 +45,9 @@ pub struct Settings {
     pub idle: Idle,
     /// Warmer colours at night.
     pub night_light: NightLight,
+    /// Where the computer is, for sunrise and sunset (the shell writes
+    /// what GeoClue finds).
+    pub location: Location,
     pub menubar: toml::Table,
     pub deskbar: toml::Table,
     pub notifications: toml::Table,
@@ -67,23 +72,53 @@ pub enum ThemeChoice {
     Auto,
 }
 
+/// Auto's day by the clock alone: 07:00 to 19:00.
+pub const CLOCK_DAY: Span = Span::Between { start: 7 * 60, end: 19 * 60 };
+
 impl ThemeChoice {
-    /// The palette to show now. `Auto` follows the local clock: Day from
-    /// 07:00 to 19:00 (sunset following, when the shell knows the location,
-    /// is the shell's to compute and write back as `night` or `day`).
+    /// The palette at a local hour, Auto by the clock alone (Day from 07:00
+    /// to 19:00). [`Settings::theme_now`] follows the sun where asked.
     pub fn resolve(self, local_hour: u32) -> ThemeName {
+        self.resolve_in(CLOCK_DAY, local_hour * 60)
+    }
+
+    /// The palette at `minutes` past midnight, Auto showing Day during
+    /// `day`.
+    pub fn resolve_in(self, day: Span, minutes: u32) -> ThemeName {
         match self {
             ThemeChoice::Night => ThemeName::Night,
             ThemeChoice::Day => ThemeName::Day,
             ThemeChoice::HighContrast => ThemeName::HighContrast,
-            ThemeChoice::Auto => {
-                if (7..19).contains(&local_hour) {
-                    ThemeName::Day
-                } else {
-                    ThemeName::Night
-                }
-            }
+            ThemeChoice::Auto if day.contains(minutes) => ThemeName::Day,
+            ThemeChoice::Auto => ThemeName::Night,
         }
+    }
+}
+
+impl Settings {
+    /// When Auto shows Day on a day: from sunrise to sunset where the
+    /// computer is when it follows them (and Aizome knows where that is),
+    /// else 07:00 to 19:00; with the place it was reckoned for.
+    pub fn auto_day(&self, now: LocalNow) -> (Span, Option<Place>) {
+        if !self.appearance.follow_sunset {
+            return (CLOCK_DAY, None);
+        }
+        let place = self.place();
+        match daylight(place.as_ref(), now.day_of_year, now.utc_offset) {
+            Some(span) => (span, place),
+            None => (CLOCK_DAY, None),
+        }
+    }
+
+    /// The palette at a moment.
+    pub fn theme_at(&self, now: LocalNow) -> ThemeName {
+        let day = if self.appearance.theme == ThemeChoice::Auto { self.auto_day(now).0 } else { CLOCK_DAY };
+        self.appearance.theme.resolve_in(day, now.minutes)
+    }
+
+    /// The palette to show now.
+    pub fn theme_now(&self) -> ThemeName {
+        self.theme_at(LocalNow::now())
     }
 }
 
@@ -800,5 +835,30 @@ a = 1
     fn auto_theme_follows_the_clock() {
         assert_eq!(ThemeChoice::Auto.resolve(12), ThemeName::Day);
         assert_eq!(ThemeChoice::Auto.resolve(22), ThemeName::Night);
+    }
+
+    #[test]
+    fn auto_theme_follows_the_sun_when_asked() {
+        let mut s = Settings::default();
+        s.appearance.theme = ThemeChoice::Auto;
+        // Paris on 1 November at 18:00, CET: past sunset (about 17:25).
+        s.night_light.latitude = Some(48.8667);
+        s.night_light.longitude = Some(2.3333);
+        let evening = LocalNow::at(18, 0, 305, 60);
+        assert_eq!(s.theme_at(evening), ThemeName::Day, "by the clock, Day until 19:00");
+        s.appearance.follow_sunset = true;
+        assert_eq!(s.theme_at(evening), ThemeName::Night);
+        assert_eq!(s.theme_at(LocalNow::at(7, 15, 305, 60)), ThemeName::Night, "before sunrise (about 07:30)");
+        assert_eq!(s.theme_at(LocalNow::at(8, 0, 305, 60)), ThemeName::Day);
+        let (Span::Between { start, end }, Some(place)) = s.auto_day(evening) else { panic!() };
+        assert_eq!(place.source, PlaceSource::Settings);
+        assert!(start > 7 * 60 && end < 18 * 60, "{} {}", hm(start), hm(end));
+        // Tromsø in June: the sun never sets, so Day at midnight.
+        s.night_light.latitude = Some(69.65);
+        s.night_light.longitude = Some(18.96);
+        assert_eq!(s.theme_at(LocalNow::at(0, 30, 172, 120)), ThemeName::Day);
+        // Other themes stay as chosen.
+        s.appearance.theme = ThemeChoice::Night;
+        assert_eq!(s.theme_at(LocalNow::at(12, 0, 172, 120)), ThemeName::Night);
     }
 }

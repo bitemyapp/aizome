@@ -474,7 +474,7 @@ impl Program for Shitsurae {
         self.shared.window = w;
         // The settings this window edits, which the sample (or a test) may
         // keep somewhere other than where the kit looked.
-        cx.set_appearance(aizome_kit::theme::Appearance::from(&self.shared.settings.appearance));
+        cx.set_appearance(aizome_kit::theme::Appearance::from(&self.shared.settings));
         let tx = cx.stream();
         self.shared.sys = crate::system::System::start(
             self.shared.sample,

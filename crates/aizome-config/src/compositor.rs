@@ -4,6 +4,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::location::{LocalNow, Place, Span, daylight};
 use crate::{Keyboard, OutputConfig, Pointer, Settings, Touchpad, Windows};
 
 /// What double-clicking a tab does: `[windows] tab_double_click`.
@@ -111,8 +112,10 @@ impl OutputConfig {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum NightSchedule {
-    /// From sunset to sunrise at `latitude`, `longitude` (19:00 to 07:00
-    /// without them).
+    /// From sunset to sunrise where the computer is (`latitude` and
+    /// `longitude` when set, else the place the shell found or the time
+    /// zone's city: see [`crate::location`]); 19:00 to 07:00 where that's
+    /// unknown.
     #[default]
     Sunset,
     /// From `from` to `to`, local time.
@@ -132,6 +135,8 @@ pub struct NightLight {
     /// `"HH:MM"`, for the manual schedule.
     pub from: String,
     pub to: String,
+    /// A place set by hand for sunset and sunrise (both, or neither);
+    /// unset, Aizome works out where the computer is.
     pub latitude: Option<f64>,
     pub longitude: Option<f64>,
     #[serde(flatten)]
@@ -156,41 +161,39 @@ impl Default for NightLight {
 /// Neutral: no warming.
 pub const NEUTRAL_K: u32 = 6500;
 
-impl NightLight {
-    /// Whether the schedule says warm at a local time (minutes since
-    /// midnight), on a day of the year (1–366), `utc_offset` minutes east.
-    pub fn scheduled(&self, minutes: u32, day_of_year: u32, utc_offset: i32) -> bool {
-        let (start, end) = match self.schedule {
-            NightSchedule::Always => return true,
-            NightSchedule::Manual => match (parse_hm(&self.from), parse_hm(&self.to)) {
-                (Some(a), Some(b)) => (a, b),
-                _ => (22 * 60, 7 * 60),
-            },
-            NightSchedule::Sunset => match (self.latitude, self.longitude) {
-                (Some(lat), Some(lon)) => match sun_times(lat, lon, day_of_year, utc_offset) {
-                    Sun::Rises { sunrise, sunset } => (sunset, sunrise),
-                    Sun::AlwaysUp => return false,
-                    Sun::AlwaysDown => return true,
-                },
-                _ => (19 * 60, 7 * 60),
-            },
-        };
-        in_span(minutes, start, end)
-    }
+/// The sunset schedule's night where Aizome doesn't know where the
+/// computer is: 19:00 to 07:00.
+pub const CLOCK_NIGHT: Span = Span::Between { start: 19 * 60, end: 7 * 60 };
 
-    /// The temperature to show now: warm when on and scheduled.
-    pub fn temperature_at(&self, minutes: u32, day_of_year: u32, utc_offset: i32) -> u32 {
-        if self.enabled && self.scheduled(minutes, day_of_year, utc_offset) {
-            self.temperature.clamp(1900, NEUTRAL_K)
-        } else {
-            NEUTRAL_K
+impl NightLight {
+    /// When the schedule warms the displays on a day: from sunset to
+    /// sunrise at `place` (the settings' [`Settings::place`]), from `from`
+    /// to `to`, or always.
+    pub fn span(&self, place: Option<&Place>, day_of_year: u32, utc_offset: i32) -> Span {
+        match self.schedule {
+            NightSchedule::Always => Span::AllDay,
+            NightSchedule::Manual => match (parse_hm(&self.from), parse_hm(&self.to)) {
+                (Some(start), Some(end)) => Span::Between { start, end },
+                _ => Span::Between { start: 22 * 60, end: 7 * 60 },
+            },
+            NightSchedule::Sunset => match daylight(place, day_of_year, utc_offset) {
+                Some(Span::Between { start, end }) => Span::Between { start: end, end: start },
+                Some(Span::AllDay) => Span::Never,
+                Some(Span::Never) => Span::AllDay,
+                None => CLOCK_NIGHT,
+            },
         }
     }
-}
 
-/// Whether `m` falls in `[start, end)`, which may wrap past midnight.
-fn in_span(m: u32, start: u32, end: u32) -> bool {
-    if start <= end { (start..end).contains(&m) } else { m >= start || m < end }
+    /// Whether the schedule says warm at a moment.
+    pub fn scheduled(&self, place: Option<&Place>, now: LocalNow) -> bool {
+        self.span(place, now.day_of_year, now.utc_offset).contains(now.minutes)
+    }
+
+    /// The temperature to show at a moment: warm when on and scheduled.
+    pub fn temperature_at(&self, place: Option<&Place>, now: LocalNow) -> u32 {
+        if self.enabled && self.scheduled(place, now) { self.temperature.clamp(1900, NEUTRAL_K) } else { NEUTRAL_K }
+    }
 }
 
 /// `"22:00"` as minutes since midnight.
@@ -302,13 +305,30 @@ mod tests {
             to: "06:15".into(),
             ..Default::default()
         };
-        assert!(n.scheduled(22 * 60, 100, 0));
-        assert!(n.scheduled(3 * 60, 100, 0));
-        assert!(!n.scheduled(12 * 60, 100, 0));
-        assert_eq!(n.temperature_at(23 * 60, 100, 0), 4000);
-        assert_eq!(n.temperature_at(12 * 60, 100, 0), NEUTRAL_K);
+        let at = |h: u32| LocalNow::at(h, 0, 100, 0);
+        assert!(n.scheduled(None, at(22)));
+        assert!(n.scheduled(None, at(3)));
+        assert!(!n.scheduled(None, at(12)));
+        assert_eq!(n.temperature_at(None, at(23)), 4000);
+        assert_eq!(n.temperature_at(None, at(12)), NEUTRAL_K);
         n.enabled = false;
-        assert_eq!(n.temperature_at(23 * 60, 100, 0), NEUTRAL_K);
+        assert_eq!(n.temperature_at(None, at(23)), NEUTRAL_K);
+        // The sunset schedule: 19:00 to 07:00 where the place isn't known,
+        // else the sun's.
+        n.enabled = true;
+        n.schedule = NightSchedule::Sunset;
+        assert_eq!(n.span(None, 291, 120), CLOCK_NIGHT);
+        let paris =
+            Place { latitude: 48.8667, longitude: 2.3333, source: crate::PlaceSource::TimeZone("Europe/Paris".into()) };
+        let Span::Between { start, end } = n.span(Some(&paris), 291, 120) else { panic!() };
+        assert!((18 * 60 + 45..19 * 60 + 5).contains(&start), "sunset {}", crate::hm(start));
+        assert!((8 * 60 + 5..8 * 60 + 25).contains(&end), "sunrise {}", crate::hm(end));
+        // 19:10 in Paris in October is night already, and 07:30 still is.
+        assert_eq!(n.temperature_at(Some(&paris), LocalNow::at(19, 10, 291, 120)), 4000);
+        assert_eq!(n.temperature_at(Some(&paris), LocalNow::at(7, 30, 291, 120)), 4000);
+        assert_eq!(n.temperature_at(Some(&paris), LocalNow::at(9, 0, 291, 120)), NEUTRAL_K);
+        let north = Place { latitude: 69.65, longitude: 18.96, source: crate::PlaceSource::Settings };
+        assert_eq!(n.span(Some(&north), 172, 120), Span::Never, "midsummer in Tromsø");
         // Tokyo at the March equinox: about 05:45 and 17:55.
         let Sun::Rises { sunrise, sunset } = sun_times(35.68, 139.69, 80, 9 * 60) else { panic!() };
         assert!((5 * 60 + 30..6 * 60).contains(&sunrise), "{sunrise}");

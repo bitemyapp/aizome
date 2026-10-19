@@ -208,9 +208,14 @@ Notes for client authors:
   first output. The pointer starts in its middle, and windows from outputs
   that go move there; the IPC reports it for the shell's Deskbar.
 - **Night Light**: `[night_light]` `enabled`, `temperature` (K, default
-  4000), `schedule` (`sunset` from `latitude` and `longitude`, 19:00–07:00
-  without them; `manual` from `from` to `to`, `"HH:MM"`; `always`),
-  checked every minute and on changes; `night-light` over IPC changes it
+  4000), `schedule` (`sunset`: from sunset to sunrise where the computer
+  is, which is `latitude` and `longitude` when set by hand, else
+  `[location]` (what GeoClue told the shell, while the time zone is the
+  one it was found in), else the time zone's city from tzdata, and
+  19:00–07:00 without any; `manual` from `from` to `to`, `"HH:MM"`;
+  `always`), checked every minute (the time zone too) and on changes;
+  the IPC's state says today's `from` and `to` and the `place`; Auto's
+  theme on the tabs turns in the same minute; `night-light` over IPC changes it
   for the session. It goes through the CRTC's gamma LUT (legacy gamma
   ioctl), the same under GLES and pixman, and re-applies after a VT
   switch; outputs without gamma (headless, winit, virtio-gpu) can't show

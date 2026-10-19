@@ -60,6 +60,24 @@ pub fn effects_text(e: Effects) -> (&'static str, &'static str) {
 }
 
 /// The name a focus colour goes by.
+/// What Auto does today when it follows sunset and sunrise: "Day from
+/// sunrise (08:15) to sunset (18:57) in Paris, Night after."
+pub fn sun_words(s: &aizome_config::Settings) -> String {
+    sun_words_at(s, aizome_config::LocalNow::now())
+}
+
+pub fn sun_words_at(s: &aizome_config::Settings, now: aizome_config::LocalNow) -> String {
+    use aizome_config::{Span, hm};
+    match s.auto_day(now) {
+        (Span::Between { start, end }, Some(place)) => {
+            format!("Day from sunrise ({}) to sunset ({}) {}, Night after.", hm(start), hm(end), place.words())
+        }
+        (Span::AllDay, Some(place)) => format!("The sun doesn't set {} today: Day all day.", place.words()),
+        (Span::Never, Some(place)) => format!("The sun doesn't rise {} today: Night all day.", place.words()),
+        _ => "Where you are isn't known (set a time zone in Date & Time), so Day from 07:00 to 19:00.".into(),
+    }
+}
+
 pub fn focus_name(f: FocusColor) -> &'static str {
     match f {
         FocusColor::Amber => "Kohaku amber",
@@ -374,14 +392,14 @@ impl Pane for Appearance {
             form::row("Follow sunset and sunrise", toggle(a.follow_sunset).enabled(auto).on_toggle(Msg::FollowSunset))
                 .entry("follow-sunset")
                 .help(match (auto, a.follow_sunset) {
-                    (false, _) => "With Auto: Day while the sun is up where you are, else from 07:00 to 19:00.",
-                    (true, true) => "Day while the sun is up where you are, Night after sunset.",
-                    (true, false) => "Day from 07:00 to 19:00, Night otherwise.",
+                    (false, _) => "With Auto: Day while the sun is up where you are, else from 07:00 to 19:00.".into(),
+                    (true, true) => sun_words(vcx.settings()),
+                    (true, false) => "Day from 07:00 to 19:00, Night otherwise.".into(),
                 }),
         );
 
         // The swatches in the theme showing now.
-        let now = aizome_kit::theme::Appearance::from(a).theme_name();
+        let now = vcx.settings().theme_now();
         let swatches = aizome_kit::widgets::layout::row(
             FOCUS_COLORS
                 .iter()
@@ -481,5 +499,27 @@ impl Pane for Appearance {
                 ],
             ),
         ])
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use aizome_config::{LocalNow, Settings, ThemeChoice};
+
+    #[test]
+    fn auto_says_when_the_sun_rises_and_sets() {
+        let mut s = Settings::default();
+        s.appearance.theme = ThemeChoice::Auto;
+        s.appearance.follow_sunset = true;
+        s.night_light.latitude = Some(48.8667);
+        s.night_light.longitude = Some(2.3333);
+        let words = super::sun_words_at(&s, LocalNow::at(12, 0, 305, 60));
+        assert!(words.starts_with("Day from sunrise (07:") && words.contains("to sunset (17:"), "{words}");
+        assert!(words.ends_with("where you are, Night after."), "{words}");
+        // Midsummer in Tromsø.
+        s.night_light.latitude = Some(69.65);
+        s.night_light.longitude = Some(18.96);
+        let words = super::sun_words_at(&s, LocalNow::at(12, 0, 172, 120));
+        assert_eq!(words, "The sun doesn't set where you are today: Day all day.");
     }
 }

@@ -671,6 +671,12 @@ fn print_response(r: &Response) -> ExitCode {
                 "night light {on}, {} K, {} schedule; {now} ({} K)",
                 state.temperature, state.schedule, state.current
             );
+            if let (Some(from), Some(to)) = (&state.from, &state.to) {
+                match &state.place {
+                    Some(place) => println!("from {from} to {to} (sunset and sunrise: {place})"),
+                    None => println!("from {from} to {to}"),
+                }
+            }
             if state.outputs.is_empty() {
                 println!("no display here can show it");
             } else {

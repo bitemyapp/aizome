@@ -143,8 +143,16 @@ As built, beyond the above:
   the field loses the focus as well as on Return. The host name still
   waits for Return, since it asks first.
 - **Displays** shows Night Light where the compositor says a display takes
-  a gamma table (the switch is `[night_light] enabled`, applied at once);
-  where none does, it says why there's no switch.
+  a gamma table (the switch is `[night_light] enabled`, applied at once),
+  with today's sunset and sunrise where the computer is; where none does,
+  it says why there's no switch.
+- **Appearance**: Auto following sunset and sunrise turns at them where
+  the computer is, and says when and where ("Day from sunrise (08:15) to
+  sunset (18:57) in Paris"). Where it is: what GeoClue tells the shell
+  (asked as `org.aizome.Shell` while something follows the sun, kept in
+  `[location]` to 0.01°), else the time zone's city from tzdata; the
+  compositor's Night Light, the shell, the apps and Settings reckon it the
+  same way (`aizome_config::location`).
 - **Date & Time** shows automatic time as set by the system configuration
   where NixOS keeps systemd's units in the store (timedated can't switch
   it there): change `services.timesyncd.enable`.

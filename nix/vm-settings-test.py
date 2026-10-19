@@ -436,6 +436,123 @@ def appearance():
     S.quit()
 
 
+def sun_times(lat, lon, day_of_year, utc_offset):
+    """Sunrise and sunset in local minutes (NOAA's approximation, as
+    aizome-config reckons them), or None where the sun doesn't rise or set."""
+    import math
+
+    g = 2 * math.pi / 365 * (day_of_year - 1)
+    eqtime = 229.18 * (
+        0.000075 + 0.001868 * math.cos(g) - 0.032077 * math.sin(g) - 0.014615 * math.cos(2 * g) - 0.040849 * math.sin(2 * g)
+    )
+    decl = (
+        0.006918
+        - 0.399912 * math.cos(g)
+        + 0.070257 * math.sin(g)
+        - 0.006758 * math.cos(2 * g)
+        + 0.000907 * math.sin(2 * g)
+        - 0.002697 * math.cos(3 * g)
+        + 0.00148 * math.sin(3 * g)
+    )
+    la = math.radians(lat)
+    cos_ha = math.cos(math.radians(90.833)) / (math.cos(la) * math.cos(decl)) - math.tan(la) * math.tan(decl)
+    if abs(cos_ha) > 1:
+        return None
+    ha = math.degrees(math.acos(cos_ha))
+
+    def wrap(m):
+        return int(math.floor(m + utc_offset + 0.5)) % 1440
+
+    return wrap(720 - 4 * (lon + ha) - eqtime), wrap(720 - 4 * (lon - ha) - eqtime)
+
+
+def where_and_when():
+    """The VM's time zone, the place sunrise and sunset are reckoned for
+    (GeoClue's, if the shell kept one, else the zone's city from tzdata),
+    and the local day of the year, UTC offset and minutes past midnight."""
+    zone = machine.succeed("timedatectl show -p Timezone --value").strip()
+    doy, off, h, m = machine.succeed("date '+%j %z %H %M'").split()
+    sign = -1 if off.startswith("-") else 1
+    offset = sign * (int(off[1:3]) * 60 + int(off[3:5]))
+    lat, lon = setting("location.latitude"), setting("location.longitude")
+    if lat is not None and lon is not None and setting("location.zone") in (None, zone):
+        return zone, (lat, lon), "where you are", int(doy), offset, int(h) * 60 + int(m)
+    line = machine.succeed(f"grep -P '\\t{zone}(\\t|$)' /etc/zoneinfo/zone1970.tab | head -1").split("\t")
+    coords = line[1]
+    split = max(coords.rfind("+"), coords.rfind("-"))
+
+    def angle(t, d):
+        digits = t[1:]
+        v = int(digits[:d]) + int(digits[d : d + 2]) / 60 + (int(digits[d + 2 : d + 4]) / 3600 if len(digits) > d + 2 else 0)
+        return -v if t[0] == "-" else v
+
+    city = zone.split("/")[-1].replace("_", " ")
+    return zone, (angle(coords[:split], 2), angle(coords[split:], 3)), f"in {city}", int(doy), offset, int(h) * 60 + int(m)
+
+
+def near_minutes(a, b, slack=2):
+    return min((a - b) % 1440, (b - a) % 1440) <= slack
+
+
+def hm_minutes(t):
+    h, m = t.split(":")
+    return int(h) * 60 + int(m)
+
+
+@part("Sunrise and sunset: Auto's theme turns at them where the computer is, and Night Light's schedule follows them")
+def sun():
+    zone, (lat, lon), where, doy, offset, now = where_and_when()
+    rise, dusk = sun_times(lat, lon, doy, offset)
+    print(f"{zone} ({lat:.2f}, {lon:.2f}): sunrise {rise // 60:02}:{rise % 60:02}, sunset {dusk // 60:02}:{dusk % 60:02}")
+
+    S.open("appearance")
+    S.press("Auto")
+    until("theme = auto", lambda: setting("appearance.theme") == "auto")
+    follow = S.control("appearance", "follow-sunset", role="switch")
+    assert follow.get("checked") is False, follow
+    S.click(follow)
+    until("follow_sunset = true", lambda: setting("appearance.follow_sunset") is True)
+    # Settings says when, for where.
+    words = until(
+        "the hours under the switch",
+        lambda: re.search(
+            r"sunrise \((\d\d:\d\d)\) to sunset \((\d\d:\d\d)\) (.+?), Night after",
+            " ".join(S.texts(S.row("appearance", "follow-sunset"))),
+        ),
+    )
+    assert near_minutes(hm_minutes(words.group(1)), rise) and near_minutes(hm_minutes(words.group(2)), dusk), (
+        words.group(0),
+        rise,
+        dusk,
+    )
+    assert words.group(3) == where, (words.group(3), where)
+    # The shell's theme (which GTK apps follow) turns at them, not at
+    # 07:00 and 19:00: checked away from the moments it turns.
+    zone, (lat, lon), where, doy, offset, now = where_and_when()
+    if not any(near_minutes(now, t, 3) for t in (rise, dusk)):
+        day = rise <= now < dusk if rise < dusk else not (dusk <= now < rise)
+        want = "prefer-light" if day else "prefer-dark"
+        until(
+            f"dconf to say {want}",
+            lambda: want in alice("dconf read /org/gnome/desktop/interface/color-scheme"),
+        )
+
+    # Night Light's sunset schedule, as the compositor runs it.
+    night = ipc("night-light")["state"]
+    print("night light:", night)
+    assert night["schedule"] == "sunset", night
+    assert night.get("place") in (zone, "located"), night
+    assert near_minutes(hm_minutes(night["from"]), dusk) and near_minutes(hm_minutes(night["to"]), rise), (night, rise, dusk)
+
+    reopen("appearance")
+    assert S.checked("appearance", "follow-sunset") is True
+    S.click(S.control("appearance", "follow-sunset", role="switch"))
+    until("follow_sunset = false", lambda: setting("appearance.follow_sunset") is False)
+    S.press("Night")
+    until("theme = night", lambda: setting("appearance.theme") == "night")
+    S.quit()
+
+
 @part("Desktop & Deskbar: a Desk renamed and added, the Shelf and Trash hidden, tabs minimise on double-click")
 def desktop():
     S.open("desktop")

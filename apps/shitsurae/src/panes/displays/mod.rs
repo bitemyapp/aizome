@@ -693,6 +693,9 @@ mod tests {
             schedule: "sunset".into(),
             current: 6500,
             outputs: outputs.iter().map(|o| (*o).to_owned()).collect(),
+            from: Some("18:57".into()),
+            to: Some("08:15".into()),
+            place: Some("Europe/Paris".into()),
             ..Default::default()
         };
         AppMsg::Pane("displays", Arc::new(Msg::Night(Some(state))))
@@ -714,7 +717,10 @@ mod tests {
         let w = h.window();
         h.send(night(&["eDP-1"]));
         assert!(!h.texts(w).iter().any(|t| t == "Not on these displays"));
-        assert!(h.texts(w).iter().any(|t| t == "From sunset to sunrise, warmer colours, easier on the eyes at night."));
+        assert!(
+            h.texts(w).iter().any(|t| t
+                == "From sunset (18:57) to sunrise (08:15) in Paris, warmer colours, easier on the eyes at night.")
+        );
         h.send(AppMsg::Pane("displays", Arc::new(Msg::NightLight(true))));
         h.program().shared.flush();
         let saved = std::fs::read_to_string(&path).unwrap();

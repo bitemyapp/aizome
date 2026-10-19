@@ -108,6 +108,7 @@ name = "aizome-config"
 version = "0.1.0"
 dependencies = [
  "aizome-theme",
+ "libc",
  "log",
  "serde",
  "serde_json",

@@ -9,20 +9,10 @@ use tracing::{info, warn};
 
 use crate::state::State;
 
-/// The local hour, for the auto theme.
-pub fn local_hour() -> u32 {
-    // Safety: localtime_r writes only into `tm`.
-    unsafe {
-        let t = libc::time(std::ptr::null_mut());
-        let mut tm: libc::tm = std::mem::zeroed();
-        libc::localtime_r(&t, &mut tm);
-        tm.tm_hour as u32
-    }
-}
-
+/// The palette the settings ask for now (Auto by the clock, or by the sun
+/// where it follows sunset and sunrise).
 pub fn palette_for(s: &Settings) -> Palette {
-    let theme = s.appearance.theme.resolve(local_hour());
-    Palette::new(theme, s.appearance.focus)
+    Palette::new(s.theme_now(), s.appearance.focus)
 }
 
 impl State {

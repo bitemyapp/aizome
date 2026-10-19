@@ -181,6 +181,27 @@ fn night_light_follows_its_schedule() {
     assert!(state.active);
     assert_eq!(state.current, 3000);
     assert_eq!(state.schedule, "always");
+    assert_eq!((state.from, state.to, state.place), (None, None, None));
+}
+
+#[test]
+fn night_light_runs_from_sunset_to_sunrise_where_the_computer_is() {
+    // Paris, set by hand: sunset in the evening and sunrise in the
+    // morning, whatever the date (and the test machine's zone, give or
+    // take a day's hours), not 19:00 and 07:00.
+    let c = Compositor::start(Options {
+        settings: "[night_light]\nenabled = true\nschedule = \"sunset\"\nlatitude = 48.8667\nlongitude = 2.3333\n",
+        ..Default::default()
+    });
+    let state = match c.request(Request::NightLight { enabled: None, temperature: None }) {
+        Response::NightLight { state } => state,
+        r => panic!("{r:?}"),
+    };
+    assert_eq!(state.schedule, "sunset");
+    assert_eq!(state.place.as_deref(), Some("settings"));
+    let (from, to) = (state.from.expect("today's sunset"), state.to.expect("today's sunrise"));
+    assert_eq!((from.len(), to.len()), (5, 5), "{from} {to}");
+    assert_ne!((from.as_str(), to.as_str()), ("19:00", "07:00"));
 }
 
 #[test]

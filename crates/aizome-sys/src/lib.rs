@@ -45,6 +45,7 @@
 //! | [`sysinfo`] | CPU, memory, processes, I/O, sensors, hardware | `/proc`, `/sys` | `pkgs.hwdata` for GPU names |
 //! | [`apps`] | desktop entries, launching, icons, default apps | XDG files, `systemd-run` | — |
 //! | [`keyboard`] | layouts, variants, XKB options | xkeyboard-config's `evdev.xml` | — |
+//! | [`location`] | where the computer is, for sunrise and sunset | GeoClue 2 | `services.geoclue2.enable` |
 //!
 //! Each module's documentation says more about what it needs and how it
 //! degrades without it.
@@ -57,6 +58,7 @@ pub mod datetime;
 pub mod disks;
 pub mod error;
 pub mod keyboard;
+pub mod location;
 pub mod meter;
 pub mod mpris;
 pub mod network;

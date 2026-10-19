@@ -398,8 +398,7 @@ impl Shell {
             }
             self.ipc.send(aizome_ipc::Request::ReloadConfig);
         }
-        let day =
-            self.settings.appearance.theme.resolve(aizome_kit::theme::local_hour()) == aizome_theme::ThemeName::Day;
+        let day = self.settings.theme_now() == aizome_theme::ThemeName::Day;
         self.theme_changed(day);
     }
 }

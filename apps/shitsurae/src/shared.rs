@@ -73,7 +73,7 @@ impl Shared {
             && s != self.settings
         {
             self.settings = s;
-            cx.set_appearance(aizome_kit::theme::Appearance::from(&self.settings.appearance));
+            cx.set_appearance(aizome_kit::theme::Appearance::from(&self.settings));
         }
     }
 
@@ -108,7 +108,7 @@ impl Shared {
         };
         self.settings = fresh;
         // This window first, without waiting for the file's watcher.
-        cx.set_appearance(aizome_kit::theme::Appearance::from(&self.settings.appearance));
+        cx.set_appearance(aizome_kit::theme::Appearance::from(&self.settings));
         let writer = self.writer.get_or_insert_with(|| Writer::start(cx.stream()));
         writer.sent += 1;
         let _ = writer.tx.send((self.settings_path.clone(), text));

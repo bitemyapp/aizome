@@ -48,7 +48,7 @@ fn night_section(p: &Displays, vcx: &ViewCx) -> Option<Element<Msg>> {
     } else {
         let s = &vcx.settings().night_light;
         let when = match s.schedule {
-            aizome_config::NightSchedule::Sunset => "From sunset to sunrise".to_owned(),
+            aizome_config::NightSchedule::Sunset => sunset_words(n, vcx.settings()),
             aizome_config::NightSchedule::Manual => format!("From {} to {}", s.from, s.to),
             aizome_config::NightSchedule::Always => "All the time".to_owned(),
         };
@@ -56,6 +56,28 @@ fn night_section(p: &Displays, vcx: &ViewCx) -> Option<Element<Msg>> {
             .help(format!("{when}, warmer colours, easier on the eyes at night."))
     };
     Some(vcx.section("Night Light", vec![row.entry("night-light")]))
+}
+
+/// When the sunset schedule warms the displays today, as the compositor
+/// reckons it: "From sunset (18:57) to sunrise (08:15) in Paris".
+pub fn sunset_words(n: &aizome_ipc::NightLightState, s: &aizome_config::Settings) -> String {
+    let place = match n.place.as_deref() {
+        None => return "From 19:00 to 07:00 (where you are isn't known)".to_owned(),
+        Some("located" | "settings") => "where you are".to_owned(),
+        Some(zone) => {
+            aizome_config::location::zone_city(zone).map_or("in your time zone".into(), |c| format!("in {c}"))
+        }
+    };
+    match (&n.from, &n.to) {
+        (Some(from), Some(to)) => format!("From sunset ({from}) to sunrise ({to}) {place}"),
+        _ => {
+            let now = aizome_config::LocalNow::now();
+            match aizome_config::daylight(s.place().as_ref(), now.day_of_year, now.utc_offset) {
+                Some(aizome_config::Span::Never) => format!("All day: the sun doesn't rise {place} today"),
+                _ => format!("Not today: the sun doesn't set {place}"),
+            }
+        }
+    }
 }
 
 /// A display's name, with its connector when another has the same name.

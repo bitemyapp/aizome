@@ -13,3 +13,5 @@ serde.workspace = true
 serde_json.workspace = true
 toml.workspace = true
 log.workspace = true
+# The local time and time zone (localtime_r, tzset), for sunrise and sunset.
+libc = "0.2"
