@@ -525,6 +525,8 @@ def sun():
     # A zone that names no place (UTC, as this computer starts, and GeoClue
     # has nothing to go on offline): no sunrise and sunset to follow, and
     # it says so; Night Light runs from 19:00 to 07:00.
+    status, before = machine.execute("readlink /etc/localtime")
+    zone_set = False
     if "/" not in localtime_zone() and setting("location.latitude") is None:
         until(
             "the pane to say where isn't known",
@@ -532,8 +534,11 @@ def sun():
         )
         night = ipc("night-light")["state"]
         assert night.get("place") is None and (night.get("from"), night.get("to")) == ("19:00", "07:00"), night
-        # A city's zone: its sunrise and sunset.
-        machine.succeed("timedatectl set-timezone Europe/Paris")
+        # A city's zone: its sunrise and sunset. Set as timedated sets one
+        # (a relative link; an absolute one is NixOS's own, which Date &
+        # Time reads as the configuration's), and put back after.
+        machine.succeed("ln -sfn ../etc/zoneinfo/Europe/Paris /etc/localtime")
+        zone_set = True
         reopen("appearance")
     zone, (lat, lon), where, doy, offset, now = where_and_when()
     rise, dusk = sun_times(lat, lon, doy, offset)
@@ -577,7 +582,11 @@ def sun():
     S.press("Night")
     until("theme = night", lambda: setting("appearance.theme") == "night")
     S.quit()
-    machine.succeed("timedatectl set-timezone UTC")
+    if zone_set:
+        if status == 0:
+            machine.succeed(f"ln -sfn {shlex.quote(before.strip())} /etc/localtime")
+        else:
+            machine.succeed("rm -f /etc/localtime")
 
 
 @part("Desktop & Deskbar: a Desk renamed and added, the Shelf and Trash hidden, tabs minimise on double-click")
