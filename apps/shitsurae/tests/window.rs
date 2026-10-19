@@ -204,3 +204,39 @@ fn a_desk_name_is_kept_when_the_focus_moves_on() {
     let saved = std::fs::read_to_string(&path).unwrap_or_default();
     assert!(saved.contains("name = \"Mail\""), "{saved}");
 }
+
+#[test]
+fn removing_a_user_names_their_home_and_fixed_accounts_keep_their_type() {
+    use shitsurae::system::Accounts;
+    let (mut h, _) = common::open("users-home", "users");
+    let w = h.window();
+    let change = |h: &mut aizome_kit::testing::Harness<shitsurae::Shitsurae>,
+                  f: fn(&mut aizome_sys::users::UsersState)| {
+        if let Accounts::Sample(c) = &h.program().shared.sys.accounts {
+            let _ = c.update(f).wait();
+        }
+        h.send(shitsurae::AppMsg::SystemChanged);
+    };
+    // Guest's home isn't under /home on this computer.
+    change(&mut h, |s| s.users[2].home = "/var/lib/guest".into());
+    // Guest's row, where it is now (a note above moves it).
+    let row_of = |h: &aizome_kit::testing::Harness<shitsurae::Shitsurae>, label: &str| {
+        let guest = h.find(w, "Guest").expect("Guest's row");
+        h.semantics(w).into_iter().find(|(s, r)| {
+            (s.label.as_deref() == Some(label) || s.value.as_deref() == Some(label))
+                && (r.center().y - guest.center().y).abs() < 24.0
+        })
+    };
+    let (_, remove) = row_of(&h, "Remove").expect("Guest's Remove button");
+    h.click(w, remove.center());
+    let s = h.program().sheet_window().expect("the sheet");
+    let texts = h.texts(s);
+    assert!(texts.iter().any(|t| t == "Also delete /var/lib/guest and everything in it"), "{texts:?}");
+    assert!(h.click_text(s, "Cancel"));
+    // Accounts fixed by the configuration: the type shows, and can't change.
+    let (kind, _) = row_of(&h, "Standard").expect("Guest's account type");
+    assert!(!kind.disabled, "{kind:?}");
+    change(&mut h, |s| s.users_managed = true);
+    let (kind, _) = row_of(&h, "Standard").expect("Guest's account type");
+    assert!(kind.disabled, "the account type can be changed though the configuration fixes it");
+}

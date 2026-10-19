@@ -927,9 +927,19 @@ def users():
     until("the new picture", lambda: machine.succeed(f"sha256sum {icon_file()}").split()[0] != first)
     shot("users-picture")
 
+    # Another account, whose home isn't under /home: Remove names it, and
+    # its type can change (accounts aren't fixed by the configuration here).
+    machine.succeed("useradd -m -d /srv/bob -c 'Bob Example' bob")
     reopen("users")
     assert S.control("users", "name", role="textinput").get("value") == "Alice Pleasance Liddell"
+    kind = until("Bob's account type", lambda: S.beside("Bob Example", "combobox"), timeout=30)
+    assert not kind.get("disabled"), kind
+    S.click(S.beside("Bob Example", "button", label="Remove"))
+    S.wait(text="Also delete /srv/bob and everything in it")
+    S.press("Cancel")
+    S.gone("the sheet to go", text="Also delete /srv/bob and everything in it")
     S.quit()
+    machine.succeed("userdel -r bob")
 
 
 @part("Keyboard: quick repeat and a German layout reach the compositor; Caps Lock as Escape is kept")

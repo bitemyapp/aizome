@@ -17,9 +17,27 @@ use crate::widgets::avatar;
 /// What the sheet asks.
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum Sheet {
-    Password { user: String, new: String, again: String, hint: String, error: Option<String> },
-    Add { full: String, login: String, login_edited: bool, admin: bool, password: String, error: Option<String> },
-    Remove { user: String, delete_files: bool },
+    Password {
+        user: String,
+        new: String,
+        again: String,
+        hint: String,
+        error: Option<String>,
+    },
+    Add {
+        full: String,
+        login: String,
+        login_edited: bool,
+        admin: bool,
+        password: String,
+        error: Option<String>,
+    },
+    /// Remove `user`, whose home folder is `home` (AccountsService's).
+    Remove {
+        user: String,
+        home: String,
+        delete_files: bool,
+    },
 }
 
 #[derive(Default)]
@@ -108,6 +126,15 @@ pub fn groups_of(login: &str) -> Vec<String> {
     }
 }
 
+/// The Remove sheet's checkbox: the user's own home folder, wherever it is.
+fn remove_files_words(home: &str) -> String {
+    if home.trim().is_empty() {
+        "Also delete their home folder and everything in it".to_owned()
+    } else {
+        format!("Also delete {home} and everything in it")
+    }
+}
+
 fn account_label(t: AccountType) -> &'static str {
     match t {
         AccountType::Administrator => "Administrator",
@@ -173,11 +200,10 @@ impl Users {
             .spacing(10.0)
             .width(420.0)
             .into(),
-            Sheet::Remove { user, delete_files } => column![
+            Sheet::Remove { user, home, delete_files } => column![
                 text(format!("Remove {user}?")).size(15.0).weight(650.0),
                 form::note("They won't be able to log in any more."),
-                checkbox(format!("Also delete /home/{user} and everything in it"), *delete_files)
-                    .on_toggle(Msg::DeleteFiles),
+                checkbox(remove_files_words(home), *delete_files).on_toggle(Msg::DeleteFiles),
                 buttons("Remove User", true, Msg::RemoveConfirmed, true),
             ]
             .spacing(12.0)
@@ -363,6 +389,11 @@ impl Pane for Users {
                 cx.failed("Add the user", e);
             }
             Msg::Type(user, admin) => {
+                // The configuration owns the accounts: nothing to change here.
+                let snap = cx.sys().accounts.snapshot();
+                if snap.users_managed || !snap.available {
+                    return;
+                }
                 let is_me = me.as_ref().is_some_and(|m| m.name == user);
                 if !admin && is_me {
                     cx.confirm(
@@ -415,7 +446,8 @@ impl Pane for Users {
                 cx.wait(task, |r| Msg::Done("Automatic login", r.map_err(|e| e.to_string())));
             }
             Msg::Remove(user) => {
-                self.sheet = Some(Sheet::Remove { user, delete_files: false });
+                let Some(home) = Self::user(cx, &user).map(|u| u.home.clone()) else { return };
+                self.sheet = Some(Sheet::Remove { user, home, delete_files: false });
                 cx.open_sheet();
             }
             Msg::DeleteFiles(on) => {
@@ -424,7 +456,7 @@ impl Pane for Users {
                 }
             }
             Msg::RemoveConfirmed => {
-                let Some(Sheet::Remove { user, delete_files }) = self.sheet.take() else { return };
+                let Some(Sheet::Remove { user, delete_files, .. }) = self.sheet.take() else { return };
                 cx.close_sheet();
                 let Some(u) = Self::user(cx, &user) else { return };
                 let task = cx.sys().accounts.delete_user(&u, delete_files);
@@ -539,11 +571,14 @@ impl Pane for Users {
                 let name = u.name.clone();
                 let n2 = u.name.clone();
                 let controls = row![
-                    form::choice(
-                        &["Standard", "Administrator"],
-                        usize::from(u.account_type == AccountType::Administrator),
-                        move |i| { Msg::Type(name.clone(), i == 1) }
-                    ),
+                    // Fixed by the configuration: shown, not changed.
+                    dropdown(
+                        ["Standard".to_owned(), "Administrator".to_owned()],
+                        usize::from(u.account_type == AccountType::Administrator)
+                    )
+                    .on_select(move |i| Msg::Type(name.clone(), i == 1))
+                    .enabled(!fixed)
+                    .min_width(160.0),
                     icon_button(Icon::Trash).toolbar().enabled(!fixed).on_press(Msg::Remove(n2)).tooltip("Remove"),
                 ]
                 .spacing(8.0)
