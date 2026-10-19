@@ -66,6 +66,16 @@ impl Backend {
         }
     }
 
+    /// Whether frames are drawn on the CPU (pixman): there, blending and
+    /// scaling cost a pass over every pixel they touch.
+    pub fn software(&self) -> bool {
+        match self {
+            Backend::Headless(h) => matches!(h.renderer, headless::HeadlessRenderer::Pixman(_)),
+            Backend::Winit(_) => false,
+            Backend::Udev(u) => u.software(),
+        }
+    }
+
     /// Whether an output can draw a frame now; if not, the backend comes
     /// back when it can (a vblank, the refresh timer).
     pub fn frame_due(&mut self, az: &mut Aizome, output: &Output) -> bool {

@@ -181,6 +181,7 @@ pub fn pointer_moved(state: &mut State, x: f64, y: f64) {
 }
 
 pub fn items(st: &mut State, output: &Output, scale: f64) -> aizome_comp_core::scene::Scene {
+    let software = st.backend.software();
     let (az, l) = (&mut st.az, st.lg.m());
     let Some(mut ov) = l.overlays.overview.take() else { return Vec::new() };
     if &ov.output != output {
@@ -193,8 +194,10 @@ pub fn items(st: &mut State, output: &Output, scale: f64) -> aizome_comp_core::s
     let alpha = l.anims.overlay_progress("overview") as f32;
     let mut pt: Painter = Painter::new(origin, scale, 1.0);
     let p = az.palette;
-    // Nothing is drawn under the overview but the frame's clear colour.
-    pt.ground = Some(p.desktop);
+    // Nothing is drawn under the overview but the frame's clear colour;
+    // under pixman, see-through pieces on flat colours are filled as the
+    // colours they make rather than blended.
+    pt.ground = software.then_some(p.desktop);
     let shadows = az.settings.appearance.effects.shadows();
 
     // The backdrop covers the desktop.

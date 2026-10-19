@@ -315,6 +315,10 @@ impl Udev {
         self.seat.clone()
     }
 
+    pub fn software(&self) -> bool {
+        matches!(self.renderers, Renderers::Pixman(_))
+    }
+
     pub fn renderer_name(&self) -> String {
         match self.renderers {
             Renderers::Gles(_) => "gles".into(),

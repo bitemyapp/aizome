@@ -28,7 +28,12 @@ pub struct Painter {
     /// Everything fades by this (overlays coming in).
     pub alpha: f32,
     /// The opaque colour under everything drawn, when nothing else is
-    /// (the overview covers the desktop: the frame's clear colour).
+    /// (the overview covers the desktop: the frame's clear colour). Set,
+    /// see-through pieces are drawn as the colours they make (see
+    /// [`Painter::finish`]): worth it under pixman, where a blend reads
+    /// every pixel it covers. On the GPU blending costs nothing, and opaque
+    /// pieces only give the damage tracker more to cut around (0.3 ms more a
+    /// frame of the overview fading in under GLES).
     pub ground: Option<Rgba>,
 }
 
@@ -176,8 +181,8 @@ impl Painter {
 
     /// The scene items, front first, with stable identities from `cache`.
     ///
-    /// A see-through piece (its own alpha, or the painter's while fading)
-    /// lying wholly on one flat colour is drawn as the opaque colour the
+    /// With a [`Painter::ground`], a see-through piece (its own alpha, or
+    /// the painter's while fading) lying wholly on one flat colour is drawn as the opaque colour the
     /// two make: the same pixels, but filled rather than blended, and it
     /// hides what's under it from the renderer. Under pixman a blend
     /// costs a read of every pixel it covers; the overview fading in
@@ -207,6 +212,9 @@ impl Painter {
     /// For each item, the opaque colour a piece shows as, when it can be
     /// drawn as one (see [`Painter::finish`]).
     fn flatten(&self) -> Vec<Option<Rgba>> {
+        if self.ground.is_none() {
+            return vec![None; self.items.len()];
+        }
         let rect = |p: &Piece| crate::pieces::to_physical(p.x, p.y, p.w, p.h, self.origin, self.scale);
         let bounds: Vec<Option<Rectangle<i32, Physical>>> = self
             .items
