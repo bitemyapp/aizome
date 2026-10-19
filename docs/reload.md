@@ -193,8 +193,9 @@ caught and the grab ended at a reload.
    `RTLD_NOW | RTLD_LOCAL`; its table's ABI and the `TypeId` of the
    core's `State` are checked again.
 2. The running logic is quiesced (overlays closed, grabs ended, its
-   timers cancelled) and saves its state as JSON (`Saved`: the model and
-   the sizes asked of clients).
+   timers cancelled) and saves its state as JSON (`Saved`: the model, the
+   sizes asked of clients, and notification cards in mid-slide, which the
+   new logic carries on moving).
 3. The new logic starts from that state (every field `#[serde(default)]`,
    so a build with new fields reads an old state), adopts the windows,
    publishes its view, and the outputs redraw.
