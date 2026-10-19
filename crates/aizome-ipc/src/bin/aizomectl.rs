@@ -6,7 +6,8 @@
 use std::process::ExitCode;
 
 use aizome_ipc::{
-    AppSel, Client, Event, OutputInfo, Percentiles, Rect, Request, Response, Side, Synthetic, Transform, WindowInfo,
+    AppSel, Client, Event, OutputInfo, Percentiles, PickTarget, Rect, Request, Response, Side, Synthetic, Transform,
+    WindowInfo,
 };
 
 const USAGE: &str = "\
@@ -61,8 +62,11 @@ session
                                 Night Light: change it, then show it
   power-off-monitors | power-on-monitors
   lock                          ask the shell to lock
-  pick-area [TAG]               let the person pick an area (the screenshot
+  pick-area [TAG] [--prompt TEXT] [--targets area,display,window]
+                                let the person pick an area (the screenshot
                                 picker); the pick is an area-picked event
+  shares                        what's being shared (screen and window sharing)
+  stop-share [ID]               stop a share (every one without ID)
   action NAME                   run a key-binding action by name
   quit                          end the session
 
@@ -412,7 +416,26 @@ fn parse(command: &str, mut args: Vec<String>) -> Result<Request, String> {
             }
             Some(a) => Request::RecoveryAction { action: a.to_string(), app_id: None },
         },
-        "pick-area" => Request::PickArea { tag: args.first().cloned().unwrap_or_default() },
+        "pick-area" => {
+            let prompt = opt(&mut args, "--prompt")?;
+            let targets = match opt(&mut args, "--targets")? {
+                None => Vec::new(),
+                Some(t) => t
+                    .split(',')
+                    .map(|t| match t.trim() {
+                        "area" => Ok(PickTarget::Area),
+                        "display" => Ok(PickTarget::Display),
+                        "window" => Ok(PickTarget::Window),
+                        o => Err(format!("{o}: area, display or window")),
+                    })
+                    .collect::<Result<_, _>>()?,
+            };
+            Request::PickArea { tag: args.first().cloned().unwrap_or_default(), prompt, targets }
+        }
+        "shares" => Request::Shares,
+        "stop-share" => Request::StopShare {
+            id: args.first().map(|a| a.parse().map_err(|_| format!("not a share ID: {a}"))).transpose()?,
+        },
         "action" => {
             need(&args, 1, "an action name")?;
             Request::Action { action: args[0].clone() }
@@ -612,6 +635,19 @@ fn print_response(r: &Response) -> ExitCode {
             println!("keyboard focus: {}", state.keyboard_focus.as_deref().unwrap_or("none"));
         }
         Response::Spawned { pid } => println!("{pid}"),
+        Response::Shares { shares } => {
+            if shares.is_empty() {
+                println!("nothing is shared");
+            }
+            for s in shares {
+                let what = match (&s.output, s.window) {
+                    (_, Some(w)) => format!("window {w}"),
+                    (Some(o), None) => format!("display {o}"),
+                    (None, None) => "?".into(),
+                };
+                println!("{}  {what}{}", s.id, if s.cursor { ", with the pointer" } else { "" });
+            }
+        }
         Response::NightLight { state } => {
             let on = if state.enabled { "on" } else { "off" };
             let now = if state.active { "warm now" } else { "neutral now" };
@@ -773,7 +809,7 @@ fn describe_event(e: &Event) -> String {
         Event::NightLightChanged { state } => {
             format!("night-light {} {} K now", if state.enabled { "on" } else { "off" }, state.current)
         }
-        Event::AreaPicked { tag, area, output, window } => match area {
+        Event::AreaPicked { tag, area, output, window, toplevel } => match area {
             Some(a) => {
                 let mut s = format!("area-picked {tag} {},{} {}x{}", a.x, a.y, a.w, a.h);
                 if let Some(o) = output {
@@ -782,9 +818,17 @@ fn describe_event(e: &Event) -> String {
                 if let Some(w) = window {
                     s += &format!(" window {w}");
                 }
+                if let Some(t) = toplevel {
+                    s += &format!(" toplevel {t}");
+                }
                 s
             }
             None => format!("area-picked {tag} cancelled"),
+        },
+        Event::PickStarted { tag } => format!("pick-started {tag}"),
+        Event::SharesChanged { shares } => match shares.len() {
+            0 => "shares none".into(),
+            n => format!("shares {n}: {}", shares.iter().map(|s| s.id.to_string()).collect::<Vec<_>>().join(" ")),
         },
     }
 }
@@ -822,6 +866,23 @@ mod tests {
                 enabled: Some(false)
             }
         );
+    }
+
+    #[test]
+    fn parses_picks_and_shares() {
+        assert_eq!(p("pick-area", &["t"]), Request::PickArea { tag: "t".into(), prompt: None, targets: Vec::new() });
+        assert_eq!(
+            p("pick-area", &["share", "--targets", "display,window", "--prompt", "Share what?"]),
+            Request::PickArea {
+                tag: "share".into(),
+                prompt: Some("Share what?".into()),
+                targets: vec![PickTarget::Display, PickTarget::Window]
+            }
+        );
+        assert!(parse("pick-area", vec!["t".into(), "--targets".into(), "desk".into()]).is_err());
+        assert_eq!(p("shares", &[]), Request::Shares);
+        assert_eq!(p("stop-share", &[]), Request::StopShare { id: None });
+        assert_eq!(p("stop-share", &["4"]), Request::StopShare { id: Some(4) });
     }
 
     #[test]

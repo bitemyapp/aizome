@@ -142,9 +142,9 @@ pub fn close_switcher(state: &mut State, activate: bool) {
     switcher::close(state, activate);
 }
 
-/// The area picker: for a screenshot, or (`report`) to tell the shell what was
-/// picked under that tag.
-pub fn start_area_pick(state: &mut State, report: Option<String>) {
+/// The area picker: for a screenshot, or (`report`) to tell the shell or the
+/// share picker what was picked.
+pub fn start_area_pick(state: &mut State, report: Option<area::Report>) {
     area::start(state, report);
 }
 

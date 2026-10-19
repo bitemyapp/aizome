@@ -153,6 +153,12 @@ pub fn window_of(state: &State, handle: &ExtForeignToplevelHandleV1) -> Option<W
     ext.iter().find(|(_, h)| h.identifier() == identifier).map(|(id, _)| *id)
 }
 
+/// A window's ext-foreign-toplevel-list identifier (how
+/// xdg-desktop-portal-wlr names windows to its chooser).
+pub fn identifier(az: &crate::state::Aizome, id: WinId) -> Option<String> {
+    az.foreign_toplevel_mgmt.ext.get(&id).map(|h| h.identifier())
+}
+
 /// Changes are picked up by [`refresh`].
 pub fn window_changed(_state: &mut State, _id: WinId) {}
 

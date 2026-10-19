@@ -344,10 +344,16 @@ impl State {
                 Response::Ok
             }
             Request::Subscribe => Response::Ok,
-            Request::PickArea { tag } => {
-                crate::overlays::start_area_pick(self, Some(tag));
+            Request::PickArea { tag, prompt, targets } => {
+                let report = crate::overlays::area::Report::new(tag, prompt, &targets);
+                crate::overlays::start_area_pick(self, Some(report));
                 Response::Ok
             }
+            Request::Shares => Response::Shares { shares: crate::protocols::image_copy_capture::shares(&self.az) },
+            Request::StopShare { id } => match crate::protocols::image_copy_capture::stop(self, id) {
+                0 => return Err(id.map_or("nothing is shared".into(), |id| format!("no share {id}"))),
+                _ => Response::Ok,
+            },
             Request::Action { action } => {
                 let a = crate::bindings::Action::parse(&action).ok_or_else(|| format!("unknown action {action}"))?;
                 self.run_action(a);

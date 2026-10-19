@@ -108,6 +108,7 @@ fn record_area_asks_the_picker_and_records_what_it_picked() {
             area,
             output: Some("eDP-1".into()),
             window: None,
+            toplevel: None,
         }))
     };
     // Esc: nothing.

@@ -139,28 +139,28 @@ fn the_area_picker_reports_to_the_shell() {
     events.stream().set_read_timeout(Some(std::time::Duration::from_secs(10))).unwrap();
     let mut next_pick = || {
         events.by_ref().find_map(|e| match e {
-            Ok(Event::AreaPicked { tag, area, output, window }) => Some((tag, area, output, window)),
+            Ok(Event::AreaPicked { tag, area, output, window, .. }) => Some((tag, area, output, window)),
             _ => None,
         })
     };
     let motion = |x: f64, y: f64| Synthetic::PointerMotion { x, y };
     let button = |pressed| Synthetic::PointerButton { button: "left".into(), pressed };
     // A drag: that area.
-    c.ok(Request::PickArea { tag: "record".into() });
+    c.ok(Request::PickArea { tag: "record".into(), prompt: None, targets: Vec::new() });
     c.ok(Request::Synthesize { events: vec![motion(100.0, 120.0), button(true), motion(500.0, 420.0), button(false)] });
     let (tag, area, output, window) = next_pick().unwrap();
     assert_eq!(tag, "record");
     assert_eq!(area, Some(Rect::new(100, 120, 400, 300)));
     assert_eq!((output.as_deref(), window), (Some("HEADLESS-1"), None));
     // A click: the whole display under the pointer.
-    c.ok(Request::PickArea { tag: "record".into() });
+    c.ok(Request::PickArea { tag: "record".into(), prompt: None, targets: Vec::new() });
     c.ok(Request::Synthesize { events: vec![motion(300.0, 300.0), button(true), button(false)] });
     assert_eq!(next_pick().unwrap().1, Some(Rect::new(0, 0, 1280, 800)));
     // Space, then a click on a window: its frame and tab.
     let _a = c.client(Spec::new("org.example.alpha", 0x2222cc));
     let w = c.wait_window("org.example.alpha");
     c.settle();
-    c.ok(Request::PickArea { tag: "record".into() });
+    c.ok(Request::PickArea { tag: "record".into(), prompt: None, targets: Vec::new() });
     let (cx, cy) = ((w.geometry.x + 20) as f64, (w.geometry.y + 20) as f64);
     c.ok(Request::Synthesize {
         events: vec![key("space", true), key("space", false), motion(cx, cy), button(true), button(false)],
@@ -171,9 +171,67 @@ fn the_area_picker_reports_to_the_shell() {
     assert!(area.x <= w.geometry.x && area.y < w.geometry.y, "the tab and frame are in: {area:?} {:?}", w.geometry);
     assert!(area.w >= w.geometry.w && area.h > w.geometry.h);
     // Esc: nothing, and the picker is gone (a click then is a click).
-    c.ok(Request::PickArea { tag: "record".into() });
+    c.ok(Request::PickArea { tag: "record".into(), prompt: None, targets: Vec::new() });
     c.ok(Request::Synthesize { events: vec![key("escape", true), key("escape", false)] });
     assert_eq!(next_pick().unwrap().1, None);
     // No screenshot was taken along the way.
     assert!(!c.dir.join("home/Pictures/Screenshots").exists());
+}
+
+/// The share picker borrows the picker for displays and windows only,
+/// with a banner: a drag is the display under the pointer, a window comes
+/// with its ext-foreign-toplevel identifier (how the portal names it), a
+/// click on no window keeps picking, and windows alone start at windows.
+#[test]
+fn the_picker_picks_what_may_be_shared() {
+    use aizome_ipc::{Event, PickTarget, Rect};
+    let c = Compositor::start(Options::default());
+    let mut events = aizome_ipc::Client::connect_to(&c.ipc).unwrap().events().unwrap();
+    events.stream().set_read_timeout(Some(std::time::Duration::from_secs(10))).unwrap();
+    let mut next_pick = || {
+        events.by_ref().find_map(|e| match e {
+            Ok(Event::AreaPicked { tag, area, output, window, toplevel }) => {
+                Some((tag, area, output, window, toplevel))
+            }
+            _ => None,
+        })
+    };
+    let motion = |x: f64, y: f64| Synthetic::PointerMotion { x, y };
+    let button = |pressed| Synthetic::PointerButton { button: "left".into(), pressed };
+    let share = |targets: Vec<PickTarget>| Request::PickArea {
+        tag: "share".into(),
+        prompt: Some("Choose a screen or window to share — Esc to cancel".into()),
+        targets,
+    };
+    let both = || share(vec![PickTarget::Display, PickTarget::Window]);
+    // A drag isn't an area here: the display under the pointer.
+    c.ok(both());
+    c.ok(Request::Synthesize { events: vec![motion(100.0, 120.0), button(true), motion(500.0, 420.0), button(false)] });
+    let (tag, area, output, window, toplevel) = next_pick().unwrap();
+    assert_eq!((tag.as_str(), area), ("share", Some(Rect::new(0, 0, 1280, 800))));
+    assert_eq!((output.as_deref(), window, toplevel), (Some("HEADLESS-1"), None, None));
+    // Space, a click on nothing (still picking), then on a window.
+    let _a = c.client(Spec::new("org.example.alpha", 0x2222cc).size(300, 200));
+    let w = c.wait_window("org.example.alpha");
+    c.settle();
+    let (cx, cy) = ((w.geometry.x + 20) as f64, (w.geometry.y + 20) as f64);
+    c.ok(both());
+    c.ok(Request::Synthesize {
+        events: vec![key("space", true), key("space", false), motion(1270.0, 790.0), button(true), button(false)],
+    });
+    c.ok(Request::Synthesize { events: vec![motion(cx, cy), button(true), button(false)] });
+    let (_, _, _, window, toplevel) = next_pick().unwrap();
+    assert_eq!(window, Some(w.id));
+    let toplevel = toplevel.expect("the window's identifier");
+    assert!(toplevel.len() >= 16, "{toplevel}");
+    // Windows alone: a click picks one at once, and Space doesn't leave them.
+    c.ok(share(vec![PickTarget::Window]));
+    c.ok(Request::Synthesize {
+        events: vec![key("space", true), key("space", false), motion(cx, cy), button(true), button(false)],
+    });
+    assert_eq!(next_pick().unwrap().3, Some(w.id));
+    // Esc: refused.
+    c.ok(both());
+    c.ok(Request::Synthesize { events: vec![key("escape", true), key("escape", false)] });
+    assert_eq!(next_pick().unwrap().1, None);
 }
