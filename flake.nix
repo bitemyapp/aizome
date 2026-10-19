@@ -72,6 +72,10 @@
           rev = self.rev or self.dirtyRev or null;
         };
         archivo = pkgs.callPackage ./nix/fonts.nix { };
+        # The session's fonts (Archivo, and nixpkgs' IBM Plex Mono and Noto
+        # Sans Symbols 2) as files in one folder, for $AIZOME_FONT_DIR
+        # (docs/kit.md).
+        fonts = pkgs.callPackage ./nix/aizome-fonts.nix { inherit archivo; };
         default = aizome;
       });
 
