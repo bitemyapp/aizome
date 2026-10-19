@@ -8,6 +8,7 @@ pub mod apps;
 pub mod auth;
 pub mod barmenus;
 pub mod bell;
+pub mod carry;
 pub mod clock;
 pub mod confirm;
 pub mod deskbar;

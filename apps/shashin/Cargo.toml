@@ -38,4 +38,4 @@ md5 = "0.8"
 png = "0.18"
 # The clipboard as Sidestep's engine keeps it, to offer a picture as
 # image/png (sidestep-ui offers only text).
-sidestep-engine = { path = "../../../sidestep-aizome/crates/sidestep-engine" }
+sidestep-engine.workspace = true

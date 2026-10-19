@@ -100,6 +100,12 @@ pub fn actions(day: bool, dnd: bool, recording: bool) -> Vec<Item> {
             &["notifications", "quiet", "focus"],
         ),
         a("Screenshot", Icon::Camera, Action::Screenshot, &["capture", "screen"]),
+        a(
+            "Reload Aizome",
+            Icon::RotateCw,
+            Action::ReloadAizome,
+            &["restart shell", "reload compositor", "refresh", "update", "recover"],
+        ),
         a("New Desk", Icon::Grid2x2, Action::NewDesk, &["workspace"]),
         a("Empty Trash", Icon::Trash, Action::EmptyTrash, &["delete"]),
         a("Show Desktop", Icon::Monitor, Action::ShowDesktop, &["minimise all", "hide windows"]),

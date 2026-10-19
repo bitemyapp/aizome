@@ -238,7 +238,7 @@ fn copies_with_damage_wait_for_a_change() {
 /// offered, rendered into on the GPU, and upright.
 #[test]
 fn dmabuf_copies_under_gles() {
-    use smithay::reexports::gbm;
+    use aizome_comp_core::smithay::reexports::gbm;
     let Some(node) = std::fs::read_dir("/dev/dri")
         .ok()
         .and_then(|d| d.flatten().map(|e| e.path()).filter(|p| p.to_string_lossy().contains("renderD")).min())
