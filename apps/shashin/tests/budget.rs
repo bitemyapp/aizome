@@ -18,18 +18,13 @@ use common::*;
 
 /// Rasterise what the last event damaged, at 2×: the share of the window.
 fn draw(h: &mut Harness<Shashin>, w: WindowKey) -> f64 {
-    let mut bounds: Option<Rect> = None;
-    for d in h.take_damage(w) {
-        bounds = Some(bounds.map_or(d, |b| b.union(d)));
-    }
+    // The damage's rectangles, as the window's renderer draws them (as a
+    // rule one, the picture's).
+    let damage = h.take_damage(w);
     let size = h.size(w);
-    match bounds {
-        Some(b) => {
-            let _ = h.render_rect(w, b, 2.0);
-            (b.width() * b.height() / (size.width * size.height)).min(1.0)
-        }
-        None => 0.0,
-    }
+    let _ = h.render_damage(w, &damage, 2.0);
+    let area: f64 = damage.iter().map(|r: &Rect| r.width() * r.height()).sum();
+    (area / (size.width * size.height)).min(1.0)
 }
 
 struct Times {

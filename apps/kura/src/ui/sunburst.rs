@@ -19,10 +19,10 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use aizome_kit::sidestep_ui::kurbo::{Circle, CircleSegment};
-use aizome_kit::sidestep_ui::{Canvas, Color, PointerButton, StrokeStyle, TextLayout};
+use aizome_kit::sidestep_ui::{BlendMode, Canvas, Color, Image, ImageOptions, PointerButton, StrokeStyle, TextLayout};
 use aizome_kit::theme::FontSpec;
 use aizome_kit::widget::Event;
-use aizome_kit::{Icon, Point, Rect, Size, Theme};
+use aizome_kit::{Icon, MsgSender, Point, Rect, Size, Theme};
 
 use super::Msg;
 use super::colors;
@@ -133,6 +133,79 @@ pub struct Burst {
     pub highlight_gen: u64,
     /// The picked hint's title and what it frees, for the middle.
     pub hint: Option<(String, String)>,
+    /// The rings drawn smooth, ahead, and how to ask for them.
+    pub rings: Rc<RefCell<RingCache>>,
+    /// Bumped when a drawing of the rings arrives (the canvas draws again).
+    pub rings_gen: u64,
+    pub ask: Option<MsgSender<Msg>>,
+}
+
+/// Drawings of the rings at rest, antialiased, made on a worker thread:
+/// antialiasing a couple of hundred segments at 2× takes several
+/// milliseconds, more than a frame has. A frame whose rings have no
+/// drawing yet (a hint picked, another folder, a new scan) draws them
+/// plainly at once and asks for one, which lands a few milliseconds later;
+/// after that they're copied. The segment under the pointer is drawn over
+/// it, in the rectangles that change.
+#[derive(Default)]
+pub struct RingCache {
+    /// The last few drawings, newest last, by what they show.
+    drawn: Vec<(u64, Image)>,
+    /// What was asked for and hasn't come yet.
+    asked: Option<u64>,
+}
+
+/// How many drawings the cache keeps: here, and a level up or down.
+const KEEP: usize = 3;
+
+impl RingCache {
+    fn get(&self, key: u64) -> Option<&Image> {
+        self.drawn.iter().find(|(k, _)| *k == key).map(|(_, i)| i)
+    }
+
+    /// A drawing arrived.
+    pub fn arrived(&mut self, key: u64, image: Image) {
+        if self.asked == Some(key) {
+            self.asked = None;
+        }
+        self.drawn.retain(|(k, _)| *k != key);
+        self.drawn.push((key, image));
+        if self.drawn.len() > KEEP {
+            self.drawn.remove(0);
+        }
+    }
+
+    /// Whether nothing asked for is still being drawn.
+    pub fn settled(&self) -> bool {
+        self.asked.is_none()
+    }
+}
+
+/// The rings to draw on a worker: each segment's radii, angles and colour,
+/// on the surface, `offset` points from whole pixels.
+#[derive(Clone, Debug)]
+pub struct RingJob {
+    pub key: u64,
+    size: Size,
+    scale: f64,
+    offset: aizome_kit::Vec2,
+    center: Point,
+    surface: Color,
+    sectors: Vec<(f64, f64, f64, f64, Color)>,
+}
+
+impl RingJob {
+    /// The drawing: the surface, and the segments antialiased over it.
+    pub fn draw(&self) -> Image {
+        let appearance = aizome_kit::sidestep_ui::Appearance::DARK;
+        aizome_kit::sidestep_ui::offscreen::render(self.size, self.scale, appearance, |c| {
+            c.fill_rect(Rect::from_origin_size(Point::ZERO, self.size), self.surface);
+            c.translate(self.offset);
+            for &(ri, ro, x0, x1, color) in &self.sectors {
+                c.fill(&sector(self.center, ri, ro, x0, x1), color);
+            }
+        })
+    }
 }
 
 /// A segment's part in the picked hint.
@@ -158,6 +231,7 @@ impl Hash for Burst {
         self.transition.map(|t| (t.outer, t.inner, t.zoom_in)).hash(h);
         self.highlight_gen.hash(h);
         self.hint.hash(h);
+        self.rings_gen.hash(h);
     }
 }
 
@@ -308,17 +382,7 @@ impl Burst {
             return;
         }
 
-        for (i, seg) in self.segs.iter().enumerate() {
-            let (ri, ro) = geo.radii(f64::from(seg.depth));
-            let mut fill = Burst::fill(theme, seg);
-            if self.marks.get(i) == Some(&Mark::Dim) {
-                fill = fill.mix(aizome_kit::theme::color(theme.palette.surface), 0.62);
-            }
-            if self.hover == Some(Target::Seg(i)) {
-                fill = colors::hovered(fill);
-            }
-            canvas.fill(&sector(geo.center, ri, ro, seg.x0, seg.x1), fill);
-        }
+        self.rings(canvas, bounds, theme, &geo);
         // The selected item, ringed in the focus colour over a band of the
         // surface, so the ring shows on a segment of any colour (amber too).
         if let Some(sel) = self.selected
@@ -332,6 +396,98 @@ impl Burst {
         let mut labels = self.labels.borrow_mut();
         self.label_segments(canvas, theme, &geo, &mut labels);
         self.middle(canvas, theme, &geo, &mut labels);
+    }
+
+    /// Segment `i`'s colour at rest: dimmed when a hint leaves it out.
+    fn resting(&self, theme: &Theme, i: usize) -> Color {
+        let fill = Burst::fill(theme, &self.segs[i]);
+        if self.marks.get(i) == Some(&Mark::Dim) {
+            fill.mix(aizome_kit::theme::color(theme.palette.surface), 0.62)
+        } else {
+            fill
+        }
+    }
+
+    /// Segment `i`'s colour now: lit under the pointer.
+    fn shown(&self, theme: &Theme, i: usize) -> Color {
+        let fill = self.resting(theme, i);
+        if self.hover == Some(Target::Seg(i)) { colors::hovered(fill) } else { fill }
+    }
+
+    /// The segments at rest: their drawing copied where there is one (the
+    /// segment under the pointer drawn again over it, in its rectangles),
+    /// else drawn plainly and a drawing asked for.
+    fn rings(&self, canvas: &mut Canvas, bounds: Rect, theme: &Theme, geo: &Geometry) {
+        let surface = aizome_kit::theme::color(theme.palette.surface);
+        let scale = canvas.scale();
+        // Where the canvas falls on the device's pixels: a drawing made
+        // that far from whole pixels lands on them one to one.
+        let at = canvas.transform() * bounds.origin();
+        let frac = |v: f64| v * scale - (v * scale).floor();
+        let offset = aizome_kit::Vec2::new(frac(at.x) / scale, frac(at.y) / scale);
+        let sectors: Vec<(f64, f64, f64, f64, Color)> = (0..self.segs.len())
+            .map(|i| {
+                let s = &self.segs[i];
+                let (ri, ro) = geo.radii(f64::from(s.depth));
+                (ri, ro, s.x0, s.x1, self.resting(theme, i))
+            })
+            .collect();
+        let size = Size::new(
+            ((bounds.width() + offset.x) * scale).ceil() / scale,
+            ((bounds.height() + offset.y) * scale).ceil() / scale,
+        );
+        let key = {
+            let mut h = std::collections::hash_map::DefaultHasher::new();
+            for &(ri, ro, x0, x1, c) in &sectors {
+                (ri.to_bits(), ro.to_bits(), x0.to_bits(), x1.to_bits()).hash(&mut h);
+                (c.r.to_bits(), c.g.to_bits(), c.b.to_bits(), c.a.to_bits()).hash(&mut h);
+            }
+            (size.width.to_bits(), size.height.to_bits(), scale.to_bits()).hash(&mut h);
+            (offset.x.to_bits(), offset.y.to_bits(), geo.center.x.to_bits(), geo.center.y.to_bits()).hash(&mut h);
+            (surface.r.to_bits(), surface.g.to_bits(), surface.b.to_bits()).hash(&mut h);
+            h.finish()
+        };
+        let mut cache = self.rings.borrow_mut();
+        let Some(image) = cache.get(key) else {
+            // Plainly for now (as while the rings move): the drawing comes
+            // a few milliseconds later. (Smooth, here and now, with no
+            // program to ask.)
+            canvas.save();
+            canvas.set_antialias(self.ask.is_none());
+            for (i, &(ri, ro, x0, x1, _)) in sectors.iter().enumerate() {
+                canvas.fill(&sector(geo.center, ri, ro, x0, x1), self.shown(theme, i));
+            }
+            canvas.restore();
+            if cache.asked != Some(key)
+                && let Some(ask) = &self.ask
+            {
+                cache.asked = Some(key);
+                let center = geo.center;
+                ask.send(Msg::DrawRings(RingJob { key, size, scale, offset, center, surface, sectors }));
+            }
+            return;
+        };
+        let place = Rect::from_origin_size(bounds.origin() - offset, image.size());
+        canvas.save();
+        canvas.set_blend_mode(BlendMode::Copy);
+        canvas.draw_image_with(image, None, place, ImageOptions { smooth: false, ..ImageOptions::default() });
+        canvas.restore();
+        // The lit segment, over its rectangles drawn again as they were.
+        if let Some(Target::Seg(lit)) = self.hover
+            && let Some(seg) = self.segs.get(lit)
+        {
+            for r in seg_rects(geo, seg) {
+                canvas.save();
+                canvas.clip_rect(r);
+                canvas.fill_rect(r, surface);
+                for (i, &(ri, ro, x0, x1, _)) in sectors.iter().enumerate() {
+                    if arc_rect(geo, ri, ro, x0, x1).intersect(r).area() > 0.0 {
+                        canvas.fill(&sector(geo.center, ri, ro, x0, x1), self.shown(theme, i));
+                    }
+                }
+                canvas.restore();
+            }
+        }
     }
 
     /// Names (and sizes, room allowing) on the largest segments of the

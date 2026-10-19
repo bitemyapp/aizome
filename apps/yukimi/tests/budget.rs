@@ -27,22 +27,38 @@ fn sample(motion: bool) -> (Harness<Yukimi>, WindowKey) {
     (h, w)
 }
 
-/// Rasterise what the last event damaged, at 2×.
+/// Rasterise what the last event damaged, at 2×: its rectangles, as the
+/// window's renderer draws them. The share of the window they cover.
 fn draw(h: &mut Harness<Yukimi>, w: WindowKey) -> f64 {
     let damage = h.take_damage(w);
-    let mut bounds: Option<Rect> = None;
-    for d in damage {
-        bounds = Some(bounds.map_or(d, |b| b.union(d)));
-    }
     let size = h.size(w);
-    let area = size.width * size.height;
-    match bounds {
-        Some(b) => {
-            let _ = h.render_rect(w, b, 2.0);
-            (b.width() * b.height() / area).min(1.0)
+    let _ = h.render_damage(w, &damage, 2.0);
+    covered(&damage, size.width * size.height)
+}
+
+/// How much of `area` the rectangles cover (overlaps counted once).
+fn covered(rects: &[Rect], area: f64) -> f64 {
+    // Across each band between the rectangles' tops and bottoms, the union
+    // of what spans it.
+    let mut ys: Vec<f64> = rects.iter().flat_map(|r| [r.y0, r.y1]).collect();
+    ys.sort_by(f64::total_cmp);
+    ys.dedup();
+    let mut sum = 0.0;
+    for band in ys.windows(2) {
+        let mut xs: Vec<(f64, f64)> =
+            rects.iter().filter(|r| r.y0 <= band[0] && r.y1 >= band[1]).map(|r| (r.x0, r.x1)).collect();
+        xs.sort_by(|a, b| a.0.total_cmp(&b.0));
+        let (mut width, mut end) = (0.0, f64::NEG_INFINITY);
+        for (x0, x1) in xs {
+            let from = x0.max(end);
+            if x1 > from {
+                width += x1 - from;
+            }
+            end = end.max(x1);
         }
-        None => 0.0,
+        sum += width * (band[1] - band[0]);
     }
+    (sum / area).min(1.0)
 }
 
 /// Time `act` `n` times (after two to warm up), with its frame.
