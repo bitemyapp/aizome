@@ -693,13 +693,15 @@ mod tests {
         (h, path)
     }
 
-    /// The sample's displays read (on a thread of their own).
+    /// The sample's displays read (on a thread of their own: real time
+    /// passes too, or a busy machine doesn't get to it).
     pub(super) fn loaded(h: &mut Harness<Shitsurae>) {
         let w = h.window();
-        for _ in 0..200 {
+        for _ in 0..400 {
             if h.texts(w).iter().any(|t| t == "Use as") {
                 return;
             }
+            std::thread::sleep(std::time::Duration::from_millis(5));
             h.advance(std::time::Duration::from_millis(10));
         }
         panic!("the sample's displays never showed: {:?}", h.texts(w));
