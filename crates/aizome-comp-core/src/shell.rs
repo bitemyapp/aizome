@@ -90,6 +90,9 @@ impl CompositorHandler for State {
 
     fn commit(&mut self, surface: &WlSurface) {
         let fresh_shm = crate::backend::fresh_shm_buffers(surface);
+        // A layer surface taking its buffer down leaves its last frame for
+        // the logic to move away (before the buffer is let go).
+        self.ghost_if_unmapping(surface);
         on_commit_buffer_handler::<Self>(surface);
         self.backend.early_import(surface);
         if !fresh_shm.is_empty() {
@@ -602,6 +605,13 @@ impl WlrLayerShellHandler for State {
             return;
         };
         debug!(namespace, output = output.name(), "layer surface");
+        // A client that destroys the surface with its role (in one go, as
+        // Sidestep does) takes its buffer away before the role's end is
+        // heard: the last frame is kept as the surface goes (this hook runs
+        // before the one that lets the buffer go, added at its first commit).
+        smithay::wayland::compositor::add_destruction_hook(surface.wl_surface(), |st: &mut State, s: &WlSurface| {
+            st.ghost_on_destroy(s)
+        });
         let mut map = layer_map_for_output(&output);
         if let Err(e) = map.map_layer(&LayerSurface::new(surface, namespace)) {
             warn!("mapping a layer surface: {e}");
@@ -619,6 +629,11 @@ impl WlrLayerShellHandler for State {
             layer.map(|l| (o.clone(), l))
         });
         if let Some((output, layer)) = found {
+            // Its last frame, for the logic to move away (not while a
+            // restarted shell takes over: its own surface is already up).
+            if !self.shell_restart_holds_layout() {
+                self.keep_ghost(&output, &layer);
+            }
             let mut map = layer_map_for_output(&output);
             map.unmap_layer(&layer);
             drop(map);

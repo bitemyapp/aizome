@@ -49,6 +49,9 @@ pub struct View {
     pub outset: i32,
     /// The current Desk's folder, for programs started without one.
     pub desk_folder: Option<PathBuf>,
+    /// Layer surfaces of these namespaces leave their last frame behind
+    /// when they go ([`crate::ghosts`]), for the logic to move away.
+    pub keep_on_unmap: Vec<String>,
 }
 
 impl Default for View {
@@ -61,6 +64,7 @@ impl Default for View {
             animating: false,
             outset: 48,
             desk_folder: None,
+            keep_on_unmap: Vec::new(),
         }
     }
 }

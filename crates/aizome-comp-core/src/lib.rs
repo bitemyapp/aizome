@@ -22,6 +22,7 @@ pub mod cursor;
 pub mod fallback;
 pub mod focus;
 pub mod geom;
+pub mod ghosts;
 pub mod handlers;
 pub mod icons;
 pub mod idle;

@@ -50,7 +50,8 @@ pub fn scene(st: &mut State, output: &Output, _purpose: Purpose) -> Scene {
     if let Some(id) = top_fullscreen {
         window_items(st, id, origin, scale, (0.0, 0.0), 1.0, &mut out);
     }
-    layer_items(output, Layer::Top, scale, &mut out);
+    // With the shell's notification cards sliding in and out.
+    crate::slides::top_layer(st, output, scale, &mut out);
 
     out.extend(crate::overlays::drag_feedback(st, output, scale));
 

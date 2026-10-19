@@ -473,6 +473,25 @@ impl Udev {
         }
     }
 
+    pub fn render_to_memory(
+        &mut self,
+        surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
+        size: smithay::utils::Size<i32, smithay::utils::Physical>,
+        scale: f64,
+    ) -> Result<Capture, String> {
+        let primary = self.primary_gpu;
+        match &mut self.renderers {
+            Renderers::Gles(gpus) => {
+                let mut r = gpus.single_renderer(&primary).map_err(|e| format!("{e:?}"))?;
+                super::memory_with::<UdevRenderer<'_>, GlesRenderbuffer>(&mut r, surface, size, scale)
+            }
+            Renderers::Pixman(r) => super::memory_with::<
+                PixmanRenderer,
+                smithay::reexports::pixman::Image<'static, 'static>,
+            >(r, surface, size, scale),
+        }
+    }
+
     pub fn capture(
         &mut self,
         az: &Aizome,

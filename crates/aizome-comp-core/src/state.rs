@@ -270,6 +270,9 @@ pub struct Aizome {
     next_win: WinId,
     /// What the logic last said about the desktop as a whole.
     pub view: View,
+    /// Layer surfaces' last frames, kept while the logic moves them away.
+    pub ghosts: Vec<crate::ghosts::Ghost>,
+    pub next_ghost: u64,
     /// Window positions or visibility changed: surfaces' outputs need
     /// updating.
     pub window_outputs_dirty: bool,
@@ -507,6 +510,8 @@ impl State {
             unmapped: Vec::new(),
             next_win: 1,
             view: View::default(),
+            ghosts: Vec::new(),
+            next_ghost: 0,
             window_outputs_dirty: false,
             outputs_dirty: false,
             recovery: Default::default(),

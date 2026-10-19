@@ -44,6 +44,7 @@ impl State {
     /// icon, then the lock screen while locked, else the recovery overlay
     /// and the logic's scene (or, without a logic, the recovery path's).
     pub fn scene(&mut self, output: &Output, purpose: Purpose) -> Scene {
+        self.expire_ghosts();
         let scale = output.current_scale().fractional_scale();
         let mut out: Scene = Vec::new();
         let cursor = match purpose {

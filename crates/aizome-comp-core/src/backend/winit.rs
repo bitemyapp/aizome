@@ -157,6 +157,15 @@ impl WinitBackend {
         crate::protocols::capture::dmabuf_target(node.dev_id(), self.backend.renderer())
     }
 
+    pub fn render_to_memory(
+        &mut self,
+        surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
+        size: smithay::utils::Size<i32, smithay::utils::Physical>,
+        scale: f64,
+    ) -> Result<Capture, String> {
+        super::memory_with::<GlesRenderer, GlesRenderbuffer>(self.backend.renderer(), surface, size, scale)
+    }
+
     pub fn capture(
         &mut self,
         az: &Aizome,

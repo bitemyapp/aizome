@@ -301,6 +301,23 @@ impl Headless {
         }
     }
 
+    pub fn render_to_memory(
+        &mut self,
+        surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
+        size: smithay::utils::Size<i32, smithay::utils::Physical>,
+        scale: f64,
+    ) -> Result<Capture, String> {
+        match &mut self.renderer {
+            HeadlessRenderer::Gles(r) => {
+                super::memory_with::<GlesRenderer, GlesRenderbuffer>(r.as_mut(), surface, size, scale)
+            }
+            HeadlessRenderer::Pixman(r) => super::memory_with::<
+                PixmanRenderer,
+                smithay::reexports::pixman::Image<'static, 'static>,
+            >(r, surface, size, scale),
+        }
+    }
+
     pub fn capture(
         &mut self,
         az: &Aizome,
