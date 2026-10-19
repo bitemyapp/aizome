@@ -62,10 +62,16 @@ pub(crate) enum TimerUse {
         msg: MsgFn,
         repeat: bool,
     },
-    /// A widget's tick.
+    /// A widget's tick, asked for `after` (held while its window is
+    /// hidden, and asked for again when it shows).
     Tick {
         win: WinId,
         node: NodeId,
+        after: Duration,
+    },
+    /// The next band of a hidden window drawn ahead.
+    Ahead {
+        win: WinId,
     },
     Tooltip {
         win: WinId,
@@ -137,6 +143,20 @@ pub(crate) struct Win {
     pub ticking: crate::hash::FxHashSet<NodeId>,
     /// Widgets whose state moved their children: lay out again.
     pub relayout: Vec<NodeId>,
+    /// Off the screen: viewed and drawn only while it's drawn ahead, when
+    /// `refresh` asks.
+    pub hidden: bool,
+    /// Drawn ahead of its next showing (at a scale, in bands: see
+    /// [`crate::ahead`]).
+    pub ahead: Option<crate::ahead::Drawing>,
+    /// Its widgets' ticks that came while it was hidden: asked for again
+    /// when it shows.
+    pub held: Vec<(NodeId, Duration)>,
+    /// What had the focus when it was hidden, focused again when it shows
+    /// (unless the program focused something meanwhile).
+    pub refocus: Option<NodeId>,
+    /// To be viewed (and drawn) while hidden: it's drawn ahead.
+    pub refresh: bool,
 }
 
 impl Win {
@@ -168,6 +188,11 @@ impl Win {
             built: false,
             ticking: Default::default(),
             relayout: Vec::new(),
+            hidden: false,
+            ahead: None,
+            held: Vec::new(),
+            refocus: None,
+            refresh: false,
         }
     }
 
@@ -307,9 +332,11 @@ impl Core {
             kind,
             background,
             app_id: self.info.app_id.clone(),
+            visible: !spec.hidden,
         };
         let mut w = Win::new(id, WinKind::App { key, spec: spec.clone() }, grow(spec.size));
         w.title = spec.title.clone();
+        w.hidden = spec.hidden;
         self.wins.insert(id, w);
         self.keys.insert(key, KeyTarget::Window(id));
         platform.open_window(id, &open);
@@ -382,6 +409,108 @@ impl Core {
         }
     }
 
+    /// Show window `key` (not a sheet), or hide it: hidden, its popups
+    /// close, nothing in it has the focus (what had it gets it back when
+    /// it shows), its widgets' ticks wait, and it isn't viewed again until
+    /// it shows or is drawn ahead.
+    pub fn show_key(&mut self, key: WindowKey, shown: bool, platform: &mut dyn Platform) {
+        let Some(KeyTarget::Window(win)) = self.keys.get(&key).copied() else { return };
+        let Some(w) = self.wins.get_mut(&win) else { return };
+        if w.hidden != shown {
+            return;
+        }
+        if !shown {
+            let popups: Vec<WinId> = w.popups.iter().copied().chain(w.tooltip_shown).collect();
+            w.tooltip_shown = None;
+            w.refocus = w.focused;
+            for p in popups {
+                self.close_win(p, platform);
+            }
+            self.set_focus(win, None, false, platform);
+        }
+        let Some(w) = self.wins.get_mut(&win) else { return };
+        w.hidden = !shown;
+        w.ahead = None;
+        w.refresh = false;
+        // Shown, it's viewed again at once: what changed since it was drawn
+        // ahead (or all of it) is drawn.
+        w.dirty = shown;
+        platform.show_window(win, shown);
+        if !shown {
+            return;
+        }
+        let refocus = w.refocus.take().filter(|_| w.focused.is_none());
+        let held = std::mem::take(&mut w.held);
+        for (node, _) in &held {
+            w.ticking.remove(node);
+        }
+        for (node, after) in held {
+            self.tick_later(win, node, after, platform);
+        }
+        if let Some(f) = refocus {
+            self.set_focus(win, Some(f), false, platform);
+        }
+    }
+
+    /// Draw hidden window `key` ahead of its next showing, at `scale`:
+    /// view and lay it out now, and draw it offscreen in bands at idle (see
+    /// [`crate::ahead`]), again whenever this is asked again or the theme
+    /// changes. Whether it is (an app window of a size, hidden).
+    pub fn prepare_key(&mut self, key: WindowKey, scale: f64, platform: &mut dyn Platform) -> bool {
+        let Some(KeyTarget::Window(win)) = self.keys.get(&key).copied() else { return false };
+        let Some(w) = self.wins.get_mut(&win) else { return false };
+        let sized = w.size.width >= 1.0 && w.size.height >= 1.0;
+        if !w.hidden || !sized || !scale.is_finite() || scale <= 0.0 {
+            return false;
+        }
+        w.ahead = Some(crate::ahead::Drawing::new(scale));
+        w.refresh = true;
+        w.dirty = true;
+        platform.keep_picture(win, None);
+        true
+    }
+
+    /// Draw the next band of hidden window `win` ahead, and when that was
+    /// the last, give the platform the picture; else ask for the next.
+    fn draw_ahead(&mut self, win: WinId, platform: &mut dyn Platform) {
+        let Some(w) = self.wins.get_mut(&win) else { return };
+        let Some(d) = w.ahead.as_mut().filter(|_| w.hidden && w.built) else { return };
+        d.armed = false;
+        let (size, scale) = (w.size, d.scale);
+        let bands = crate::ahead::bands(size, scale);
+        let Some(&band) = bands.get(d.bands.len()) else { return };
+        let look = sidestep_ui::Appearance { dark: self.theme.is_dark(), high_contrast: false };
+        let image = sidestep_ui::offscreen::render(band.size(), scale, look, |c| {
+            c.translate(-band.origin().to_vec2());
+            self.paint(win, c);
+        });
+        let Some(d) = self.wins.get_mut(&win).and_then(|w| w.ahead.as_mut()) else { return };
+        d.bands.push((band, image));
+        if d.bands.len() < bands.len() {
+            self.arm_ahead(win, platform);
+        } else {
+            let picture = crate::ahead::Picture { size, scale, bands: d.bands.clone() };
+            platform.keep_picture(win, Some(picture));
+        }
+    }
+
+    /// Draw hidden window `win` ahead from its first band, at the loop's
+    /// next turn: it was viewed again.
+    fn restart_ahead(&mut self, win: WinId, platform: &mut dyn Platform) {
+        let Some(d) = self.wins.get_mut(&win).and_then(|w| w.ahead.as_mut()) else { return };
+        d.bands.clear();
+        platform.keep_picture(win, None);
+        self.arm_ahead(win, platform);
+    }
+
+    fn arm_ahead(&mut self, win: WinId, platform: &mut dyn Platform) {
+        let Some(d) = self.wins.get_mut(&win).and_then(|w| w.ahead.as_mut()) else { return };
+        if !std::mem::replace(&mut d.armed, true) {
+            let token = platform.set_timer(Duration::ZERO, false);
+            self.timers.insert(token, TimerUse::Ahead { win });
+        }
+    }
+
     fn close_win(&mut self, win: WinId, platform: &mut dyn Platform) {
         let Some(w) = self.wins.remove(&win) else { return };
         if crate::inspect::enabled() {
@@ -441,9 +570,10 @@ impl Core {
         self.wins.values().filter_map(|w| w.key().map(|k| (w.id, k))).collect()
     }
 
-    /// Windows that need viewing again.
+    /// Windows that need viewing again: hidden ones only while they're
+    /// drawn ahead.
     pub fn dirty_windows(&self) -> Vec<WinId> {
-        self.wins.values().filter(|w| w.dirty && !w.is_popup()).map(|w| w.id).collect()
+        self.wins.values().filter(|w| w.dirty && !w.is_popup() && (!w.hidden || w.refresh)).map(|w| w.id).collect()
     }
 
     pub fn mark_all_dirty(&mut self) {
@@ -539,6 +669,7 @@ impl Core {
         w.tree = tree;
         w.built = true;
         w.dirty = false;
+        w.refresh = false;
         let live = &w.tree.by_id;
         w.states.retain(|(id, _), _| live.contains_key(id));
         for (node, after) in ticks {
@@ -560,14 +691,19 @@ impl Core {
                 platform.set_text_input(win, false, None);
             }
         }
+        let ahead = w.hidden && w.ahead.is_some();
         if let Some(p) = w.pointer {
             self.update_hot(win, p, platform);
+        }
+        // Hidden and drawn ahead: drawn again, from the top, at idle.
+        if ahead {
+            self.restart_ahead(win, platform);
         }
     }
 
     /// Windows with widgets to lay out again (and nothing to view again).
     pub fn relayout_windows(&self) -> Vec<WinId> {
-        self.wins.values().filter(|w| !w.relayout.is_empty() && w.built).map(|w| w.id).collect()
+        self.wins.values().filter(|w| !w.relayout.is_empty() && w.built && !w.hidden).map(|w| w.id).collect()
     }
 
     /// Lay the widgets that asked out again, and what's around them, with
@@ -769,6 +905,7 @@ impl Core {
             kind: OpenKind::Popup { parent: owner, anchor, placement, grab },
             background: None,
             app_id: self.info.app_id.clone(),
+            visible: true,
         };
         platform.open_window(id, &spec);
         id
@@ -1321,7 +1458,7 @@ impl Core {
             return;
         }
         let token = platform.set_timer(after, false);
-        self.timers.insert(token, TimerUse::Tick { win, node });
+        self.timers.insert(token, TimerUse::Tick { win, node, after });
     }
 
     /// A message from node `idx` through the mappers above it.
@@ -1409,6 +1546,10 @@ impl Core {
             self.send(win, i, &Event::Focus(true), platform);
             let r = self.wins[&win].tree.nodes[i].rect;
             self.reveal(win, i, r, platform);
+        }
+        // Hidden and drawn ahead: drawn again with the focus where it is.
+        if self.wins.get(&win).is_some_and(|w| w.hidden && w.ahead.is_some()) {
+            self.restart_ahead(win, platform);
         }
     }
 
@@ -2062,10 +2203,16 @@ impl Core {
                 }
                 self.queue.push_back(m);
             }
-            TimerUse::Tick { win, node } => {
-                let (win, node) = (*win, *node);
+            TimerUse::Tick { win, node, after } => {
+                let (win, node, after) = (*win, *node, *after);
                 self.timers.remove(&token);
                 if let Some(w) = self.wins.get_mut(&win) {
+                    // A hidden window's widgets wait (a caret doesn't blink
+                    // unseen), still ticking, asked again when it shows.
+                    if w.hidden {
+                        w.held.push((node, after));
+                        return;
+                    }
                     w.ticking.remove(&node);
                 }
                 if let Some(i) = self.wins.get(&win).and_then(|w| w.tree.get(node)) {
@@ -2079,6 +2226,11 @@ impl Core {
             }
             TimerUse::Menus => {
                 self.timers.remove(&token);
+            }
+            TimerUse::Ahead { win } => {
+                let win = *win;
+                self.timers.remove(&token);
+                self.draw_ahead(win, platform);
             }
         }
     }
@@ -2191,6 +2343,8 @@ impl Core {
             if let Some(w) = self.wins.get_mut(&id) {
                 w.dirty = true;
                 w.built = false;
+                // Drawn ahead, it's drawn again in the new look.
+                w.refresh = w.hidden && w.ahead.is_some();
             }
             platform.invalidate_all(id);
         }

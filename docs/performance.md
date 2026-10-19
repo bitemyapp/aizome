@@ -72,7 +72,7 @@ noise (`docs/reload.md`). Two kinds of number:
 | | ↑ or ↓ in the palette | 0.23 | 0.29 | within |
 | | The desktop's first frame (once per output) † | 3.1 (median; 0.8–9.1) | | **once** (4) |
 | | The recording indicator's tick † | 0.085 | 0.1–0.2 | within |
-| | The palette's first opening (live) † | 11.5 (median; 6.1–29.1) | | **once** (4) |
+| | The palette's first opening (live) † | 0.77 (median; 0.65–1.25) | | within (4) |
 | Kit | Toggling a switch | 0.04 | 0.04 | within |
 | | A character typed in a text field | 0.38 | 0.41 | within |
 | | A character typed in a 2,000-line editor | 0.29 | 0.51 | within |
@@ -157,16 +157,30 @@ summary of six or seven frames is in effect its largest frame.
    label, which is cached. The recovery overlay warms its own labels
    offscreen, so even its first opening is 0.6 ms (GLES), 2.1 ms (pixman).
 4. **First frames of new surfaces** (shell). The memory of a screen's bar,
-   Deskbar and desktop (21.6 MB at 2880 × 1800, 2×) and of the palette
-   (5.6 MB) is now faulted in ahead (`Cx::reserve_buffers`), so their first
-   frames no longer take thousands of page faults. Live, release, load
-   15–34, interleaved with the 17 October build: the desktop's first
-   frame median 3.1 ms (0.8–9.1; 13.6 ms median before), the palette's
-   first opening median 11.5 ms (6.1–29.1; 19.1 ms median before). What's
-   left of the palette's is rasterising its whole 1446 × 966-pixel surface
-   the first time; opened again, 4.5–5.4 ms at that load (1.7 ms at idle).
-   *Accepted*: once per session, and within the budget only on an idle
-   machine.
+   Deskbar and desktop (21.6 MB at 2880 × 1800, 2×) is faulted in ahead
+   (`Cx::reserve_buffers`), so their first frames no longer take thousands
+   of page faults. Live, release, load 15–34, interleaved with the 17
+   October build: the desktop's first frame median 3.1 ms (0.8–9.1; 13.6
+   ms median before). *Accepted*: once per output. The palette's first
+   opening, which rasterised its whole 1446 × 966-pixel surface (a median
+   11.5 ms at load 15–34 on 18 October), is *fixed*: its window is kept
+   between openings and drawn ahead at idle, offscreen in six bands of
+   about a millisecond each (a second after the shell warms its text, a
+   second after it closes, and a second after what it would open with
+   changes; `Cx::prepare_window`), so opening it copies that picture in
+   (the window keeps it while closed: 5.6 MB) and draws only what changed.
+   On 19 October, release, Aizome's headless compositor at 2880 × 1800,
+   scale 2, ❖Space five seconds after start, twelve runs each interleaved
+   with main (`2e15129`) at load 0.1–2.9: the first opening median
+   0.77 ms (0.65–1.25, of which the copy, rasterising, 0.62–1.20) against
+   5.51 ms (5.13–8.34) before; opened again 0.83 ms (0.66–1.65) against
+   4.45 ms (4.28–7.26). After `aizomectl reload --shell` 0.73 ms, after
+   `reload --logic` at most 1.2 ms, and screenshots of the opened palette
+   are the same pixels as before. In the harness (`tests/perf.rs`,
+   `the_palettes_first_opening_after_warming`, ten runs each): the first
+   opening median 2.40 ms (2.16–2.90, most of it the harness's own new
+   buffer) against 3.78 ms (3.37–7.25), again 0.64 against 2.78 ms;
+   drawing ahead 3.5–5.9 ms of the main thread at idle, a band a turn.
 5. **The desktop's wallpaper frame** (shell): a 2880 × 1800 copy, 4.7 ms
    under load, once per output size and theme. *Accepted*.
 6. **Switching pages in Yukimi**: harness p50 1.46–1.48 ms, p95 2.76–4.80

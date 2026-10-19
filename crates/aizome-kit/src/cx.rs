@@ -109,6 +109,35 @@ impl<Msg: Clone + Send + 'static> Cx<'_, Msg> {
         self.core.close_key(window, self.platform);
     }
 
+    /// Show a window opened hidden ([`WindowSpec::hidden`]) or hidden
+    /// since, as it was, its view asked for again at once.
+    pub fn show_window(&mut self, window: WindowKey) {
+        self.core.show_key(window, true, self.platform);
+    }
+
+    /// Take a window off the screen, keeping it (and its key, state and
+    /// widgets' state) for [`show_window`](Cx::show_window); its popups
+    /// close, its widgets' ticks wait, and the focus leaves it (to come
+    /// back when it shows, unless [`focus`](Cx::focus) says otherwise
+    /// meanwhile). Its view isn't asked for while it's hidden, unless it's
+    /// drawn ahead.
+    pub fn hide_window(&mut self, window: WindowKey) {
+        self.core.show_key(window, false, self.platform);
+    }
+
+    /// Draw hidden `window` ahead of its next showing, at `scale` (the
+    /// scale of the output it'll show on): its view is asked for and laid
+    /// out now, and drawn offscreen at idle, a band of a millisecond or so
+    /// at a time, into pictures the window keeps (width × height × 4 bytes
+    /// at `scale`); again on each call, when the focus moves in it, and
+    /// when the theme changes. Shown at that size and scale, its first
+    /// frame copies them in and draws only what changed since: a panel
+    /// whose first opening would rasterise all of it is drawn at idle
+    /// instead. Whether it's drawn ahead (a hidden window of a size).
+    pub fn prepare_window(&mut self, window: WindowKey, scale: f64) -> bool {
+        self.core.prepare_key(window, scale, self.platform)
+    }
+
     pub fn set_title(&mut self, window: WindowKey, title: impl Into<String>) {
         let title = title.into();
         if let Some(win) = self.core.window_of(window)
