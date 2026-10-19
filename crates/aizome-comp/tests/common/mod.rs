@@ -41,11 +41,26 @@ pub struct Options<'a> {
     pub renderer: Option<&'a str>,
     /// settings.toml contents.
     pub settings: &'a str,
+    /// The compositor to run (default: this package's `aizome`).
+    pub exe: Option<&'a Path>,
+    /// The logic library to load (default: the one beside the binary).
+    pub logic: Option<&'a Path>,
+    /// More arguments and environment for the compositor.
+    pub args: &'a [&'a str],
+    pub env: &'a [(&'a str, &'a str)],
 }
 
 impl Default for Options<'_> {
     fn default() -> Self {
-        Options { outputs: &["1280x800@1"], renderer: None, settings: "[appearance]\neffects = \"austere\"\n" }
+        Options {
+            outputs: &["1280x800@1"],
+            renderer: None,
+            settings: "[appearance]\neffects = \"austere\"\n",
+            exe: None,
+            logic: None,
+            args: &[],
+            env: &[],
+        }
     }
 }
 
@@ -62,8 +77,26 @@ impl Compositor {
         std::fs::write(dir.join("config/aizome/settings.toml"), opts.settings).unwrap();
         let socket = format!("aztest-{}-{n}", std::process::id());
         let log = dir.join("aizome.log");
-        let mut cmd = Command::new(env!("CARGO_BIN_EXE_aizome"));
-        cmd.args(["--backend", "headless", "--socket", &socket, "--no-session", "--no-shell", "--no-xwayland"]);
+        let mut cmd = Command::new(opts.exe.unwrap_or(Path::new(env!("CARGO_BIN_EXE_aizome"))));
+        cmd.args(["--backend", "headless", "--socket", &socket, "--no-session", "--no-xwayland"]);
+        if !opts.args.contains(&"--shell") {
+            cmd.arg("--no-shell");
+        }
+        cmd.args(opts.args.iter().filter(|a| **a != "--shell"));
+        if let Some(l) = opts.logic {
+            cmd.arg("--logic").arg(l);
+        }
+        if let Some(exe) = opts.exe {
+            // Its own core before the one `cargo test` built (cargo's
+            // LD_LIBRARY_PATH beats the binary's rpath, and the tests'
+            // dev-dependencies can resolve the core's dependencies with
+            // other features, so its symbols differ).
+            let dir = exe.parent().unwrap();
+            let mut paths = vec![dir.to_path_buf(), dir.join("deps")];
+            paths.extend(std::env::split_paths(&std::env::var_os("LD_LIBRARY_PATH").unwrap_or_default()));
+            cmd.env("LD_LIBRARY_PATH", std::env::join_paths(paths).unwrap());
+        }
+        cmd.envs(opts.env.iter().copied());
         for o in opts.outputs {
             cmd.args(["--headless-output", o]);
         }
@@ -76,6 +109,7 @@ impl Compositor {
             .env("XDG_RUNTIME_DIR", &dir)
             .env("XDG_CONFIG_HOME", dir.join("config"))
             .env("XDG_STATE_HOME", dir.join("state"))
+            .env("XDG_CACHE_HOME", dir.join("cache"))
             .env("HOME", dir.join("home"))
             .env("AIZOME_LOG", "info,smithay=warn")
             .stdout(Stdio::null())
@@ -334,6 +368,11 @@ impl TestClient {
 
     pub fn seen(&self) -> Seen {
         self.seen.lock().unwrap().clone()
+    }
+
+    /// Still connected: its thread ends when the compositor drops it.
+    pub fn connected(&self) -> bool {
+        self.join.as_ref().is_some_and(|j| !j.is_finished())
     }
 
     pub fn wait_seen(&self, what: &str, f: impl Fn(&Seen) -> bool) -> Seen {

@@ -371,7 +371,7 @@ fn a_second_frame_replaces_the_first() {
 /// and frames rendered into a dmabuf on the GPU, upright, one per change.
 #[test]
 fn dmabuf_stream_under_gles() {
-    use smithay::reexports::gbm;
+    use aizome_comp_core::smithay::reexports::gbm;
     use std::os::unix::fs::MetadataExt;
     let Some(node) = std::fs::read_dir("/dev/dri")
         .ok()

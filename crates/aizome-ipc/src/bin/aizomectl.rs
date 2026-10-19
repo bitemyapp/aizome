@@ -65,6 +65,18 @@ session
                                 picker); the pick is an area-picked event
   action NAME                   run a key-binding action by name
   quit                          end the session
+  reload [--logic] [--shell] [--from PATH] [--check] [--offer]
+                                reload Aizome without touching the apps:
+                                the compositor's logic (a new build, swapped
+                                between frames), the shell (restarted, its
+                                notifications kept) and the settings. With no
+                                flag, whatever changed (back to the installed
+                                builds); --from takes a logic library, a shell
+                                binary, or a build directory holding either
+                                (aizome-dev uses it); --check says what would
+                                happen; --offer asks in a notification
+                                (after a system update). Also ⌃❖R, and
+                                Reload Aizome in the palette
 
 recovery (what Ctrl+Alt+Del opens)
   recovery [on|off]             open or close the recovery overlay (toggles)
@@ -110,6 +122,10 @@ fn main() -> ExitCode {
         return ExitCode::SUCCESS;
     }
     let command = args.remove(0);
+    // After a system update: say what a reload would pick up, and do it
+    // if asked (the aizome-update path unit runs this).
+    let offer = command == "reload" && args.iter().any(|a| a == "--offer");
+    args.retain(|a| a != "--offer");
     let request = match parse(&command, args) {
         Ok(r) => r,
         Err(e) => {
@@ -148,6 +164,9 @@ fn main() -> ExitCode {
             }
         }
         return ExitCode::SUCCESS;
+    }
+    if offer {
+        return offer_reload(&mut client, request);
     }
     let response = match client.request(&request) {
         Ok(r) => r,
@@ -218,6 +237,20 @@ fn parse(command: &str, mut args: Vec<String>) -> Result<Request, String> {
         "focused-window" | "focused" => Request::FocusedWindow,
         "desks" => Request::Desks,
         "stats" => Request::Stats { reset: flag(&mut args, "--reset") },
+        "reload" => {
+            let logic = flag(&mut args, "--logic");
+            let shell = flag(&mut args, "--shell");
+            let check = flag(&mut args, "--check");
+            let from = opt(&mut args, "--from")?;
+            if let Some(a) = args.first() {
+                return Err(format!("reload: unknown argument {a}"));
+            }
+            let (from, shell_from) = match from {
+                Some(p) => reload_sources(std::path::Path::new(&p), logic, shell)?,
+                None => (None, None),
+            };
+            Request::Reload { logic, shell, from, shell_from, check }
+        }
         "events" | "subscribe" => Request::Subscribe,
         "focus" => {
             need(&args, 1, "a window ID")?;
@@ -343,7 +376,7 @@ fn parse(command: &str, mut args: Vec<String>) -> Result<Request, String> {
             });
             Request::Screenshot { output, path, window, area, clipboard }
         }
-        "reload-config" | "reload" => Request::ReloadConfig,
+        "reload-config" => Request::ReloadConfig,
         "output" => {
             let mode = opt(&mut args, "--mode")?;
             let scale = opt(&mut args, "--scale")?
@@ -518,7 +551,7 @@ fn print_response(r: &Response) -> ExitCode {
             eprintln!("aizomectl: {message}");
             return ExitCode::FAILURE;
         }
-        Response::Version { version, protocol } => println!("aizome {version} (IPC protocol {protocol})"),
+        Response::Version { version, protocol, .. } => println!("aizome {version} (IPC protocol {protocol})"),
         Response::Outputs { outputs } => {
             for o in outputs {
                 print_output(o);
@@ -551,6 +584,24 @@ fn print_response(r: &Response) -> ExitCode {
         }
         Response::Stats { stats } => {
             println!("{} on {}", stats.renderer, stats.backend);
+            let l = &stats.logic;
+            if l.build.is_empty() {
+                println!("logic: none loaded (the recovery path runs: windows without decorations)");
+            } else {
+                println!(
+                    "logic: {} {} ({} reload{}, {} rollback{}) from {}",
+                    l.build,
+                    if l.healthy { "running" } else { "failed" },
+                    l.reloads,
+                    if l.reloads == 1 { "" } else { "s" },
+                    l.rollbacks,
+                    if l.rollbacks == 1 { "" } else { "s" },
+                    l.path
+                );
+            }
+            if let Some(e) = &l.last_error {
+                println!("logic: last failure: {e}");
+            }
             if stats.renderer_after_restart {
                 println!("renderer setting: {} (after the next login)", stats.renderer_setting);
             }
@@ -612,6 +663,7 @@ fn print_response(r: &Response) -> ExitCode {
             println!("keyboard focus: {}", state.keyboard_focus.as_deref().unwrap_or("none"));
         }
         Response::Spawned { pid } => println!("{pid}"),
+        Response::Reload { report } => return print_reload(report),
         Response::NightLight { state } => {
             let on = if state.enabled { "on" } else { "off" };
             let now = if state.active { "warm now" } else { "neutral now" };
@@ -627,6 +679,139 @@ fn print_response(r: &Response) -> ExitCode {
         }
     }
     ExitCode::SUCCESS
+}
+
+/// What `reload --from PATH` loads: a logic library (`.so`), a shell
+/// binary, or a build directory with either in it (`--logic` or `--shell`
+/// picking one). Absolute, for the compositor.
+fn reload_sources(
+    path: &std::path::Path,
+    logic: bool,
+    shell: bool,
+) -> Result<(Option<String>, Option<String>), String> {
+    let abs = std::fs::canonicalize(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let s = |p: &std::path::Path| Some(p.to_string_lossy().into_owned());
+    if abs.is_dir() {
+        let lib = abs.join("libaizome_comp_logic.so");
+        let bin = abs.join("aizome-shell");
+        let want_logic = logic || !shell;
+        let want_shell = shell || !logic;
+        let from = if want_logic && lib.is_file() { s(&lib) } else { None };
+        let shell_from = if want_shell && bin.is_file() { s(&bin) } else { None };
+        if from.is_none() && shell_from.is_none() {
+            return Err(format!("{} holds no libaizome_comp_logic.so or aizome-shell", abs.display()));
+        }
+        return Ok((from, shell_from));
+    }
+    let is_library = abs.extension().is_some_and(|e| e == "so");
+    match (is_library, logic, shell) {
+        (true, _, false) => Ok((s(&abs), None)),
+        (false, false, _) => Ok((None, s(&abs))),
+        _ => Err(format!(
+            "{} is a {}; --{} doesn't go with it",
+            abs.display(),
+            if is_library { "library" } else { "program" },
+            if is_library { "shell" } else { "logic" }
+        )),
+    }
+}
+
+/// `reload --offer`: asks what a reload would pick up; if anything, a
+/// notification says so, and its button reloads. A core that changed
+/// waits for the next login, and the notification says that too.
+fn offer_reload(client: &mut Client, request: Request) -> ExitCode {
+    let Request::Reload { logic, shell, from, shell_from, .. } = request else { return ExitCode::from(2) };
+    let check = Request::Reload { logic, shell, from: from.clone(), shell_from: shell_from.clone(), check: true };
+    let report = match client.request(&check) {
+        Ok(Response::Reload { report }) => report,
+        Ok(r) => return print_response(&r),
+        Err(e) => {
+            eprintln!("aizomectl: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let mut would: Vec<&str> = Vec::new();
+    for (what, part) in [("its window manager", &report.logic), ("the shell", &report.shell)] {
+        if part.action == "would-reload" {
+            would.push(what);
+        }
+    }
+    let core = report.core.action == "needs-restart";
+    if would.is_empty() && !core {
+        println!("nothing to reload");
+        return ExitCode::SUCCESS;
+    }
+    let mut body = String::new();
+    if !would.is_empty() {
+        body.push_str(&format!("Reloading updates {} without closing anything (also ⌃❖R).", would.join(" and ")));
+    }
+    if core {
+        if !body.is_empty() {
+            body.push(' ');
+        }
+        body.push_str("The compositor's core changed too: that part runs at your next login.");
+    }
+    println!("{body}");
+    let mut cmd = std::process::Command::new("notify-send");
+    cmd.args(["--app-name=Aizome", "--icon=system-software-update"]);
+    if !would.is_empty() {
+        cmd.args(["--action=reload=Reload Now", "--wait"]);
+    }
+    cmd.args(["Aizome was updated", &body]);
+    let answer = match cmd.stderr(std::process::Stdio::null()).output() {
+        Ok(o) => String::from_utf8_lossy(&o.stdout).trim().to_string(),
+        Err(e) => {
+            eprintln!("aizomectl: notify-send: {e}");
+            return ExitCode::SUCCESS;
+        }
+    };
+    if answer != "reload" {
+        return ExitCode::SUCCESS;
+    }
+    // A new connection: the compositor may have let an idle one go.
+    let mut client = match Client::connect() {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("aizomectl: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+    match client.request(&Request::Reload { logic, shell, from, shell_from, check: false }) {
+        Ok(r) => print_response(&r),
+        Err(e) => {
+            eprintln!("aizomectl: {e}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+/// What a reload did, part by part; fails if a part failed or was
+/// refused.
+fn print_reload(r: &aizome_ipc::ReloadReport) -> ExitCode {
+    let mut failed = false;
+    for (what, part) in [("logic", &r.logic), ("shell", &r.shell), ("settings", &r.settings)] {
+        let line = match part.action.as_str() {
+            "skipped" if part.detail.is_empty() => continue,
+            "reloaded" | "restarted" => format!("{what}: {}", part.action),
+            "unchanged" => format!("{what}: unchanged"),
+            "would-reload" => format!("{what}: would reload"),
+            "refused" | "failed" => {
+                failed = true;
+                format!("{what}: {}", part.action)
+            }
+            other => format!("{what}: {other}"),
+        };
+        if part.detail.is_empty() {
+            println!("{line}");
+        } else {
+            println!("{line} — {}", part.detail);
+        }
+    }
+    match r.core.action.as_str() {
+        "needs-restart" => println!("core: needs a restart — {}", r.core.detail),
+        _ => println!("core: unchanged (nothing needs a restart)"),
+    }
+    if failed { ExitCode::FAILURE } else { ExitCode::SUCCESS }
 }
 
 fn fmt_bytes(b: u64) -> String {
@@ -773,6 +958,11 @@ fn describe_event(e: &Event) -> String {
         Event::NightLightChanged { state } => {
             format!("night-light {} {} K now", if state.enabled { "on" } else { "off" }, state.current)
         }
+        Event::Reloaded { report } => format!(
+            "reloaded logic {}, shell {}, settings {}, core {}",
+            report.logic.action, report.shell.action, report.settings.action, report.core.action
+        ),
+        Event::LogicFailed { message, action } => format!("logic failed: {message} ({action})"),
         Event::AreaPicked { tag, area, output, window } => match area {
             Some(a) => {
                 let mut s = format!("area-picked {tag} {},{} {}x{}", a.x, a.y, a.w, a.h);

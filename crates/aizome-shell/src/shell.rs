@@ -74,6 +74,8 @@ pub enum Msg {
     /// selection), for a menu waiting on it.
     Selection(u64, Option<String>),
     Note(crate::notifications::server::NoteEvent),
+    /// What the shell this one replaces held last (a restart).
+    Carried(Box<crate::carry::Carried>),
     /// Idle after starting: warm the palette.
     WarmPalette,
     /// An output's wallpaper, scaled (or not: it didn't read).
@@ -209,6 +211,14 @@ pub struct Shell {
     /// Apps whose windows the person folded (true) or unfolded (false).
     pub folded: HashMap<String, bool>,
     pub notes: crate::notifications::store::Store,
+    /// What was last saved for the next shell (`carry.rs`), and whether
+    /// saving has begun (a restarted shell first takes in the old one's
+    /// last word).
+    pub carried: Option<u64>,
+    pub carry_ready: bool,
+    /// Another shell has taken over (a restart): this one saves nothing
+    /// more and waits to be stopped.
+    pub retiring: bool,
     /// Apps whose every unread notification shows.
     pub notes_open: Vec<String>,
     pub note_server: Option<crate::notifications::server::NoteServer>,
@@ -330,6 +340,9 @@ impl Shell {
             shelf: crate::shelf::Shelf::default(),
             folded: HashMap::new(),
             notes: crate::notifications::store::Store::default(),
+            carried: None,
+            carry_ready: false,
+            retiring: false,
             notes_open: Vec::new(),
             note_server: None,
             banner: None,
@@ -773,6 +786,9 @@ impl Shell {
                 self.notes_cfg.do_not_disturb = !self.notes_cfg.do_not_disturb;
                 self.save_section("notifications");
             }
+            // The compositor does it (⌃❖R's way): the logic, this shell and
+            // the settings, whatever changed.
+            Action::ReloadAizome => self.ipc.send(Request::Action { action: "reload".into() }),
             Action::ShelfRemove { index } => {
                 self.shelf.remove(index);
                 self.save_shelf();
@@ -849,12 +865,31 @@ impl Shell {
                 tx.send(Msg::Ipc(e));
             });
         }
+        // What the shell before this one held (a restart, or a crash).
+        let previous = crate::carry::previous_shell();
+        if let Some(c) = crate::carry::load() {
+            log::info!("taking up {} notifications from the shell before (pid {})", c.notes.len(), c.pid);
+            // In a restart, ids go on well past the last the old shell gave,
+            // as it may give a few more meanwhile.
+            let skip = if previous.is_some() { 1000 } else { 0 };
+            self.notes.restore(c.notes, c.next_id + skip);
+            self.folded = c.folded.into_iter().collect();
+            self.notes_open = c.notes_open;
+        }
+        // Saving waits, in a restart, for the old shell's last word.
+        self.carry_ready = previous.is_none();
         {
             let tx = tx.clone();
             let path = self.opts.shell_socket.clone().unwrap_or_else(crate::apps::server::socket_path);
-            match Server::listen(&path, move |e| {
-                tx.send(Msg::Server(e));
-            }) {
+            // A restart takes the socket over from the shell still running:
+            // apps reconnect to this one as that one goes.
+            let listen = if previous.is_some() { Server::listen_replacing } else { Server::listen };
+            match listen(
+                &path,
+                Box::new(move |e| {
+                    tx.send(Msg::Server(e));
+                }),
+            ) {
                 Ok(s) => self.server = Some(s),
                 Err(e) => log::warn!("the shell socket {}: {e}", path.display()),
             }
@@ -902,12 +937,27 @@ impl Shell {
         }
         {
             let tx = tx.clone();
-            match crate::notifications::server::NoteServer::start(move |e| {
+            // Ids go on from the last one given.
+            let first = self.notes.next_id() + 1;
+            match crate::notifications::server::NoteServer::start(first, move |e| {
                 tx.send(Msg::Note(e));
             }) {
                 Ok(s) => self.note_server = Some(s),
                 Err(e) => log::warn!("the notifications server: {e}"),
             }
+        }
+        // In a restart, take in what the old shell got after this one read
+        // its state: it writes its last word as it loses the bus name to
+        // this one (or, without a bus, as it stops).
+        if let Some(previous) = previous {
+            let tx = tx.clone();
+            std::thread::Builder::new()
+                .name("carry".into())
+                .spawn(move || {
+                    let c = crate::carry::wait_for_last(previous).unwrap_or_default();
+                    tx.send(Msg::Carried(Box::new(c)));
+                })
+                .ok();
         }
         let tx2 = tx.clone();
         self.sys = crate::sys::Sys::start(move || {
@@ -1060,7 +1110,7 @@ impl Shell {
             }
             proto::ShellRequest::Notify { app, summary, body } => {
                 let n = crate::notifications::store::Incoming { app_name: app, summary, body, ..Default::default() };
-                let id = self.notes.fresh_id();
+                let id = self.fresh_note_id();
                 self.take_note(crate::notifications::server::NoteEvent::Notify(id, Box::new(n)), cx);
                 (true, id.to_string())
             }
@@ -1157,6 +1207,9 @@ impl Shell {
             "menu": self.bar_menu.map(|m| format!("{:?}", m.slot)),
             "palette": self.palette.as_ref().map(|p| p.query.clone()),
             "panel": self.panel.as_ref().map(|p| p.widget.name()),
+            "pid": std::process::id(),
+            // The notifications it keeps (summaries).
+            "notes": self.notes.list.iter().map(|n| n.summary.clone()).collect::<Vec<_>>(),
             "recording": self.recording_json(),
         })
         .to_string()
@@ -1243,7 +1296,23 @@ impl Program for Shell {
                 self.desktop.items = items;
                 self.trash_full = full;
             }
+            Msg::Note(crate::notifications::server::NoteEvent::NameAcquired) => {
+                log::info!("the notifications are this shell's")
+            }
+            Msg::Note(crate::notifications::server::NoteEvent::NameLost) => {
+                // A new shell has the notifications now: its turn.
+                log::info!("another shell took over the notifications; saving and stepping down");
+                self.save_carried(true);
+                self.retiring = true;
+            }
             Msg::Note(e) => self.take_note(e, cx),
+            Msg::Carried(c) => {
+                let added = self.notes.merge(c.notes);
+                if added > 0 {
+                    log::info!("took in {added} notifications the old shell got meanwhile");
+                }
+                self.carry_ready = true;
+            }
             Msg::BannerDone(id) => self.banner_done(id, cx),
             Msg::Recording(serial, e) => self.recording_event(serial, e, cx),
             Msg::RecordTick(serial, tick) => self.record_tick(serial, tick, cx),
@@ -1408,6 +1477,9 @@ impl Shell {
     /// What every update ends with: surfaces sized to their content, the
     /// geometry drags need.
     pub fn after_update(&mut self, cx: &mut Cx<Msg>) {
+        if self.opts.live && self.carry_ready && !self.retiring {
+            self.save_carried(false);
+        }
         self.find_icons();
         self.prepare_wallpapers(cx);
         for a in std::mem::take(&mut self.pending_actions) {
@@ -1429,6 +1501,29 @@ impl Shell {
 }
 
 impl Shell {
+    /// Saves what the next shell takes up, if it changed (`last`: always,
+    /// as this shell's last word).
+    fn save_carried(&mut self, last: bool) {
+        let folded: Vec<(String, bool)> = {
+            let mut f: Vec<(String, bool)> = self.folded.iter().map(|(k, v)| (k.clone(), *v)).collect();
+            f.sort();
+            f
+        };
+        let mark = crate::carry::mark(&self.notes.list, &folded, &self.notes_open);
+        if !last && self.carried == Some(mark) {
+            return;
+        }
+        self.carried = Some(mark);
+        crate::carry::save(&crate::carry::Carried {
+            pid: std::process::id(),
+            last,
+            notes: self.notes.list.clone(),
+            next_id: self.notes.next_id(),
+            folded,
+            notes_open: self.notes_open.clone(),
+        });
+    }
+
     /// About an app: its name, generic name and description, in the bar's
     /// line.
     fn about_app(&mut self, app_id: &str, cx: &mut Cx<Msg>) {
@@ -1451,7 +1546,7 @@ impl Shell {
             desktop_entry: Some(app_id.to_owned()),
             ..Default::default()
         };
-        let id = self.notes.fresh_id();
+        let id = self.fresh_note_id();
         self.take_note(crate::notifications::server::NoteEvent::Notify(id, Box::new(n)), cx);
     }
 

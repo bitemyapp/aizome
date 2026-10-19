@@ -45,6 +45,12 @@ impl ShellLink {
         }
     }
 
+    /// Connect again to a shell that took over from the one this app was
+    /// talking to; `None`, quietly, if there's none.
+    pub fn reconnect(path: &Path, info: &AppInfo, wake: Waker) -> Option<ShellLink> {
+        ShellLink::try_connect(path, info, wake).ok()
+    }
+
     fn try_connect(path: &Path, info: &AppInfo, wake: Waker) -> std::io::Result<ShellLink> {
         let mut client = proto::Client::hello(path, &info.app_id, &info.name)?;
         let sender = client.sender()?;

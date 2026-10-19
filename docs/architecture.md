@@ -11,9 +11,10 @@ boards' exact CSS. This document is the contract between the parts.
 
 | Part | Crate | Binary | What it is |
 |---|---|---|---|
-| Compositor | `crates/aizome-comp` | `aizome` | smithay 0.7 Wayland compositor: window management, Haiku tabs and frames (drawn server-side), tab groups, Desks, the Desks overview, the ❖Tab switcher, the tab marking menu, input, outputs, protocols, IPC server, session startup |
+| Compositor core | `crates/aizome-comp-core` (`aizome-comp` is its binary) | `aizome` | smithay 0.7 Wayland compositor's stable part, a Rust dylib: clients, protocols, input, outputs, backends and rendering, IPC server, session startup and supervision, the recovery overlay; loads the logic and swaps it live (`docs/reload.md`) |
+| Compositor logic | `crates/aizome-comp-logic` | `libaizome_comp_logic.so` | What happens on the desktop, reloadable without disconnecting a client: window management, Haiku tabs and frames (drawn server-side), tab groups, Desks, the Desks overview, the ❖Tab switcher, the tab marking menu, bindings, focus, motion |
 | Shell | `crates/aizome-shell` | `aizome-shell` | One sidestep-ui process with layer-shell surfaces: global menu bar, Toolchest, Desks strip, systray widgets, Deskbar, Shelf, command palette, NeXT menus at the pointer, tear-off palettes, notifications (it is the `org.freedesktop.Notifications` server), OSD, desktop icons and wallpaper, lock screen (ext-session-lock), polkit agent |
-| Control | `crates/aizome-ipc` | `aizomectl` | IPC types for compositor and shell, a blocking client, and the CLI (state, actions, screenshots, frame stats) |
+| Control | `crates/aizome-ipc` | `aizomectl`, `aizome-dev` | IPC types for compositor and shell, a blocking client, the CLI (state, actions, screenshots, frame stats, reload), and `aizome-dev`, which builds a checkout as the session was built and reloads it live |
 | Theme | `crates/aizome-theme` | — | Tokens: palettes (Night, Day, High Contrast), focus colours, effects tiers, metrics, type, the mark |
 | Config | `crates/aizome-config` | — | `~/.config/aizome/settings.toml`: schema, defaults, load/save, change notification |
 | Kit | `crates/aizome-kit` | — | Widget kit on sidestep-ui in Aizome's look: layout, controls, lists, text fields, menus (published to the global menu bar), sidebars, sheets, icons |
@@ -100,6 +101,7 @@ apps, as ⌘ does on a Mac. The system takes only:
 | ❖Return | Terminal (foot) in the Desk's folder |
 | ⌃❖Q | Lock |
 | ⌃⌥Del | Recovery: force quit stuck apps, reset input, restart the shell (`docs/recovery.md`) |
+| ⌃❖R | Reload what changed: the compositor's logic, the shell, the settings (`docs/reload.md`) |
 | ❖⇧3, ❖⇧4, ❖⇧5, Print | Screenshot: screen, area, window/tool (❖⇧5: the Capture menu, recordings too) |
 | ⌥Print | Record an area or a display; again, stop |
 | ❖-right-click | The focused app's whole menu at the pointer (NeXT) |
@@ -176,6 +178,11 @@ transform), `desks` (names, folders), `keys` (overrides), `menubar`,
   `aizome-session.target`, which binds `graphical-session.target`.
 - The compositor starts and keeps alive `aizome-shell` and
   `xwayland-satellite` (X11 apps).
+- Live reload (`docs/reload.md`): the compositor's logic swaps between
+  frames and the shell restarts beside the old one, keeping every window,
+  its notifications and the apps' menus; `aizome-dev watch` does it on
+  every save of a checkout. Changes to the compositor's core need a new
+  session; after `nixos-rebuild switch` a notification offers the rest.
 - Portals: xdg-desktop-portal-wlr for screenshots and screencasts (over
   ext-image-copy-capture, for outputs and windows), xdg-desktop-portal-gtk
   for the rest (`aizome-portals.conf`).
@@ -188,9 +195,10 @@ transform), `desks` (names, folders), `keys` (overrides), `menubar`,
 Cargo.toml            workspace
 crates/               the parts above
 apps/                 one crate per app
-session/              aizome-session, aizome.desktop, systemd units, portals.conf
+session/              aizome-session, aizome.desktop, systemd units (aizome-update.path), portals.conf
+scripts/              rustc-wrapper (-C prefer-dynamic for the compositor's core), headless-session
 nix/                  package.nix, module.nix (NixOS), fonts.nix, vm-test.nix
-docs/                 this file, ipc.md, performance.md, software-rendering.md, apps.md
+docs/                 this file, ipc.md, reload.md, performance.md, software-rendering.md, apps.md
 ```
 
 ## Validation
