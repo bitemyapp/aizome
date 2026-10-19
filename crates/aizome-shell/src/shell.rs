@@ -160,6 +160,12 @@ pub fn builtin_panel(connector: &str) -> bool {
     ["eDP", "LVDS", "DSI"].iter().any(|p| connector.starts_with(p))
 }
 
+/// The bytes of window memory a surface `size` points big takes at
+/// `scale` (a buffer of device pixels, four bytes each).
+pub(crate) fn surface_bytes(size: aizome_kit::Size, scale: f64) -> usize {
+    ((size.width * scale).ceil().max(0.0) * (size.height * scale).ceil().max(0.0)) as usize * 4
+}
+
 impl Shell {
     /// Whether one of the outputs shown is a built-in panel: only then do
     /// the brightness keys and sliders reach the machine's backlight. A
@@ -478,9 +484,18 @@ impl Shell {
         }
         // The Deskbar first: surfaces of one layer stack in the order they
         // open, and the bar's menus and panels show over what's under it.
+        let had_deskbar = self.deskbar.is_some();
         self.sync_deskbar(cx);
+        // Window memory for the surfaces opened here, faulted in while the
+        // compositor configures them: their first frames (the desktop's
+        // fills the output) then draw into memory that's there.
+        let mut fresh = match (had_deskbar, self.deskbar_size, self.primary()) {
+            (false, Some(size), Some(s)) => surface_bytes(size, s.output.scale),
+            _ => 0,
+        };
         for i in 0..self.screens.len() {
             let id = self.screens[i].output.id;
+            let (frame, scale) = (self.screens[i].output.frame.size(), self.screens[i].output.scale);
             if self.screens[i].bar.is_none() {
                 let opts = LayerOptions::new(Layer::Top, "aizome-menubar")
                     .anchors(Anchors::TOP | Anchors::LEFT | Anchors::RIGHT)
@@ -490,6 +505,7 @@ impl Shell {
                 let k = cx.open_window(layer(opts, 0.0, crate::menubar::HEIGHT, "Menu bar"));
                 self.surfaces.insert(k, Surface::MenuBar { output: id });
                 self.screens[i].bar = Some(k);
+                fresh += surface_bytes(aizome_kit::Size::new(frame.width, crate::menubar::HEIGHT), scale);
             }
             if self.screens[i].desktop.is_none() {
                 let opts = LayerOptions::new(Layer::Background, "aizome-desktop")
@@ -500,8 +516,10 @@ impl Shell {
                 let k = cx.open_window(layer(opts, 0.0, 0.0, "Desktop"));
                 self.surfaces.insert(k, Surface::Desktop { output: id });
                 self.screens[i].desktop = Some(k);
+                fresh += surface_bytes(frame, scale);
             }
         }
+        cx.reserve_buffers(fresh);
     }
 
     // The bar.
@@ -1323,6 +1341,7 @@ impl Program for Shell {
             Msg::WarmPalette => {
                 let theme = cx.theme().clone();
                 self.warm_palette(&theme);
+                cx.reserve_buffers(self.palette_buffer_bytes());
             }
             Msg::LogindPowerKey(k) => self.logind_power_key = k,
             Msg::BarSide(d) => self.bar_side(d, cx),

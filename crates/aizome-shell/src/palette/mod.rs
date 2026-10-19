@@ -764,6 +764,16 @@ pub fn index_key(roots: &[PathBuf], skip: &[PathBuf]) -> String {
 }
 
 impl Shell {
+    /// The window memory the palette's surface takes at the largest scale
+    /// of the outputs (it opens on the focused one): what's faulted in at
+    /// idle, so its first opening draws into memory that's there rather
+    /// than faulting in a new buffer (1446 × 966 pixels at 2×, 5.6 MB) in
+    /// that frame.
+    pub fn palette_buffer_bytes(&self) -> usize {
+        let scale = self.screens.iter().map(|s| s.output.scale).fold(1.0, f64::max);
+        crate::shell::surface_bytes(view::size(), scale)
+    }
+
     /// At idle after starting: lay out what the palette sets, so its first
     /// opening finds the faces loaded and the shaping warm; and draw it
     /// offscreen on a thread of its own at each output's scale, so its
