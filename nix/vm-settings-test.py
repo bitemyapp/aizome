@@ -1243,10 +1243,28 @@ def network():
     until("the pane to say so", lambda: any("Connected to Aizome Test AP" in t for t in S.texts()), timeout=30)
     shot("network-joined")
 
+    # Airplane mode through rfkill (the seat's user may write /dev/rfkill).
     S.click(S.control("network", "airplane", role="switch"))
     until("radios off", lambda: "disabled" in machine.succeed("nmcli radio wifi") or "blocked" in machine.succeed("rfkill -n -o SOFT"))
     S.click(S.control("network", "airplane", role="switch"))
     until("radios on", lambda: "enabled" in machine.succeed("nmcli radio wifi"))
+    until("Wi-Fi back", lambda: any("Connected to Aizome Test AP" in t for t in S.texts()), timeout=90)
+
+    # Without rfkill (no uaccess on /dev/rfkill): NetworkManager's Wi-Fi and
+    # BlueZ's adapters go off instead, and those that were on come back.
+    before = until("Bluetooth on", lambda: (lambda p: p if any(p.values()) else None)(bluetooth_powered()))
+    machine.succeed("setfacl -b /dev/rfkill")
+    assert machine.execute("su alice -c 'test -w /dev/rfkill'")[0] != 0, "alice may still write /dev/rfkill"
+    S.click(S.control("network", "airplane", role="switch"))
+    until("Wi-Fi off", lambda: "disabled" in machine.succeed("nmcli radio wifi"))
+    until("Bluetooth off", lambda: not any(bluetooth_powered().values()))
+    assert "blocked" not in machine.succeed("rfkill -n -o SOFT").replace("unblocked", ""), "rfkill written after all"
+    time.sleep(1)
+    assert S.checked("network", "airplane") is True, "the switch sprang back"
+    S.click(S.control("network", "airplane", role="switch"))
+    until("Wi-Fi on", lambda: "enabled" in machine.succeed("nmcli radio wifi"))
+    until("Bluetooth back as it was", lambda: bluetooth_powered() == before)
+    machine.succeed("setfacl -m u:alice:rw /dev/rfkill")
 
     addr = machine.succeed("nmcli -g IP4.ADDRESS dev show eth0").strip().split("/")[0]
     wired = " ".join(S.texts(S.row("network", "wired")))
@@ -1282,6 +1300,12 @@ def network():
     until("Wi-Fi back", lambda: any("Connected to Aizome Test AP" in t for t in S.texts()), timeout=90)
     assert S.find(text="Aizome Test AP", visible=False), "the network in use isn't shown"
     S.quit()
+
+
+def bluetooth_powered():
+    """Each BlueZ controller's address, and whether it's on."""
+    macs = re.findall(r"Controller (\S+)", machine.succeed("bluetoothctl list"))
+    return {m: "Powered: yes" in machine.succeed(f"bluetoothctl show {m}") for m in macs}
 
 
 def controller_named(alias):

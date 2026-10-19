@@ -477,7 +477,7 @@ fn serve_with(bus: &common::TestBus, campus: bool) -> (zbus::blocking::Connectio
 
 fn no_radios() -> RadioPaths {
     let missing = std::env::temp_dir().join("aizome-sys-no-rfkill");
-    RadioPaths { device: missing.clone(), sysfs: missing }
+    RadioPaths { device: missing.clone(), sysfs: missing.clone(), fallback: missing.join("airplane") }
 }
 
 #[test]
@@ -599,8 +599,11 @@ fn airplane_mode_blocks_every_radio() {
     std::fs::create_dir_all(&dir).unwrap();
     let device = dir.join("rfkill");
     std::fs::write(&device, b"").unwrap();
-    let network =
-        Network::with_bus(bus.bus(), Wake::none(), RadioPaths { device: device.clone(), sysfs: dir.join("none") });
+    let network = Network::with_bus(
+        bus.bus(),
+        Wake::none(),
+        RadioPaths { device: device.clone(), sysfs: dir.join("none"), fallback: dir.join("airplane") },
+    );
     network.set_airplane_mode(true).wait().unwrap();
     let written = std::fs::read(&device).unwrap();
     std::fs::remove_dir_all(&dir).unwrap();
@@ -708,4 +711,72 @@ fn a_refused_account_keeps_the_saved_enterprise_profile() {
     let log = log.lock().unwrap();
     assert_eq!(log.saved, [format!("{NM_PATH}/Settings/2")]);
     assert!(log.deleted.is_empty() && log.added.is_empty());
+}
+
+/// A BlueZ adapter, for airplane mode without rfkill.
+struct Adapter {
+    powered: bool,
+}
+
+#[zbus::interface(name = "org.bluez.Adapter1")]
+impl Adapter {
+    #[zbus(property)]
+    fn powered(&self) -> bool {
+        self.powered
+    }
+    #[zbus(property)]
+    fn set_powered(&mut self, on: bool) {
+        self.powered = on;
+    }
+}
+
+#[test]
+fn airplane_mode_without_rfkill_turns_bluetooth_off_and_back() {
+    use std::os::unix::fs::PermissionsExt;
+    let bus = test_bus!();
+    let (_nm, _log) = serve(&bus);
+    let bluez = bus
+        .builder()
+        .name("org.bluez")
+        .unwrap()
+        .serve_at("/", zbus::fdo::ObjectManager)
+        .unwrap()
+        .serve_at("/org/bluez/hci0", Adapter { powered: true })
+        .unwrap()
+        .serve_at("/org/bluez/hci1", Adapter { powered: false })
+        .unwrap()
+        .build()
+        .unwrap();
+    let powered = |path: &str| bluez.object_server().interface::<_, Adapter>(path).unwrap().get().powered;
+    // /dev/rfkill that the person may not write (no uaccess).
+    let dir = std::env::temp_dir().join(format!("aizome-sys-airplane-fallback-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let device = dir.join("rfkill");
+    std::fs::write(&device, b"").unwrap();
+    std::fs::set_permissions(&device, std::fs::Permissions::from_mode(0o444)).unwrap();
+    if std::fs::OpenOptions::new().write(true).open(&device).is_ok() {
+        eprintln!("skipping: a read-only file can be written here (root)");
+        return;
+    }
+    let fallback = dir.join("airplane");
+    let network = Network::with_bus(
+        bus.bus(),
+        Wake::none(),
+        RadioPaths { device, sysfs: dir.join("none"), fallback: fallback.clone() },
+    );
+    assert!(eventually(|| network.available() && network.snapshot().wifi_enabled));
+
+    network.set_airplane_mode(true).wait().unwrap();
+    assert!(!powered("/org/bluez/hci0"), "Bluetooth left on in airplane mode");
+    assert!(!powered("/org/bluez/hci1"));
+    assert!(eventually(|| !network.snapshot().wifi_enabled));
+    assert!(network.snapshot().airplane_mode, "the switch springs back: {:?}", network.snapshot());
+
+    network.set_airplane_mode(false).wait().unwrap();
+    assert!(powered("/org/bluez/hci0"), "Bluetooth that was on comes back");
+    assert!(!powered("/org/bluez/hci1"), "Bluetooth that was off stays off");
+    assert!(!fallback.exists());
+    assert!(eventually(|| network.snapshot().wifi_enabled && !network.snapshot().airplane_mode));
+    let _ = std::fs::remove_dir_all(&dir);
 }

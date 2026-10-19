@@ -225,6 +225,8 @@ pkgs.testers.runNixOSTest {
         pkgs.dconf
         pkgs.glib
         pkgs.python3
+        # setfacl: /dev/rfkill without uaccess, for airplane mode without rfkill.
+        pkgs.acl
         # A second text editor and a second terminal for Default Apps.
         (pkgs.makeDesktopItem {
           name = "aizome-test-editor";
