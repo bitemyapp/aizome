@@ -39,6 +39,7 @@ pub mod memory;
 pub mod overlays;
 pub mod render;
 pub mod requests;
+pub mod scales;
 pub mod slides;
 pub mod wm;
 
@@ -86,6 +87,8 @@ pub struct Logic {
     pub pending_action: Option<bindings::Action>,
     /// What was last published to the core ([`hooks::publish`]).
     published: Option<(u64, bool, bool, bool)>,
+    /// The surfaces' scales as last told ([`scales::refresh`]).
+    pub scales_seen: Option<u64>,
 }
 
 /// Per window, beside the model.
@@ -135,6 +138,7 @@ impl Logic {
             access: input::Access::default(),
             pending_action: None,
             published: None,
+            scales_seen: None,
         }
     }
 
