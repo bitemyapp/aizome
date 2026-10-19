@@ -293,6 +293,8 @@ pub struct Shell {
     pub(crate) record_gen: u64,
     /// Which recorders can record here (probed once, as the shell starts).
     pub(crate) recorders: crate::recording::probe::Probes,
+    /// What's shared (screen and window sharing), as the compositor says.
+    pub(crate) shares: Vec<crate::sharing::Share>,
     pub text: aizome_kit::text::TextCache,
     launches: HashMap<ActivationRequest, (Launch, Option<PathBuf>)>,
     stream: Option<MsgSender<Msg>>,
@@ -384,6 +386,7 @@ impl Shell {
             recording: None,
             record_gen: 0,
             recorders: Default::default(),
+            shares: Vec::new(),
             text: aizome_kit::text::TextCache::default(),
             launches: HashMap::new(),
             stream: None,
@@ -532,6 +535,7 @@ impl Shell {
             banner: if primary { self.banner_view() } else { None },
             primary,
             recording: if primary { self.record_badge() } else { None },
+            sharing: if primary { self.share_badge() } else { None },
         }
     }
 
@@ -639,6 +643,7 @@ impl Shell {
                 self.toggle_panel(win, w, rect, cx);
             }
             Slot::Apps => self.run(Action::SetDeskbarCollapsed(false), cx),
+            Slot::Sharing => self.open_share_menu(win, rect, cx),
         }
     }
 
@@ -929,6 +934,8 @@ impl Shell {
                 self.wm.reset(s.0);
                 // What Night Light is doing, for the Display panel.
                 self.ipc.ask(Request::NightLight { enabled: None, temperature: None }, NIGHT_LIGHT_TAG);
+                // What's shared already (the shell restarted mid-share).
+                self.ipc.ask(Request::Shares, SHARES_TAG);
             }
             IpcEvent::Event(e) => {
                 self.wm.apply(&e);
@@ -942,12 +949,16 @@ impl Shell {
                     Event::ScreenshotTaken { path } => self.screenshot_taken(PathBuf::from(path), cx),
                     Event::NightLightChanged { state } => self.night = Some(state),
                     Event::AreaPicked { tag, area, output, .. } => self.area_picked(&tag, area, output.as_deref(), cx),
+                    Event::SharesChanged { shares } => self.shares_changed(shares, cx),
                     _ => {}
                 }
             }
             IpcEvent::Disconnected => self.wm.connected = false,
             IpcEvent::Reply { tag: NIGHT_LIGHT_TAG, response: aizome_ipc::Response::NightLight { state } } => {
                 self.night = Some(state)
+            }
+            IpcEvent::Reply { tag: SHARES_TAG, response: aizome_ipc::Response::Shares { shares } } => {
+                self.shares_changed(shares, cx)
             }
             IpcEvent::Reply { .. } => {}
         }
@@ -1158,6 +1169,7 @@ impl Shell {
             "palette": self.palette.as_ref().map(|p| p.query.clone()),
             "panel": self.panel.as_ref().map(|p| p.widget.name()),
             "recording": self.recording_json(),
+            "sharing": self.sharing_json(),
         })
         .to_string()
     }
@@ -1397,6 +1409,7 @@ pub fn app_sel(app_id: &str) -> AppSel {
 /// A desktop surface's window spec, titled for logs and tests.
 /// The tag of the Night Light question asked at connecting.
 const NIGHT_LIGHT_TAG: u64 = 0x4e49_4748;
+const SHARES_TAG: u64 = 0x5348_4152;
 
 pub fn layer(opts: LayerOptions, width: f64, height: f64, title: &str) -> WindowSpec {
     let mut s = WindowSpec::layer(opts, width, height);
