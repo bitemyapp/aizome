@@ -325,7 +325,7 @@ pkgs.testers.runNixOSTest {
             ).strip()
 
         before = main_pid()
-        # Its main loop blocks: systemd's watchdog stops it after 10 s and
+        # Its main loop blocks: systemd's watchdog stops it after 30 s and
         # aizome-session starts another.
         as_alice("(aizomectl debug-stall 60 >/dev/null 2>&1 &)")
         machine.wait_until_fails(f"kill -0 {before}", timeout=60)
