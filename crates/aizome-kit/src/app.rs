@@ -595,6 +595,10 @@ impl Platform for SidestepPlatform<'_> {
         self.maps.activations.insert(request, self.maps.next_activation);
         self.maps.next_activation
     }
+
+    fn reserve_buffers(&mut self, bytes: usize) {
+        self.sx.reserve_buffers(bytes);
+    }
 }
 
 impl<P: Program> Glue<P> {

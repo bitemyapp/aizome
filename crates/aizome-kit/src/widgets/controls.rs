@@ -1516,6 +1516,19 @@ impl Widget for SegWidget {
         true
     }
 
+    /// The segments, the whole height (no height: the widget's own).
+    fn parts(&self) -> Vec<(String, Rect)> {
+        self.options
+            .iter()
+            .zip(self.edges.windows(2))
+            .enumerate()
+            .map(|(i, ((label, icon), w))| {
+                let name = label.as_deref().map(str::to_owned).or(icon.map(|i| i.name().to_owned()));
+                (name.unwrap_or_else(|| i.to_string()), Rect::new(w[0], 0.0, w[1], 0.0))
+            })
+            .collect()
+    }
+
     fn focusable(&self) -> Focusable {
         if self.usable() { Focusable::Tab } else { Focusable::No }
     }

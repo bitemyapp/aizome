@@ -12,13 +12,15 @@
 //! Kept settings are written to `settings.toml`'s `[[outputs]]` by make,
 //! model and serial, so they follow the display to another port.
 //!
+//! Night Light (warmer colours at night) shows when the compositor says a
+//! display can show it (its CRTC takes a gamma table); otherwise the pane
+//! says why there's none rather than offering a switch that does nothing.
+//!
 //! Ported from Tatami's Displays (`desktop/tatami/displays`: model.rs,
 //! arrangement.rs, window.rs) with Hyprland's monitor rules replaced by
-//! Aizome's compositor IPC. The compositor has no gamma control yet, so
-//! there's no Night Light row; it has no mirroring of its own, so a mirror
-//! is a display placed over its source at the same size (marked
-//! `mirror = "…"` in its `[[outputs]]` entry), and the main display is
-//! marked `primary = true` there for the shell.
+//! Aizome's compositor IPC. A mirror is marked `mirror = "…"` in its
+//! `[[outputs]]` entry and the main display `primary = true`; the
+//! compositor mirrors and places windows from those.
 
 pub mod arrangement;
 pub mod model;
@@ -93,6 +95,9 @@ pub enum Msg {
     Tick,
     Keep,
     Revert,
+    /// What the compositor says of Night Light.
+    Night(Option<aizome_ipc::NightLightState>),
+    NightLight(bool),
 }
 
 pub struct Displays {
@@ -109,6 +114,8 @@ pub struct Displays {
     fractional: bool,
     watching: Option<Arc<AtomicBool>>,
     brightness: Brightness,
+    /// Night Light as the compositor last told it (none without one).
+    night: Option<aizome_ipc::NightLightState>,
 }
 
 impl Default for Displays {
@@ -127,6 +134,7 @@ impl Default for Displays {
             fractional: false,
             watching: None,
             brightness: Brightness { sample: 0.72, ..Brightness::default() },
+            night: None,
         }
     }
 }
@@ -417,12 +425,22 @@ impl Pane for Displays {
                 "orientation",
             ]),
             SettingEntry::new("brightness", "Brightness").keywords(&["backlight", "dim"]),
+            SettingEntry::new("night-light", "Night Light").keywords(&[
+                "night shift",
+                "warm",
+                "blue light",
+                "colour temperature",
+                "color temperature",
+            ]),
         ]
     }
 
     fn shown(&mut self, cx: &mut PaneCx<Msg>) {
         self.start(cx);
         self.read(cx);
+        if !cx.sample() {
+            cx.compositor(Request::NightLight { enabled: None, temperature: None }, night_state);
+        }
         if self.watching.is_none()
             && let Some(comp) = &self.comp
         {
@@ -447,6 +465,14 @@ impl Pane for Displays {
 
     fn update(&mut self, msg: Msg, cx: &mut PaneCx<Msg>) {
         match msg {
+            Msg::Night(state) => self.night = state,
+            Msg::NightLight(on) => {
+                // Kept for the next login, and on now.
+                cx.change(|s| s.night_light.enabled = on);
+                if !cx.sample() {
+                    cx.compositor(Request::NightLight { enabled: Some(on), temperature: None }, night_state);
+                }
+            }
             Msg::Loaded(revision, result) => {
                 // A reading from before a change would undo what it shows.
                 if self.applying || revision != self.revision {
@@ -619,5 +645,105 @@ impl Displays {
 
     pub(crate) fn fractional_now(&self) -> bool {
         self.fractional
+    }
+}
+
+/// The compositor's answer to `night-light`, as the pane's message.
+fn night_state(r: std::io::Result<aizome_ipc::Response>) -> Msg {
+    match r {
+        Ok(aizome_ipc::Response::NightLight { state }) => Msg::Night(Some(state)),
+        _ => Msg::Night(None),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use aizome_kit::testing::Harness;
+
+    use super::Msg;
+    use crate::app::{AppMsg, Shitsurae, Start};
+
+    fn open(name: &str) -> (Harness<Shitsurae>, std::path::PathBuf) {
+        let dir = std::env::temp_dir().join(format!("shitsurae-night-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("settings.toml");
+        let mut h = Harness::new(Shitsurae::sample(path.clone(), Start::parse("displays")));
+        loaded(&mut h);
+        (h, path)
+    }
+
+    /// The sample's displays read (on a thread of their own).
+    pub(super) fn loaded(h: &mut Harness<Shitsurae>) {
+        let w = h.window();
+        for _ in 0..200 {
+            if h.texts(w).iter().any(|t| t == "Use as") {
+                return;
+            }
+            h.advance(std::time::Duration::from_millis(10));
+        }
+        panic!("the sample's displays never showed: {:?}", h.texts(w));
+    }
+
+    fn night(outputs: &[&str]) -> AppMsg {
+        let state = aizome_ipc::NightLightState {
+            temperature: 4000,
+            schedule: "sunset".into(),
+            current: 6500,
+            outputs: outputs.iter().map(|o| (*o).to_owned()).collect(),
+            ..Default::default()
+        };
+        AppMsg::Pane("displays", Arc::new(Msg::Night(Some(state))))
+    }
+
+    #[test]
+    fn displays_without_gamma_say_why_theres_no_night_light() {
+        let (mut h, _) = open("none");
+        let w = h.window();
+        h.send(night(&[]));
+        let texts = h.texts(w);
+        assert!(texts.iter().any(|t| t == "Not on these displays"), "{texts:?}");
+        assert!(h.find_id(w, "entry:displays.night-light").is_some());
+    }
+
+    #[test]
+    fn a_display_with_gamma_gets_the_switch_and_it_is_kept() {
+        let (mut h, path) = open("gamma");
+        let w = h.window();
+        h.send(night(&["eDP-1"]));
+        assert!(!h.texts(w).iter().any(|t| t == "Not on these displays"));
+        assert!(h.texts(w).iter().any(|t| t == "From sunset to sunrise, warmer colours, easier on the eyes at night."));
+        h.send(AppMsg::Pane("displays", Arc::new(Msg::NightLight(true))));
+        h.program().shared.flush();
+        let saved = std::fs::read_to_string(&path).unwrap();
+        assert!(saved.contains("[night_light]") && saved.contains("enabled = true"), "{saved}");
+    }
+}
+
+#[cfg(test)]
+mod scroll_tests {
+    use aizome_kit::layout::{Point, Vec2};
+    use aizome_kit::testing::Harness;
+
+    use crate::app::{AppMsg, Shitsurae, Start};
+
+    #[test]
+    fn night_light_arriving_late_can_be_scrolled_to() {
+        let dir = std::env::temp_dir().join(format!("shitsurae-scroll-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut h = Harness::new(Shitsurae::sample(dir.join("settings.toml"), Start::parse("displays")));
+        let w = h.window();
+        super::tests::loaded(&mut h);
+        let state = aizome_ipc::NightLightState::default();
+        h.send(AppMsg::Pane("displays", std::sync::Arc::new(super::Msg::Night(Some(state)))));
+        let size = h.size(w);
+        for _ in 0..12 {
+            h.scroll(w, Point::new(size.width - 100.0, size.height / 2.0), Vec2::new(0.0, 120.0));
+        }
+        let row = h.inspected(w).into_iter().find(|e| e["name"] == "entry:displays.night-light").expect("the row");
+        assert_eq!(row["visible"], true, "{row}");
     }
 }

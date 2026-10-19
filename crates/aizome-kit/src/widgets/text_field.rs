@@ -44,6 +44,7 @@ pub struct TextField<Msg> {
     placeholder: Option<Arc<str>>,
     on_change: Option<MsgMap<String>>,
     on_submit: Option<MsgFn>,
+    on_blur: Option<MsgFn>,
     password: bool,
     search: bool,
     error: Option<Arc<str>>,
@@ -62,6 +63,7 @@ pub fn text_field<Msg>(value: &str) -> TextField<Msg> {
         placeholder: None,
         on_change: None,
         on_submit: None,
+        on_blur: None,
         password: false,
         search: false,
         error: None,
@@ -85,6 +87,14 @@ impl<Msg: Clone + Send + 'static> TextField<Msg> {
 
     pub fn on_submit(mut self, msg: Msg) -> Self {
         self.on_submit = Some(MsgFn::new(msg));
+        self
+    }
+
+    /// Sent when the field gives the focus up (another control clicked,
+    /// Tab): editing ends, as Return ends it, for fields whose text is kept
+    /// only when done (a name), so it isn't lost by clicking elsewhere.
+    pub fn on_blur(mut self, msg: Msg) -> Self {
+        self.on_blur = Some(MsgFn::new(msg));
         self
     }
 }
@@ -140,6 +150,7 @@ impl<Msg> From<TextField<Msg>> for Element<Msg> {
             placeholder: f.placeholder,
             on_change: f.on_change,
             on_submit: f.on_submit,
+            on_blur: f.on_blur,
             password: f.password,
             search: f.search,
             error: f.error,
@@ -194,6 +205,7 @@ struct FieldWidget {
     placeholder: Option<Arc<str>>,
     on_change: Option<MsgMap<String>>,
     on_submit: Option<MsgFn>,
+    on_blur: Option<MsgFn>,
     password: bool,
     search: bool,
     error: Option<Arc<str>>,
@@ -725,6 +737,9 @@ impl Widget for FieldWidget {
                     self.follow_caret(cx);
                 } else {
                     cx.state::<FieldState>().preedit.clear();
+                    if let Some(msg) = &self.on_blur {
+                        cx.emit(msg);
+                    }
                 }
                 cx.rebuild();
                 cx.invalidate();

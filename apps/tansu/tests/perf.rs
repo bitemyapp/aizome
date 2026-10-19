@@ -21,9 +21,8 @@ fn frame(h: &mut Harness<Tansu>, act: impl FnOnce(&mut Harness<Tansu>)) -> Durat
     // Each damaged rectangle, as the window's renderer redraws them (a
     // selection changes strips at the top, middle and bottom: their union
     // would be the whole window).
-    for d in h.take_damage(w) {
-        let _ = h.render_rect(w, d, 2.0);
-    }
+    let damage = h.take_damage(w);
+    let _ = h.render_damage(w, &damage, 2.0);
     start.elapsed()
 }
 

@@ -145,9 +145,9 @@ wouldn't drag), `a_frozen_apps_window_drags_and_lets_go` and
 If the compositor's main loop stops, nothing in it can draw or open the
 overlay. So, from outside it (`watchdog.rs`):
 
-- **systemd's watchdog.** `aizome.service` has `WatchdogSec=10s`; a timer
+- **systemd's watchdog.** `aizome.service` has `WatchdogSec=30s`; a timer
   on the main loop sends `WATCHDOG=1` every third of that. A loop stalled
-  for 10 s is stopped by systemd with SIGABRT (`TimeoutAbortSec=5s`), so
+  for 30 s is stopped by systemd with SIGABRT (`TimeoutAbortSec=5s`), so
   a core dump shows where it was (`coredumpctl info aizome`); with
   `KillMode=mixed` only the compositor gets it, and the rest of the
   service (the shell, xwayland-satellite, programs the compositor
@@ -157,7 +157,7 @@ overlay. So, from outside it (`watchdog.rs`):
   count); any other end of the compositor still ends the session. Apps
   lose their windows then, which can't be helped.
 - **A stall watcher thread.** The loop beats on every iteration. After
-  2 s without one the thread logs that the loop is stalled; at 6 s (60%
+  2 s without one the thread logs that the loop is stalled; at 18 s (60%
   of the watchdog's time) it captures the main thread's backtrace (a
   signal handler on that thread takes it; symbols resolve on the watcher
   thread), the kernel's `wchan` and `syscall` for it, logs them, and

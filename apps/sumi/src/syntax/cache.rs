@@ -15,6 +15,11 @@ use ropey::Rope;
 
 use super::{Language, LineState, Out, Token, tokenize};
 
+/// Lines a millisecond of working states out is taken to go through
+/// until it's measured (a release build does three or four thousand of
+/// Rust).
+const GUESSED_RATE: f64 = 1000.0;
+
 /// The text of line `i`, without its line break.
 pub fn line_text(rope: &Rope, i: usize) -> Cow<'_, str> {
     let slice = rope.line(i);
@@ -50,6 +55,12 @@ pub struct Highlight {
     pub incomplete: bool,
     /// The program has been asked to call again.
     pub scheduled: bool,
+    /// This pass is one the program was asked for: it spends the budget
+    /// working states out even towards a line it can't reach.
+    pub pump: bool,
+    /// Lines a millisecond working states out goes through, as last
+    /// measured.
+    rate: f64,
     /// Lines tokenized to work states out (for tests and measuring).
     pub worked: u64,
     /// Asks the program to call again (when `incomplete`).
@@ -67,6 +78,8 @@ impl Highlight {
             budget: Duration::from_millis(3),
             incomplete: false,
             scheduled: false,
+            pump: false,
+            rate: GUESSED_RATE,
             worked: 0,
             notify: None,
         }
@@ -78,10 +91,10 @@ impl Highlight {
 
     /// Start over (the language changed, or the whole text).
     pub fn reset(&mut self, lang: Language) {
-        let budget = self.budget;
+        let (budget, rate) = (self.budget, self.rate);
         let notify = self.notify.take();
         *self = Highlight::new(lang);
-        self.budget = budget;
+        (self.budget, self.rate) = (budget, rate);
         self.notify = notify;
     }
 
@@ -131,6 +144,7 @@ impl Highlight {
     pub fn advance(&mut self, target: usize, rope: &Rope, deadline: Option<Instant>) -> bool {
         let total = rope.len_lines();
         let target = target.min(total.saturating_sub(1));
+        let started = deadline.map(|_| Instant::now());
         let mut count = 0u32;
         while self.valid < target {
             let j = self.valid;
@@ -167,13 +181,36 @@ impl Highlight {
                 && let Some(d) = deadline
                 && Instant::now() >= d
             {
+                self.measured(count, started);
                 return self.valid >= target;
             }
         }
+        self.measured(count, started);
         if self.guess.as_ref().is_some_and(|(g, _)| *g <= self.valid) {
             self.guess = None;
         }
         true
+    }
+
+    /// How fast working states out went, from a run of `count` lines
+    /// started at `started`: kept when the run was long enough to say.
+    fn measured(&mut self, count: u32, started: Option<Instant>) {
+        if let Some(t) = started
+            && count >= 1024
+        {
+            let ms = t.elapsed().as_secs_f64() * 1e3;
+            if ms > 0.0 {
+                self.rate = f64::from(count) / ms;
+            }
+        }
+    }
+
+    /// Whether the budget could work states out as far as `line`: near
+    /// enough at the rate measured, or behind an edit (where the states
+    /// from before it soon match again, and the rest stand).
+    fn within_reach(&self, line: usize) -> bool {
+        line < self.states.len()
+            || (line.saturating_sub(self.valid) as f64) <= self.rate * self.budget.as_secs_f64() * 1e3
     }
 
     /// The state line `line` starts in: worked out within the budget, else
@@ -182,8 +219,12 @@ impl Highlight {
         if line <= self.valid {
             return self.states[line];
         }
-        // One budget a pass: once it ran out, the pass guesses.
-        if !self.incomplete {
+        // One budget a pass: once it ran out, the pass guesses. A pass that
+        // couldn't get there within it (a jump far ahead) guesses at once,
+        // leaving the work to the passes the program is asked for after,
+        // between frames, rather than spending the budget in vain.
+        if !self.incomplete && (self.pump || self.within_reach(line)) {
+            self.pump = false;
             let deadline = Instant::now() + self.budget;
             if self.advance(line, rope, Some(deadline)) && line <= self.valid {
                 return self.states[line];
@@ -320,5 +361,35 @@ mod tests {
         let _ = h.state_at(150_000, &r);
         assert!(!h.incomplete);
         assert!(h.valid() >= 150_000);
+    }
+
+    #[test]
+    fn a_jump_out_of_reach_guesses_at_once_and_the_passes_after_work() {
+        let text: String = (0..200_000).map(|i| format!("x{i}\n")).collect();
+        let r = rope(&text);
+        let mut h = Highlight::new(Language::Rust);
+        // A budget that reaches about a thousand lines at the guessed rate.
+        h.budget = Duration::from_millis(1);
+        let _ = h.state_at(150_000, &r);
+        assert!(h.incomplete);
+        assert_eq!(h.worked, 0, "nothing is worked out in vain");
+        // A pass the program was asked for spends its budget.
+        h.incomplete = false;
+        h.pump = true;
+        let _ = h.state_at(150_000, &r);
+        assert!(h.worked > 0);
+        assert!(!h.pump);
+        // Near enough, and behind an edit: worked out at once (in a budget
+        // that reaches 20,000 lines at the guessed rate).
+        let mut h = Highlight::new(Language::Rust);
+        h.budget = Duration::from_millis(20);
+        let _ = h.state_at(400, &r);
+        assert!(!h.incomplete && h.valid() >= 400);
+        h.budget = Duration::from_secs(60);
+        let _ = h.state_at(150_000, &r);
+        h.budget = Duration::from_millis(20);
+        h.edited(10, 10, 10);
+        let _ = h.state_at(149_000, &r);
+        assert!(!h.incomplete && h.valid() >= 149_000);
     }
 }

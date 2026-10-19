@@ -245,6 +245,10 @@ pub struct Bluetooth {
     /// The pane shows, and has started looking for devices.
     showing: bool,
     looking: bool,
+    /// The adapter last turned on or off here: it stays the one shown, or
+    /// another, still on, would take its place (the default is the first
+    /// powered one) and the switch would spring back on.
+    pinned: Option<String>,
 }
 
 impl Default for Bluetooth {
@@ -259,6 +263,7 @@ impl Default for Bluetooth {
             responders: Arc::new(Mutex::new(HashMap::new())),
             next_prompt: 1,
             made_discoverable: false,
+            pinned: None,
             agent: false,
             showing: false,
             looking: false,
@@ -268,7 +273,7 @@ impl Default for Bluetooth {
 
 impl Bluetooth {
     fn adapter(&self) -> Option<Adapter> {
-        self.bt.snapshot().default_adapter().cloned()
+        shown_adapter(&self.bt.snapshot(), self.pinned.as_deref())
     }
 
     fn act(&mut self, cx: &mut PaneCx<Msg>, what: &str, device: &str, task: Task<()>) {
@@ -279,7 +284,7 @@ impl Bluetooth {
     /// Discoverable and looking for devices while the pane shows.
     fn look(&mut self, cx: &mut PaneCx<Msg>, just_on: bool) {
         let Bt::Live(b) = &self.bt else { return };
-        let Some(a) = b.snapshot().default_adapter().cloned() else { return };
+        let Some(a) = shown_adapter(&b.snapshot(), self.pinned.as_deref()) else { return };
         // Just turned on: the snapshot may not say so yet.
         if !a.powered && !just_on {
             return;
@@ -427,7 +432,7 @@ impl Pane for Bluetooth {
         self.showing = false;
         self.looking = false;
         if let Bt::Live(b) = &self.bt {
-            if let Some(a) = b.snapshot().default_adapter().cloned() {
+            if let Some(a) = shown_adapter(&b.snapshot(), self.pinned.as_deref()) {
                 let t = b.stop_discovery(&a.path);
                 cx.wait(t, |_| Msg::Done(String::new(), String::new(), Ok(())));
                 if self.made_discoverable {
@@ -446,6 +451,7 @@ impl Pane for Bluetooth {
         match msg {
             Msg::Power(on) => {
                 let Some(a) = self.adapter() else { return };
+                self.pinned = Some(a.path.clone());
                 let t = self.bt.set_powered(&a.path, on);
                 cx.wait(t, move |r| Msg::Powered(on, r));
             }
@@ -590,7 +596,7 @@ impl Pane for Bluetooth {
                 form::note("On NixOS it's turned on with hardware.bluetooth.enable = true."),
             ]);
         }
-        let Some(adapter) = state.default_adapter().cloned() else {
+        let Some(adapter) = shown_adapter(&state, self.pinned.as_deref()) else {
             return form::page(vec![form::heading(
                 "No Bluetooth",
                 "This computer has no Bluetooth adapter, or it's switched off in the firmware.",
@@ -620,6 +626,7 @@ impl Pane for Bluetooth {
                         text_field(&name)
                             .on_change(Msg::NameText)
                             .on_submit(Msg::Rename)
+                            .on_blur(Msg::Rename)
                             .width(200.0)
                             .id("bluetooth-name"),
                     )
@@ -968,5 +975,34 @@ pub fn sample() -> BluetoothState {
             dev(6, "Pixel Watch 2", DeviceKind::Watch, false, false, None, Some(-74)),
             dev(7, "Xbox Wireless Controller", DeviceKind::Gamepad, false, false, None, Some(-83)),
         ],
+    }
+}
+
+/// The adapter the pane shows: the one pinned (last switched here) while
+/// it's there, else BlueZ's default.
+fn shown_adapter(state: &aizome_sys::bluetooth::BluetoothState, pinned: Option<&str>) -> Option<Adapter> {
+    pinned.and_then(|p| state.adapter(p)).or_else(|| state.default_adapter()).cloned()
+}
+
+#[cfg(test)]
+mod tests {
+    use aizome_sys::bluetooth::{Adapter, BluetoothState};
+
+    use super::shown_adapter;
+
+    #[test]
+    fn the_adapter_turned_off_stays_shown_while_another_is_on() {
+        let adapter = |path: &str, powered: bool| Adapter { path: path.into(), powered, ..Adapter::default() };
+        let state = BluetoothState {
+            available: true,
+            adapters: vec![adapter("/org/bluez/hci0", false), adapter("/org/bluez/hci1", true)],
+            ..BluetoothState::default()
+        };
+        // Nothing switched here yet: the one that's on.
+        assert_eq!(shown_adapter(&state, None).unwrap().path, "/org/bluez/hci1");
+        // hci0 just turned off here: still hci0, so the switch shows off.
+        assert_eq!(shown_adapter(&state, Some("/org/bluez/hci0")).unwrap().path, "/org/bluez/hci0");
+        // Gone: the default again.
+        assert_eq!(shown_adapter(&state, Some("/org/bluez/hci9")).unwrap().path, "/org/bluez/hci1");
     }
 }

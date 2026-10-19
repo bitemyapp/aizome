@@ -169,8 +169,30 @@ impl Picture {
         let mut total: u64 = self.tiles.iter().map(Tile::bytes).sum();
         while self.tiles.len() > 6 || (total > 320 << 20 && self.tiles.len() > 1) {
             total -= self.tiles[0].bytes();
-            self.tiles.remove(0);
+            discard(self.tiles.remove(0));
         }
+    }
+}
+
+/// Free `waste` on a thread of its own rather than the window's: decoded
+/// pictures and their drawings are tens of megabytes each, and the system
+/// takes milliseconds to take that memory back (unmapping it, or the
+/// allocator trimming its heap), which moving to another picture paid in
+/// the frame it moved.
+fn discard<T: Send + 'static>(waste: T) {
+    static BIN: std::sync::OnceLock<Option<std::sync::mpsc::Sender<Box<dyn Send>>>> = std::sync::OnceLock::new();
+    let bin = BIN.get_or_init(|| {
+        let (tx, rx) = std::sync::mpsc::channel::<Box<dyn Send>>();
+        let started = std::thread::Builder::new().name("shashin-free".into()).spawn(move || rx.iter().for_each(drop));
+        started.ok().map(|_| tx)
+    });
+    match bin {
+        Some(tx) => {
+            if let Err(back) = tx.send(Box::new(waste)) {
+                drop(back);
+            }
+        }
+        None => drop(waste),
     }
 }
 
@@ -551,7 +573,7 @@ impl Shashin {
             cx.cancel(h);
         }
         let Some(path) = self.current_path().cloned() else {
-            self.pic = None;
+            discard(self.pic.take());
             cx.set_title(self.window, "Shashin");
             return;
         };
@@ -562,6 +584,7 @@ impl Shashin {
             self.install(serial, prepared, cx);
             return;
         }
+        discard(self.pic.take());
         self.pic = Some(Picture {
             serial,
             info: Prepared::failed(&path, String::new()),
@@ -593,7 +616,14 @@ impl Shashin {
         if let Some(t) = &prepared.fit {
             tiles.push(t.clone());
         }
-        let keep = self.pic.take().filter(|p| p.serial == serial).map(|p| p.tiles).unwrap_or_default();
+        let keep = match self.pic.take() {
+            Some(p) if p.serial == serial => p.tiles,
+            Some(p) => {
+                discard(p);
+                Vec::new()
+            }
+            None => Vec::new(),
+        };
         // A preview stays until something better is drawn.
         let mut all = keep;
         all.extend(tiles);
@@ -667,14 +697,19 @@ impl Shashin {
             }
             _ => Vec::new(),
         };
-        self.ahead.retain(|a| near.contains(&a.path) && a.path != p.path);
+        let (kept, gone): (Vec<Prepared>, Vec<Prepared>) =
+            std::mem::take(&mut self.ahead).into_iter().partition(|a| near.contains(&a.path) && a.path != p.path);
+        self.ahead = kept;
+        discard(gone);
         if near.contains(&p.path) && p.error.is_none() {
             self.ahead.push(p);
+        } else {
+            discard(p);
         }
         let mut total: u64 = self.ahead.iter().map(Prepared::bytes).sum();
         while total > 640 << 20 && !self.ahead.is_empty() {
             total -= self.ahead[0].bytes();
-            self.ahead.remove(0);
+            discard(self.ahead.remove(0));
         }
     }
 

@@ -419,9 +419,12 @@ Sidestep colours (`surface()`, `chrome()`, `raised()`, `sunk()`, `line()`,
 Archivo for the interface, IBM Plex Mono for code, shortcuts and numbers
 (tabular), Noto Sans Symbols 2 for the modifier glyphs.
 
-Fonts: at start the kit installs, for the process, the families fontconfig
-doesn't have from `$AIZOME_FONT_DIR`, else `../share/aizome/fonts` beside
-the executable; without them the system's sans and mono stand in.
+Fonts: at start the kit installs, for the process, the faces in
+`$AIZOME_FONT_DIR`, which then win over the system's copies of their
+families (a font installed for the process is found first), so tests and
+goldens draw with those files whatever versions the system has; and the
+families fontconfig doesn't have from `../share/aizome/fonts` beside the
+executable. Without them the system's sans and mono stand in.
 
 ## Performance
 
@@ -496,9 +499,13 @@ damage drawn) and compares it with the window drawn whole: `differs` is 0
 when the damage was right; `damaged` is the area drawn and `moves` the
 regions moved. Drags out: `drags()` (each with what it carries),
 `drag_data(drag, mime)`, `end_drag(drag, action)`.
-Pictures: `render(window, scale)`, `render_rect`, `render_popup`,
-`render_rgba` (the window with its popups where they'd show), `save_png`,
-and `assert_golden` (`AIZOME_UPDATE_GOLDENS=1` rewrites them). Popups:
+Pictures: `render(window, scale)`, `render_rect`, `render_damage(window,
+rects, scale)` (the damage as the window's next frame draws it: gathered
+as a window gathers it, drawn once, each rectangle rasterized alone into
+pixels kept for the window, as its buffer is; what to time a frame by),
+`render_popup`, `render_rgba` (the window with its popups where they'd
+show), `save_png`, and `assert_golden` (`AIZOME_UPDATE_GOLDENS=1` rewrites
+them). Popups:
 `popups(window)`, `click_popup`, `popup_keyboard`, `texts_in`. Drops:
 `drop(window, at, urls, text)`. The theme: `set_appearance`. For the shell:
 `set_outputs`, `confirm_lock`, `finish_lock`, `activation_token`, and
@@ -513,7 +520,14 @@ the theme switchable; the kit's goldens in `tests/snapshots` are its pages.
 keeps changing something every 20 ms (for `SIDESTEP_FRAME_STATS=1`).
 
 Set `AIZOME_FONT_DIR` to the fonts (`~/work/.aizome-fonts` here) so
-pictures use Aizome's type.
+pictures use Aizome's type. The folder is made from the flake, so it holds
+exactly the files the session installs (`nix/module.nix`'s `fonts.packages`:
+Archivo from `nix/fonts.nix`, nixpkgs' IBM Plex Mono and Noto Sans Symbols
+2): `nix build .#fonts -o ~/work/.aizome-fonts`, again whenever `flake.lock`
+moves nixpkgs. (The module takes IBM Plex and Noto from the system's
+nixpkgs: the same files while the system follows the flake's.) Goldens
+are drawn with it; one that changes after that is a change of type, to
+bless with `AIZOME_UPDATE_GOLDENS=1`.
 
 To run an app's real windows without touching a live session, run it under
 the headless sway (`sidestep-aizome/scripts/headless-wayland`) with
@@ -569,3 +583,13 @@ included now that it moves pixels (under the heaviest load seen, load
 average 25, the list and table scrolling took 2.7 ms at the median and
 5.8 ms at the 95th percentile): moving a region costs about a millisecond
 at 2× (copying it), against 2.5–5 ms to draw rows and lines again.
+
+To drive a running app from outside (the NixOS VM test of Settings clicks
+and types through `aizomectl input`), set `AIZOME_KIT_INSPECT` to a
+directory: each window then writes `<app_id>.<pid>.<window>.json` there
+after it paints and as the pointer moves over it, with its title, kind,
+size, the pointer and every element with a name, text or semantics (role,
+label, value, checked, selected, range), its rectangle in the window's
+points and the part that shows. Widgets name parts that aren't elements
+through `Widget::parts` (a segmented control's segments). `Harness::inspected`
+gives the same list. Without the variable nothing is written.

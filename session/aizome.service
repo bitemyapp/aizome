@@ -28,7 +28,10 @@ ExecStart=/usr/bin/env aizome --backend udev
 # (aizome-session restarts one the watchdog stopped.)
 Restart=no
 TimeoutStartSec=60
-WatchdogSec=10s
+# Long enough that a machine too loaded to schedule the compositor for a
+# while (a big build, swapping) doesn't cost every app its windows; a
+# real wedge still ends within half a minute.
+WatchdogSec=30s
 # Don't wait long for the core dump: the screen is frozen meanwhile.
 TimeoutAbortSec=5s
 # Only the compositor gets the watchdog's SIGABRT (one core dump, not one

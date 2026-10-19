@@ -1,5 +1,7 @@
 //! Trackpad: tap to click, how a right-click is made, scrolling, typing.
-//! `[input.touchpad]`, applied by the compositor to every touchpad.
+//! `[input.touchpad]`, applied by the compositor to every touchpad. With
+//! none connected (a desktop, a VM) the pane says so: the settings wait
+//! for one.
 
 use aizome_config::{AccelProfile, ClickMethod};
 use aizome_kit::prelude::*;
@@ -9,7 +11,31 @@ use crate::form::{self, row};
 use crate::pane::{Group, Pane, PaneCx, SettingEntry, Tile, ViewCx};
 
 #[derive(Default)]
-pub struct Trackpad;
+pub struct Trackpad {
+    /// Whether a touchpad is connected (`None` until looked).
+    present: Option<bool>,
+}
+
+/// Whether `/proc/bus/input/devices` lists a touchpad: a pointer (not a
+/// touchscreen) that knows how many fingers touch it.
+pub fn touchpad_in(devices: &str) -> bool {
+    // BTN_TOOL_FINGER, and INPUT_PROP_POINTER without INPUT_PROP_DIRECT.
+    const BTN_TOOL_FINGER: usize = 0x145;
+    let bit = |words: &str, n: usize| -> bool {
+        // The kernel writes the bitmap as hex words, most significant first.
+        let words: Vec<&str> = words.split_whitespace().collect();
+        let (word, at) = (n / 64, n % 64);
+        words.len() > word && u64::from_str_radix(words[words.len() - 1 - word], 16).is_ok_and(|w| w >> at & 1 == 1)
+    };
+    devices.split("\n\n").any(|dev| {
+        let field = |key: &str| {
+            dev.lines().find_map(|l| l.strip_prefix("B: ").and_then(|b| b.strip_prefix(key)).map(str::trim))
+        };
+        let prop = field("PROP=").unwrap_or("0");
+        let keys = field("KEY=").unwrap_or("0");
+        bit(prop, 0) && !bit(prop, 1) && bit(keys, BTN_TOOL_FINGER)
+    })
+}
 
 #[derive(Clone, Debug)]
 pub enum Msg {
@@ -74,6 +100,11 @@ impl Pane for Trackpad {
         ]
     }
 
+    fn shown(&mut self, cx: &mut PaneCx<Msg>) {
+        self.present =
+            Some(cx.sample() || std::fs::read_to_string("/proc/bus/input/devices").map_or(true, |d| touchpad_in(&d)));
+    }
+
     fn update(&mut self, msg: Msg, cx: &mut PaneCx<Msg>) {
         match msg {
             Msg::Speed(v) => cx.change(|s| s.input.touchpad.speed = (v * 20.0).round() / 20.0),
@@ -97,7 +128,7 @@ impl Pane for Trackpad {
             ClickMethod::Clickfinger => 0,
             ClickMethod::ButtonAreas => 1,
         };
-        form::page(vec![
+        let mut sections = vec![
             vcx.section(
                 "Clicking",
                 vec![
@@ -147,6 +178,47 @@ impl Pane for Trackpad {
                         .help("A palm brushing the pad while you type doesn't move the pointer or click."),
                 ],
             ),
-        ])
+        ];
+        if self.present == Some(false) {
+            sections.insert(
+                0,
+                form::note("No trackpad is connected. These settings wait for one, and apply as soon as it is."),
+            );
+        }
+        form::page(sections)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::touchpad_in;
+
+    const MOUSE: &str = "I: Bus=0011 Vendor=0002 Product=0013 Version=0006
+N: Name=\"ImExPS/2 Generic Explorer Mouse\"
+B: PROP=1
+B: EV=7
+B: KEY=1f0000 0 0 0 0
+B: REL=143
+";
+    const TOUCHPAD: &str = "I: Bus=0018 Vendor=06cb Product=7e7e Version=0100
+N: Name=\"SYNA2BA6:00 06CB:7E7E Touchpad\"
+B: PROP=5
+B: EV=1b
+B: KEY=e520 10000 0 0 0 0
+B: ABS=2e0800000000003
+";
+    const SCREEN: &str = "I: Bus=0018 Vendor=04f3 Product=2c4d Version=0100
+N: Name=\"ELAN Touchscreen\"
+B: PROP=2
+B: EV=b
+B: KEY=400 0 0 0 0 0
+B: ABS=3273800000000003
+";
+
+    #[test]
+    fn a_touchpad_is_told_from_mice_and_touchscreens() {
+        assert!(touchpad_in(&format!("{MOUSE}\n{TOUCHPAD}")));
+        assert!(!touchpad_in(MOUSE));
+        assert!(!touchpad_in(&format!("{MOUSE}\n{SCREEN}")));
     }
 }

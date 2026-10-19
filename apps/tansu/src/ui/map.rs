@@ -4,13 +4,15 @@
 //! unallocated space hatched, what pending operations change outlined in
 //! dashes, and the selected segment outlined in the focus colour.
 
+use std::cell::RefCell;
+use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 
 use aizome_kit::element::{MsgFn, MsgMap};
 use aizome_kit::hash::PaintHasher;
 use aizome_kit::layout::{Align, Constraints, Point, Rect, Size};
-use aizome_kit::sidestep_ui::kurbo::{Line, Shape};
-use aizome_kit::sidestep_ui::{Key, NamedKey, PointerButton, StrokeStyle};
+use aizome_kit::sidestep_ui::kurbo::{BezPath, Line, Shape};
+use aizome_kit::sidestep_ui::{BlendMode, Image, ImageOptions, Key, NamedKey, PointerButton, StrokeStyle};
 use aizome_kit::text::TextSpec;
 use aizome_kit::theme::{FontSpec, Theme};
 use aizome_kit::widget::{Event, EventCx, Focusable, LayoutCx, PaintCx, SemanticRole, Semantics, Status, Widget};
@@ -113,16 +115,77 @@ impl Map {
     }
 }
 
-fn hatch(canvas: &mut aizome_kit::sidestep_ui::Canvas, r: Rect, color: Color) {
+thread_local! {
+    /// Hatches drawn, by where and how they're drawn (the last few).
+    static HATCHES: RefCell<Vec<(u64, Image)>> = const { RefCell::new(Vec::new()) };
+}
+
+/// The most hatches kept: a few drives' free space.
+const HATCHES_KEPT: usize = 8;
+
+/// `r` on `ground`, hatched in `color`. A hundred and fifty antialiased
+/// lines across a large disk's free space take a few milliseconds to
+/// draw (each crosses every row the rasterizer walks), so the hatch is
+/// drawn once for its size, scale and colours, offscreen, landing on the
+/// device's pixels as it would here, and copied one to one after.
+fn hatch(canvas: &mut aizome_kit::sidestep_ui::Canvas, r: Rect, ground: Color, color: Color) {
+    let scale = canvas.scale();
+    let at = canvas.transform() * r.origin();
+    let frac = |v: f64| v * scale - (v * scale).floor();
+    let offset = aizome_kit::Vec2::new(frac(at.x) / scale, frac(at.y) / scale);
+    let size =
+        Size::new(((r.width() + offset.x) * scale).ceil() / scale, ((r.height() + offset.y) * scale).ceil() / scale);
+    let key = {
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        for v in [r.width(), r.height(), scale, offset.x, offset.y] {
+            v.to_bits().hash(&mut h);
+        }
+        for c in [ground, color] {
+            [c.r, c.g, c.b, c.a].map(f32::to_bits).hash(&mut h);
+        }
+        h.finish()
+    };
+    let image = HATCHES.with(|kept| {
+        let mut kept = kept.borrow_mut();
+        if let Some(i) = kept.iter().position(|(k, _)| *k == key) {
+            let hit = kept.remove(i);
+            kept.push(hit);
+        } else {
+            let lines = hatch_lines(r.size());
+            let appearance = aizome_kit::sidestep_ui::Appearance::DARK;
+            let image = aizome_kit::sidestep_ui::offscreen::render(size, scale, appearance, |c| {
+                c.fill_rect(Rect::from_origin_size(Point::ZERO, size), ground);
+                c.translate(offset);
+                c.clip_rect(Rect::from_origin_size(Point::ZERO, r.size()));
+                c.stroke(&lines, &StrokeStyle::new(1.0), color);
+            });
+            kept.push((key, image));
+            if kept.len() > HATCHES_KEPT {
+                kept.remove(0);
+            }
+        }
+        kept.last().map(|(_, image)| image.clone())
+    });
+    let Some(image) = image else { return };
     canvas.save();
     canvas.clip_rect(r);
-    let style = StrokeStyle::new(1.0);
-    let mut x = r.x0 - r.height();
-    while x < r.x1 {
-        canvas.stroke(&Line::new((x, r.y1), (x + r.height(), r.y0)), &style, color);
+    canvas.set_blend_mode(BlendMode::Copy);
+    let place = Rect::from_origin_size(r.origin() - offset, image.size());
+    canvas.draw_image_with(&image, None, place, ImageOptions { smooth: false, ..ImageOptions::default() });
+    canvas.restore();
+}
+
+/// The hatch's lines over a rectangle `size` big at the origin: one path,
+/// stroked once (they never touch, so it draws what a stroke for each
+/// did).
+fn hatch_lines(size: Size) -> BezPath {
+    let mut lines = BezPath::new();
+    let mut x = -size.height;
+    while x < size.width {
+        lines.extend(Line::new((x, size.height), (x + size.height, 0.0)).path_elements(0.1));
         x += 6.0;
     }
-    canvas.restore();
+    lines
 }
 
 /// A segment's fills: its tint, its used part, its stripe.
@@ -156,8 +219,7 @@ impl Widget for Map {
             let r = *r;
             match seg.kind() {
                 SegKind::Free | SegKind::Blank => {
-                    cx.canvas.fill_rect(r, t.sunk());
-                    hatch(cx.canvas, r, t.line2().with_alpha(if t.is_dark() { 0.8 } else { 0.7 }));
+                    hatch(cx.canvas, r, t.sunk(), t.line2().with_alpha(if t.is_dark() { 0.8 } else { 0.7 }));
                     if r.width() > 48.0 {
                         let label = if seg.kind() == SegKind::Blank { "No partition table" } else { "Unallocated" };
                         let pad = Rect::new(r.x0 + 6.0, r.y0 + 8.0, r.x1 - 4.0, r.y0 + 26.0);

@@ -160,6 +160,12 @@ pub fn builtin_panel(connector: &str) -> bool {
     ["eDP", "LVDS", "DSI"].iter().any(|p| connector.starts_with(p))
 }
 
+/// The bytes of window memory a surface `size` points big takes at
+/// `scale` (a buffer of device pixels, four bytes each).
+pub(crate) fn surface_bytes(size: aizome_kit::Size, scale: f64) -> usize {
+    ((size.width * scale).ceil().max(0.0) * (size.height * scale).ceil().max(0.0)) as usize * 4
+}
+
 impl Shell {
     /// Whether one of the outputs shown is a built-in panel: only then do
     /// the brightness keys and sliders reach the machine's backlight. A
@@ -231,6 +237,8 @@ pub struct Shell {
     pub settings_list: Vec<crate::palette::model::SettingEntry>,
     /// The theme showing is Day.
     pub theme_day: bool,
+    /// What GTK was last told of the look (dconf).
+    pub gtk_look: Option<crate::gtk::GtkLook>,
     /// The text selected in the focused app, for Services.
     pub selection: Option<String>,
     pub panel: Option<crate::systray::glue::OpenPanel>,
@@ -354,6 +362,7 @@ impl Shell {
             file_index: None,
             settings_list: Vec::new(),
             theme_day: false,
+            gtk_look: None,
             selection: None,
             panel: None,
             panel_ui: Default::default(),
@@ -481,9 +490,18 @@ impl Shell {
         }
         // The Deskbar first: surfaces of one layer stack in the order they
         // open, and the bar's menus and panels show over what's under it.
+        let had_deskbar = self.deskbar.is_some();
         self.sync_deskbar(cx);
+        // Window memory for the surfaces opened here, faulted in while the
+        // compositor configures them: their first frames (the desktop's
+        // fills the output) then draw into memory that's there.
+        let mut fresh = match (had_deskbar, self.deskbar_size, self.primary()) {
+            (false, Some(size), Some(s)) => surface_bytes(size, s.output.scale),
+            _ => 0,
+        };
         for i in 0..self.screens.len() {
             let id = self.screens[i].output.id;
+            let (frame, scale) = (self.screens[i].output.frame.size(), self.screens[i].output.scale);
             if self.screens[i].bar.is_none() {
                 let opts = LayerOptions::new(Layer::Top, "aizome-menubar")
                     .anchors(Anchors::TOP | Anchors::LEFT | Anchors::RIGHT)
@@ -493,6 +511,7 @@ impl Shell {
                 let k = cx.open_window(layer(opts, 0.0, crate::menubar::HEIGHT, "Menu bar"));
                 self.surfaces.insert(k, Surface::MenuBar { output: id });
                 self.screens[i].bar = Some(k);
+                fresh += surface_bytes(aizome_kit::Size::new(frame.width, crate::menubar::HEIGHT), scale);
             }
             if self.screens[i].desktop.is_none() {
                 let opts = LayerOptions::new(Layer::Background, "aizome-desktop")
@@ -503,8 +522,10 @@ impl Shell {
                 let k = cx.open_window(layer(opts, 0.0, 0.0, "Desktop"));
                 self.surfaces.insert(k, Surface::Desktop { output: id });
                 self.screens[i].desktop = Some(k);
+                fresh += surface_bytes(frame, scale);
             }
         }
+        cx.reserve_buffers(fresh);
     }
 
     // The bar.
@@ -976,6 +997,7 @@ impl Shell {
         self.recorders.start();
         self.read_logind_power_key(cx);
         self.start_polkit();
+        self.follow_gtk();
     }
 
     fn take_ipc(&mut self, e: IpcEvent, cx: &mut Cx<Msg>) {
@@ -1284,6 +1306,10 @@ impl Program for Shell {
             Msg::Tick => {
                 self.now = Local::now();
                 self.arm_clock(cx);
+                // Auto turns at its hours.
+                let day = self.settings.appearance.theme.resolve(aizome_kit::theme::local_hour())
+                    == aizome_theme::ThemeName::Day;
+                self.theme_changed(day);
                 if self.panel.as_ref().is_some_and(|p| p.widget == TrayWidget::Clock) {
                     self.refresh_agenda(cx);
                 }
@@ -1335,6 +1361,7 @@ impl Program for Shell {
             Msg::WarmPalette => {
                 let theme = cx.theme().clone();
                 self.warm_palette(&theme);
+                cx.reserve_buffers(self.palette_buffer_bytes());
             }
             Msg::LogindPowerKey(k) => self.logind_power_key = k,
             Msg::BarSide(d) => self.bar_side(d, cx),
@@ -1591,6 +1618,7 @@ impl Shell {
     /// The theme turned: foot instances and GTK follow (foot reloads its
     /// colours on SIGUSR1 for dark and SIGUSR2 for light).
     pub fn theme_changed(&mut self, day: bool) {
+        self.follow_gtk();
         if self.theme_day == day {
             return;
         }
@@ -1624,13 +1652,21 @@ impl Shell {
                     }
                 }
             }
-            let scheme = if day { "'prefer-light'" } else { "'prefer-dark'" };
-            let _ = std::process::Command::new("dconf")
-                .args(["write", "/org/gnome/desktop/interface/color-scheme", scheme])
-                .stdout(std::process::Stdio::null())
-                .stderr(std::process::Stdio::null())
-                .status();
         });
+    }
+
+    /// GTK and libadwaita apps follow the theme and the focus colour
+    /// (dconf), told only when what they'd be told changes.
+    pub fn follow_gtk(&mut self) {
+        if !self.opts.live {
+            return;
+        }
+        let a = &self.settings.appearance;
+        let look = crate::gtk::look(a.theme.resolve(aizome_kit::theme::local_hour()), a.focus);
+        if self.gtk_look != Some(look) {
+            self.gtk_look = Some(look);
+            crate::gtk::tell(look);
+        }
     }
 }
 

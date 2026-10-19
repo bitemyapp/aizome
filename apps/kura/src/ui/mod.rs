@@ -25,7 +25,7 @@ use crate::scan::{self, Progress, ProgressSnapshot, Scan, ScanOptions};
 use crate::tree::NodeId;
 use drag::{DragEvent, ZoneCell};
 use rings::{RINGS, Seg};
-use sunburst::{FRAME, Labels, Target, Transition};
+use sunburst::{FRAME, Labels, RingCache, RingJob, Target, Transition};
 
 /// Open the window (scanning `paths[0]` if given), as the one instance.
 pub fn run(paths: Vec<PathBuf>) {
@@ -138,6 +138,10 @@ pub enum Msg {
     Release(Option<Target>),
     /// A frame of the rings moving.
     Frame,
+    /// Draw the rings smooth, on a worker.
+    DrawRings(RingJob),
+    /// The rings, drawn.
+    RingsDrawn(u64, aizome_kit::sidestep_ui::Image),
     Collect(NodeId),
     CollectSelected,
     Uncollect(NodeId),
@@ -201,6 +205,11 @@ pub struct Kura {
     pub press: Option<(Target, Point)>,
     pub origin: Rc<Cell<Option<Point>>>,
     labels: Rc<std::cell::RefCell<Labels>>,
+    /// The rings drawn smooth, ahead (see [`RingCache`]).
+    pub rings: Rc<std::cell::RefCell<RingCache>>,
+    /// Bumped when a drawing of the rings arrives.
+    pub rings_gen: u64,
+    pub(super) ask: Option<aizome_kit::MsgSender<Msg>>,
     pub selected: Option<NodeId>,
     pub transition: Option<Transition>,
     pub collector: Vec<NodeId>,
@@ -278,6 +287,9 @@ impl Kura {
             press: None,
             origin: Rc::new(Cell::new(None)),
             labels: Rc::default(),
+            rings: Rc::default(),
+            rings_gen: 0,
+            ask: None,
             selected: None,
             transition: None,
             collector: Vec::new(),
@@ -513,6 +525,7 @@ impl Program for Kura {
 
     fn launched(&mut self, cx: &mut Cx<Msg>) {
         self.window = cx.open_window(WindowSpec::new("Kura").size(1080.0, 700.0).min_size(760.0, 520.0));
+        self.ask = Some(cx.stream());
         if let Some(l) = self.listener.take() {
             instance::serve(l, cx.stream(), Msg::Launched);
         }
@@ -531,7 +544,9 @@ impl Program for Kura {
     }
 
     fn update(&mut self, msg: Msg, cx: &mut Cx<Msg>) {
-        if log::log_enabled!(log::Level::Debug) && !matches!(msg, Msg::Scanned(_) | Msg::Disks(_) | Msg::Poll) {
+        if log::log_enabled!(log::Level::Debug)
+            && !matches!(msg, Msg::Scanned(_) | Msg::Disks(_) | Msg::Poll | Msg::DrawRings(_) | Msg::RingsDrawn(..))
+        {
             log::debug!("{msg:?}");
         }
         match msg {
@@ -668,6 +683,14 @@ impl Program for Kura {
                 {
                     self.click(pt, cx);
                 }
+            }
+            Msg::DrawRings(job) => cx.spawn(move || {
+                let image = job.draw();
+                Msg::RingsDrawn(job.key, image)
+            }),
+            Msg::RingsDrawn(key, image) => {
+                self.rings.borrow_mut().arrived(key, image);
+                self.rings_gen += 1;
             }
             Msg::Frame => {
                 if self.transition.is_some_and(|t| t.progress(Instant::now()).is_some()) {

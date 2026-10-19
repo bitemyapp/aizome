@@ -430,6 +430,14 @@ impl State {
             seat.add_keyboard(XkbConfig::default(), k.repeat_delay as i32, k.repeat_rate as i32)
                 .expect("a keyboard with the default layout");
         }
+        // Settings' "Num Lock on at start".
+        if k.numlock
+            && let Some(kb) = seat.get_keyboard()
+        {
+            let mut mods = kb.modifier_state();
+            mods.num_lock = true;
+            kb.set_modifier_state(mods);
+        }
         seat.add_touch();
 
         let palette = crate::config::palette_for(&settings);

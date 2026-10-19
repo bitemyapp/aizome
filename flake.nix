@@ -72,6 +72,10 @@
           rev = self.rev or self.dirtyRev or null;
         };
         archivo = pkgs.callPackage ./nix/fonts.nix { };
+        # The session's fonts (Archivo, and nixpkgs' IBM Plex Mono and Noto
+        # Sans Symbols 2) as files in one folder, for $AIZOME_FONT_DIR
+        # (docs/kit.md).
+        fonts = pkgs.callPackage ./nix/aizome-fonts.nix { inherit archivo; };
         default = aizome;
       });
 
@@ -82,6 +86,9 @@
       # up (nix/vm-test.nix).
       checks = forAll (pkgs: {
         session = import ./nix/vm-test.nix { inherit pkgs self; };
+        # Changes something in every pane of Settings and checks the
+        # system took it (nix/vm-settings-test.nix).
+        settings = import ./nix/vm-settings-test.nix { inherit pkgs self; };
       });
 
       devShells = forAll (pkgs: {

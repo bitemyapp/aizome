@@ -110,6 +110,7 @@ dependencies = [
  "aizome-theme",
  "log",
  "serde",
+ "serde_json",
  "toml",
 ]
 

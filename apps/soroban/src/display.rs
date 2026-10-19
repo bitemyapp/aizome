@@ -12,6 +12,7 @@ use aizome_kit::widget::{LayoutCx, PaintCx, SemanticRole, Semantics, Widget};
 use aizome_kit::{Element, Layoutable, Length};
 
 use crate::entry::Shown;
+use crate::grouped::{self, Cut, Grouped};
 
 /// The display's height.
 pub const HEIGHT: f64 = 76.0;
@@ -36,25 +37,6 @@ fn mono(size: f64, weight: f32) -> FontSpec {
     f.weight = weight;
     f.tabular = true;
     f
-}
-
-/// `text` cut from the left with an ellipsis so it fits `width` at
-/// `spec` (mono: characters are about the same width).
-fn tail_fit(cx: &mut PaintCx, text: &str, spec: &TextSpec, width: f64) -> String {
-    let w = cx.layout_text(text, spec, None).size().width;
-    if w <= width {
-        return text.to_owned();
-    }
-    let chars: Vec<char> = text.chars().collect();
-    let per = w / chars.len().max(1) as f64;
-    let mut keep = ((width / per).floor() as usize).saturating_sub(1).min(chars.len());
-    loop {
-        let s: String = std::iter::once('…').chain(chars[chars.len() - keep..].iter().copied()).collect();
-        if keep == 0 || cx.layout_text(&s, spec, None).size().width <= width {
-            return s;
-        }
-        keep -= 1;
-    }
 }
 
 impl Widget for DisplayWidget {
@@ -89,8 +71,8 @@ impl Widget for DisplayWidget {
             let color = if s.error { t.role(Role::Danger) } else { t.text3() };
             let spec = TextSpec::new(mono(12.5, if s.error { 500.0 } else { 400.0 }), color);
             let room = (r.x1 - PAD) - (x + 4.0);
-            let text = tail_fit(cx, &s.sub, &spec, room.max(20.0));
-            cx.draw_text_in(&text, &spec, Rect::new(x + 4.0, top.y0, r.x1 - PAD, top.y1), aizome_kit::Align::End);
+            let text = grouped::fit(cx, &s.sub, &spec, room.max(20.0), Cut::Start);
+            grouped::draw_in(cx, &text, &spec, Rect::new(x + 4.0, top.y0, r.x1 - PAD, top.y1), aizome_kit::Align::End);
         }
 
         // The big line: as large as fits, then cut from the left.
@@ -99,18 +81,18 @@ impl Widget for DisplayWidget {
         let weight = if s.answer { 600.0 } else { 500.0 };
         let probe = TextSpec::new(mono(BIG, weight), t.text());
         let full = format!("{}{}", s.main, ghost);
-        let w_big = cx.layout_text(&full, &probe, None).size().width.max(1.0);
+        let w_big = Grouped::new(cx, &full, &probe).size().width.max(1.0);
         let size = if w_big <= room { BIG } else { ((BIG * room / w_big) * 2.0).floor() / 2.0 }.max(SMALL_MAIN);
         let spec = TextSpec::new(mono(size, weight), t.text());
         let ghost_spec = TextSpec::new(mono(size, 400.0), t.faint());
         let gw = if ghost.is_empty() { 0.0 } else { cx.layout_text(&ghost, &ghost_spec, None).size().width };
-        let main = tail_fit(cx, &s.main, &spec, room - gw);
-        let l = cx.layout_text(&main, &spec, None);
+        let main = grouped::fit(cx, &s.main, &spec, room - gw, Cut::Start);
+        let l = Grouped::new(cx, &main, &spec);
         let ls = l.size();
         let baseline_box = Rect::new(r.x0 + PAD, r.y0 + 24.0, r.x1 - PAD, r.y1 - 6.0);
         let y = (baseline_box.y0 + (baseline_box.height() - ls.height) / 2.0).round();
         let x = (baseline_box.x1 - gw - ls.width).round();
-        cx.canvas.draw_text(&l, Point::new(x, y));
+        l.draw(cx.canvas, Point::new(x, y));
         if !ghost.is_empty() {
             let g = cx.layout_text(&ghost, &ghost_spec, None);
             cx.canvas.draw_text(&g, Point::new(x + ls.width, y));

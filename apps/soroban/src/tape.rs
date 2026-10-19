@@ -16,6 +16,8 @@ use aizome_kit::widget::{
 };
 use aizome_kit::{Align, Element, Layoutable, Length};
 
+use crate::grouped;
+
 /// One entry's height.
 pub const ROW: f64 = 42.0;
 const PAD: f64 = 10.0;
@@ -145,8 +147,9 @@ impl<Msg: Clone + Send + 'static> Widget for TapeWidget<Msg> {
             };
             let (expr, result) = &self.entries[i];
             let text_box = |y0: f64, y1: f64| Rect::new(row.x0 + PAD, y0, row.x1 - PAD, y1);
-            cx.draw_text_in(expr, &TextSpec::new(ef, ink2), text_box(y + 4.0, y + 19.0), Align::End);
-            cx.draw_text_in(&format!("= {result}"), &TextSpec::new(rf, ink), text_box(y + 19.0, y + 38.0), Align::End);
+            grouped::draw_in(cx, expr, &TextSpec::new(ef, ink2), text_box(y + 4.0, y + 19.0), Align::End);
+            let result = format!("= {result}");
+            grouped::draw_in(cx, &result, &TextSpec::new(rf, ink), text_box(y + 19.0, y + 38.0), Align::End);
             if i + 1 < self.entries.len() && !chosen && cursor != Some(i + 1) {
                 cx.canvas.fill_rect(Rect::new(row.x0 + PAD, y + ROW - 1.0, row.x1 - PAD, y + ROW), t.line());
             }

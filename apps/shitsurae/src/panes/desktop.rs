@@ -283,7 +283,11 @@ impl Pane for Desktop {
                     .border(Edge::Line2);
                 let line = row![
                     number,
-                    text_field(&name).on_change(move |t| Msg::DeskName(i, t)).on_submit(Msg::SaveDesk(i)).width(180.0),
+                    text_field(&name)
+                        .on_change(move |t| Msg::DeskName(i, t))
+                        .on_submit(Msg::SaveDesk(i))
+                        .on_blur(Msg::SaveDesk(i))
+                        .width(180.0),
                     spacer(),
                     folder,
                     icon_button(Icon::Minus).toolbar().enabled(n > 1).on_press(Msg::RemoveDesk(i)).tooltip("Remove"),
