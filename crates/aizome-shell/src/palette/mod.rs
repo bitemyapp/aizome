@@ -72,6 +72,8 @@ pub enum PaletteEvent {
     /// Recently used files, read on a thread.
     Recent(Vec<(PathBuf, bool)>),
     Settings(Vec<SettingEntry>),
+    /// The history as written after recording a pick into its file.
+    Frecency(Box<aizome_search::frecency::Frecency>),
 }
 
 /// The system actions the palette offers (with Stop Recording instead
@@ -210,6 +212,9 @@ impl Shell {
     pub fn open_palette(&mut self, scope: Option<Scope>, query: String, cx: &mut Cx<Msg>) {
         // A scope the settings leave out opens All.
         let scope = scope.filter(|s| self.palette_finds(*s));
+        // What it learnt, as its file has it now (Settings may have
+        // forgotten it).
+        self.refresh_frecency();
         if let Some(p) = &mut self.palette {
             p.scope = scope;
             p.query = query;
@@ -492,6 +497,7 @@ impl Shell {
                     self.rank_palette(cx);
                 }
             }
+            PaletteEvent::Frecency(store) => self.frecency = *store,
             PaletteEvent::Recent(list) => {
                 let boosts = self.file_boosts(&list);
                 if let Some(p) = &mut self.palette {
@@ -578,11 +584,14 @@ impl Shell {
         let Some(p) = &self.palette else { return };
         let Some(item) = model::flat(&p.sections).get(p.selected).map(|r| r.item.clone()) else { return };
         if let Some(k) = &item.key {
-            self.frecency.visit(k);
+            let mut keys = vec![k.clone()];
             if item.scope == Scope::Command && item.shortcut.is_some() {
-                self.frecency.visit(&format!("menu:{}", k.trim_start_matches("cmd:")));
+                keys.push(format!("menu:{}", k.trim_start_matches("cmd:")));
             }
-            self.save_frecency();
+            for k in &keys {
+                self.frecency.visit(k);
+            }
+            self.record_frecency(keys);
         }
         if !keep_open {
             self.close_palette(cx);
@@ -663,21 +672,30 @@ impl Shell {
         self.show_menu(window, anchor, &menu, MenuStyle::below(), cx);
     }
 
-    pub fn save_frecency(&self) {
+    /// Record picks into the history's file, on a thread, and hold what
+    /// it holds then. The file is the history: one forgotten (Settings
+    /// removes it) isn't written back from what the shell remembered.
+    pub fn record_frecency(&self, keys: Vec<String>) {
         if !self.opts.live {
             return;
         }
-        if let Ok(bytes) = serde_json::to_vec(&self.frecency) {
-            let path = aizome_search::frecency::Frecency::default_path();
-            std::thread::spawn(move || {
-                if let Some(d) = path.parent() {
-                    let _ = std::fs::create_dir_all(d);
+        let path = aizome_search::frecency::Frecency::default_path();
+        let tx = self.sender();
+        std::thread::spawn(move || match aizome_search::frecency::Frecency::record(&path, &keys) {
+            Ok(store) => {
+                if let Some(tx) = tx {
+                    tx.send(Msg::Palette(PaletteEvent::Frecency(Box::new(store))));
                 }
-                let tmp = path.with_extension("json.tmp");
-                if std::fs::write(&tmp, bytes).is_ok() {
-                    let _ = std::fs::rename(tmp, path);
-                }
-            });
+            }
+            Err(e) => log::warn!("recording the palette's pick in {}: {e}", path.display()),
+        });
+    }
+
+    /// Read the history again if its file changed (forgotten, or written
+    /// by another shell) since it was read.
+    pub fn refresh_frecency(&mut self) {
+        if self.opts.live && self.frecency.is_stale() {
+            self.frecency = aizome_search::frecency::Frecency::load(aizome_search::frecency::Frecency::default_path());
         }
     }
 

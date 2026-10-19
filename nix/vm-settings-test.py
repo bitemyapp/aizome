@@ -822,7 +822,26 @@ def performance():
     S.quit()
 
 
-@part("Search: a palette scope turned off is kept")
+FRECENCY = f"{HOME}/.local/state/aizome/frecency.json"
+
+
+def frecency():
+    return machine.succeed(f"cat {FRECENCY} 2>/dev/null || true")
+
+
+def launch_from_palette(name, app_id):
+    """Open an app the way a person does: ❖Space, its name, Return."""
+    chord("super+space")
+    until("the palette", lambda: any(d.get("title") == "Palette" for d in shell_docs()), timeout=10)
+    type_text(name)
+    time.sleep(1)
+    key("return")
+    w = until(f"{name}'s window", lambda: next((w for w in ipc("windows")["windows"] if w["app_id"] == app_id), None))
+    ipc(f"close {w['id']}")
+    until(f"{name} gone", lambda: not any(w["app_id"] == app_id for w in ipc("windows")["windows"]))
+
+
+@part("Search: a palette scope turned off is kept; forgetting what the palette learnt sticks")
 def search():
     S.open("search")
     S.click(S.control("search", "scopes", role="switch"))
@@ -830,7 +849,22 @@ def search():
     reopen("search")
     assert S.checked("search", "scopes") is False
     S.click(S.control("search", "scopes", role="switch"))
+    until("every scope", lambda: "commands" in (setting("palette.scopes") or ["commands"]))
     S.quit()
+
+    # The palette learns a pick...
+    launch_from_palette("Tokei", "org.aizome.Tokei")
+    until("the pick learnt", lambda: "app:org.aizome.Tokei" in frecency())
+    # ...Settings forgets it...
+    S.open("search")
+    S.press("Forget…")
+    S.press("Forget")
+    until("the history gone", lambda: machine.execute(f"test -e {FRECENCY}")[0] != 0)
+    S.quit()
+    # ...and the next pick doesn't bring it back.
+    launch_from_palette("Soroban", "org.aizome.Soroban")
+    until("the new pick learnt", lambda: "app:org.aizome.Soroban" in frecency())
+    assert "Tokei" not in frecency(), frecency()
 
 
 def write_png(path, rgb, side=96):
