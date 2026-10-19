@@ -394,6 +394,8 @@ struct Chain {
     /// The region the blur in it was taken from (none until it has one).
     region: Option<Rectangle<i32, Physical>>,
     used: u64,
+    /// Its surface, to free it once the surface is gone.
+    surface: smithay::reexports::wayland_server::Weak<WlSurface>,
 }
 
 const VERTEX: &str = r#"#version 100
@@ -523,7 +525,7 @@ unsafe fn compile(gl: &ffi::Gles2, vertex: &str, fragment: &str) -> Option<Progr
 }
 
 impl Chain {
-    unsafe fn new(gl: &ffi::Gles2, size: Size<i32, Physical>) -> Chain {
+    unsafe fn new(gl: &ffi::Gles2, size: Size<i32, Physical>, surface: &WlSurface) -> Chain {
         let mut levels = Vec::new();
         let (mut w, mut h) = (size.w, size.h);
         for _ in 0..3 {
@@ -555,7 +557,7 @@ impl Chain {
                 levels.push((tex, fbo, w, h));
             }
         }
-        Chain { size, levels, region: None, used: 0 }
+        Chain { size, levels, region: None, used: 0, surface: surface.downgrade() }
     }
 
     unsafe fn delete(&self, gl: &ffi::Gles2) {
@@ -680,8 +682,14 @@ fn draw_gles(
         }
         st.frame += 1;
         let now = st.frame;
-        // Forget blurs not drawn for a while (their surfaces went).
-        let stale: Vec<_> = st.blurs.iter().filter(|(_, c)| now - c.used > 600).map(|(k, _)| k.clone()).collect();
+        // Forget blurs whose surfaces went (menus come and go), or not
+        // drawn for a while.
+        let stale: Vec<_> = st
+            .blurs
+            .iter()
+            .filter(|(_, c)| now - c.used > 600 || c.surface.upgrade().is_err())
+            .map(|(k, _)| k.clone())
+            .collect();
         for k in stale {
             if let Some(c) = st.blurs.remove(&k) {
                 c.delete(gl);
@@ -692,7 +700,7 @@ fn draw_gles(
             c.delete(gl);
         }
         if !st.blurs.contains_key(&key) {
-            let c = Chain::new(gl, region.size);
+            let c = Chain::new(gl, region.size, &blur.surface);
             st.blurs.insert(key.clone(), c);
         }
         let Gl { programs, blurs, .. } = &mut *st;
