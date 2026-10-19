@@ -88,3 +88,62 @@ fn pictures_of_the_palette() {
         aizome_kit::testing::assert_golden(&mut h, p, golden(name), 2.0);
     }
 }
+
+/// Two seconds after start the shell warms the palette, and a second later
+/// draws it ahead, hidden, as it would open: its first opening then shows
+/// that drawing and draws only what changed since (nothing, here), not the
+/// whole surface, and what shows is the palette drawn whole. Closed, it's kept hidden and drawn ahead again a second later;
+/// a new theme draws it ahead again in that theme.
+#[test]
+fn the_first_opening_draws_only_what_changed_since_it_was_drawn_ahead() {
+    use aizome_shell::palette::AHEAD_AFTER;
+    let mut h = scene(false);
+    h.send(Msg::WarmPalette);
+    assert!(h.windows().iter().all(|k| h.title(*k) != "Palette"), "drawn ahead a second later");
+    h.advance(AHEAD_AFTER);
+    let p = window_titled(&h, "Palette");
+    assert!(!h.is_shown(p), "drawn ahead hidden");
+    let size = h.size(p);
+    let whole = size.width * size.height;
+    let ahead = h.check_frame(p);
+    assert!(ahead.damaged >= whole, "drawn ahead whole: {} of {whole} points²", ahead.damaged);
+    // Its bands, put together, are the palette drawn whole, pixel for pixel.
+    let (w, hgt, drawn) = h.picture(p).expect("drawn ahead");
+    let image = h.render(p, 2.0);
+    assert_eq!(image.pixel_size(), (w, hgt));
+    assert_eq!(aizome_kit::testing::difference(&drawn, &image.to_rgba8().expect("pixels"), 0), 0.0);
+    for (round, day) in [(0, false), (1, false), (2, true)] {
+        h.send(Msg::Run(Action::Palette { scope: None, query: String::new() }));
+        assert_eq!(window_titled(&h, "Palette"), p, "the window drawn ahead shows");
+        assert!(h.is_shown(p));
+        let frame = h.check_frame(p);
+        assert_eq!(frame.differs, 0.0, "round {round}: what shows is the palette drawn whole");
+        assert!(
+            frame.damaged < whole / 8.0,
+            "round {round}: the first frame drew {} of {whole} points², not just what changed",
+            frame.damaged
+        );
+        println!(
+            "round {round}: the first opening drew {:.0} of {whole:.0} points² ({:.0} of {:.0} pixels at 2×)",
+            frame.damaged,
+            frame.damaged * 4.0,
+            whole * 4.0
+        );
+        assert_eq!(h.focused_name(p).as_deref(), Some("palette-query"));
+        h.named(p, NamedKey::Escape, Modifiers::NONE);
+        assert!(h.program().palette.is_none());
+        assert!(!h.is_shown(p), "round {round}: kept, hidden");
+        if day {
+            break;
+        }
+        h.advance(AHEAD_AFTER);
+        assert!(h.check_frame(p).damaged >= whole, "round {round}: drawn ahead again");
+        if round == 1 {
+            // A new theme: drawn ahead again, in it.
+            h.set_appearance(appearance(true));
+            // (At idle: the loop's next turns.)
+            h.advance(std::time::Duration::ZERO);
+            assert!(h.check_frame(p).damaged >= whole, "drawn ahead again in the new theme");
+        }
+    }
+}

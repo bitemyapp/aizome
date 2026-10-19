@@ -78,6 +78,9 @@ pub enum Msg {
     Carried(Box<crate::carry::Carried>),
     /// Idle after starting: warm the palette.
     WarmPalette,
+    /// Draw the palette ahead again, if it was asked for last (the ask's
+    /// count).
+    PreparePalette(u64),
     /// An output's wallpaper, scaled (or not: it didn't read).
     Wallpaper(crate::wallpaper::WallKey, Option<aizome_kit::Image>),
     /// The bell's flash of generation `n` has shown long enough.
@@ -237,6 +240,8 @@ pub struct Shell {
     pub banner: Option<u32>,
     pub banner_queue: Vec<u32>,
     pub palette: Option<crate::palette::PaletteState>,
+    /// The palette's window between openings, hidden and drawn ahead.
+    pub palette_ahead: crate::palette::Ahead,
     pub frecency: aizome_search::frecency::Frecency,
     pub file_index: Option<Arc<aizome_search::files::FileIndex>>,
     pub settings_list: Vec<crate::palette::model::SettingEntry>,
@@ -366,6 +371,7 @@ impl Shell {
             banner: None,
             banner_queue: Vec::new(),
             palette: None,
+            palette_ahead: Default::default(),
             frecency: aizome_search::frecency::Frecency::default(),
             file_index: None,
             settings_list: Vec::new(),
@@ -1115,10 +1121,14 @@ impl Shell {
                 self.selection_came(serial, text, cx)
             }
             ServerEvent::Message(conn, m) => {
-                if let RegistryChange::Menus(_) | RegistryChange::App(_) = self.registry.take(conn, &m) {}
+                if let RegistryChange::Menus(_) | RegistryChange::App(_) = self.registry.take(conn, &m) {
+                    // The palette opens with the focused app's menus.
+                    self.palette_ahead.bumped += 1;
+                }
             }
             ServerEvent::Gone(conn) => {
                 self.registry.gone(conn);
+                self.palette_ahead.bumped += 1;
             }
         }
     }
@@ -1385,6 +1395,15 @@ impl Program for Shell {
                 let theme = cx.theme().clone();
                 self.warm_palette(&theme);
                 cx.reserve_buffers(self.palette_buffer_bytes());
+                // From now on the palette's window is kept between
+                // openings, drawn ahead: first once the glyphs are in.
+                self.palette_ahead.on = true;
+                self.palette_ahead_soon(cx);
+            }
+            Msg::PreparePalette(n) => {
+                if n == self.palette_ahead.asked {
+                    self.prepare_palette(cx);
+                }
             }
             Msg::LogindPowerKey(k) => self.logind_power_key = k,
             Msg::BarSide(d) => self.bar_side(d, cx),
@@ -1411,13 +1430,13 @@ impl Program for Shell {
             }
             Some(Surface::Desktop { output }) => self.desktop_view(*output),
             Some(Surface::Deskbar) => crate::deskbar::view(&self.deskbar_model()).map(Msg::Deskbar),
-            Some(Surface::Palette) => match (self.palette_view(), &self.palette) {
-                (Some(v), Some(p)) => {
-                    let inner = crate::palette::view::view(&v, p.scroll)
+            Some(Surface::Palette) => match self.palette_in(window) {
+                Some(p) => {
+                    let inner = crate::palette::view::view(&self.palette_view_of(p), p.scroll)
                         .map(|m| Msg::Palette(crate::palette::PaletteEvent::Ui(m)));
                     crate::widgets::keys::keys(inner, |k| crate::palette::key_event(k).map(Msg::Palette))
                 }
-                _ => aizome_kit::space(0.0),
+                None => aizome_kit::space(0.0),
             },
             Some(Surface::Lock { output }) => {
                 let inner = self.lock_view(*output);
@@ -1552,6 +1571,7 @@ impl Shell {
         self.sync_panel(cx);
         self.sync_tearoffs(cx);
         self.sync_cards(cx);
+        self.keep_palette_ahead(cx);
         if let Some(screen) = self.primary().cloned() {
             let model = self.bar_model(&screen);
             let theme = cx.theme().clone();

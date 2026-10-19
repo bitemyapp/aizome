@@ -284,6 +284,8 @@ impl Widget for FieldWidget {
             Event::Focus(on) => {
                 cx.set_text_input(*on, Some(Rect::new(0.0, 0.0, 2.0, self.height)));
                 if *on {
+                    // The caret shows at once, then blinks.
+                    cx.state::<FieldState>().blink_off = false;
                     cx.request_tick(Duration::from_millis(530));
                 }
                 cx.invalidate();

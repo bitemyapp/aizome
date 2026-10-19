@@ -46,6 +46,45 @@ pub struct PaletteState {
     pub boosts: Arc<std::collections::HashMap<String, i64>>,
 }
 
+/// The palette's window between openings (from the warming two seconds
+/// after start on): hidden, and drawn ahead as the palette would open
+/// now, so that opening it shows a frame drawn already and draws only
+/// what changed since (`Cx::prepare_window`). Drawn again a second after
+/// what it opens with changes (the focused app, its menus, the windows,
+/// apps, settings, what was picked, the theme, the output's scale), at
+/// idle. Its pictures hold one surface's pixels, 5.6 MB at 2×.
+#[derive(Default)]
+pub struct Ahead {
+    /// The window is kept and drawn ahead (from the first warming on).
+    pub on: bool,
+    /// The hidden window, and what it was last drawn with (while the
+    /// palette is closed).
+    pub spare: Option<PaletteState>,
+    /// The output the window shows on (a layer surface stays on the output
+    /// it's made for: on another, another window is made).
+    pub output: u32,
+    /// The scale it's drawn ahead at: none until it is again (once hidden).
+    pub scale: Option<f64>,
+    /// What the palette opens with ([`Shell::palette_inputs`]) when it was
+    /// last drawn, or since asked to draw again for.
+    pub inputs: u64,
+    /// Counts the asks to draw it again: only the last one's timer does.
+    pub asked: u64,
+    /// Counts the changes to what it opens with that
+    /// [`Shell::palette_inputs`] doesn't look into: apps' menus, picks.
+    pub bumped: u64,
+}
+
+/// How long after what the palette opens with changes it's drawn ahead
+/// again: changes come in bursts (a window opening, focus, a title).
+pub const AHEAD_AFTER: std::time::Duration = std::time::Duration::from_secs(1);
+
+/// Where the palette shows: over everything on `output`, taking the
+/// keyboard.
+fn palette_layer(output: u32) -> LayerOptions {
+    LayerOptions::new(Layer::Overlay, "aizome-palette").keyboard(KeyboardInteractivity::Exclusive).output(output)
+}
+
 /// The file index, read or built on a thread.
 #[derive(Clone)]
 pub struct Index(pub Arc<FileIndex>);
@@ -222,38 +261,25 @@ impl Shell {
             return;
         }
         let Some(output) = self.focused_screen().map(|s| s.output.id) else { return };
-        let opts = LayerOptions::new(Layer::Overlay, "aizome-palette")
-            .keyboard(KeyboardInteractivity::Exclusive)
-            .output(output);
-        let size = view::size();
-        let window = cx.open_window(layer(opts, size.width, size.height, "Palette"));
-        self.surfaces.insert(window, Surface::Palette);
-        let (app_name, app_id, context) = match self.wm.focused_window() {
-            Some(w) => {
-                let name = self.focused_menus().0;
-                let ctx = if w.title.is_empty() { format!("in {name}") } else { format!("in {name} · {}", w.title) };
-                (Some(name), w.app_id.clone(), ctx)
+        // The window kept hidden and drawn ahead, if there is one: it shows
+        // what it drew, and its first frame draws only what differs from
+        // that (nothing, as a rule).
+        let window = match self.spare_palette_on(output, cx) {
+            Some(spare) => {
+                self.palette_ahead.spare = None;
+                self.palette_ahead.scale = None;
+                cx.show_window(spare);
+                spare
             }
-            None => (None, String::new(), "in Aizome".into()),
+            None => {
+                let size = view::size();
+                let window = cx.open_window(layer(palette_layer(output), size.width, size.height, "Palette"));
+                self.surfaces.insert(window, Surface::Palette);
+                self.palette_ahead.output = output;
+                window
+            }
         };
-        let items = self.palette_items();
-        self.palette = Some(PaletteState {
-            window,
-            query,
-            scope,
-            selected: 0,
-            scroll: 0.0,
-            items,
-            files: Vec::new(),
-            files_for: "\u{0}".into(),
-            sections: Vec::new(),
-            context,
-            app_name,
-            app_id,
-            search: 0,
-            recent: Arc::default(),
-            boosts: Arc::default(),
-        });
+        self.palette = Some(self.palette_state(window, scope, query));
         if self.opts.live {
             cx.spawn(|| {
                 let list = aizome_search::recent::load(aizome_search::recent::default_path())
@@ -276,9 +302,47 @@ impl Shell {
 
     pub fn close_palette(&mut self, cx: &mut Cx<Msg>) {
         self.file_index = None;
-        if let Some(p) = self.palette.take() {
+        let Some(p) = self.palette.take() else { return };
+        if self.palette_ahead.on {
+            // Kept, hidden, and drawn ahead again soon as it will open.
+            cx.hide_window(p.window);
+            self.palette_ahead.spare = Some(p);
+            self.palette_ahead.scale = None;
+            self.palette_ahead_soon(cx);
+        } else {
             cx.close_window(p.window);
             self.surfaces.remove(&p.window);
+        }
+    }
+
+    /// What the palette shows in `window` when it opens now in `scope`
+    /// with `query`, before ranking: every row but files', and where it
+    /// opens from.
+    fn palette_state(&self, window: WindowKey, scope: Option<Scope>, query: String) -> PaletteState {
+        let (app_name, app_id, context) = match self.wm.focused_window() {
+            Some(w) => {
+                let name = self.focused_menus().0;
+                let ctx = if w.title.is_empty() { format!("in {name}") } else { format!("in {name} · {}", w.title) };
+                (Some(name), w.app_id.clone(), ctx)
+            }
+            None => (None, String::new(), "in Aizome".into()),
+        };
+        PaletteState {
+            window,
+            query,
+            scope,
+            selected: 0,
+            scroll: 0.0,
+            items: self.palette_items(),
+            files: Vec::new(),
+            files_for: "\u{0}".into(),
+            sections: Vec::new(),
+            context,
+            app_name,
+            app_id,
+            search: 0,
+            recent: Arc::default(),
+            boosts: Arc::default(),
         }
     }
 
@@ -379,12 +443,18 @@ impl Shell {
 
     /// Rank again for the query and scope; search files if they're wanted.
     pub fn rank_palette(&mut self, cx: &mut Cx<Msg>) {
+        let Some(mut p) = self.palette.take() else { return };
+        self.rank(&mut p, cx);
+        self.palette = Some(p);
+    }
+
+    /// Rank `p` for its query and scope; search files if they're wanted.
+    fn rank(&self, p: &mut PaletteState, cx: &mut Cx<Msg>) {
         let per_section = self.palette_cfg.per_section as usize;
         let home = aizome_config::home_dir();
-        let boosts = self.palette.as_ref().map(|p| p.boosts.clone()).unwrap_or_default();
+        let boosts = p.boosts.clone();
         let index = self.file_index.clone();
         let files_on = self.palette_finds(Scope::File);
-        let Some(p) = &mut self.palette else { return };
         let wants_files = files_on && (p.scope.is_none() || p.scope == Some(Scope::File));
         let q = p.query.trim().to_owned();
         if wants_files && p.files_for != q {
@@ -430,10 +500,21 @@ impl Shell {
     }
 
     pub fn palette_view(&self) -> Option<PaletteView> {
-        let p = self.palette.as_ref()?;
+        self.palette.as_ref().map(|p| self.palette_view_of(p))
+    }
+
+    /// The palette that `window` shows: the open one, or the one kept
+    /// hidden and drawn ahead.
+    pub fn palette_in(&self, window: WindowKey) -> Option<&PaletteState> {
+        let open = self.palette.as_ref().filter(|p| p.window == window);
+        open.or(self.palette_ahead.spare.as_ref().filter(|p| p.window == window))
+    }
+
+    /// What palette `p` shows.
+    pub fn palette_view_of(&self, p: &PaletteState) -> PaletteView {
         let rows = model::flat(&p.sections);
         let detail = rows.get(p.selected).map(|r| self.detail_of(&r.item, p));
-        Some(PaletteView {
+        PaletteView {
             query: p.query.clone(),
             scope: p.scope,
             scopes: self.palette_scopes(),
@@ -441,7 +522,7 @@ impl Shell {
             sections: p.sections.clone(),
             selected: p.selected,
             detail,
-        })
+        }
     }
 
     fn detail_of(&self, i: &Item, p: &PaletteState) -> Detail {
@@ -497,7 +578,11 @@ impl Shell {
                     self.rank_palette(cx);
                 }
             }
-            PaletteEvent::Frecency(store) => self.frecency = *store,
+            PaletteEvent::Frecency(store) => {
+                self.frecency = *store;
+                // Picks rank what the palette opens with.
+                self.palette_ahead.bumped += 1;
+            }
             PaletteEvent::Recent(list) => {
                 let boosts = self.file_boosts(&list);
                 if let Some(p) = &mut self.palette {
@@ -782,6 +867,101 @@ pub fn index_key(roots: &[PathBuf], skip: &[PathBuf]) -> String {
 }
 
 impl Shell {
+    /// Draw the palette ahead as it would open now (the empty query, All,
+    /// the query field focused) in its hidden window, made hidden the
+    /// first time (or for another output), at the focused output's scale;
+    /// nothing if it's drawn so already.
+    pub fn prepare_palette(&mut self, cx: &mut Cx<Msg>) {
+        if self.palette.is_some() || !self.palette_ahead.on {
+            return;
+        }
+        let Some((output, scale)) = self.focused_screen().map(|s| (s.output.id, s.output.scale)) else { return };
+        self.refresh_frecency();
+        let spare = self.spare_palette_on(output, cx);
+        let window = match spare {
+            Some(spare) => spare,
+            None => {
+                let size = view::size();
+                let w = cx.open_window(layer(palette_layer(output), size.width, size.height, "Palette").hidden());
+                self.surfaces.insert(w, Surface::Palette);
+                self.palette_ahead.output = output;
+                self.palette_ahead.scale = None;
+                w
+            }
+        };
+        let mut state = self.palette_state(window, None, String::new());
+        self.rank(&mut state, cx);
+        self.palette_ahead.inputs = self.palette_inputs();
+        let drawn = self.palette_ahead.scale == Some(scale)
+            && self
+                .palette_ahead
+                .spare
+                .as_ref()
+                .is_some_and(|s| self.palette_view_of(s) == self.palette_view_of(&state));
+        self.palette_ahead.spare = Some(state);
+        if drawn {
+            return;
+        }
+        self.palette_ahead.scale = cx.prepare_window(window, scale).then_some(scale);
+        // As it opens: with the query field focused (it draws as focused
+        // once the palette has the keyboard).
+        cx.focus("palette-query");
+        log::debug!("the palette drawn ahead at {scale}× for output {output}");
+    }
+
+    /// The palette's hidden window, if there is one for `output`: one made
+    /// for another output is closed (and its state dropped).
+    fn spare_palette_on(&mut self, output: u32, cx: &mut Cx<Msg>) -> Option<WindowKey> {
+        if self.palette_ahead.output != output
+            && let Some(spare) = self.palette_ahead.spare.take()
+        {
+            cx.close_window(spare.window);
+            self.surfaces.remove(&spare.window);
+            self.palette_ahead.scale = None;
+        }
+        self.palette_ahead.spare.as_ref().map(|s| s.window)
+    }
+
+    /// Draw the palette ahead again [`AHEAD_AFTER`] from now, unless asked
+    /// again meanwhile.
+    pub fn palette_ahead_soon(&mut self, cx: &mut Cx<Msg>) {
+        self.palette_ahead.asked += 1;
+        cx.after(AHEAD_AFTER, Msg::PreparePalette(self.palette_ahead.asked));
+    }
+
+    /// After every update, while the palette is closed: if what it opens
+    /// with changed, draw it ahead again soon.
+    pub fn keep_palette_ahead(&mut self, cx: &mut Cx<Msg>) {
+        if !self.palette_ahead.on || self.palette.is_some() {
+            return;
+        }
+        let inputs = self.palette_inputs();
+        if inputs != self.palette_ahead.inputs {
+            self.palette_ahead.inputs = inputs;
+            self.palette_ahead_soon(cx);
+        }
+    }
+
+    /// What the palette opens with, hashed cheaply (it's asked after every
+    /// update): the focused window and every window, apps' menus and picks
+    /// (as counted), the apps, settings and actions, the palette's
+    /// settings, and the focused output and its scale.
+    pub fn palette_inputs(&self) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        self.wm.focused_window().map(|w| (w.id, w.pid)).hash(&mut h);
+        for w in self.wm.in_open_order() {
+            (w.id, &w.app_id, &w.title, w.desk, w.minimised, w.hidden).hash(&mut h);
+        }
+        self.palette_ahead.bumped.hash(&mut h);
+        self.apps.as_ref().map(|a| Arc::as_ptr(a) as usize).hash(&mut h);
+        self.settings_list.len().hash(&mut h);
+        (self.theme_day, self.notes_cfg.do_not_disturb, self.recording.is_some()).hash(&mut h);
+        (self.palette_cfg.per_section, &self.palette_cfg.scopes).hash(&mut h);
+        self.focused_screen().map(|s| (s.output.id, s.output.scale.to_bits())).hash(&mut h);
+        h.finish()
+    }
+
     /// The window memory the palette's surface takes at the largest scale
     /// of the outputs (it opens on the focused one): what's faulted in at
     /// idle, so its first opening draws into memory that's there rather
