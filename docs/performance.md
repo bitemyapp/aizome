@@ -679,7 +679,13 @@ minutes, or when its folders or the ones it skips change.
 
 ### Exceptions
 
-- **The palette's first opening** rasterises its whole surface (1446 × 966
+- **The palette's first opening**: *fixed* on 19 October. The palette's
+  window is kept hidden between openings and drawn ahead at idle, in
+  bands of about 1 ms, so opening it copies a ready picture: 0.77 ms
+  median (0.65–1.25) live at load 0.1–2.9, against 5.51 ms before in the
+  same runs; opened again 0.83 ms (4.45 before). See exception 4 above.
+  What follows is the history.
+- **The palette's first opening (before 19 October)** rasterised its whole surface (1446 × 966
   pixels at 2×: the panel, its shadow and some sixty runs of text) on the
   render thread: 5.4 ms on a loaded machine, against 0.9 ms once the
   surface exists. Laying its text out ahead removed the main thread's part
