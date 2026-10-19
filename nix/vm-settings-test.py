@@ -842,11 +842,21 @@ def shortcuts():
     chord("super+t")
     until("❖T bound", lambda: (setting("keys.bindings") or {}).get("Super+T") == "terminal")
     before = {w["id"] for w in ipc("windows")["windows"]}
-    chord("super+t")
-    term = until(
-        "a terminal from ❖T",
-        lambda: next((w for w in ipc("windows")["windows"] if w["id"] not in before and w["app_id"] != APP), None),
-    )
+
+    def new_window():
+        return next((w for w in ipc("windows")["windows"] if w["id"] not in before and w["app_id"] != APP), None)
+
+    # The file is written before the compositor has read it: press again
+    # until it has, as a person would.
+    term = None
+    for _ in range(5):
+        chord("super+t")
+        try:
+            term = until("a terminal from ❖T", new_window, timeout=4)
+            break
+        except AssertionError:
+            pass
+    assert term, "❖T opened no terminal"
     ipc(f"close {term['id']}")
     reopen("keyboard.shortcuts")
     row = S.reveal(name="entry:keyboard.shortcut-terminal")
