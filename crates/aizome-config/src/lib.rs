@@ -46,7 +46,8 @@ pub struct Settings {
     /// Warmer colours at night.
     pub night_light: NightLight,
     /// Where the computer is, for sunrise and sunset (the shell writes
-    /// what GeoClue finds).
+    /// what GeoClue finds); left out of the file while it's empty.
+    #[serde(skip_serializing_if = "Location::is_empty")]
     pub location: Location,
     pub menubar: toml::Table,
     pub deskbar: toml::Table,

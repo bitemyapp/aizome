@@ -558,7 +558,11 @@ impl Program for Shitsurae {
                     self.panes[self.current].system_changed_any(cx, &mut self.shared);
                 }
             }
-            AppMsg::SettingsOnDisk => self.shared.reread(cx),
+            AppMsg::SettingsOnDisk => {
+                if self.shared.reread(cx) && self.started {
+                    self.panes[self.current].settings_changed_any(cx, &mut self.shared);
+                }
+            }
             AppMsg::Reload => self.shared.reload(cx),
             AppMsg::ClearStatus(g) => self.shared.clear_status(g),
             AppMsg::Said(text, error) => self.shared.say(text, error, cx),

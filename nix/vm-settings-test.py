@@ -1384,11 +1384,18 @@ def displays():
     until("Virtual-2 straight again", lambda: outputs()["Virtual-2"]["transform"] == "normal")
     assert (output_entry("Virtual-2") or {}).get("transform") in (None, "normal")
 
+    # Mirroring: seen at once, before it's kept; Revert takes it back.
+    S.choose(S.control("displays", "use-as", role="combobox"), "Mirror for")
+    until("Virtual-2 mirroring before Keep", lambda: outputs()["Virtual-2"].get("mirror") == "Virtual-1", timeout=30)
+    assert S.find(text="Keep these display settings?"), "mirrored without asking"
+    keep_sheet("Revert")
+    until("Virtual-2 its own after Revert", lambda: outputs()["Virtual-2"].get("mirror") is None, timeout=30)
+    assert (output_entry("Virtual-2") or {}).get("mirror") is None, setting("outputs")
     # Mirroring, kept.
     S.choose(S.control("displays", "use-as", role="combobox"), "Mirror for")
-    keep_sheet("Keep Changes")
     until("Virtual-2 mirroring", lambda: outputs()["Virtual-2"].get("mirror") == "Virtual-1", timeout=30)
-    assert (output_entry("Virtual-2") or {}).get("mirror") == "Virtual-1", setting("outputs")
+    keep_sheet("Keep Changes")
+    until("kept mirroring", lambda: (output_entry("Virtual-2") or {}).get("mirror") == "Virtual-1")
 
     reopen("displays")
     S.segment(S.wait(role="tablist", contains="RHT QEMU Monitor"), two)
@@ -1398,6 +1405,23 @@ def displays():
     S.choose(use, "Extended display")
     keep_sheet("Keep Changes")
     until("Virtual-2 its own again", lambda: outputs()["Virtual-2"].get("mirror") is None, timeout=30)
+
+    # `[[outputs]]` changed elsewhere (Virtual-2 made the main display by
+    # hand) and applied: the open pane follows, without opening it again.
+    assert S.control("displays", "use-as", role="combobox").get("value") == "Extended display"
+    edit = (
+        "import sys\n"
+        "p = sys.argv[1]\n"
+        "t = open(p).read().replace('primary = true\\n', '')\n"
+        "t = t.replace('name = \"Virtual-2\"\\n', 'name = \"Virtual-2\"\\nprimary = true\\n', 1)\n"
+        "open(p, 'w').write(t)\n"
+    )
+    alice(f"python3 -c {shlex.quote(edit)} {HOME}/.config/aizome/settings.toml && aizomectl reload-config")
+    until("the compositor's main display", lambda: outputs()["Virtual-2"].get("primary") is True)
+    until(
+        "the pane to say Virtual-2 is the main display",
+        lambda: S.control("displays", "use-as", role="combobox").get("value") == "Main display",
+    )
     S.quit()
 
 

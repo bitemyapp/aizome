@@ -34,6 +34,11 @@ pub struct Location {
 }
 
 impl Location {
+    /// Nothing kept.
+    pub fn is_empty(&self) -> bool {
+        self.latitude.is_none() && self.longitude.is_none() && self.zone.is_none() && self.extra.is_empty()
+    }
+
     /// A position as kept: to 0.01°.
     pub fn found(latitude: f64, longitude: f64, zone: Option<String>) -> Location {
         let round = |v: f64| (v * 100.0).round() / 100.0;
@@ -357,6 +362,8 @@ mod tests {
         assert_eq!((l.latitude, l.longitude), (Some(48.85), Some(2.35)));
         assert_eq!(l.position_in(Some("Europe/Paris")), Some((48.85, 2.35)));
         assert_eq!(l.position_in(Some("Asia/Tokyo")), None);
+        // Nothing kept: left out of the file.
+        assert!(!Settings::default().to_toml().unwrap().contains("[location]"));
         let mut s = Settings { location: l, ..Settings::default() };
         assert_eq!(s.place_in(Some("Europe/Paris")).unwrap().source, PlaceSource::Located);
         // Moved to Tokyo: Tokyo's coordinates, if tzdata is here, else none.
