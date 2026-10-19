@@ -29,7 +29,7 @@ aizome-search = { workspace = true, optional = true }
 aizome-config = { workspace = true, optional = true }
 # The clipboard in file managers' types (see src/ui/clipboard.rs): the engine
 # under sidestep-ui, by the same path the workspace takes it.
-sidestep-engine = { path = "../../../sidestep-aizome/crates/sidestep-engine", optional = true }
+sidestep-engine = { workspace = true, optional = true }
 serde.workspace = true
 serde_json.workspace = true
 toml.workspace = true

@@ -531,3 +531,21 @@ fn the_settings_file_is_watched() {
     assert_eq!(names, ["Mail", "Build"]);
     assert_eq!(desks[1].folder.as_deref(), Some("~/work"));
 }
+
+#[test]
+fn programs_started_here_know_the_session_isnt_real() {
+    // So the shell doesn't take over the machine's polkit agent, sleep or
+    // locking from a test.
+    let c = Compositor::start(opts(None));
+    let out = c.dir.join("env");
+    let script = format!(
+        "printf '%s %s' \"$XDG_CURRENT_DESKTOP\" \"$AIZOME_SESSION\" > {}.tmp && mv {0}.tmp {0}",
+        out.display()
+    );
+    c.ok(Request::Spawn { argv: vec!["sh".into(), "-c".into(), script], cwd: None, in_desk_folder: false });
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while !out.exists() && std::time::Instant::now() < deadline {
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    assert_eq!(std::fs::read_to_string(&out).unwrap_or_default(), "Aizome 0");
+}

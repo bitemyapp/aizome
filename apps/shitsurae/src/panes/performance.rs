@@ -42,7 +42,7 @@ pub struct Performance {
 #[derive(Clone, Debug)]
 pub enum Msg {
     Tick,
-    Stats(Result<Stats, String>),
+    Stats(Box<Result<Stats, String>>),
     Outputs(Vec<OutputInfo>),
     Renderer(usize),
     Effects(usize),
@@ -115,10 +115,10 @@ impl Performance {
             return;
         }
         cx.compositor(Request::Stats { reset: false }, |r| match r {
-            Ok(Response::Stats { stats }) => Msg::Stats(Ok(stats)),
-            Ok(Response::Error { message }) => Msg::Stats(Err(message)),
-            Ok(_) => Msg::Stats(Err("an answer of another kind".into())),
-            Err(e) => Msg::Stats(Err(e.to_string())),
+            Ok(Response::Stats { stats }) => Msg::Stats(Box::new(Ok(stats))),
+            Ok(Response::Error { message }) => Msg::Stats(Box::new(Err(message))),
+            Ok(_) => Msg::Stats(Box::new(Err("an answer of another kind".into()))),
+            Err(e) => Msg::Stats(Box::new(Err(e.to_string()))),
         });
         cx.compositor(Request::Outputs, |r| match r {
             Ok(Response::Outputs { outputs }) => Msg::Outputs(outputs),
@@ -191,7 +191,7 @@ impl Pane for Performance {
     fn update(&mut self, msg: Msg, cx: &mut PaneCx<Msg>) {
         match msg {
             Msg::Tick => self.poll(cx),
-            Msg::Stats(s) => self.stats = Some(s),
+            Msg::Stats(s) => self.stats = Some(*s),
             Msg::Outputs(o) => self.outputs = o,
             Msg::Renderer(i) => {
                 cx.change(|s| extra::set(extra::section(s, "performance"), "renderer", RENDERERS[i.min(2)].0))

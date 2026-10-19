@@ -33,6 +33,16 @@ let
     '';
     derivationArgs.passthru.providedSessions = [ "aizome" ];
   };
+  # wf-recorder (the fallback recorder) puts its wl_shm buffers in files in
+  # /tmp, which on most NixOS systems is on disk: every frame the compositor
+  # copies would be written out (over 1 GB/s at 2880 × 1800 and 60 fps) and
+  # the compositor would wait on the disk. In memfds they stay in memory.
+  wf-recorder = pkgs.wf-recorder.overrideAttrs (old: {
+    postPatch = (old.postPatch or "") + ''
+      substituteInPlace src/main.cpp \
+        --replace-fail 'int fd = mkstemp(name);' 'int fd = memfd_create("wf-recorder-shared", MFD_CLOEXEC);'
+    '';
+  });
   # Read by aizome-session before it starts the compositor: what every
   # program in the session sees.
   environment = {
@@ -67,6 +77,17 @@ in
         Let Settings (and the automatic time zone) change the time zone.
         Aizome takes `time.timeZone` over, starting from the zone the
         system was last set to, so changes made in Settings last.
+      '';
+    };
+    videoAcceleration = lib.mkOption {
+      type = lib.types.bool;
+      default = pkgs.stdenv.hostPlatform.isx86_64;
+      defaultText = lib.literalExpression "pkgs.stdenv.hostPlatform.isx86_64";
+      description = ''
+        Install Intel's VA-API driver (intel-media-driver), so screen
+        recordings encode on Intel GPUs (and video players decode there)
+        rather than on the CPU. AMD's driver comes with Mesa, NVIDIA's
+        encoder with its driver.
       '';
     };
     alarmsWakeSystem = lib.mkOption {
@@ -110,7 +131,22 @@ in
       pkgs.pipewire
       pkgs.sound-theme-freedesktop
       pkgs.libnotify
+      # Screen recording where gpu-screen-recorder can't run (no hardware
+      # OpenGL, as in a VM): through the compositor's wlr-screencopy. Ahead
+      # of another desktop's (Tatami installs it too).
+      (lib.hiPrio wf-recorder)
+      # vainfo: whether wf-recorder can encode on the GPU (VA-API), which
+      # the shell asks once a session rather than finding out mid-recording.
+      pkgs.libva-utils
     ];
+    # Screen recording (the palette's Record Screen and Record Area, ⌥Print):
+    # gpu-screen-recorder, with the capability wrapper its KMS capture needs
+    # (gsr-kms-server, CAP_SYS_ADMIN), as Tatami has it.
+    programs.gpu-screen-recorder.enable = lib.mkDefault true;
+    # The GPU's drivers (OpenGL for the compositor, VA-API for recordings)
+    # in /run/opengl-driver.
+    hardware.graphics.enable = lib.mkDefault true;
+    hardware.graphics.extraPackages = lib.mkIf cfg.videoAcceleration [ pkgs.intel-media-driver ];
     services.displayManager.sessionPackages = [ session ];
     systemd.packages = [ cfg.package ];
 
@@ -142,14 +178,23 @@ in
         fi
       '';
       etc.deps = [ "aizomeTimeZoneSave" ];
+      # The link is written as timedated writes it, relative. An absolute
+      # link to /etc/zoneinfo is NixOS's own for time.timeZone, which
+      # Settings reads as the configuration's; one left behind from before
+      # (time.timeZone is null here) is turned into Settings' kind.
       aizomeTimeZoneRestore = {
         deps = [ "etc" ];
         text = ''
-          if [ ! -e /etc/localtime ] && [ -s /var/lib/aizome/timezone ]; then
+          zone=
+          if target=$(readlink /etc/localtime 2>/dev/null); then
+            case "$target" in
+              /etc/zoneinfo/*) zone=''${target#/etc/zoneinfo/} ;;
+            esac
+          elif [ ! -e /etc/localtime ] && [ -s /var/lib/aizome/timezone ]; then
             zone=$(cat /var/lib/aizome/timezone)
-            if [ -e "/etc/zoneinfo/$zone" ]; then
-              ln -sfn "/etc/zoneinfo/$zone" /etc/localtime
-            fi
+          fi
+          if [ -n "$zone" ] && [ -e "/etc/zoneinfo/$zone" ]; then
+            ln -sfn "../etc/zoneinfo/$zone" /etc/localtime
           fi
         '';
       };
@@ -172,6 +217,10 @@ in
     # Koyomi's alerts, as notifications, whether or not Koyomi is open
     # (the unit comes with the package).
     systemd.user.services.aizome-koyomi-agent.wantedBy = [ "graphical-session.target" ];
+    # After `nixos-rebuild switch`, a notification offers to reload Aizome
+    # (its window manager and shell) without closing anything; a changed
+    # compositor core waits for the next login (docs/reload.md).
+    systemd.user.paths.aizome-update.wantedBy = [ "aizome-session.target" ];
     # An alarm can wake the computer (Tokei's "Wake the computer"), which
     # needs CAP_WAKE_ALARM for the user's timers.
     systemd.services."user@".serviceConfig.AmbientCapabilities = lib.mkIf cfg.alarmsWakeSystem [
@@ -232,7 +281,8 @@ in
         "${cfg.package}/share/applications/org.aizome.Annai.Welcome.desktop";
     };
 
-    # Screenshots and screencasts through wlr-screencopy; files, settings
+    # Screenshots and screencasts (browsers' screen and window sharing)
+    # through the compositor's ext-image-copy-capture; files, settings
     # and the rest through GTK's portal.
     xdg.portal = {
       enable = true;

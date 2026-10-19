@@ -69,6 +69,7 @@ fn main() {
         .env("XDG_RUNTIME_DIR", &dir)
         .env("XDG_CONFIG_HOME", dir.join("config"))
         .env("XDG_STATE_HOME", dir.join("state"))
+        .env("XDG_CACHE_HOME", dir.join("cache"))
         .env("AIZOME_LOG", "warn")
         .stdout(Stdio::null())
         .stderr(Stdio::null())

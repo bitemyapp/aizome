@@ -8,6 +8,7 @@ pub mod apps;
 pub mod auth;
 pub mod barmenus;
 pub mod bell;
+pub mod carry;
 pub mod clock;
 pub mod confirm;
 pub mod deskbar;
@@ -21,12 +22,13 @@ pub mod lock;
 pub mod look;
 pub mod menubar;
 pub mod menus;
-pub mod mpris;
 pub mod notifications;
 pub mod osd;
 pub mod palette;
 pub mod pam;
 pub mod power;
+pub mod recording;
+mod recording_glue;
 pub mod services;
 pub mod shelf;
 pub mod shell;
@@ -48,11 +50,14 @@ lock screen and authentication dialog. The compositor starts it.
 Usage:
   aizome-shell             run the shell (the compositor starts it)
   aizome-shell msg REQ     ask the running shell: palette, toolchest, lock,
-                           dismiss, state, or a JSON request
+                           dismiss, state, stop-recording, or a JSON request
+                           ('{\"request\":\"record\",\"target\":\"screen\"}')
 
 Environment:
   AIZOME_SOCKET          the compositor's IPC socket
   AIZOME_SHELL_SOCKET    where apps publish their menus to the shell
+  AIZOME_SESSION=1       the machine's session (the compositor says): serve
+                         polkit, hold logind's sleep and lock for logind
   AIZOME_FONT_DIR        fonts to install for this process
   SIDESTEP_FRAME_STATS=1 print each surface's frame times every 5 s";
 

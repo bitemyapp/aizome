@@ -58,6 +58,7 @@
           ./crates
           ./icons
           ./etc
+          ./scripts
           (lib.fileset.maybeMissing ./apps)
           (lib.fileset.maybeMissing ./session)
         ];
@@ -68,6 +69,7 @@
         aizome = pkgs.callPackage ./nix/package.nix {
           inherit src sidestep;
           version = "0.1.0-${self.shortRev or self.dirtyShortRev or "dirty"}";
+          rev = self.rev or self.dirtyRev or null;
         };
         archivo = pkgs.callPackage ./nix/fonts.nix { };
         default = aizome;
@@ -101,6 +103,9 @@
           # dlopen'd at run time: EGL/GL drivers, fontconfig, xkbcommon.
           LD_LIBRARY_PATH = lib.makeLibraryPath (buildInputs pkgs);
           RUSTFLAGS = "-C link-arg=-fuse-ld=mold";
+          # The compositor's core is a Rust dylib that needs -C prefer-dynamic
+          # (docs/reload.md); the wrapper adds it for that crate alone.
+          RUSTC_WRAPPER = "${./scripts/rustc-wrapper}";
         };
       });
     };

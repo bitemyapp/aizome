@@ -4,7 +4,9 @@
 0.7: a floating, stacking window manager with Haiku tabs, tab groups,
 Desks, the Desks overview, the ❖Tab switcher and the tab marking menu, the
 IPC server (`docs/ipc.md`) and session start-up. This page is how to run
-it, what it offers clients, and how it's built and tested.
+it, what it offers clients, and how it's built and tested. Its window
+management reloads live, without disconnecting a client:
+`docs/reload.md`.
 
 ## Running it
 
@@ -15,6 +17,8 @@ aizome --backend winit                   # a window in another session, for deve
 aizome --backend headless --headless-output 2880x1800@2 [--headless-output …]
 aizome --renderer pixman                 # or AIZOME_RENDERER=pixman; GLES falls back to it
 aizome --socket NAME --no-shell --no-xwayland --no-session -- foot
+aizome --logic PATH                      # or AIZOME_LOGIC: another build of the logic library
+aizome --build-info                      # how the core was built (what a logic must match)
 ```
 
 - **Never run winit or udev on a developer's live session.** Use the
@@ -45,17 +49,54 @@ the user's systemd manager (or runs the compositor in a D-Bus session
 without one). Once its Wayland socket and IPC are up the compositor:
 
 - imports `WAYLAND_DISPLAY`, `DISPLAY`, `XDG_CURRENT_DESKTOP=Aizome`,
-  `XDG_SESSION_DESKTOP=aizome`, `XDG_SESSION_TYPE`, `AIZOME_SOCKET` and
-  `AIZOME_SHELL_SOCKET` into systemd and D-Bus activation;
+  `XDG_SESSION_DESKTOP=aizome`, `XDG_SESSION_TYPE`, `AIZOME_SESSION`,
+  `AIZOME_SOCKET` and `AIZOME_SHELL_SOCKET` into systemd and D-Bus
+  activation;
 - tells systemd it's ready (`READY=1` on `$NOTIFY_SOCKET`) and starts
   `aizome-session.target` (bound to `graphical-session.target`);
 - starts `xwayland-satellite :N` (a free display, exported as `DISPLAY`)
   and `aizome-shell` when they're on PATH, restarting them with backoff
-  (1 s doubling to 30 s, reset after a minute's run);
+  (1 s doubling to 30 s, reset after a minute's run); `aizomectl reload
+  --shell` starts a new shell beside the running one, which takes over its
+  surfaces in the same frame and its notifications (`docs/reload.md`);
 - runs the command after `--`, if any.
+
+`aizome-update.path` watches `/run/current-system`: after `nixos-rebuild
+switch` a notification offers to reload what the update changed.
 
 Every program it starts (`spawn`, ❖Return, the shell) gets that
 environment.
+
+`AIZOME_SESSION` is `1` only on udev without `--no-session`, the
+machine's login session, and `0` under headless, winit or `--no-session`.
+Those children still see `XDG_CURRENT_DESKTOP=Aizome`, but they run as the
+same user inside the user's real session, so the shell reads
+`AIZOME_SESSION` and there doesn't register as the polkit agent, take
+logind's sleep delay or lock for logind (`docs/shell.md`, "Real and
+headless sessions"): `scripts/headless-session` and the tests leave the
+developer's session alone.
+
+Under `aizome.service` it feeds systemd's watchdog (`WatchdogSec=10s`)
+from its main loop; a loop stalled that long is stopped (SIGABRT, with a
+core dump) and `aizome-session` starts it again, and a watcher thread logs
+the main thread's backtrace to `~/.local/state/aizome/stall.log` first.
+The service weighs `CPUWeight=1000`/`IOWeight=1000` within
+`session.slice`. See `docs/recovery.md`.
+
+## Recovery
+
+**Ctrl+Alt+Del** opens the recovery overlay, checked before every other
+key handling (bindings, grabs, shortcut inhibitors, the lock): the apps
+with CPU, memory and whether they answer pings, Force Quit, Close, Reset
+Input, Restart Shell, Reload Aizome, Lock, Log Out and Text Console. It
+shows over full-screen clients and the lock screen (safe actions only
+there) and has the keyboard and pointer while open. `docs/recovery.md`
+has the details, the stall watchdog and the SysRq last resort.
+
+Grabs end on release: the compositor gives the seat the release of every
+press it gave it, whatever overlay came up between, and its own grabs
+(moves, resizes, tab slides, the boxes) end when their button comes up or
+is pressed again, whatever else is held and whatever any client does.
 
 ## What clients get
 
@@ -72,8 +113,10 @@ virtual-keyboard, security-context, content-type, tablet, alpha-modifier,
 fifo, commit-timing, xdg-toplevel-icon, xdg-system-bell (rung as the
 shell's `bell` binding), ext-foreign-toplevel-list,
 wlr-foreign-toplevel-management (3), wlr-output-management (4),
-wlr-screencopy (3) and wlr-gamma-control (1). Privileged ones (layer shell,
+wlr-screencopy (3), ext-image-copy-capture (1) with ext-image-capture-source
+(1) and wlr-gamma-control (1). Privileged ones (layer shell,
 session lock, data control, input method, virtual keyboard, screencopy,
+image copy capture and its sources,
 foreign toplevel management, output management, foreign toplevel list,
 gamma control) aren't offered
 inside a security context.
@@ -111,6 +154,44 @@ Notes for client authors:
 - ext-session-lock: `locked` is sent once every output has drawn a frame
   without the desktop; lock surfaces get the output's size and all input.
   A locker that dies leaves the session locked.
+- wlr-screencopy (what wf-recorder and grim use): each frame offers
+  wl_shm XRGB8888 and, under GLES on a render node (or a GPU on udev), a
+  linux-dmabuf XRGB8888 buffer too (`linux_dmabuf`, then `buffer_done`).
+  A dmabuf, in any modifier the GPU renders to, is bound as the render
+  target, so a screencast stays on the GPU end to end (wf-recorder with a
+  VA-API codec hands it straight to the encoder); `ready` is sent when the
+  GPU's fence signals, and the compositor never waits for it. wl_shm goes
+  through an offscreen buffer kept per stream, read back as BGRA (GLES
+  swizzles as it reads; pixman copies from the image). Frames are
+  upright (the output's transform undone, no `y_invert`). A stream (one
+  client's captures of one output region, with or without the pointer)
+  keeps its own damage tracker: `copy_with_damage` answers at once for its
+  first frame, then after the first output frame that changed something
+  in its region, with `damage` events for what did; an idle screen copies
+  nothing. `aizomectl stats` reports each copy's CPU time (both capture
+  protocols', as `screencopy`).
+- ext-image-copy-capture (1) with ext-image-capture-source (1), for
+  outputs and for windows (from ext-foreign-toplevel-list handles): what
+  xdg-desktop-portal-wlr 0.8 uses, so browsers' screen and window
+  sharing. Its wlr-screencopy path froze after the first frame with
+  PipeWire 1.x: it drives its stream and, after a frame, only queues the
+  buffer, which runs one cycle and never asks it for the next; its
+  ext-image-copy-capture path triggers each cycle itself. Sessions take
+  the same copies as screencopy: constraints offer wl_shm XRGB8888 and
+  ARGB8888 and, under GLES, the render node (`dmabuf_device`) with
+  XRGB8888 and ARGB8888 in every modifier the GPU renders to. A session's
+  first frame comes at once with full damage, later ones once its source
+  changes (an output drew something, a window's surfaces committed), with
+  damage; frames are upright (`transform` normal). A window's frames hold
+  its surfaces and its popups, without its frame or what covers it, at its
+  output's scale, sized to its geometry; the pointer is painted onto
+  outputs only (`paint_cursors`). A resize sends new constraints (a frame
+  waiting with an old buffer fails with `buffer_constraints`); a source
+  that goes stops the session. Cursor sessions are accepted but stop at
+  once. The portal can make a frame before destroying its last when its
+  stream pauses and resumes as a consumer links: the newer frame takes
+  over (and the older is never answered) instead of a `duplicate_frame`
+  error ending its connection.
 
 ## Displays
 
@@ -162,23 +243,47 @@ Notes for client authors:
   outputs; sticky windows show on all; switching slides over the motion
   time (none in Austere or with reduced motion).
 - **Overview** (⌃❖↑), **switcher** (❖Tab), **marking menu** (right press
-  on a tab), **area screenshots** (❖⇧4): see `docs/ipc.md` for their keys.
+  on a tab), **area screenshots** (❖⇧4; the shell borrows the picker with
+  IPC `pick-area` to choose what to record): see `docs/ipc.md` for their
+  keys.
 
 ## Inside
 
+The compositor is a stable core and a logic library the core loads at
+run time and swaps for a new build without disconnecting anyone
+(`aizomectl reload`, ⌃❖R, `aizome-dev watch`: `docs/reload.md`). The
+binary is `fn main() { aizome_comp_core::run() }`.
+
+**`crates/aizome-comp-core`** (`libaizome_comp_core.so`): what clients'
+connections and the way out depend on.
+
 | Module | What |
 |---|---|
-| `wm/` | The model: windows, stacking, focus history, tab groups, Desks, placement, fill/split/full screen. Plain Rust, unit-tested. |
-| `decor.rs` | Tab and frame layout, hit testing, and solid-colour pieces with stable identities. |
-| `render.rs` | The scene per output, front to back, and thumbnails. |
-| `text.rs`, `icons.rs`, `cursor.rs` | Labels (Sidestep's offscreen canvas), app icons (desktop files, icon themes, resvg), xcursor. |
-| `overlays/` | Stack-drop feedback, marking menu, switcher, overview, area picker. |
-| `input.rs`, `grabs.rs`, `bindings.rs` | Input from libinput, winit or IPC; move, resize, tab slide and box grabs; the binding table and ❖ translation. |
-| `shell.rs`, `handlers.rs` | Surfaces, xdg-shell, layer shell, session lock and the smaller protocols. |
-| `protocols/` | wlr-screencopy, wlr foreign toplevel management, wlr output management. |
-| `backend/` | headless (GLES on a render node or pixman, 60 Hz pacing only while damaged), winit, udev (DRM/KMS, multi-GPU GLES or pixman dumb buffers). |
-| `ipc.rs`, `requests.rs` | The IPC socket and its requests. |
-| `session.rs`, `idle.rs`, `config.rs` | Start-up, supervision, idle events, live settings. |
+| `logic.rs`, `reload.rs` | Loading, checking (the ABI fingerprint from `build.rs`), swapping and rolling back the logic; the hook table (`LogicVTable`); `reload` |
+| `view.rs`, `scene.rs` | What the logic publishes (windows' places, focus, stacking) and the renderer-free scene it returns each frame |
+| `render.rs` | Turning a scene into render elements: windows, layer surfaces, popups, thumbnails, the cursor and drag icon, the lock screen |
+| `input.rs`, `focus.rs` | Input from libinput, winit or IPC; the core's keys (VT switching, ⌃❖R, Ctrl+Alt+Del) before the logic's; keyboard focus, popup grabs, grab wrappers |
+| `shell.rs`, `handlers.rs`, `popups.rs` | Surfaces, xdg-shell, layer shell, session lock and the smaller protocols; the window registry |
+| `protocols/` | wlr-screencopy and ext-image-copy-capture with its output and window sources (`capture`: the streams and copies they share, wl_shm and dmabuf, per-stream damage; an output's copy draws the logic's scene), wlr foreign toplevel management, wlr output management, wlr gamma control, xdg-toplevel-icon |
+| `backend/` | headless (GLES on a render node or pixman, 60 Hz pacing only while damaged), winit, udev (DRM/KMS, multi-GPU GLES or pixman dumb buffers) |
+| `recovery/` | Ctrl+Alt+Del's overlay: state, keys and actions (`mod.rs`), drawing (`view.rs`, with the core's painter), apps' processes on a thread (`procinfo.rs`, `x11.rs`), pings (`ping.rs`), Reset Input (`reset.rs`). The core calls it before the logic: the first check in `decide_key` and `pointer_button`, `pointer_moved` and `scroll` in input, `may_constrain` (pointer constraints), the first items of `State::scene`, `frame_flags` (udev), `exclusive_keyboard_target`, `handle_request`, `client_pong` and `constraint_requested`, and `start` in `run`. |
+| `watchdog.rs` | systemd's watchdog keepalive from the main loop and the stall watcher (backtrace, `stall.log`, the notice after a restart). |
+| `fallback.rs` | The window management that runs while no logic does (none loaded, or set aside after repeated panics) |
+| `text.rs`, `icons.rs`, `svg.rs`, `painter.rs`, `pieces.rs`, `cursor.rs` | Labels (Sidestep's offscreen canvas), app icons (desktop files, icon themes, resvg), the overlays' painter, decoration pieces, xcursor |
+| `ipc.rs`, `requests.rs` | The IPC socket and the requests the core answers (the rest go to the logic) |
+| `session.rs`, `idle.rs`, `config.rs`, `outputs.rs`, `night.rs`, `timers.rs` | Start-up, supervising the shell (and restarting it beside the old one), idle events, live settings, outputs, Night Light, timers for the logic |
+
+**`crates/aizome-comp-logic`** (`libaizome_comp_logic.so`): what happens on
+the desktop.
+
+| Module | What |
+|---|---|
+| `wm/` | The model: windows, stacking, focus history, tab groups, Desks, placement, fill/split/full screen. Plain Rust, unit-tested; saved and restored across reloads. |
+| `actions.rs`, `hooks.rs` | Window lifecycle, placement and the hook table the core calls |
+| `decor.rs`, `render.rs` | Tab and frame layout and hit testing; the scene per output, front to back |
+| `overlays/` | Stack-drop feedback, marking menu, switcher, overview, area picker |
+| `input.rs`, `grabs.rs`, `bindings.rs`, `cmdkey.rs` | Key and pointer handling after the core's; move, resize, tab slide and box grabs; the binding table and ❖ translation |
+| `anim.rs`, `memory.rs`, `requests.rs`, `config.rs` | Motion; remembered places; the IPC requests about windows and Desks; settings |
 
 ## Tests
 
@@ -195,7 +300,9 @@ nix develop --command cargo test -p aizome-comp
   fill, client-side decorations, idle frames, live settings, remembered
   places, ❖⇧3), under GLES and pixman; and grim, wlr-randr and lswt when
   installed.
-- `tests/overlays.rs`: the switcher, the overview and the marking menu.
+- `tests/overlays.rs`: the switcher, the overview, the marking menu, and
+  the area picker reporting its pick to the shell (`pick-area`): a drag,
+  a click for the display, Space for a window, Esc.
 - `tests/keys.rs`: ❖ as Ctrl, Ctrl+Shift in terminals, ❖ for kit apps,
   system and shell chords.
 - `tests/settings.rs`: tab double-click, scroll factor, sticky and slow
@@ -209,6 +316,19 @@ nix develop --command cargo test -p aizome-comp
   open theirs (an xdg-toplevel-icon set and destroyed before its buffer,
   either decoration mode, activation with their own token), and the icon
   protocol's errors.
+- `tests/screencopy.rs`: wlr-screencopy into wl_shm, a whole output and a
+  region, under pixman and GLES; `copy_with_damage` answering at once
+  for a stream's first frame and then only after a change (not for the
+  pointer when it isn't captured); and, with a render node, a GBM dmabuf
+  rendered into on the GPU and read back upright.
+- `tests/image_copy_capture.rs`: ext-image-copy-capture as
+  xdg-desktop-portal-wlr uses it (the regression test for the frozen
+  screen sharing): an output's and a window's sessions, constraints, a
+  first frame at once with full damage, then a frame per change for
+  several changes and none without one, into wl_shm under pixman and GLES
+  and into a dmabuf on the render node; a window's content alone, new
+  constraints on a resize and a stop when it closes; a second frame
+  taking over from the first.
 - `tests/focus.rs`: a shell-like wayland-client (layer surfaces and their
   popups): exclusive and on-demand keyboard interactivity, grabbing menus
   getting the keys and giving them back, menus closing for an exclusive
@@ -216,6 +336,18 @@ nix develop --command cargo test -p aizome-comp
 - `tests/sidestep.rs`: a sidestep-ui client (`examples/sidestep_client`):
   server-side decorations, frame callbacks on the content subsurface, a
   layer-shell panel's exclusive zone, the session lock.
+- `tests/recovery.rs`: Ctrl+Alt+Del over a full-screen client holding a
+  keyboard-shortcuts inhibitor, Force Quit killing a client in a process
+  of its own (and never the compositor's parent), Not responding, the
+  lock screen's safe actions, Reset Input ending a stuck grab and freeing
+  a locked pointer, and drags that end on release (after an overlay took
+  a release, with a frozen client, and a client's late move request),
+  and the overlay's Reload Aizome reloading the logic.
+- `tests/reload.rs`: reloading the logic under a test client, foot and
+  Electron (windows, groups, Desks and focus kept, the screen changed), a
+  panic rolled back, a session without a logic, a library built against
+  another core refused, and restarting the shell with apps and
+  notifications kept (`docs/reload.md`).
 
 Screenshots the tests keep are in `target/tmp/aizome-shots/`; examples
 are in `docs/screenshots/`. Frame times: `docs/performance.md`.

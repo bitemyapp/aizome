@@ -394,7 +394,10 @@ fn ipc_names_unknown_actions() {
     let r = c.request(Request::RecoveryAction { action: "explode".into(), app_id: None });
     assert!(matches!(r, Response::Error { .. }));
     let r = c.request(Request::RecoveryAction { action: "reload-compositor".into(), app_id: None });
-    assert!(matches!(&r, Response::Error { message } if message.contains("not available yet")), "{r:?}");
+    // The overlay's "Reload Aizome" reloads the compositor's logic in place.
+    assert!(matches!(&r, Response::Message { message } if message.contains("logic: reloaded")), "{r:?}");
+    let Response::Stats { stats } = c.request(Request::Stats { reset: false }) else { panic!("no stats") };
+    assert_eq!(stats.logic.reloads, 1, "{:?}", stats.logic);
     c.ok(Request::Recovery { state: Some(true) });
     assert!(recovery(&c).open);
     c.ok(Request::Recovery { state: None });

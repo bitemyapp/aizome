@@ -46,6 +46,48 @@ dependencies = [
 name = "aizome-comp"
 version = "0.1.0"
 dependencies = [
+ "aizome-comp-core",
+ "aizome-comp-logic",
+ "aizome-ipc",
+ "libc",
+ "png 0.18.1",
+ "serde_json",
+ "sidestep-ui",
+ "wayland-client",
+ "wayland-protocols",
+ "wayland-protocols-wlr",
+ "zbus",
+]
+
+[[package]]
+name = "aizome-comp-core"
+version = "0.1.0"
+dependencies = [
+ "aizome-config",
+ "aizome-ipc",
+ "aizome-theme",
+ "bitflags 2.13.2",
+ "libc",
+ "libloading",
+ "png 0.18.1",
+ "resvg",
+ "serde",
+ "serde_json",
+ "sha2",
+ "sidestep-ui",
+ "smithay",
+ "toml",
+ "tracing",
+ "tracing-subscriber",
+ "x11rb",
+ "xcursor",
+]
+
+[[package]]
+name = "aizome-comp-logic"
+version = "0.1.0"
+dependencies = [
+ "aizome-comp-core",
  "aizome-config",
  "aizome-ipc",
  "aizome-theme",
@@ -55,14 +97,10 @@ dependencies = [
  "resvg",
  "serde",
  "serde_json",
+ "sha2",
  "sidestep-ui",
  "smithay",
  "tracing",
- "tracing-subscriber",
- "wayland-client",
- "wayland-protocols",
- "wayland-protocols-wlr",
- "xcursor",
 ]
 
 [[package]]

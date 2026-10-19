@@ -56,6 +56,11 @@ Aizome's look.
   current desk on `selection`, its number and name in Archivo 650; click to
   switch, `+` adds a desk, double-click renames in place, right-click for
   Rename, Set Folder…, Remove.
+- **The recording indicator**, first in the systray while a screen
+  recording goes: a `red` dot (8pt) and the time recorded in IBM Plex Mono
+  600 tabular digits (`0:42`, `1:02:09`), ticking once a second and
+  repainting only itself; a click stops the recording. While the recorder
+  finishes the file the dot is a ring and the time reads "Saving".
 - **The systray**: CPU meter (one 3pt bar per core, height = load, `blue`
   at rest, `amber` when hot), memory meter (one bar), then the network,
   sound, Bluetooth, display and battery widgets, each an icon (Lucide, 16pt,
@@ -168,7 +173,10 @@ Results:
   Remap Caps Lock"), opening Shitsurae at that place. The list comes from
   `aizome-shitsurae --list-settings --json` (cached), so it stays in step.
 - **Actions**: Lock, Sleep, Restart, Shut Down, Log Out, Night/Day,
-  Do Not Disturb, Screenshot, New Desk, Empty Trash, Show Desktop.
+  Do Not Disturb, Screenshot, New Desk, Empty Trash, Show Desktop; Record
+  Screen and Record Area, each also with Desktop Audio, with Microphone,
+  and with both (plain, they follow `[recording]`'s audio); Stop Recording
+  in their place while one goes.
 - **Answer**: when the query is arithmetic (`calc::looks_like_math`), the
   first row is "= result"; running it copies the result.
 
@@ -222,6 +230,74 @@ the clock panel, or a schedule in settings) files them without the line.
 Screenshots post a notification with the image's thumbnail and "Show in
 Hako".
 
+## Screen recording
+
+As Tatami does it (`desktop/tatami` in Sekka): a display or an area, with
+what the computer plays and the microphone if asked, one recording at a
+time.
+
+- **Starting**: the palette's Record Screen (the focused display) and
+  Record Area; ⌥Print (`record`), which picks; the Capture menu (❖⇧5,
+  `screenshot-tool`, as ⌘⇧5 on a Mac: under the bar's middle, with
+  screenshots of the screen, an area and the window, Record the Screen ▸
+  and Record an Area ▸ by audio, Open Recordings, and Stop Recording
+  while one goes); `aizome-shell msg '{"request":"record","target":"screen"}'`
+  (`target` `screen`, `area` or a display's name; `desktop_audio`,
+  `microphone`). Picking uses the compositor's screenshot picker (IPC
+  `pick-area`): drag over an area, click for the whole display under the
+  pointer, Space and a click for a window (its frame and tab, where it is
+  now), Esc to give up.
+- **Stopping**: the indicator, ⌥Print again, Stop Recording in the
+  palette or the Capture menu, `aizome-shell msg stop-recording`. The
+  recorder gets SIGINT and finishes the file; one that hasn't after 10 s
+  gets SIGTERM, then SIGKILL, and the notification says the video may not
+  play.
+- **The recorder**: gpu-screen-recorder, capturing the display's planes
+  through KMS (its `gsr-kms-server`, which the NixOS module gives
+  CAP_SYS_ADMIN) and encoding H.264 on the GPU (VA-API, NVENC; x264 only
+  where the GPU has no encoder), the pointer included: nothing per frame
+  for the compositor or the CPU. Where it can't record (no hardware
+  OpenGL, no capture rights) wf-recorder does, through the compositor's
+  wlr-screencopy: with VA-API (dmabuf frames, still on the GPU), else with
+  x264 (wl_shm, read back; the `superfast` preset). wf-recorder records
+  one audio source (what the computer plays before the microphone) and
+  always the pointer.
+- **Which recorder**: found once a session, in the background as the
+  shell starts, so a recording starts at once with one that works rather
+  than seconds into ones that can't (gpu-screen-recorder takes seconds to
+  give up on software OpenGL) while the indicator counts.
+  `gpu-screen-recorder --info` says whether it has hardware OpenGL, an
+  H.264 encoder and which displays it can capture (it's used for a
+  display it lists); `vainfo` on `/dev/dri/renderD128` whether
+  wf-recorder can encode there (without `vainfo` VA-API is tried). A
+  recording asked for before the probe is done waits for it, uncounted.
+  If the one chosen still fails (it exits within 1.5 s, or later without
+  having written a frame) the next takes over, and it isn't tried again
+  that session.
+- **Audio**: through PipeWire's PulseAudio server: the default output's
+  monitor for what the computer plays, the default input for the
+  microphone; gpu-screen-recorder mixes both into one track (AAC in MP4,
+  Opus in Matroska).
+- **Files**: `~/Videos/Recordings` (`Recordings` in `XDG_VIDEOS_DIR`, or
+  `user-dirs.dirs`' Videos), named as Tatami names them:
+  `screenrecording-2026-10-18_14-05-09.mp4`, local time.
+- **When it ends** a notification says so with the file's name, and its
+  actions are Open (the default video player; also a click) and Show in
+  Files (Hako, the file selected). A recorder that dies clears the
+  indicator and says why (the last lines it wrote, kept in
+  `/aizome/recorder.log`).
+- **Robustness**: the recording isn't tied to a Desk or a window; the
+  recorder runs in its own process group and is watched through a pidfd,
+  and `/aizome/recording.json` notes it, so a shell that
+  crashed and was restarted takes it back (indicator and Stop) instead of
+  starting another.
+- **Settings**: `[recording]` in `settings.toml` (Shitsurae has no
+  capture pane yet): `format` (`mp4`, `mkv`), `framerate` (60), `quality`
+  (`medium`, `high`, `very-high`, `ultra`), `cursor` (true),
+  `desktop_audio` and `microphone` (the defaults for Record Screen and
+  Record Area, off), `folder`, and `recorder` (`auto`,
+  `gpu-screen-recorder`, `wf-recorder`).
+
 ## OSD
 
 Volume, mute, brightness and keyboard-backlight keys (`Binding` events from
@@ -249,6 +325,12 @@ A background surface per output:
 
 ## Lock screen
 
+The compositor's recovery overlay (Ctrl+Alt+Del) can restart the shell
+(Restart Shell; Restart Lock Screen while locked): it SIGKILLs and starts
+it again without the usual backoff, and while the session is locked it
+sends the new shell a `lock` binding once a second (for up to 20 s) until
+a lock surface shows: the session stays locked, black, without one.
+
 Locks on ⌃❖Q, on the compositor's `idle` event (config
 `idle.lock_after_minutes`), before sleep (logind PrepareForSleep, holding a
 delay inhibitor until locked), and on logind's Lock signal (`loginctl
@@ -266,6 +348,20 @@ media controls are not shown while locked. Unlocking restores everything.
 The polkit agent (`aizome-sys`) asks the shell: an overlay dialog with the
 mark, the action's message, the identity (a dropdown if several admins), a
 password field, Cancel and Authenticate, PAM's prompts and errors inline.
+
+## Real and headless sessions
+
+Only the machine's Aizome session registers as polkit's agent, takes
+logind's sleep delay and follows logind's Lock, Unlock and PrepareForSleep
+(`real_session()` in `shell.rs`): the compositor says so with
+`AIZOME_SESSION=1`, which it gives only on udev without `--no-session`.
+Without the variable (a compositor older than it) `XDG_CURRENT_DESKTOP`
+naming Aizome decides. Under a headless or winit compositor
+(`scripts/headless-session`, the compositor's and shell's tests, a nested
+development session) `AIZOME_SESSION` is `0` and the shell does none of
+them, so it never competes with the real session's agent, holds up the
+real machine's sleep, or locks when the real session does. ⌃❖Q and the
+idle lock still lock it.
 
 ## Behaviour
 

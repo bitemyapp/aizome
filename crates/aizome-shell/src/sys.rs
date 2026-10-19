@@ -6,6 +6,7 @@ use aizome_config::MenubarSettings;
 use aizome_sys::Wake;
 use aizome_sys::audio::Audio;
 use aizome_sys::bluetooth::Bluetooth;
+use aizome_sys::mpris::Mpris;
 use aizome_sys::network::Network;
 use aizome_sys::power::Backlight;
 use aizome_sys::power::Logind;
@@ -13,6 +14,7 @@ use aizome_sys::power::PowerProfiles;
 use aizome_sys::power::Upower;
 
 use crate::menubar::{NetGlyph, Tray};
+use crate::systray::panels::{Media, MediaVerb};
 
 /// The services, when the shell runs for real (none in tests).
 #[derive(Default)]
@@ -25,6 +27,9 @@ pub struct Sys {
     pub profiles: Option<PowerProfiles>,
     pub logind: Option<Logind>,
     pub disks: Option<aizome_sys::disks::Disks>,
+    /// Media players on the session bus, followed as they change, for the
+    /// sound panel and the media keys.
+    pub mpris: Option<Mpris>,
 }
 
 impl Sys {
@@ -40,7 +45,32 @@ impl Sys {
             profiles: Some(PowerProfiles::new(w())),
             logind: Some(Logind::new(w())),
             disks: Some(aizome_sys::disks::Disks::new(w())),
+            mpris: Some(Mpris::new(w())),
         }
+    }
+
+    /// What the sound panel shows of the player playing (or the one that
+    /// played last): its track, or its name while it plays something
+    /// untitled.
+    pub fn media(&self) -> Option<Media> {
+        let s = self.mpris.as_ref()?.snapshot();
+        let p = s.active_player()?;
+        let titled = !p.metadata.title.is_empty();
+        (titled || p.is_playing()).then(|| Media {
+            title: if titled { p.metadata.title.clone() } else { p.identity.clone() },
+            artist: p.metadata.artist(),
+            playing: p.is_playing(),
+        })
+    }
+
+    /// ⏮ ⏯ ⏭ on that player.
+    pub fn media_control(&self, verb: MediaVerb) {
+        let Some(m) = &self.mpris else { return };
+        let _ = match verb {
+            MediaVerb::Previous => m.media_previous(),
+            MediaVerb::PlayPause => m.media_play_pause(),
+            MediaVerb::Next => m.media_next(),
+        };
     }
 
     /// What the systray shows now.

@@ -52,8 +52,6 @@ pub enum Msg {
     Deskbar(crate::deskbar::DeskbarMsg),
     Palette(crate::palette::PaletteEvent),
     Panel(crate::systray::panels::PanelMsg),
-    /// What's playing, read on a thread.
-    Media(Option<crate::systray::panels::Media>),
     /// The OSD of generation `n` has shown long enough.
     OsdHide(u64),
     Desktop(u32, crate::desktop::DesktopMsg),
@@ -76,6 +74,8 @@ pub enum Msg {
     /// selection), for a menu waiting on it.
     Selection(u64, Option<String>),
     Note(crate::notifications::server::NoteEvent),
+    /// What the shell this one replaces held last (a restart).
+    Carried(Box<crate::carry::Carried>),
     /// Idle after starting: warm the palette.
     WarmPalette,
     /// An output's wallpaper, scaled (or not: it didn't read).
@@ -97,6 +97,10 @@ pub enum Msg {
     ToolchestHandedOver,
     /// The bar's notification line has shown long enough.
     BannerDone(u32),
+    /// What a recording's thread says (the recording's serial).
+    Recording(u64, crate::recording::run::Event),
+    /// The recording indicator's second turned (recording, tick).
+    RecordTick(u64, u64),
     /// Nothing: a message to wake the loop.
     Nothing,
 }
@@ -207,6 +211,14 @@ pub struct Shell {
     /// Apps whose windows the person folded (true) or unfolded (false).
     pub folded: HashMap<String, bool>,
     pub notes: crate::notifications::store::Store,
+    /// What was last saved for the next shell (`carry.rs`), and whether
+    /// saving has begun (a restarted shell first takes in the old one's
+    /// last word).
+    pub carried: Option<u64>,
+    pub carry_ready: bool,
+    /// Another shell has taken over (a restart): this one saves nothing
+    /// more and waits to be stopped.
+    pub retiring: bool,
     /// Apps whose every unread notification shows.
     pub notes_open: Vec<String>,
     pub note_server: Option<crate::notifications::server::NoteServer>,
@@ -227,7 +239,6 @@ pub struct Shell {
     pub panel_ui: crate::systray::glue::PanelUi,
     /// Panels to show instead of the system's (tests and pictures).
     pub panels_fixture: Option<crate::systray::glue::Fixture>,
-    pub media: Option<crate::systray::panels::Media>,
     pub osd: Option<crate::osd::OsdState>,
     pub desktop: crate::desktop::DesktopState,
     /// Each output's wallpaper, scaled to it (see `wallpaper`).
@@ -289,6 +300,11 @@ pub struct Shell {
     pub logind_power_key: Option<String>,
     /// Night Light, as the compositor last told.
     pub night: Option<aizome_ipc::NightLightState>,
+    /// The screen recording going, if any (one at a time).
+    pub recording: Option<crate::recording::Live>,
+    pub(crate) record_gen: u64,
+    /// Which recorders can record here (probed once, as the shell starts).
+    pub(crate) recorders: crate::recording::probe::Probes,
     pub text: aizome_kit::text::TextCache,
     launches: HashMap<ActivationRequest, (Launch, Option<PathBuf>)>,
     stream: Option<MsgSender<Msg>>,
@@ -326,6 +342,9 @@ impl Shell {
             shelf: crate::shelf::Shelf::default(),
             folded: HashMap::new(),
             notes: crate::notifications::store::Store::default(),
+            carried: None,
+            carry_ready: false,
+            retiring: false,
             notes_open: Vec::new(),
             note_server: None,
             banner: None,
@@ -340,7 +359,6 @@ impl Shell {
             panel: None,
             panel_ui: Default::default(),
             panels_fixture: None,
-            media: None,
             osd: None,
             desktop: Default::default(),
             wallpapers: HashMap::new(),
@@ -379,6 +397,9 @@ impl Shell {
             power_inhibit: None,
             logind_power_key: None,
             night: None,
+            recording: None,
+            record_gen: 0,
+            recorders: Default::default(),
             text: aizome_kit::text::TextCache::default(),
             launches: HashMap::new(),
             stream: None,
@@ -526,6 +547,7 @@ impl Shell {
             unread: self.notes.unread_count(),
             banner: if primary { self.banner_view() } else { None },
             primary,
+            recording: if primary { self.record_badge() } else { None },
         }
     }
 
@@ -630,9 +652,6 @@ impl Shell {
                 self.show_menu(win, anchor, menu, style, cx);
             }
             Slot::Tray(w) => {
-                if w == TrayWidget::Sound && self.opts.live {
-                    cx.spawn(|| Msg::Media(crate::mpris::fetch()));
-                }
                 self.toggle_panel(win, w, rect, cx);
             }
             Slot::Apps => self.run(Action::SetDeskbarCollapsed(false), cx),
@@ -757,6 +776,8 @@ impl Shell {
                 area: None,
                 clipboard: false,
             }),
+            Action::Record(ask) => self.record(ask, cx),
+            Action::StopRecording => self.stop_recording(cx),
             Action::About { app_id: None } => self.run(Action::Settings { pane: "about".into(), anchor: None }, cx),
             Action::About { app_id: Some(app_id) } => self.about_app(&app_id, cx),
             Action::Palette { scope, query } => self.open_palette(scope, query, cx),
@@ -768,6 +789,9 @@ impl Shell {
                 self.notes_cfg.do_not_disturb = !self.notes_cfg.do_not_disturb;
                 self.save_section("notifications");
             }
+            // The compositor does it (⌃❖R's way): the logic, this shell and
+            // the settings, whatever changed.
+            Action::ReloadAizome => self.ipc.send(Request::Action { action: "reload".into() }),
             Action::ShelfRemove { index } => {
                 self.shelf.remove(index);
                 self.save_shelf();
@@ -844,12 +868,31 @@ impl Shell {
                 tx.send(Msg::Ipc(e));
             });
         }
+        // What the shell before this one held (a restart, or a crash).
+        let previous = crate::carry::previous_shell();
+        if let Some(c) = crate::carry::load() {
+            log::info!("taking up {} notifications from the shell before (pid {})", c.notes.len(), c.pid);
+            // In a restart, ids go on well past the last the old shell gave,
+            // as it may give a few more meanwhile.
+            let skip = if previous.is_some() { 1000 } else { 0 };
+            self.notes.restore(c.notes, c.next_id + skip);
+            self.folded = c.folded.into_iter().collect();
+            self.notes_open = c.notes_open;
+        }
+        // Saving waits, in a restart, for the old shell's last word.
+        self.carry_ready = previous.is_none();
         {
             let tx = tx.clone();
             let path = self.opts.shell_socket.clone().unwrap_or_else(crate::apps::server::socket_path);
-            match Server::listen(&path, move |e| {
-                tx.send(Msg::Server(e));
-            }) {
+            // A restart takes the socket over from the shell still running:
+            // apps reconnect to this one as that one goes.
+            let listen = if previous.is_some() { Server::listen_replacing } else { Server::listen };
+            match listen(
+                &path,
+                Box::new(move |e| {
+                    tx.send(Msg::Server(e));
+                }),
+            ) {
                 Ok(s) => self.server = Some(s),
                 Err(e) => log::warn!("the shell socket {}: {e}", path.display()),
             }
@@ -897,12 +940,27 @@ impl Shell {
         }
         {
             let tx = tx.clone();
-            match crate::notifications::server::NoteServer::start(move |e| {
+            // Ids go on from the last one given.
+            let first = self.notes.next_id() + 1;
+            match crate::notifications::server::NoteServer::start(first, move |e| {
                 tx.send(Msg::Note(e));
             }) {
                 Ok(s) => self.note_server = Some(s),
                 Err(e) => log::warn!("the notifications server: {e}"),
             }
+        }
+        // In a restart, take in what the old shell got after this one read
+        // its state: it writes its last word as it loses the bus name to
+        // this one (or, without a bus, as it stops).
+        if let Some(previous) = previous {
+            let tx = tx.clone();
+            std::thread::Builder::new()
+                .name("carry".into())
+                .spawn(move || {
+                    let c = crate::carry::wait_for_last(previous).unwrap_or_default();
+                    tx.send(Msg::Carried(Box::new(c)));
+                })
+                .ok();
         }
         let tx2 = tx.clone();
         self.sys = crate::sys::Sys::start(move || {
@@ -912,6 +970,8 @@ impl Shell {
         self.icon_lookup = Some(aizome_sys::apps::IconLookup::from_env());
         self.start_lock();
         self.sync_power_key();
+        self.adopt_recording();
+        self.recorders.start();
         self.read_logind_power_key(cx);
         self.start_polkit();
         self.follow_gtk();
@@ -935,6 +995,7 @@ impl Shell {
                     Event::Idle { kind } if kind == "monitors-off" && self.lock_cfg.after_monitors_off => self.lock(cx),
                     Event::ScreenshotTaken { path } => self.screenshot_taken(PathBuf::from(path), cx),
                     Event::NightLightChanged { state } => self.night = Some(state),
+                    Event::AreaPicked { tag, area, output, .. } => self.area_picked(&tag, area, output.as_deref(), cx),
                     _ => {}
                 }
             }
@@ -955,15 +1016,29 @@ impl Shell {
             "palette" => self.toggle_palette(None, String::new(), cx),
             "lock" => self.lock(cx),
             "power-key" => self.power_key(cx),
+            "record" => self.toggle_recording(cx),
+            "record-screen" => {
+                // The display under the pointer, as a key gives it.
+                let target = match output.clone() {
+                    Some(o) => crate::recording::Target::Output(o),
+                    None => crate::recording::Target::Screen,
+                };
+                self.record(crate::recording::Ask { target, audio: None }, cx)
+            }
+            "record-area" => {
+                self.record(crate::recording::Ask { target: crate::recording::Target::Pick, audio: None }, cx)
+            }
+            "stop-recording" => self.stop_recording(cx),
+            "screenshot-tool" => self.open_capture_menu(output.as_deref(), cx),
             "bell" => self.bell(output.as_deref(), cx),
             "app-menu" => {
                 if let Some((x, y)) = pointer {
                     self.pointer_menu_soon(x, y, cx);
                 }
             }
-            "play-pause" => crate::mpris::control(crate::systray::panels::MediaVerb::PlayPause),
-            "next" => crate::mpris::control(crate::systray::panels::MediaVerb::Next),
-            "previous" => crate::mpris::control(crate::systray::panels::MediaVerb::Previous),
+            "play-pause" => self.sys.media_control(crate::systray::panels::MediaVerb::PlayPause),
+            "next" => self.sys.media_control(crate::systray::panels::MediaVerb::Next),
+            "previous" => self.sys.media_control(crate::systray::panels::MediaVerb::Previous),
             a if self.media_key(a, cx) => {}
             _ => log::debug!("binding {action} at {pointer:?} on {output:?}"),
         }
@@ -1039,7 +1114,7 @@ impl Shell {
             }
             proto::ShellRequest::Notify { app, summary, body } => {
                 let n = crate::notifications::store::Incoming { app_name: app, summary, body, ..Default::default() };
-                let id = self.notes.fresh_id();
+                let id = self.fresh_note_id();
                 self.take_note(crate::notifications::server::NoteEvent::Notify(id, Box::new(n)), cx);
                 (true, id.to_string())
             }
@@ -1090,6 +1165,33 @@ impl Shell {
                 self.bell(output.as_deref(), cx);
                 (true, String::new())
             }
+            proto::ShellRequest::Record { target, desktop_audio, microphone } => {
+                if self.recording.is_some() {
+                    return (false, "a recording is already going".into());
+                }
+                let target = match target.as_deref() {
+                    None | Some("screen") => crate::recording::Target::Screen,
+                    Some("area") => crate::recording::Target::Pick,
+                    Some(output) => crate::recording::Target::Output(output.to_owned()),
+                };
+                let audio = match (desktop_audio, microphone) {
+                    (None, None) => None,
+                    (d, m) => {
+                        let s = self.settings.recording_settings();
+                        Some(crate::recording::Audio {
+                            desktop: d.unwrap_or(s.desktop_audio),
+                            microphone: m.unwrap_or(s.microphone),
+                        })
+                    }
+                };
+                self.run(Action::Record(crate::recording::Ask { target, audio }), cx);
+                (true, String::new())
+            }
+            proto::ShellRequest::StopRecording => {
+                let going = self.recording.is_some();
+                self.run(Action::StopRecording, cx);
+                (going, if going { String::new() } else { "no recording is going".into() })
+            }
             proto::ShellRequest::MenuBar { output } => {
                 let ok = self.focus_menu_bar(output.as_deref(), cx);
                 (ok, if ok { String::new() } else { "no menu bar there".into() })
@@ -1109,6 +1211,10 @@ impl Shell {
             "menu": self.bar_menu.map(|m| format!("{:?}", m.slot)),
             "palette": self.palette.as_ref().map(|p| p.query.clone()),
             "panel": self.panel.as_ref().map(|p| p.widget.name()),
+            "pid": std::process::id(),
+            // The notifications it keeps (summaries).
+            "notes": self.notes.list.iter().map(|n| n.summary.clone()).collect::<Vec<_>>(),
+            "recording": self.recording_json(),
         })
         .to_string()
     }
@@ -1184,7 +1290,6 @@ impl Program for Shell {
             Msg::Deskbar(m) => self.deskbar_msg(m, cx),
             Msg::Palette(e) => self.palette_event(e, cx),
             Msg::Panel(m) => self.panel_msg(m, cx),
-            Msg::Media(m) => self.media = m,
             Msg::OsdHide(g) => self.hide_osd(g, cx),
             Msg::Desktop(o, m) => self.desktop_msg(o, m, cx),
             Msg::Lock(m) => self.lock_msg(m, cx),
@@ -1199,8 +1304,26 @@ impl Program for Shell {
                 self.desktop.items = items;
                 self.trash_full = full;
             }
+            Msg::Note(crate::notifications::server::NoteEvent::NameAcquired) => {
+                log::info!("the notifications are this shell's")
+            }
+            Msg::Note(crate::notifications::server::NoteEvent::NameLost) => {
+                // A new shell has the notifications now: its turn.
+                log::info!("another shell took over the notifications; saving and stepping down");
+                self.save_carried(true);
+                self.retiring = true;
+            }
             Msg::Note(e) => self.take_note(e, cx),
+            Msg::Carried(c) => {
+                let added = self.notes.merge(c.notes);
+                if added > 0 {
+                    log::info!("took in {added} notifications the old shell got meanwhile");
+                }
+                self.carry_ready = true;
+            }
             Msg::BannerDone(id) => self.banner_done(id, cx),
+            Msg::Recording(serial, e) => self.recording_event(serial, e, cx),
+            Msg::RecordTick(serial, tick) => self.record_tick(serial, tick, cx),
             Msg::MenuClosed(n) => self.menu_closed(n),
             Msg::Agenda(a) => self.agenda = a,
             Msg::FlashDone(n) => self.flash_done(n, cx),
@@ -1362,6 +1485,9 @@ impl Shell {
     /// What every update ends with: surfaces sized to their content, the
     /// geometry drags need.
     pub fn after_update(&mut self, cx: &mut Cx<Msg>) {
+        if self.opts.live && self.carry_ready && !self.retiring {
+            self.save_carried(false);
+        }
         self.find_icons();
         self.prepare_wallpapers(cx);
         for a in std::mem::take(&mut self.pending_actions) {
@@ -1383,6 +1509,29 @@ impl Shell {
 }
 
 impl Shell {
+    /// Saves what the next shell takes up, if it changed (`last`: always,
+    /// as this shell's last word).
+    fn save_carried(&mut self, last: bool) {
+        let folded: Vec<(String, bool)> = {
+            let mut f: Vec<(String, bool)> = self.folded.iter().map(|(k, v)| (k.clone(), *v)).collect();
+            f.sort();
+            f
+        };
+        let mark = crate::carry::mark(&self.notes.list, &folded, &self.notes_open);
+        if !last && self.carried == Some(mark) {
+            return;
+        }
+        self.carried = Some(mark);
+        crate::carry::save(&crate::carry::Carried {
+            pid: std::process::id(),
+            last,
+            notes: self.notes.list.clone(),
+            next_id: self.notes.next_id(),
+            folded,
+            notes_open: self.notes_open.clone(),
+        });
+    }
+
     /// About an app: its name, generic name and description, in the bar's
     /// line.
     fn about_app(&mut self, app_id: &str, cx: &mut Cx<Msg>) {
@@ -1405,7 +1554,7 @@ impl Shell {
             desktop_entry: Some(app_id.to_owned()),
             ..Default::default()
         };
-        let id = self.notes.fresh_id();
+        let id = self.fresh_note_id();
         self.take_note(crate::notifications::server::NoteEvent::Notify(id, Box::new(n)), cx);
     }
 
@@ -1532,7 +1681,20 @@ impl Shell {
 /// desktop): only then does it hold logind's sleep, serve polkit, and lock
 /// for logind.
 pub fn real_session() -> bool {
-    std::env::var("XDG_CURRENT_DESKTOP").is_ok_and(|v| v.split(':').any(|d| d.eq_ignore_ascii_case("aizome")))
+    let var = |name| std::env::var(name).ok();
+    is_real_session(var("AIZOME_SESSION").as_deref(), var("XDG_CURRENT_DESKTOP").as_deref())
+}
+
+/// The decision, from `AIZOME_SESSION` and `XDG_CURRENT_DESKTOP`. The
+/// compositor says so (`AIZOME_SESSION`): headless and nested compositors
+/// run inside the user's real login session too, so the desktop's name
+/// alone doesn't tell. Without it (a compositor from before it said) the
+/// name decides.
+fn is_real_session(session: Option<&str>, desktops: Option<&str>) -> bool {
+    match session {
+        Some(v) => v == "1",
+        None => desktops.is_some_and(|v| v.split(':').any(|d| d.eq_ignore_ascii_case("aizome"))),
+    }
 }
 
 impl Shell {
@@ -1586,5 +1748,24 @@ impl Shell {
         {
             log::warn!("logind's sleep delay: {e}");
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_compositor_says_whether_the_session_is_real() {
+        // aizome.service's compositor, on a seat.
+        assert!(is_real_session(Some("1"), Some("Aizome")));
+        // scripts/headless-session, the tests, a nested development session:
+        // Aizome's desktop, inside the user's real session.
+        assert!(!is_real_session(Some("0"), Some("Aizome")));
+        assert!(!is_real_session(Some(""), Some("Aizome")));
+        // A compositor from before AIZOME_SESSION: the desktop's name decides.
+        assert!(is_real_session(None, Some("foo:aizome")));
+        assert!(!is_real_session(None, Some("Hyprland")));
+        assert!(!is_real_session(None, None));
     }
 }

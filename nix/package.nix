@@ -1,17 +1,27 @@
-# Aizome: the compositor, the shell, aizomectl and the apps, from one build
-# of the workspace.
+# Aizome: the compositor, the shell, aizomectl and the apps, from one
+# checkout of the workspace.
 #
-# The workspace depends on Sidestep's `sidestep-ui` by path
-# (../sidestep-aizome/crates/sidestep-ui), so the source here is a directory
+# The workspace depends on Sidestep's crates by path, through the
+# `sidestep` link to ../sidestep-aizome, so the source here is a directory
 # holding this repository and the Sidestep fork side by side, as they sit
 # on a developer's disk. The fork's revision is pinned by the flake's
 # `sidestep` input.
+#
+# Two builds: the compositor with `release` (its core and logic are Rust
+# dylibs, which can't take part in LTO; docs/reload.md), everything else
+# with `release-lto`. The compositor build is one a developer can repeat
+# from their own checkout (`aizome-dev`): same packages built together,
+# same profile, target, flags and toolchain, recorded in
+# share/aizome/build-env.json, so the logic library they build loads
+# into the session this package runs.
 {
   lib,
+  stdenv,
   rustPlatform,
   runCommand,
   pkg-config,
   makeWrapper,
+  jq,
   wayland,
   libxkbcommon,
   libinput,
@@ -30,12 +40,15 @@
   src,
   sidestep,
   version ? "0.1.0",
+  rev ? null,
 }:
 let
   source = runCommand "aizome-source" { } ''
     mkdir -p $out
     cp -r ${src} $out/aizome
     cp -r ${sidestep} $out/sidestep-aizome
+    chmod u+w $out/aizome
+    ln -sfn ../sidestep-aizome $out/aizome/sidestep
   '';
   # Libraries opened at run time with dlopen rather than linked: EGL and
   # GLES through libglvnd (the drivers come from /run/opengl-driver),
@@ -47,6 +60,37 @@ let
     libxkbcommon
     wayland
   ];
+  target = stdenv.hostPlatform.rust.rustcTarget;
+  inherit (rustPlatform.rust) rustc cargo;
+  # A store path written so the package doesn't keep it alive (Nix finds
+  # references by their hash): its two halves, for aizome-dev to join.
+  split =
+    path:
+    let
+      p = toString path;
+      at = builtins.stringLength builtins.storeDir + 17;
+    in
+    [
+      (builtins.substring 0 at p)
+      (builtins.substring at (builtins.stringLength p) p)
+    ];
+  buildEnv = builtins.toJSON {
+    inherit target version;
+    profile = "release";
+    # Built together, so Cargo resolves the core's dependencies' features
+    # the same way (another set changes the core's symbols).
+    packages = [
+      "aizome-comp"
+      "aizome-comp-logic"
+    ];
+    rustc_store_path = split rustc;
+    cargo_store_path = split cargo;
+    rustc_version = rustc.version;
+    source_rev = rev;
+    # The Sidestep the core was built against (the flake's `sidestep`
+    # input): a checkout's ../sidestep-aizome must be at it.
+    sidestep_rev = sidestep.rev or null;
+  };
 in
 rustPlatform.buildRustPackage {
   pname = "aizome";
@@ -58,6 +102,7 @@ rustPlatform.buildRustPackage {
   nativeBuildInputs = [
     pkg-config
     makeWrapper
+    jq
     rustPlatform.bindgenHook
   ];
   buildInputs = [
@@ -78,17 +123,48 @@ rustPlatform.buildRustPackage {
     libpulseaudio
   ];
 
-  cargoBuildFlags = [ "--workspace" ];
+  postPatch = ''
+    patchShebangs scripts
+  '';
+
+  buildPhase = ''
+    runHook preBuild
+    # -C prefer-dynamic for the compositor's core alone (scripts/rustc-wrapper).
+    export RUSTC_WRAPPER=$PWD/scripts/rustc-wrapper
+    flags=(-j "$NIX_BUILD_CORES" --target ${target} --offline)
+    # Plain cargo for the compositor: nixpkgs' cargo-auditable wrapper is a
+    # RUSTC_WORKSPACE_WRAPPER, whose path Cargo hashes into every workspace
+    # crate's symbols, and a logic built from a checkout couldn't match.
+    ${cargo}/bin/cargo build "''${flags[@]}" --release -p aizome-comp -p aizome-comp-logic
+    cargo build "''${flags[@]}" --profile release-lto --workspace \
+      --exclude aizome-comp --exclude aizome-comp-core --exclude aizome-comp-logic
+    runHook postBuild
+  '';
+
   # The tests need a Wayland display, D-Bus services or a GPU; they run in
   # the VM test and in development, not in the sandbox.
   doCheck = false;
 
-  postInstall = ''
+  installPhase = ''
+    runHook preInstall
+    rel=target/${target}/release
+    lto=target/${target}/release-lto
+    mkdir -p $out/bin $out/lib/aizome $out/share/aizome
+    install -m755 $rel/aizome $out/bin/aizome
+    # The core, the logic it loads, and the std they share.
+    install -m644 $rel/libaizome_comp_core.so $rel/libaizome_comp_logic.so $out/lib/aizome/
+    install -m644 "$(rustc --print sysroot)"/lib/rustlib/${target}/lib/libstd-*.so $out/lib/aizome/
+    find $lto -maxdepth 1 -type f -executable ! -name '*.so' -exec install -m755 -t $out/bin {} +
+
+    # How the compositor was built, for aizome-dev (and the ABI it checks).
+    echo '${buildEnv}' | jq --argjson core "$(LD_LIBRARY_PATH=$out/lib/aizome $out/bin/aizome --build-info)" \
+      '. + {core: $core}' > $out/share/aizome/build-env.json
+
     # Session: the login entry, the systemd user units and the portals.
     install -Dm755 session/aizome-session $out/bin/aizome-session
     install -Dm644 session/aizome.desktop $out/share/wayland-sessions/aizome.desktop
     shopt -s nullglob
-    for unit in session/*.service session/*.target apps/*/data/*.service; do
+    for unit in session/*.service session/*.target session/*.path apps/*/data/*.service; do
       install -Dm644 "$unit" "$out/lib/systemd/user/$(basename "$unit")"
       substituteInPlace "$out/lib/systemd/user/$(basename "$unit")" --replace-quiet @bindir@ "$out/bin"
     done
@@ -103,6 +179,7 @@ rustPlatform.buildRustPackage {
     done
     # The Toolchest's mark, for the shell and the login screen.
     install -Dm644 icons/apps/org.aizome.Toolchest.svg $out/share/aizome/mark.svg
+    runHook postInstall
   '';
 
   postFixup = ''
@@ -111,9 +188,23 @@ rustPlatform.buildRustPackage {
         patchelf --add-rpath ${lib.makeLibraryPath runtimeLibs} "$bin"
       fi
     done
+    # The compositor finds its core and std beside it (its own rpath says
+    # $ORIGIN/../lib/aizome); they and the logic find each other there.
+    for so in $out/lib/aizome/*.so; do
+      patchelf --add-rpath '$ORIGIN' "$so"
+    done
+    # Not in the toolchain's sysroot, where the linker found std: that would
+    # keep the compiler (a gigabyte) in the system's closure.
+    for f in $out/bin/aizome $out/lib/aizome/*.so; do
+      patchelf --set-rpath "$(patchelf --print-rpath "$f" | tr ':' '\n' | grep -v -- '-rustc-' | paste -sd:)" "$f"
+    done
+    patchelf --add-rpath ${lib.makeLibraryPath runtimeLibs} $out/lib/aizome/libaizome_comp_core.so
   '';
 
-  passthru.providedSessions = [ "aizome" ];
+  passthru = {
+    providedSessions = [ "aizome" ];
+    inherit buildEnv;
+  };
 
   meta = {
     description = "Aizome, Sekka's desktop environment, on Sidestep's native Rust toolkit";
