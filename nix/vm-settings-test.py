@@ -471,13 +471,14 @@ def where_and_when():
     (GeoClue's, if the shell kept one, else the zone's city from tzdata),
     and the local day of the year, UTC offset and minutes past midnight."""
     zone = localtime_zone()
-    assert "/" in zone, f"no city's time zone here: {zone!r}"
     doy, off, h, m = machine.succeed("date '+%j %z %H %M'").split()
     sign = -1 if off.startswith("-") else 1
     offset = sign * (int(off[1:3]) * 60 + int(off[3:5]))
     lat, lon = setting("location.latitude"), setting("location.longitude")
-    if lat is not None and lon is not None and setting("location.zone") in (None, zone):
+    # As aizome-config holds it: only while the zone is the one it was found in.
+    if lat is not None and lon is not None and (zone == "" or setting("location.zone") in (None, zone)):
         return zone, (lat, lon), "where you are", int(doy), offset, int(h) * 60 + int(m)
+    assert "/" in zone, f"no city's time zone here: {zone!r}"
     line = machine.succeed(f"grep -P '\\t{zone}(\\t|$)' /etc/zoneinfo/zone1970.tab | head -1").split("\t")
     coords = line[1]
     split = max(coords.rfind("+"), coords.rfind("-"))
@@ -534,6 +535,19 @@ def sun():
         )
         night = ipc("night-light")["state"]
         assert night.get("place") is None and (night.get("from"), night.get("to")) == ("19:00", "07:00"), night
+    # The shell asks GeoClue (offline, as in the sandbox, it gives up after
+    # 30 s; with a network it may find where the host is): wait for its
+    # answer, which decides the place.
+    until(
+        "the shell to hear from GeoClue",
+        lambda: machine.succeed(
+            "journalctl -b --no-pager -o cat | grep -c -E 'where the computer is: |the computer is near ' || true"
+        ).strip()
+        not in ("", "0"),
+        timeout=60,
+        every=2,
+    )
+    if "/" not in localtime_zone() and setting("location.latitude") is None:
         # A city's zone: its sunrise and sunset. Set as timedated sets one
         # (a relative link; an absolute one is NixOS's own, which Date &
         # Time reads as the configuration's), and put back after.
@@ -558,7 +572,8 @@ def sun():
     )
     assert words.group(3) == where, (words.group(3), where)
     # The shell's theme (which GTK apps follow) turns at them, not at
-    # 07:00 and 19:00: checked away from the moments it turns.
+    # 07:00 and 19:00: checked away from the moments it turns. The shell
+    # looks again each minute (nothing tells it the zone changed).
     zone, (lat, lon), where, doy, offset, now = where_and_when()
     if not any(near_minutes(now, t, 3) for t in (rise, dusk)):
         day = rise <= now < dusk if rise < dusk else not (dusk <= now < rise)
@@ -566,6 +581,8 @@ def sun():
         until(
             f"dconf to say {want}",
             lambda: want in alice("dconf read /org/gnome/desktop/interface/color-scheme"),
+            timeout=90,
+            every=2,
         )
 
     # Night Light's sunset schedule, as the compositor runs it.
