@@ -30,12 +30,16 @@ impl Drop for Kill {
 fn main() {
     let mut renderer = "gles".to_string();
     let mut output = "2880x1800@2".to_string();
+    let mut only: Option<String> = None;
+    let mut log: Option<String> = None;
     let mut args = std::env::args().skip(1);
     while let Some(a) = args.next() {
         match a.as_str() {
             "--renderer" => renderer = args.next().unwrap(),
             "--output" => output = args.next().unwrap(),
-            _ => panic!("usage: frame_bench [--renderer gles|pixman] [--output WxH@S]"),
+            "--only" => only = args.next(),
+            "--log" => log = args.next(),
+            _ => panic!("usage: frame_bench [--renderer gles|pixman] [--output WxH@S] [--only NAME] [--log FILTER]"),
         }
     }
     let exe = std::env::current_exe().unwrap();
@@ -70,9 +74,10 @@ fn main() {
         .env("XDG_CONFIG_HOME", dir.join("config"))
         .env("XDG_STATE_HOME", dir.join("state"))
         .env("XDG_CACHE_HOME", dir.join("cache"))
-        .env("AIZOME_LOG", "warn")
+        .env("AIZOME_LOG", log.as_deref().unwrap_or("warn"))
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
+        // `--log FILTER` shows the compositor's log at that level.
+        .stderr(if log.is_some() { Stdio::inherit() } else { Stdio::null() })
         .spawn()
         .expect("start aizome");
     let mut kill = Kill(vec![comp]);
@@ -132,15 +137,20 @@ fn main() {
         let r = req(Request::Synthesize { events: vec![Synthetic::Chord { keys: k.into() }] });
         assert!(matches!(r, Response::Ok), "{r:?}");
     };
+    // `--only NAME` runs the scenarios whose names contain NAME (and the
+    // windows they need).
+    let want = |name: &str| only.as_deref().is_none_or(|o| name.contains(o));
 
     // Ctrl+Alt+Del straight after start, before the overlay's labels are
     // warmed: its first frame from cold.
-    stats(true);
-    keys("ctrl+alt+delete");
-    std::thread::sleep(Duration::from_millis(300));
-    report("recovery: open, cold", &stats(true));
-    keys("escape");
-    std::thread::sleep(Duration::from_millis(300));
+    if want("recovery: open, cold") {
+        stats(true);
+        keys("ctrl+alt+delete");
+        std::thread::sleep(Duration::from_millis(300));
+        report("recovery: open, cold", &stats(true));
+        keys("escape");
+        std::thread::sleep(Duration::from_millis(300));
+    }
 
     // Three ordinary windows.
     for _ in 0..3 {
@@ -150,52 +160,76 @@ fn main() {
     std::thread::sleep(Duration::from_millis(1500));
 
     // Idle: nothing changes, nothing is drawn.
-    stats(true);
-    std::thread::sleep(Duration::from_secs(2));
-    report("idle (2s)", &stats(true));
+    if want("idle (2s)") {
+        stats(true);
+        std::thread::sleep(Duration::from_secs(2));
+        report("idle (2s)", &stats(true));
+    }
 
     // Moving a window: composition only.
     let id = ws[0].id;
     let (x0, y0) = (ws[0].geometry.x, ws[0].geometry.y);
-    stats(true);
-    for i in 0..240 {
-        let dx = ((i as f64 / 240.0) * std::f64::consts::TAU).sin() * 300.0;
-        req(Request::Move { id: Some(id), x: x0 + dx as i32, y: y0 + (i % 60) });
-        std::thread::sleep(Duration::from_millis(16));
+    if want("move a window (240 steps)") {
+        stats(true);
+        for i in 0..240 {
+            let dx = ((i as f64 / 240.0) * std::f64::consts::TAU).sin() * 300.0;
+            req(Request::Move { id: Some(id), x: x0 + dx as i32, y: y0 + (i % 60) });
+            std::thread::sleep(Duration::from_millis(16));
+        }
+        report("move a window (240 steps)", &stats(true));
     }
-    report("move a window (240 steps)", &stats(true));
 
     // A client drawing every frame.
-    kill.0.push(spawn("animate"));
-    windows(4);
-    std::thread::sleep(Duration::from_millis(500));
-    stats(true);
-    std::thread::sleep(Duration::from_secs(3));
-    report("animating client (3s)", &stats(true));
-    // Stop it before the next scenarios.
-    if let Some(mut c) = kill.0.pop() {
-        let _ = c.kill();
-        let _ = c.wait();
+    if want("animating client (3s)") {
+        kill.0.push(spawn("animate"));
+        windows(4);
+        std::thread::sleep(Duration::from_millis(500));
+        stats(true);
+        std::thread::sleep(Duration::from_secs(3));
+        report("animating client (3s)", &stats(true));
+        // Stop it before the next scenarios.
+        if let Some(mut c) = kill.0.pop() {
+            let _ = c.kill();
+            let _ = c.wait();
+        }
+        std::thread::sleep(Duration::from_millis(500));
     }
-    std::thread::sleep(Duration::from_millis(500));
 
     // Switching Desks: full-output damage while sliding.
-    stats(true);
-    for i in 0..12 {
-        req(Request::SetDesk { desk: DeskSel::Index(if i % 2 == 0 { 2 } else { 1 }) });
-        std::thread::sleep(Duration::from_millis(200));
+    if want("desk switches (12, sliding)") {
+        stats(true);
+        for i in 0..12 {
+            req(Request::SetDesk { desk: DeskSel::Index(if i % 2 == 0 { 2 } else { 1 }) });
+            std::thread::sleep(Duration::from_millis(200));
+        }
+        report("desk switches (12, sliding)", &stats(true));
     }
-    report("desk switches (12, sliding)", &stats(true));
 
     // The overview: thumbnails of every window, full damage.
-    stats(true);
-    for _ in 0..8 {
-        req(Request::Overview { state: Some(true) });
-        std::thread::sleep(Duration::from_millis(150));
-        req(Request::Overview { state: Some(false) });
-        std::thread::sleep(Duration::from_millis(150));
+    if want("overview open/close (8)") {
+        stats(true);
+        for _ in 0..8 {
+            req(Request::Overview { state: Some(true) });
+            std::thread::sleep(Duration::from_millis(150));
+            req(Request::Overview { state: Some(false) });
+            std::thread::sleep(Duration::from_millis(150));
+        }
+        report("overview open/close (8)", &stats(true));
     }
-    report("overview open/close (8)", &stats(true));
+
+    let later = [
+        "10 windows, one moving",
+        "recovery: open/close (8)",
+        "recovery: list updating (5s)",
+        "recovery: keys moving (20)",
+        "full-screen client (3s)",
+        "recovery over it (3s)",
+    ];
+    if !later.iter().any(|n| want(n)) {
+        drop(kill);
+        let _ = std::fs::remove_dir_all(&dir);
+        return;
+    }
 
     // Many windows, one moving.
     for _ in 0..7 {
@@ -205,55 +239,61 @@ fn main() {
     std::thread::sleep(Duration::from_millis(1500));
     req(Request::Focus { id });
     std::thread::sleep(Duration::from_millis(200));
-    stats(true);
-    for i in 0..120 {
-        req(Request::Move { id: Some(id), x: x0 + (i * 3) % 400, y: y0 });
-        std::thread::sleep(Duration::from_millis(16));
+    if want("10 windows, one moving") {
+        stats(true);
+        for i in 0..120 {
+            req(Request::Move { id: Some(id), x: x0 + (i * 3) % 400, y: y0 });
+            std::thread::sleep(Duration::from_millis(16));
+        }
+        report("10 windows, one moving", &stats(true));
     }
-    report("10 windows, one moving", &stats(true));
 
     // The recovery overlay over ten windows: opening and closing, the
     // list updating (CPU and memory each second, pings), and moving
     // through it with the keys.
-    std::thread::sleep(Duration::from_millis(2500));
-    stats(true);
-    for _ in 0..8 {
+    if want("recovery: open/close (8)") || want("recovery: list updating (5s)") || want("recovery: keys moving (20)") {
+        std::thread::sleep(Duration::from_millis(2500));
+        stats(true);
+        for _ in 0..8 {
+            keys("ctrl+alt+delete");
+            std::thread::sleep(Duration::from_millis(150));
+            keys("escape");
+            std::thread::sleep(Duration::from_millis(150));
+        }
+        report("recovery: open/close (8)", &stats(true));
         keys("ctrl+alt+delete");
-        std::thread::sleep(Duration::from_millis(150));
+        std::thread::sleep(Duration::from_millis(1500));
+        stats(true);
+        std::thread::sleep(Duration::from_secs(5));
+        report("recovery: list updating (5s)", &stats(true));
+        for _ in 0..20 {
+            keys("down");
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        report("recovery: keys moving (20)", &stats(true));
         keys("escape");
-        std::thread::sleep(Duration::from_millis(150));
+        std::thread::sleep(Duration::from_millis(300));
     }
-    report("recovery: open/close (8)", &stats(true));
-    keys("ctrl+alt+delete");
-    std::thread::sleep(Duration::from_millis(1500));
-    stats(true);
-    std::thread::sleep(Duration::from_secs(5));
-    report("recovery: list updating (5s)", &stats(true));
-    for _ in 0..20 {
-        keys("down");
-        std::thread::sleep(Duration::from_millis(50));
-    }
-    report("recovery: keys moving (20)", &stats(true));
-    keys("escape");
-    std::thread::sleep(Duration::from_millis(300));
 
     // A full-screen client drawing every frame: the whole output damaged.
-    kill.0.push(spawn("animate"));
-    let ws = windows(11);
-    let anim = ws.iter().find(|w| w.title == "Animating").map(|w| w.id).unwrap();
-    req(Request::Fullscreen { id: Some(anim), state: Some(true) });
-    std::thread::sleep(Duration::from_millis(800));
-    stats(true);
-    std::thread::sleep(Duration::from_secs(3));
-    report("full-screen client (3s)", &stats(true));
+    if want("full-screen client (3s)") || want("recovery over it (3s)") {
+        kill.0.push(spawn("animate"));
+        let ws = windows(11);
+        let anim = ws.iter().find(|w| w.title == "Animating").map(|w| w.id).unwrap();
+        req(Request::Fullscreen { id: Some(anim), state: Some(true) });
+        std::thread::sleep(Duration::from_millis(800));
+        stats(true);
+        std::thread::sleep(Duration::from_secs(3));
+        report("full-screen client (3s)", &stats(true));
 
-    // Ctrl+Alt+Del over it: the overlay composited over every frame.
-    keys("ctrl+alt+delete");
-    std::thread::sleep(Duration::from_millis(500));
-    stats(true);
-    std::thread::sleep(Duration::from_secs(3));
-    report("recovery over it (3s)", &stats(true));
-    keys("escape");
+        // Ctrl+Alt+Del over it: the overlay composited over every frame.
+        keys("ctrl+alt+delete");
+        std::thread::sleep(Duration::from_millis(500));
+        stats(true);
+        std::thread::sleep(Duration::from_secs(3));
+        report("recovery over it (3s)", &stats(true));
+        keys("escape");
+    }
 
     drop(kill);
     let _ = std::fs::remove_dir_all(&dir);
