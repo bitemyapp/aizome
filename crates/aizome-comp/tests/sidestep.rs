@@ -187,8 +187,9 @@ fn frosted_shell_surfaces_blur_what_is_behind_them_under_gles_in_full() {
         eprintln!("no GLES here ({}): nothing to blur", stats.renderer);
         return;
     }
-    // A red window whose left edge runs under the panel (200–500 × 120–520).
-    let _a = c.client(Spec::new("test.a", 0xcc2222));
+    // A red window whose left edge runs under the panel (200–500 × 120–520)
+    // and on below it.
+    let _a = c.client(Spec::new("test.a", 0xcc2222).size(300, 400));
     let w = c.wait_window("test.a");
     c.ok(Request::Move { id: Some(w.id), x: 350, y: 250 });
     let _p = run(&c, "frost");
@@ -223,6 +224,11 @@ fn frosted_shell_surfaces_blur_what_is_behind_them_under_gles_in_full() {
     assert!(diff(450, 400) <= 2, "flat window: {:?} vs {:?}", full.px(450, 400), lean.px(450, 400));
     // The hard shadow and everything off the panel are as they were.
     assert_eq!(full.px(501, 380), lean.px(501, 380), "the shadow, beside the face");
+    // Nor does the blur spill past the face: the edge below the panel is
+    // as sharp as ever.
+    for x in [edge - 3, edge, edge + 3] {
+        assert_eq!(full.px(x, 540), lean.px(x, 540), "the window's edge below the panel, at {x}");
+    }
     assert_eq!(full.px(600, 380), lean.px(600, 380), "the window, off the panel");
     assert_eq!(full.px(100, 100), lean.px(100, 100), "the desktop, off the panel");
 }

@@ -463,7 +463,9 @@ uniform sampler2D mask;
 varying vec2 uv;
 varying vec2 mask_uv;
 void main() {
-    if (texture2D(mask, mask_uv).a < FACE_ALPHA) {
+    // Only on the surface (its texture would repeat beyond it).
+    if (mask_uv.x < 0.0 || mask_uv.y < 0.0 || mask_uv.x > 1.0 || mask_uv.y > 1.0
+            || texture2D(mask, mask_uv).a < FACE_ALPHA) {
         discard;
     }
     gl_FragColor = vec4(texture2D(tex, uv).rgb, 1.0);
