@@ -1,7 +1,7 @@
 //! Screen and window sharing in the shell, headless (the compositor's
-//! `shares-changed` sent by hand): the Deskbar's indicator in the accent,
-//! only once a share has lasted, its menu with what's shared, and the
-//! indicator gone when sharing stops.
+//! `shares-changed` sent by hand, which reports a share once it has
+//! lasted a second): the Deskbar's indicator in the accent, its menu with
+//! what's shared, and the indicator gone when sharing stops.
 
 mod common;
 
@@ -20,20 +20,17 @@ fn screen() -> ShareInfo {
     ShareInfo { id: 1, output: Some("eDP-1".into()), window: None, cursor: true }
 }
 
-/// The indicator waits out a share's first second (a screenshot tool's
-/// one-frame capture isn't sharing), on the harness's timer and the wall
-/// clock both.
+/// Lets the bar catch up, on the harness's timer and the wall clock both.
 fn settle(h: &mut aizome_kit::testing::Harness<aizome_shell::shell::Shell>) {
     std::thread::sleep(aizome_shell::sharing::SETTLE + Duration::from_millis(30));
     h.advance(aizome_shell::sharing::SETTLE + Duration::from_millis(30));
 }
 
 #[test]
-fn the_indicator_shows_whats_shared_once_it_lasts() {
+fn the_indicator_shows_whats_shared() {
     let mut h = scene(false);
     let bar = window_titled(&h, "Menu bar");
     shares(&mut h, vec![screen()]);
-    assert!(h.find(bar, "Sharing the screen").is_none(), "not at once");
     settle(&mut h);
     let chip = h.find(bar, "Sharing the screen").expect("the indicator");
     // In the systray, left of the clock.
@@ -50,10 +47,9 @@ fn the_indicator_shows_whats_shared_once_it_lasts() {
 }
 
 #[test]
-fn a_share_that_ends_at_once_never_shows() {
+fn nothing_shared_shows_nothing() {
     let mut h = scene(false);
     let bar = window_titled(&h, "Menu bar");
-    shares(&mut h, vec![screen()]);
     shares(&mut h, Vec::new());
     settle(&mut h);
     assert!(h.find(bar, "Sharing the screen").is_none());

@@ -85,6 +85,9 @@ struct SessionState {
     stream: Option<Stream>,
     /// Whether a frame was ready: later ones wait for changes.
     shown: bool,
+    /// When its first frame was ready: it counts as a share a second
+    /// later.
+    shown_at: Option<Instant>,
     /// Its frame (a session has one at a time).
     frame: Option<ObjectId>,
 }
@@ -386,6 +389,7 @@ fn start(state: &mut State, resource: Session, source: Option<Source>, cursor: b
         dmabuf,
         stream: None,
         shown: false,
+        shown_at: None,
         frame: None,
     });
 }
@@ -470,6 +474,11 @@ pub fn flush(state: &mut State) {
             }
             Ok(Outcome::Copied { damage, fence }) => {
                 s.shown = true;
+                let first_shown = s.shown_at.is_none();
+                s.shown_at.get_or_insert_with(Instant::now);
+                if first_shown {
+                    report_later(state);
+                }
                 state.az.screencopy.stats.record(cpu, None);
                 // A session's first frame is all damage.
                 let damage = if first { vec![Rectangle::from_size(size)] } else { damage_rects(damage, size) };
@@ -554,14 +563,21 @@ fn ready(state: &State, frame: &Frame, damage: &[Rectangle<i32, Physical>]) {
     frame.ready();
 }
 
-/// What's being shared: sessions that showed a frame of a source still
-/// there.
+/// How long a session shows frames before it counts as a share: a
+/// screenshot tool's one frame never does, and nothing is reported while
+/// the portal and the app's PipeWire stream are still starting (in a VM,
+/// an IPC event in that moment left the stream stalled after its first
+/// frame).
+const SHARE_SETTLE: Duration = Duration::from_secs(1);
+
+/// What's being shared: sessions that have shown frames for a while, of a
+/// source still there.
 pub fn shares(az: &Aizome) -> Vec<aizome_ipc::ShareInfo> {
     az.screencopy
         .ext
         .sessions
         .iter()
-        .filter(|s| s.shown)
+        .filter(|s| s.shown_at.is_some_and(|t| t.elapsed() >= SHARE_SETTLE))
         .filter_map(|s| {
             let (output, window) = match s.source.as_ref()? {
                 Source::Output(o) => (Some(o.name()), None),
@@ -604,4 +620,18 @@ pub fn stop(state: &mut State, id: Option<u64>) -> usize {
     });
     report_shares(state);
     stopped.len()
+}
+
+/// Reports the shares once a session that just showed its first frame has
+/// lasted (unless it's gone by then).
+fn report_later(state: &mut State) {
+    use smithay::reexports::calloop::timer::{TimeoutAction, Timer};
+    let timer = Timer::from_duration(SHARE_SETTLE + Duration::from_millis(10));
+    let res = state.az.lh.insert_source(timer, |_, _, state: &mut State| {
+        report_shares(state);
+        TimeoutAction::Drop
+    });
+    if let Err(e) = res {
+        warn!("image copy capture: a timer for the shares: {}", e.error);
+    }
 }

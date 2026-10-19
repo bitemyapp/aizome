@@ -1021,7 +1021,7 @@ impl Shell {
                     Event::ScreenshotTaken { path } => self.screenshot_taken(PathBuf::from(path), cx),
                     Event::NightLightChanged { state } => self.night = Some(state),
                     Event::AreaPicked { tag, area, output, .. } => self.area_picked(&tag, area, output.as_deref(), cx),
-                    Event::SharesChanged { shares } => self.shares_changed(shares, cx),
+                    Event::SharesChanged { shares } => self.shares_changed(shares),
                     _ => {}
                 }
             }
@@ -1030,7 +1030,7 @@ impl Shell {
                 self.night = Some(state)
             }
             IpcEvent::Reply { tag: SHARES_TAG, response: aizome_ipc::Response::Shares { shares } } => {
-                self.shares_changed(shares, cx)
+                self.shares_changed(shares)
             }
             IpcEvent::Reply { .. } => {}
         }

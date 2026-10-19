@@ -21,9 +21,10 @@ pub struct Share {
     pub since: Instant,
 }
 
-/// A share shows once it has lasted this long: a screenshot tool's
-/// capture of one frame isn't sharing.
-pub const SETTLE: Duration = Duration::from_secs(1);
+/// How long a share waits before it shows: no longer, since the
+/// compositor reports a share only once it has lasted a second (a
+/// screenshot tool's capture of one frame isn't sharing).
+pub const SETTLE: Duration = Duration::ZERO;
 
 /// The shares now, keeping when each known one began.
 pub fn update(old: &[Share], new: Vec<ShareInfo>, now: Instant) -> Vec<Share> {
@@ -91,14 +92,8 @@ pub fn menu(shares: &[&Share], outputs: &[OutputInfo], windows: &BTreeMap<Window
 
 impl Shell {
     /// What the compositor says is shared now.
-    pub fn shares_changed(&mut self, shares: Vec<ShareInfo>, cx: &mut Cx<Msg>) {
-        let now = Instant::now();
-        let fresh = shares.iter().any(|s| !self.shares.iter().any(|o| o.info.id == s.id));
-        self.shares = update(&self.shares, shares, now);
-        if fresh {
-            // Shown once it has lasted (if it does).
-            cx.after(SETTLE + Duration::from_millis(20), Msg::Nothing);
-        }
+    pub fn shares_changed(&mut self, shares: Vec<ShareInfo>) {
+        self.shares = update(&self.shares, shares, Instant::now());
     }
 
     /// The bar's indicator, while something has been shared a while.
@@ -149,17 +144,17 @@ mod tests {
     }
 
     #[test]
-    fn shares_show_once_they_last() {
+    fn shares_show_as_reported() {
+        // The compositor reports a share once it has lasted: shown at once.
         let t0 = Instant::now();
         let s = update(&[], vec![info(1, Some("eDP-1"), None)], t0);
-        assert!(settled(&s, t0).is_empty(), "not at once");
-        assert_eq!(settled(&s, t0 + SETTLE).len(), 1);
+        assert_eq!(settled(&s, t0).len(), 1);
         // Known shares keep their start; new ones start now.
         let later = t0 + Duration::from_secs(5);
         let s = update(&s, vec![info(1, Some("eDP-1"), None), info(2, None, Some(7))], later);
         assert_eq!(s[0].since, t0);
         assert_eq!(s[1].since, later);
-        assert_eq!(settled(&s, later).len(), 1);
+        assert_eq!(settled(&s, later).len(), 2);
         assert!(update(&s, Vec::new(), later).is_empty());
     }
 
