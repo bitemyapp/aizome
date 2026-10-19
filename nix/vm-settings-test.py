@@ -470,7 +470,8 @@ def where_and_when():
     """The VM's time zone, the place sunrise and sunset are reckoned for
     (GeoClue's, if the shell kept one, else the zone's city from tzdata),
     and the local day of the year, UTC offset and minutes past midnight."""
-    zone = machine.succeed("timedatectl show -p Timezone --value").strip()
+    zone = localtime_zone()
+    assert "/" in zone, f"no city's time zone here: {zone!r}"
     doy, off, h, m = machine.succeed("date '+%j %z %H %M'").split()
     sign = -1 if off.startswith("-") else 1
     offset = sign * (int(off[1:3]) * 60 + int(off[3:5]))
@@ -490,6 +491,13 @@ def where_and_when():
     return zone, (angle(coords[:split], 2), angle(coords[split:], 3)), f"in {city}", int(doy), offset, int(h) * 60 + int(m)
 
 
+def localtime_zone():
+    """The zone /etc/localtime names, as Aizome reads it ("" for none or UTC)."""
+    status, link = machine.execute("readlink /etc/localtime")
+    link = link.strip() if status == 0 else ""
+    return link.rsplit("zoneinfo/", 1)[-1] if "zoneinfo/" in link else ""
+
+
 def near_minutes(a, b, slack=2):
     return min((a - b) % 1440, (b - a) % 1440) <= slack
 
@@ -501,10 +509,6 @@ def hm_minutes(t):
 
 @part("Sunrise and sunset: Auto's theme turns at them where the computer is, and Night Light's schedule follows them")
 def sun():
-    zone, (lat, lon), where, doy, offset, now = where_and_when()
-    rise, dusk = sun_times(lat, lon, doy, offset)
-    print(f"{zone} ({lat:.2f}, {lon:.2f}): sunrise {rise // 60:02}:{rise % 60:02}, sunset {dusk // 60:02}:{dusk % 60:02}")
-
     S.open("appearance")
     S.press("Auto")
     until("theme = auto", lambda: setting("appearance.theme") == "auto")
@@ -518,6 +522,22 @@ def sun():
     assert follow.get("checked") is False, follow
     S.click(follow)
     until("follow_sunset = true", lambda: setting("appearance.follow_sunset") is True)
+    # A zone that names no place (UTC, as this computer starts, and GeoClue
+    # has nothing to go on offline): no sunrise and sunset to follow, and
+    # it says so; Night Light runs from 19:00 to 07:00.
+    if "/" not in localtime_zone() and setting("location.latitude") is None:
+        until(
+            "the pane to say where isn't known",
+            lambda: any("isn't known" in t for t in S.texts(S.row("appearance", "follow-sunset"))),
+        )
+        night = ipc("night-light")["state"]
+        assert night.get("place") is None and (night.get("from"), night.get("to")) == ("19:00", "07:00"), night
+        # A city's zone: its sunrise and sunset.
+        machine.succeed("timedatectl set-timezone Europe/Paris")
+        reopen("appearance")
+    zone, (lat, lon), where, doy, offset, now = where_and_when()
+    rise, dusk = sun_times(lat, lon, doy, offset)
+    print(f"{zone} ({lat:.2f}, {lon:.2f}): sunrise {rise // 60:02}:{rise % 60:02}, sunset {dusk // 60:02}:{dusk % 60:02}")
     # Settings says when, for where.
     words = until(
         "the hours under the switch",
@@ -557,6 +577,7 @@ def sun():
     S.press("Night")
     until("theme = night", lambda: setting("appearance.theme") == "night")
     S.quit()
+    machine.succeed("timedatectl set-timezone UTC")
 
 
 @part("Desktop & Deskbar: a Desk renamed and added, the Shelf and Trash hidden, tabs minimise on double-click")
@@ -1128,12 +1149,19 @@ def mouse():
     print(f"the same movement took the pointer {slow} then {fast} points")
     assert fast > 1.5 * max(slow, 1), (slow, fast)
 
-    traditional = scrolled_by_wheel(1)
+    # The same turn of the wheel, before and after: the list goes one way,
+    # then back (libinput offers this PS/2 wheel natural scrolling of its
+    # own, so turning it round there too would turn it back: no change).
+    dz = 1
+    traditional = scrolled_by_wheel(dz)
     if traditional == 0:
-        traditional = scrolled_by_wheel(-1)
+        # Already at that end of the list.
+        dz = -1
+        traditional = scrolled_by_wheel(dz)
     S.click(S.control("mouse", "natural-scroll", role="switch"))
     until("natural_scroll = true", lambda: setting("input.pointer.natural_scroll") is True)
-    natural = scrolled_by_wheel(1 if traditional > 0 else -1)
+    time.sleep(1)
+    natural = scrolled_by_wheel(dz)
     print(f"the wheel moved the pane {traditional}, then {natural} with natural scrolling")
     assert traditional * natural < 0, (traditional, natural)
     # A mouse plugged in with natural scrolling already on (libinput can
@@ -1142,12 +1170,13 @@ def mouse():
     if "rror" in added or "not found" in added:
         print("device_add on usb-bus.0:", added)
         machine.send_monitor_command("device_add usb-mouse,id=natmouse")
-    until("the USB mouse", lambda: mouse_index("USB Mouse") is not None)
+    until("the USB mouse", lambda: mouse_index("HID Mouse") is not None)
     time.sleep(2)
-    usb = scrolled_by_wheel(1 if traditional > 0 else -1, kind="USB Mouse")
+    # The other way, which, turned round, goes as the first turn did.
+    usb = scrolled_by_wheel(-dz, kind="HID Mouse")
     print(f"the USB mouse's wheel moved the pane {usb}")
     machine.send_monitor_command("device_del natmouse")
-    assert usb * natural > 0, f"turned round twice: {usb} against {natural}"
+    assert usb * traditional > 0, f"turned round twice: {usb} against {traditional}"
 
     reopen("mouse")
     assert S.checked("mouse", "natural-scroll") is True
@@ -1218,8 +1247,10 @@ def sound():
     vol = S.control("sound", "output-volume", role="slider")
     assert abs(vol["range"][2] - 0.3) < 0.06 or abs(vol["range"][2] - 30) < 6, vol
 
-    # Alerts, heard on the output (its monitor recorded): the bell plays
-    # the alert sound at the alert volume, silent at none...
+    # Alerts, heard on the output (its monitor recorded, the output at full
+    # volume: 30% is about 3% of the signal): the bell plays the alert
+    # sound at the alert volume, silent at none...
+    wpctl("set-volume @DEFAULT_AUDIO_SINK@ 1.0")
     bell = lambda: alice("aizomectl action bell")  # noqa: E731
     loud = loudness_during(bell)
     print(f"the bell peaked at {loud}")
@@ -1227,14 +1258,14 @@ def sound():
     S.slide(S.control("sound", "alert-volume", role="slider"), 0.0)
     until("alert_volume = 0", lambda: setting("sound.alert_volume") == 0.0)
     quiet = loudness_during(bell)
-    assert quiet < 100, f"the bell sounded at no volume ({quiet})"
+    assert quiet < 50, f"the bell sounded at no volume ({quiet})"
     S.slide(S.control("sound", "alert-volume", role="slider"), 0.7)
     until("alert_volume back", lambda: (setting("sound.alert_volume") or 0) > 0.5)
     # (Letting go of the slider plays the alert, to hear it: let it end.)
     time.sleep(3)
     # ...and with feedback on, the volume keys are heard at the new volume.
     silent = loudness_during(lambda: alice("aizomectl action volume-up"))
-    assert silent < 100, f"feedback without asking ({silent})"
+    assert silent < 50, f"feedback without asking ({silent})"
     S.click(S.control("sound", "feedback", role="switch"))
     until("volume_feedback = true", lambda: setting("sound.volume_feedback") is True)
     heard = loudness_during(lambda: alice("aizomectl action volume-down"))
@@ -1242,6 +1273,7 @@ def sound():
     assert heard > 300, f"no feedback from the volume key ({heard})"
     S.click(S.control("sound", "feedback", role="switch"))
     until("volume_feedback = false", lambda: setting("sound.volume_feedback") is False)
+    wpctl("set-volume @DEFAULT_AUDIO_SINK@ 0.3")
     S.quit()
 
 
@@ -1334,7 +1366,13 @@ def network():
     S.click(S.control("network", "airplane", role="switch"))
     until("Wi-Fi off", lambda: "disabled" in machine.succeed("nmcli radio wifi"))
     until("Bluetooth off", lambda: not any(bluetooth_powered().values()))
-    assert "blocked" not in machine.succeed("rfkill -n -o SOFT").replace("unblocked", ""), "rfkill written after all"
+    # Bluetooth went off through BlueZ, not rfkill (NetworkManager blocks
+    # the Wi-Fi radios itself when its Wi-Fi goes off).
+    radios = machine.succeed("rfkill -n -o TYPE,SOFT")
+    print("radios:", radios)
+    assert not any(
+        line.split()[0] == "bluetooth" and line.split()[1] == "blocked" for line in radios.splitlines() if line.strip()
+    ), radios
     time.sleep(1)
     assert S.checked("network", "airplane") is True, "the switch sprang back"
     S.click(S.control("network", "airplane", role="switch"))
