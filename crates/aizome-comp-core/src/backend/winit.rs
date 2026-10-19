@@ -23,6 +23,8 @@ use crate::state::{Aizome, State};
 pub struct WinitBackend {
     backend: WinitGraphicsBackend<GlesRenderer>,
     tracker: Option<OutputDamageTracker>,
+    /// What changed under blurs since the last frame ([`crate::blur`]).
+    blur_probe: crate::blur::Probe,
     output: Option<Output>,
     full_redraw: u8,
 }
@@ -53,7 +55,7 @@ impl WinitBackend {
                 WinitEvent::Focus(_) => {}
             })
             .map_err(|e| e.to_string())?;
-        Ok(WinitBackend { backend, tracker: None, output: None, full_redraw: 4 })
+        Ok(WinitBackend { backend, tracker: None, blur_probe: Default::default(), output: None, full_redraw: 4 })
     }
 
     /// Adds the output and the dmabuf global.
@@ -124,7 +126,8 @@ impl WinitBackend {
         let result = match self.backend.bind() {
             Ok((renderer, mut fb)) => {
                 let scale = output.current_scale().fractional_scale();
-                let elements = crate::render::scene_elements(renderer, scale, &scene);
+                let mut elements = crate::render::scene_elements(renderer, scale, &scene);
+                crate::blur::prepare(&mut self.blur_probe, output, &mut elements, None);
                 render_frame(renderer, &mut fb, tracker, age, &elements, clear, started, false)
             }
             Err(e) => Err(format!("bind: {e}")),

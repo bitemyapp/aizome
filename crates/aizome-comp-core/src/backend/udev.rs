@@ -103,6 +103,8 @@ struct Surface {
     output: Output,
     connector: connector::Handle,
     drm: SurfaceOutput,
+    /// What changed under blurs since the last frame ([`crate::blur`]).
+    blur_probe: crate::blur::Probe,
     redraw: Redraw,
     modes: Vec<smithay::reexports::drm::control::Mode>,
 }
@@ -429,7 +431,8 @@ impl Udev {
                 };
                 match renderer {
                     Ok(mut r) => {
-                        let (elements, clear) = scene_for::<_, GlesRenderbuffer>(&mut r, az, output, &scene, clear);
+                        let (mut elements, clear) = scene_for::<_, GlesRenderbuffer>(&mut r, az, output, &scene, clear);
+                        crate::blur::prepare(&mut surface.blur_probe, output, &mut elements, Some(render_node));
                         match drm.render_frame(&mut r, &elements, clear, frame_flags(az)) {
                             Ok(res) => {
                                 let damaged = !res.is_empty;
@@ -1021,7 +1024,14 @@ fn connector_connected_as(
     };
     device.surfaces.insert(
         crtc,
-        Surface { output: output.clone(), connector: info.handle(), drm: drm_output, redraw: Redraw::Idle, modes },
+        Surface {
+            output: output.clone(),
+            connector: info.handle(),
+            drm: drm_output,
+            blur_probe: Default::default(),
+            redraw: Redraw::Idle,
+            modes,
+        },
     );
     let scale = cfg.as_ref().and_then(|c| c.scale).unwrap_or_else(|| auto_scale(wl_mode.size.w, mm_w as i32));
     let x = state.az.outputs.iter().map(|o| state.az.output_rect(o).right()).max().unwrap_or(0);

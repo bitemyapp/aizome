@@ -245,7 +245,7 @@ pub fn after_fence(state: &mut State, fence: Option<OwnedFd>, done: impl FnOnce(
 /// origin, or a window's surfaces at the origin.
 fn stream_elements<R>(renderer: &mut R, az: &mut Aizome, job: &Job) -> Vec<RelocateRenderElement<OutputElement<R>>>
 where
-    R: Renderer + ImportAll + ImportMem,
+    R: Renderer + ImportAll + ImportMem + crate::blur::BlurRenderer,
     R::TextureId: Clone + Send + 'static,
 {
     let stream = &job.stream;
@@ -320,7 +320,7 @@ fn clear_for(az: &Aizome, stream: &Stream) -> [f32; 4] {
 /// read back as BGRA.
 pub fn copy_gpu<R, T>(renderer: &mut R, az: &mut Aizome, job: &mut Job) -> Result<Outcome, String>
 where
-    R: Renderer + ImportAll + ImportMem + Offscreen<T> + Bind<Dmabuf> + ExportMem,
+    R: Renderer + ImportAll + ImportMem + Offscreen<T> + Bind<Dmabuf> + ExportMem + crate::blur::BlurRenderer,
     R::TextureId: Clone + Send + 'static,
     T: 'static,
 {

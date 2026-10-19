@@ -222,6 +222,8 @@ fn main() {
         "recovery: open/close (8)",
         "recovery: list updating (5s)",
         "recovery: keys moving (20)",
+        "frost: window moving under (Full)",
+        "frost: client drawing under (Full)",
         "full-screen client (3s)",
         "recovery over it (3s)",
     ];
@@ -273,6 +275,45 @@ fn main() {
         report("recovery: keys moving (20)", &stats(true));
         keys("escape");
         std::thread::sleep(Duration::from_millis(300));
+    }
+
+    // The Full effects tier: a frosted menu (90% alpha, as the shell draws
+    // them) with a window moving under it, then a client drawing every
+    // frame under it. Under GLES what's behind it is blurred, again
+    // whenever it changes.
+    if want("frost: window moving under (Full)") || want("frost: client drawing under (Full)") {
+        let settings = dir.join("config/aizome/settings.toml");
+        std::fs::write(&settings, "[appearance]\neffects = \"full\"\n").unwrap();
+        req(Request::ReloadConfig);
+        kill.0.push(spawn("frost"));
+        std::thread::sleep(Duration::from_millis(1000));
+        req(Request::Focus { id });
+        std::thread::sleep(Duration::from_millis(200));
+        stats(true);
+        for i in 0..240 {
+            // Back and forth across the menu (200–500 × 120–520 pt).
+            let x = 60 + ((i as f64 / 240.0 * std::f64::consts::TAU).sin() * 220.0) as i32 + 220;
+            req(Request::Move { id: Some(id), x, y: 220 });
+            std::thread::sleep(Duration::from_millis(16));
+        }
+        report("frost: window moving under (Full)", &stats(true));
+        kill.0.push(spawn("animate"));
+        let ws = windows(11);
+        let anim = ws.iter().find(|w| w.title == "Animating").map(|w| w.id).unwrap();
+        req(Request::Move { id: Some(anim), x: 260, y: 160 });
+        std::thread::sleep(Duration::from_millis(800));
+        stats(true);
+        std::thread::sleep(Duration::from_secs(3));
+        report("frost: client drawing under (Full)", &stats(true));
+        for _ in 0..2 {
+            if let Some(mut c) = kill.0.pop() {
+                let _ = c.kill();
+                let _ = c.wait();
+            }
+        }
+        std::fs::write(&settings, "").unwrap();
+        req(Request::ReloadConfig);
+        std::thread::sleep(Duration::from_millis(500));
     }
 
     // A full-screen client drawing every frame: the whole output damaged.

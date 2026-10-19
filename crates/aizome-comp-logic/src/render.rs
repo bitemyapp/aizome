@@ -89,6 +89,8 @@ pub fn scene(st: &mut State, output: &Output, _purpose: Purpose) -> Scene {
 
     layer_items(output, Layer::Bottom, scale, &mut out);
     layer_items(output, Layer::Background, scale, &mut out);
+    // Under GLES in Full, a blur behind the shell's frosted surfaces.
+    crate::frost::behind(st, output, &mut out);
     out
 }
 

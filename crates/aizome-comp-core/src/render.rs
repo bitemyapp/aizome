@@ -22,16 +22,18 @@ use smithay::wayland::compositor::with_states;
 use smithay::wayland::shell::wlr_layer::Layer;
 
 use crate::WinId;
+use crate::blur::BlurRenderer;
 use crate::input::Owner;
 use crate::scene::{Purpose, Scene, SceneItem};
 use crate::state::{Aizome, State};
 
 smithay::backend::renderer::element::render_elements! {
-    pub OutputElement<R> where R: ImportAll + ImportMem;
+    pub OutputElement<R> where R: ImportAll + ImportMem + BlurRenderer;
     Surface = WaylandSurfaceRenderElement<R>,
     Solid = SolidColorRenderElement,
     Memory = MemoryRenderBufferRenderElement<R>,
     Thumb = CropRenderElement<RelocateRenderElement<RescaleRenderElement<WaylandSurfaceRenderElement<R>>>>,
+    Blur = crate::blur::BlurElement,
 }
 
 /// The colour behind everything.
@@ -83,7 +85,7 @@ impl State {
 /// Render elements for a scene at an output's scale.
 pub fn scene_elements<R>(renderer: &mut R, scale: f64, scene: &Scene) -> Vec<OutputElement<R>>
 where
-    R: Renderer + ImportAll + ImportMem,
+    R: Renderer + ImportAll + ImportMem + crate::blur::BlurRenderer,
     R::TextureId: Clone + Send + 'static,
 {
     let mut out: Vec<OutputElement<R>> = Vec::with_capacity(scene.len() + 16);
@@ -120,6 +122,9 @@ where
                     );
                     CropRenderElement::from_element(e, scale, *crop).map(OutputElement::Thumb)
                 }));
+            }
+            SceneItem::Blur { surface, loc, output } => {
+                out.extend(crate::blur::BlurElement::new(surface, *loc, output, scale).map(OutputElement::Blur));
             }
         }
     }

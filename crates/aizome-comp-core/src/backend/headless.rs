@@ -38,6 +38,8 @@ enum Target {
 struct HeadlessOutputState {
     target: Target,
     tracker: OutputDamageTracker,
+    /// What changed under blurs since the last frame ([`crate::blur`]).
+    blur_probe: crate::blur::Probe,
     rendered_once: bool,
     timer: Option<RegistrationToken>,
 }
@@ -142,6 +144,7 @@ impl Headless {
             HeadlessOutputState {
                 target,
                 tracker: OutputDamageTracker::from_output(output),
+                blur_probe: Default::default(),
                 rendered_once: false,
                 timer: None,
             },
@@ -253,7 +256,8 @@ impl Headless {
         let result = match (&mut self.renderer, &mut hs.target) {
             (HeadlessRenderer::Gles(r), Target::Gles(rb)) => {
                 let r = r.as_mut();
-                let (elements, clear) = scene_for::<_, GlesRenderbuffer>(r, az, output, &scene, clear);
+                let (mut elements, clear) = scene_for::<_, GlesRenderbuffer>(r, az, output, &scene, clear);
+                crate::blur::prepare(&mut hs.blur_probe, output, &mut elements, None);
                 match r.bind(rb) {
                     Ok(mut fb) => render_frame(r, &mut fb, &mut hs.tracker, age, &elements, clear, started, true),
                     Err(e) => Err(format!("bind: {e:?}")),

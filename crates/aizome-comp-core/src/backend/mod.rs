@@ -265,7 +265,7 @@ pub fn render_frame<R>(
     wait_gpu: bool,
 ) -> Result<Frame, String>
 where
-    R: Renderer + ImportAll + ImportMem,
+    R: Renderer + ImportAll + ImportMem + crate::blur::BlurRenderer,
     R::TextureId: Clone + Send + 'static,
 {
     let res = tracker.render_output(renderer, framebuffer, age, elements, clear).map_err(|e| format!("{e:?}"))?;
@@ -409,7 +409,7 @@ pub fn capture_with<R, T>(
     clear: [f32; 4],
 ) -> Result<Capture, String>
 where
-    R: Renderer + ImportAll + ImportMem + Offscreen<T> + Bind<T> + ExportMem,
+    R: Renderer + ImportAll + ImportMem + Offscreen<T> + Bind<T> + ExportMem + crate::blur::BlurRenderer,
     R::TextureId: Clone + Send + 'static,
 {
     let mode = output.current_mode().ok_or("the output has no mode")?;
@@ -442,7 +442,7 @@ pub fn memory_with<R, T>(
     scale: f64,
 ) -> Result<Capture, String>
 where
-    R: Renderer + ImportAll + ImportMem + Offscreen<T> + Bind<T> + ExportMem,
+    R: Renderer + ImportAll + ImportMem + Offscreen<T> + Bind<T> + ExportMem + crate::blur::BlurRenderer,
     R::TextureId: Clone + Send + 'static,
 {
     use smithay::backend::renderer::element::Kind;
@@ -519,7 +519,7 @@ pub fn scene_for<R, T>(
     clear: [f32; 4],
 ) -> (Vec<OutputElement<R>>, [f32; 4])
 where
-    R: Renderer + ImportAll + ImportMem + Offscreen<T> + Bind<T> + ExportMem,
+    R: Renderer + ImportAll + ImportMem + Offscreen<T> + Bind<T> + ExportMem + crate::blur::BlurRenderer,
     R::TextureId: Clone + Send + 'static,
 {
     let Some(source) = az.mirror_source(output) else {
@@ -545,7 +545,7 @@ fn mirror_elements<R, T>(
     clear: [f32; 4],
 ) -> Result<Vec<OutputElement<R>>, String>
 where
-    R: Renderer + ImportAll + ImportMem + Offscreen<T> + Bind<T> + ExportMem,
+    R: Renderer + ImportAll + ImportMem + Offscreen<T> + Bind<T> + ExportMem + crate::blur::BlurRenderer,
     R::TextureId: Clone + Send + 'static,
 {
     use smithay::backend::renderer::element::Kind;

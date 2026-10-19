@@ -50,6 +50,10 @@ pub enum SceneItem {
         target: Point<i32, Physical>,
         crop: Rectangle<i32, Physical>,
     },
+    /// A blur of what's behind a surface, under the surface's face (put
+    /// it straight behind the surface's own item: [`crate::blur`]). GLES
+    /// only; nothing under pixman.
+    Blur { surface: WlSurface, loc: Point<i32, Physical>, output: String },
 }
 
 /// Scene items, front first.

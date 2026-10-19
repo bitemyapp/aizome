@@ -16,6 +16,7 @@
 //! here; the re-exports below are for logic code that prefers one path.
 
 pub mod backend;
+pub mod blur;
 pub mod cli;
 pub mod config;
 pub mod cursor;

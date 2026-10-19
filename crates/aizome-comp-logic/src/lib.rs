@@ -31,6 +31,7 @@ pub mod bindings;
 pub mod cmdkey;
 pub mod config;
 pub mod decor;
+pub mod frost;
 pub mod grabs;
 pub mod hooks;
 pub mod input;
