@@ -168,6 +168,8 @@ fn force_quit_kills_the_apps_process() {
     let st = recovery(&c);
     assert!(st.open);
     assert!(st.message.as_deref().is_some_and(|m| m.starts_with("Force quit")), "{st:?}");
+    // Its row goes with its last window, not at the overlay's next tick.
+    assert!(!st.apps.iter().any(|a| a.app_id == "org.example.Victim"), "{st:?}");
     // The compositor itself, and the test running it, are fine.
     assert!(matches!(c.request(Request::Version), Response::Version { .. }));
 }

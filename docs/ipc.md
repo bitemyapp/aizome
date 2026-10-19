@@ -83,7 +83,9 @@ Protocol version: **1** (`version` reports it).
 | `recovery-action` | `action`, `app_id?` | `message {message}` or `error`; does one of the overlay's actions, open or not: `force-quit` and `close` (with `app_id`), `reset-input`, `restart-shell`, `reload-compositor`, `lock`, `log-out`, `text-console`. Over the lock screen only `reset-input`, `restart-shell` and `text-console` |
 | `input-state` | | `input-state {state: InputState}` |
 | `debug-stall` | `seconds` | `ok` after blocking the main loop that long (at most 60 s), to try the watchdog (`docs/recovery.md`) |
-| `pick-area` | `tag?` | `ok` at once; the screenshot picker opens (drag over an area, click for the whole display under the pointer, Space and a click for a window, Esc to give up) and its pick is sent to subscribers as `area-picked` with this tag, not taken as a screenshot. The shell uses it to choose what to record |
+| `pick-area` | `tag?`, `prompt?`, `targets?` | `ok` at once; the screenshot picker opens (drag over an area, click for the whole display under the pointer, Space and a click for a window, Esc to give up), says `pick-started` with this tag, and its pick is sent to subscribers as `area-picked` with it, not taken as a screenshot. `targets` narrows what may be picked (`area`, `display`, `window`; all when left out): without `area` a drag picks the display under the pointer, with `window` alone the picker starts at windows, and in window mode a click on no window keeps picking. `prompt` puts a banner at the top of each display saying what the pick is for, with the keys. The shell uses it to choose what to record, `aizome-share-picker` what to share |
+| `shares` | | `shares {shares: [ShareInfo]}`: what's being shared through ext-image-copy-capture (browsers' screen and window sharing): sessions that have shown frames for a second (so not a screenshot tool's single frame), `{id, output?, window?, cursor}` |
+| `stop-share` | `id?` | `ok`, or `error` when nothing (or no such share) is shared; stops the share (every one without `id`) as if its source had gone: the session says `stopped`, so the portal ends the stream and the app hears the track ended |
 
 `desk` is a 1-based position (`2`) or a name (`"Mail"`). `transform` is
 `normal`, `90`, `180`, `270`, `flipped`, `flipped-90`, `flipped-180` or
@@ -205,7 +207,9 @@ and for wl_shm reading it back).
 | `night-light-changed` | `state` | Night Light turned on or off, or warmed or cooled (the schedule) |
 | `reloaded` | `report` | a `reload` did something (as its response says) |
 | `logic-failed` | `message`, `action` | the compositor's logic panicked, and what the core did (rolled back, restarted it, set it aside) |
-| `area-picked` | `tag`, `area?` (`{x,y,w,h}` in points; `null` when given up), `output?` (the one holding its centre), `window?` (when a window was picked) | the picker opened by `pick-area` closed |
+| `pick-started` | `tag` | the picker `pick-area` asked for is up |
+| `area-picked` | `tag`, `area?` (`{x,y,w,h}` in points; `null` when given up), `output?` (the one holding its centre), `window?` and `toplevel?` (when a window was picked: its ID, and its ext-foreign-toplevel-list identifier, which is how xdg-desktop-portal-wlr names it) | the picker opened by `pick-area` closed |
+| `shares-changed` | `shares` | something began or stopped being shared (as `shares` answers) |
 
 ## Bindings
 

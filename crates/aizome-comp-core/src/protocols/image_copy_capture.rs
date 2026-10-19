@@ -64,10 +64,16 @@ pub struct ImageCopyCaptureState {
     /// Captures waiting to be made: for the loop to come round, or for a
     /// change.
     pending: Vec<Pending>,
+    /// The last session's number (shares are named by it).
+    serial: u64,
+    /// The shares last reported to IPC subscribers.
+    reported: Vec<aizome_ipc::ShareInfo>,
 }
 
 struct SessionState {
     resource: Session,
+    /// Its number, as a share.
+    id: u64,
     /// `None` once stopped.
     source: Option<Source>,
     cursor: bool,
@@ -79,6 +85,9 @@ struct SessionState {
     stream: Option<Stream>,
     /// Whether a frame was ready: later ones wait for changes.
     shown: bool,
+    /// When its first frame was ready: it counts as a share a second
+    /// later.
+    shown_at: Option<Instant>,
     /// Its frame (a session has one at a time).
     frame: Option<ObjectId>,
 }
@@ -124,7 +133,7 @@ impl ImageCopyCaptureState {
         dh.create_global::<State, Manager, _>(1, data(&filter));
         dh.create_global::<State, OutputSources, _>(1, data(&filter));
         dh.create_global::<State, ToplevelSources, _>(1, data(&filter));
-        ImageCopyCaptureState { sessions: Vec::new(), pending: Vec::new() }
+        ImageCopyCaptureState { sessions: Vec::new(), pending: Vec::new(), serial: 0, reported: Vec::new() }
     }
 }
 
@@ -367,8 +376,12 @@ fn start(state: &mut State, resource: Session, source: Option<Source>, cursor: b
             (None, Size::default(), 1.0)
         }
     };
-    state.az.screencopy.ext.sessions.push(SessionState {
+    let ext = &mut state.az.screencopy.ext;
+    ext.serial += 1;
+    let id = ext.serial;
+    ext.sessions.push(SessionState {
         resource,
+        id,
         source,
         cursor,
         size,
@@ -376,6 +389,7 @@ fn start(state: &mut State, resource: Session, source: Option<Source>, cursor: b
         dmabuf,
         stream: None,
         shown: false,
+        shown_at: None,
         frame: None,
     });
 }
@@ -417,9 +431,11 @@ fn session_mut<'a>(ext: &'a mut ImageCopyCaptureState, id: &ObjectId) -> Option<
 /// time has come (after every loop iteration, from `screencopy`).
 pub fn flush(state: &mut State) {
     if state.az.screencopy.ext.sessions.is_empty() {
+        report_shares(state);
         return;
     }
     follow_sources(state);
+    report_shares(state);
     let pending = std::mem::take(&mut state.az.screencopy.ext.pending);
     for mut p in pending {
         if !p.frame.is_alive() {
@@ -458,6 +474,11 @@ pub fn flush(state: &mut State) {
             }
             Ok(Outcome::Copied { damage, fence }) => {
                 s.shown = true;
+                let first_shown = s.shown_at.is_none();
+                s.shown_at.get_or_insert_with(Instant::now);
+                if first_shown {
+                    report_later(state);
+                }
                 state.az.screencopy.stats.record(cpu, None);
                 // A session's first frame is all damage.
                 let damage = if first { vec![Rectangle::from_size(size)] } else { damage_rects(damage, size) };
@@ -540,4 +561,77 @@ fn ready(state: &State, frame: &Frame, damage: &[Rectangle<i32, Physical>]) {
     let secs = t.as_secs();
     frame.presentation_time((secs >> 32) as u32, secs as u32, t.subsec_nanos());
     frame.ready();
+}
+
+/// How long a session shows frames before it counts as a share: a
+/// screenshot tool's one frame never does, and nothing is reported while
+/// the portal and the app's PipeWire stream are still starting (in a VM,
+/// an IPC event in that moment left the stream stalled after its first
+/// frame).
+const SHARE_SETTLE: Duration = Duration::from_secs(1);
+
+/// What's being shared: sessions that have shown frames for a while, of a
+/// source still there.
+pub fn shares(az: &Aizome) -> Vec<aizome_ipc::ShareInfo> {
+    az.screencopy
+        .ext
+        .sessions
+        .iter()
+        .filter(|s| s.shown_at.is_some_and(|t| t.elapsed() >= SHARE_SETTLE))
+        .filter_map(|s| {
+            let (output, window) = match s.source.as_ref()? {
+                Source::Output(o) => (Some(o.name()), None),
+                Source::Window(w) => (None, Some(*w)),
+            };
+            Some(aizome_ipc::ShareInfo { id: s.id, output, window, cursor: s.cursor })
+        })
+        .collect()
+}
+
+/// Tells IPC subscribers when what's shared changed (the shell's
+/// indicator).
+fn report_shares(state: &mut State) {
+    let now = shares(&state.az);
+    if now != state.az.screencopy.ext.reported {
+        state.az.ipc.emit(&aizome_ipc::Event::SharesChanged { shares: now.clone() });
+        state.az.screencopy.ext.reported = now;
+    }
+}
+
+/// Stops a share (every one without `id`), as if its source had gone: the
+/// session says `stopped` and a frame waiting fails, so the portal ends
+/// the stream and the app sharing it hears the track ended. How many
+/// stopped.
+pub fn stop(state: &mut State, id: Option<u64>) -> usize {
+    let ext = &mut state.az.screencopy.ext;
+    let mut stopped = Vec::new();
+    for s in ext.sessions.iter_mut().filter(|s| s.source.is_some() && id.is_none_or(|id| s.id == id)) {
+        s.source = None;
+        s.stream = None;
+        s.resource.stopped();
+        stopped.push(s.resource.id());
+    }
+    ext.pending.retain(|p| {
+        let stop = stopped.contains(&p.session);
+        if stop {
+            p.frame.failed(frame::FailureReason::Stopped);
+        }
+        !stop
+    });
+    report_shares(state);
+    stopped.len()
+}
+
+/// Reports the shares once a session that just showed its first frame has
+/// lasted (unless it's gone by then).
+fn report_later(state: &mut State) {
+    use smithay::reexports::calloop::timer::{TimeoutAction, Timer};
+    let timer = Timer::from_duration(SHARE_SETTLE + Duration::from_millis(10));
+    let res = state.az.lh.insert_source(timer, |_, _, state: &mut State| {
+        report_shares(state);
+        TimeoutAction::Drop
+    });
+    if let Err(e) = res {
+        warn!("image copy capture: a timer for the shares: {}", e.error);
+    }
 }

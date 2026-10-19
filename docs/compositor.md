@@ -193,7 +193,24 @@ Notes for client authors:
   once. The portal can make a frame before destroying its last when its
   stream pauses and resumes as a consumer links: the newer frame takes
   over (and the older is never answered) instead of a `duplicate_frame`
-  error ending its connection.
+  error ending its connection. A session that has shown frames for a
+  second is a share (reported then, from a timer: an IPC event at the
+  first frame, while the portal and the app's PipeWire stream were still
+  starting, left the stream stuck after one frame in the VM): IPC `shares`
+  lists them, `shares-changed` tells the shell (its Deskbar indicator),
+  and `stop-share` stops one as if its source had gone. In Aizome sessions
+  the portal asks `aizome-share-picker` what to share (the NixOS module
+  sets it as the portal's `chooser_cmd`, with `chooser_type=dmenu`): it
+  reads the displays and windows the portal offers, opens the picker
+  (`pick-area` with displays and windows only, and a banner saying what's
+  being chosen), and prints the portal's line
+  for the display clicked or the window clicked after Space (matched by
+  its ext-foreign-toplevel identifier). Esc prints nothing, and the
+  portal refuses the share. The portal reads its config only from
+  `~/.config` or its own package, not `XDG_CONFIG_DIRS`, so the module's
+  drop-in for its user service starts it with
+  `/etc/xdg/aizome/xdg-desktop-portal-wlr/config` in Aizome sessions,
+  unless the person has a config of their own.
 
 ## Displays
 
@@ -251,7 +268,9 @@ Notes for client authors:
   time (none in Austere or with reduced motion).
 - **Overview** (⌃❖↑), **switcher** (❖Tab), **marking menu** (right press
   on a tab), **area screenshots** (❖⇧4; the shell borrows the picker with
-  IPC `pick-area` to choose what to record): see `docs/ipc.md` for their
+  IPC `pick-area` to choose what to record, and `aizome-share-picker` to
+  choose what to share, a display or a window, under a banner saying so):
+  see `docs/ipc.md` for their
   keys.
 
 ## Inside
@@ -288,7 +307,7 @@ the desktop.
 | `wm/` | The model: windows, stacking, focus history, tab groups, Desks, placement, fill/split/full screen. Plain Rust, unit-tested; saved and restored across reloads. |
 | `actions.rs`, `hooks.rs` | Window lifecycle, placement and the hook table the core calls |
 | `decor.rs`, `render.rs` | Tab and frame layout and hit testing; the scene per output, front to back |
-| `overlays/` | Stack-drop feedback, marking menu, switcher, overview, area picker |
+| `overlays/` | Stack-drop feedback, marking menu, switcher, overview, area picker (screenshots, and the picks the shell and the share picker ask for, with the sharing banner) |
 | `input.rs`, `grabs.rs`, `bindings.rs`, `cmdkey.rs` | Key and pointer handling after the core's; move, resize, tab slide and box grabs; the binding table and ❖ translation |
 | `anim.rs`, `memory.rs`, `requests.rs`, `config.rs` | Motion; remembered places; the IPC requests about windows and Desks; settings |
 
@@ -309,7 +328,10 @@ nix develop --command cargo test -p aizome-comp
   installed.
 - `tests/overlays.rs`: the switcher, the overview, the marking menu, and
   the area picker reporting its pick to the shell (`pick-area`): a drag,
-  a click for the display, Space for a window, Esc.
+  a click for the display, Space for a window, Esc; and for sharing,
+  displays and windows only (a drag is the display, a window comes with
+  its ext-foreign-toplevel identifier, a click on no window keeps
+  picking, windows alone start at windows).
 - `tests/keys.rs`: ❖ as Ctrl, Ctrl+Shift in terminals, ❖ for kit apps,
   system and shell chords.
 - `tests/settings.rs`: tab double-click, scroll factor, sticky and slow
@@ -335,7 +357,8 @@ nix develop --command cargo test -p aizome-comp
   several changes and none without one, into wl_shm under pixman and GLES
   and into a dmabuf on the render node; a window's content alone, new
   constraints on a resize and a stop when it closes; a second frame
-  taking over from the first.
+  taking over from the first; shares reported (`shares`,
+  `shares-changed`) and stopped (`stop-share`).
 - `tests/focus.rs`: a shell-like wayland-client (layer surfaces and their
   popups): exclusive and on-demand keyboard interactivity, grabbing menus
   getting the keys and giving them back, menus closing for an exclusive

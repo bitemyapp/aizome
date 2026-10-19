@@ -31,6 +31,7 @@ pub mod power;
 pub mod recording;
 mod recording_glue;
 pub mod services;
+pub mod sharing;
 pub mod shelf;
 pub mod shell;
 pub mod sound;

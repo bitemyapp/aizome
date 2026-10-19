@@ -523,6 +523,7 @@ impl XdgShellHandler for State {
     fn toplevel_destroyed(&mut self, surface: ToplevelSurface) {
         if let Some(id) = self.az.window_for_surface(surface.wl_surface()) {
             self.unmap_window(id);
+            crate::recovery::windows_changed(self);
         }
         self.az.unmapped.retain(|u| u.window.toplevel().is_some_and(|t| t != &surface));
     }

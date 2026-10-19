@@ -399,7 +399,50 @@ pub enum Request {
     PickArea {
         #[serde(default)]
         tag: String,
+        /// A banner across the displays saying what the pick is for.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        prompt: Option<String>,
+        /// What may be picked (empty: all three).
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        targets: Vec<PickTarget>,
     },
+    /// What's being shared (screencasts through ext-image-copy-capture:
+    /// browsers' screen and window sharing). → [`Response::Shares`].
+    Shares,
+    /// Stops a share (all of them without `id`): the sharing app is told
+    /// the screen or window is no longer available.
+    StopShare {
+        #[serde(default)]
+        id: Option<u64>,
+    },
+}
+
+/// What [`Request::PickArea`] may pick.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum PickTarget {
+    /// An area dragged over.
+    Area,
+    /// A whole display, with a click.
+    Display,
+    /// A window, with Space and a click.
+    Window,
+}
+
+/// A screen or window being shared.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ShareInfo {
+    /// For [`Request::StopShare`].
+    pub id: u64,
+    /// The display shared, by name.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output: Option<String>,
+    /// The window shared.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub window: Option<WindowId>,
+    /// Whether the pointer is in the picture.
+    #[serde(default)]
+    pub cursor: bool,
 }
 
 /// An input event for [`Request::Synthesize`].
@@ -482,6 +525,9 @@ pub enum Response {
     },
     InputState {
         state: InputState,
+    },
+    Shares {
+        shares: Vec<ShareInfo>,
     },
     Reload {
         report: ReloadReport,
@@ -848,6 +894,19 @@ pub enum Event {
         /// with the tab.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         window: Option<WindowId>,
+        /// The picked window's ext-foreign-toplevel-list identifier, as
+        /// xdg-desktop-portal-wlr names windows.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        toplevel: Option<String>,
+    },
+    /// The picker a [`Request::PickArea`] asked for is up (so a script can
+    /// start picking).
+    PickStarted {
+        tag: String,
+    },
+    /// What's being shared changed (see [`Request::Shares`]).
+    SharesChanged {
+        shares: Vec<ShareInfo>,
     },
 }
 
@@ -993,14 +1052,33 @@ mod tests {
         let e = Event::Binding { action: "palette".into(), pointer: None, output: None };
         assert_eq!(serde_json::to_string(&e).unwrap(), r#"{"event":"binding","action":"palette"}"#);
         let r: Request = serde_json::from_str(r#"{"request":"pick-area","tag":"record"}"#).unwrap();
-        assert_eq!(r, Request::PickArea { tag: "record".into() });
-        let e = Event::AreaPicked { tag: "record".into(), area: None, output: None, window: None };
+        assert_eq!(r, Request::PickArea { tag: "record".into(), prompt: None, targets: Vec::new() });
+        let r: Request = serde_json::from_str(
+            r#"{"request":"pick-area","tag":"share","prompt":"Share","targets":["display","window"]}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            r,
+            Request::PickArea {
+                tag: "share".into(),
+                prompt: Some("Share".into()),
+                targets: vec![PickTarget::Display, PickTarget::Window]
+            }
+        );
+        let e = Event::SharesChanged {
+            shares: vec![ShareInfo { id: 3, output: Some("eDP-1".into()), ..Default::default() }],
+        };
+        assert_eq!(
+            serde_json::to_string(&e).unwrap(),
+            r#"{"event":"shares-changed","shares":[{"id":3,"output":"eDP-1","cursor":false}]}"#
+        );
+        let e = Event::AreaPicked { tag: "record".into(), area: None, output: None, window: None, toplevel: None };
         assert_eq!(serde_json::to_string(&e).unwrap(), r#"{"event":"area-picked","tag":"record","area":null}"#);
         assert_eq!(serde_json::from_str::<Event>(r#"{"event":"area-picked","tag":"t"}"#).unwrap(), e_tag("t"));
     }
 
     fn e_tag(tag: &str) -> Event {
-        Event::AreaPicked { tag: tag.into(), area: None, output: None, window: None }
+        Event::AreaPicked { tag: tag.into(), area: None, output: None, window: None, toplevel: None }
     }
 
     #[test]

@@ -157,6 +157,11 @@ impl State {
                 Response::Ok
             }
             Request::Subscribe => Response::Ok,
+            Request::Shares => Response::Shares { shares: crate::protocols::image_copy_capture::shares(&self.az) },
+            Request::StopShare { id } => match crate::protocols::image_copy_capture::stop(self, id) {
+                0 => return Err(id.map_or("nothing is shared".into(), |id| format!("no share {id}"))),
+                _ => Response::Ok,
+            },
             Request::Synthesize { events } => {
                 for e in events {
                     self.synthesize(e)?;

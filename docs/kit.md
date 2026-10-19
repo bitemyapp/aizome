@@ -420,9 +420,12 @@ Sidestep colours (`surface()`, `chrome()`, `raised()`, `sunk()`, `line()`,
 Archivo for the interface, IBM Plex Mono for code, shortcuts and numbers
 (tabular), Noto Sans Symbols 2 for the modifier glyphs.
 
-Fonts: at start the kit installs, for the process, the families fontconfig
-doesn't have from `$AIZOME_FONT_DIR`, else `../share/aizome/fonts` beside
-the executable; without them the system's sans and mono stand in.
+Fonts: at start the kit installs, for the process, the faces in
+`$AIZOME_FONT_DIR`, which then win over the system's copies of their
+families (a font installed for the process is found first), so tests and
+goldens draw with those files whatever versions the system has; and the
+families fontconfig doesn't have from `../share/aizome/fonts` beside the
+executable. Without them the system's sans and mono stand in.
 
 ## Performance
 
@@ -518,7 +521,14 @@ the theme switchable; the kit's goldens in `tests/snapshots` are its pages.
 keeps changing something every 20 ms (for `SIDESTEP_FRAME_STATS=1`).
 
 Set `AIZOME_FONT_DIR` to the fonts (`~/work/.aizome-fonts` here) so
-pictures use Aizome's type.
+pictures use Aizome's type. The folder is made from the flake, so it holds
+exactly the files the session installs (`nix/module.nix`'s `fonts.packages`:
+Archivo from `nix/fonts.nix`, nixpkgs' IBM Plex Mono and Noto Sans Symbols
+2): `nix build .#fonts -o ~/work/.aizome-fonts`, again whenever `flake.lock`
+moves nixpkgs. (The module takes IBM Plex and Noto from the system's
+nixpkgs: the same files while the system follows the flake's.) Goldens
+are drawn with it; one that changes after that is a change of type, to
+bless with `AIZOME_UPDATE_GOLDENS=1`.
 
 To run an app's real windows without touching a live session, run it under
 the headless sway (`sidestep-aizome/scripts/headless-wayland`) with
