@@ -121,6 +121,9 @@ pub struct Udev {
     seat: String,
     primary_gpu: DrmNode,
     renderers: Renderers,
+    /// Thumbnails drawn once and kept (pixman), in the dumb buffers'
+    /// channel order.
+    thumbs: crate::thumbs::ThumbCache,
     devices: HashMap<DrmNode, Device>,
     // Kept so the context lives as long as the backend.
     #[allow(dead_code)]
@@ -237,6 +240,7 @@ impl Udev {
             seat,
             primary_gpu,
             renderers,
+            thumbs: crate::thumbs::ThumbCache::new(Fourcc::Argb8888),
             devices: HashMap::new(),
             libinput,
             input_devices: Vec::new(),
@@ -400,7 +404,7 @@ impl Udev {
         &mut self,
         az: &mut Aizome,
         output: &Output,
-        scene: crate::scene::Scene,
+        mut scene: crate::scene::Scene,
         clear: [f32; 4],
         started: Instant,
     ) {
@@ -442,6 +446,7 @@ impl Udev {
                 }
             }
             (Renderers::Pixman(r), SurfaceOutput::Pixman(drm)) => {
+                self.thumbs.bake(r, &mut scene, output.current_scale().fractional_scale());
                 let (elements, clear) =
                     scene_for::<_, smithay::reexports::pixman::Image<'static, 'static>>(r, az, output, &scene, clear);
                 match drm.render_frame(r, &elements, clear, frame_flags(az)) {
@@ -482,8 +487,11 @@ impl Udev {
                 capture_with::<UdevRenderer<'_>, GlesRenderbuffer>(&mut r, az, output, scene, clear)
             }
             Renderers::Pixman(r) => {
+                // As the screen shows it.
+                let mut scene = scene.clone();
+                self.thumbs.bake(r, &mut scene, output.current_scale().fractional_scale());
                 capture_with::<PixmanRenderer, smithay::reexports::pixman::Image<'static, 'static>>(
-                    r, az, output, scene, clear,
+                    r, az, output, &scene, clear,
                 )
             }
         }

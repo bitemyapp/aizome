@@ -46,6 +46,7 @@ pub mod state;
 pub mod stats;
 pub mod svg;
 pub mod text;
+pub mod thumbs;
 pub mod timers;
 pub mod view;
 pub mod watchdog;

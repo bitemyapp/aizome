@@ -44,6 +44,8 @@ struct HeadlessOutputState {
 
 pub struct Headless {
     pub renderer: HeadlessRenderer,
+    /// Thumbnails drawn once and kept (pixman).
+    thumbs: crate::thumbs::ThumbCache,
     outputs: HashMap<Output, HeadlessOutputState>,
     render_node: Option<DrmNode>,
     configs: Vec<HeadlessOutput>,
@@ -63,7 +65,13 @@ impl Headless {
                 }
             },
         };
-        Headless { renderer, outputs: HashMap::new(), render_node, configs: outputs }
+        Headless {
+            renderer,
+            thumbs: crate::thumbs::ThumbCache::new(Fourcc::Abgr8888),
+            outputs: HashMap::new(),
+            render_node,
+            configs: outputs,
+        }
     }
 
     pub fn renderer_name(&self) -> &'static str {
@@ -233,7 +241,7 @@ impl Headless {
         &mut self,
         az: &mut Aizome,
         output: &Output,
-        scene: crate::scene::Scene,
+        mut scene: crate::scene::Scene,
         clear: [f32; 4],
         started: Instant,
     ) {
@@ -252,6 +260,7 @@ impl Headless {
                 }
             }
             (HeadlessRenderer::Pixman(r), Target::Pixman(img)) => {
+                self.thumbs.bake(r, &mut scene, output.current_scale().fractional_scale());
                 let (elements, clear) =
                     scene_for::<_, smithay::reexports::pixman::Image<'static, 'static>>(r, az, output, &scene, clear);
                 match r.bind(img) {
@@ -303,10 +312,14 @@ impl Headless {
             HeadlessRenderer::Gles(r) => {
                 capture_with::<GlesRenderer, GlesRenderbuffer>(r.as_mut(), az, output, scene, clear)
             }
-            HeadlessRenderer::Pixman(r) => capture_with::<
-                PixmanRenderer,
-                smithay::reexports::pixman::Image<'static, 'static>,
-            >(r, az, output, scene, clear),
+            HeadlessRenderer::Pixman(r) => {
+                // As the screen shows it.
+                let mut scene = scene.clone();
+                self.thumbs.bake(r, &mut scene, output.current_scale().fractional_scale());
+                capture_with::<PixmanRenderer, smithay::reexports::pixman::Image<'static, 'static>>(
+                    r, az, output, &scene, clear,
+                )
+            }
         }
     }
 }
