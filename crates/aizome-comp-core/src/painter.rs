@@ -6,7 +6,7 @@
 
 use aizome_theme::{Palette, Rgba};
 use smithay::backend::renderer::element::Kind;
-use smithay::utils::{Logical, Physical, Point};
+use smithay::utils::{Logical, Physical, Point, Rectangle};
 
 use crate::icons::Icons;
 use crate::pieces::{DecorCache, Piece};
@@ -27,6 +27,9 @@ pub struct Painter {
     pub scale: f64,
     /// Everything fades by this (overlays coming in).
     pub alpha: f32,
+    /// The opaque colour under everything drawn, when nothing else is
+    /// (the overview covers the desktop: the frame's clear colour).
+    pub ground: Option<Rgba>,
 }
 
 /// A rectangle in points with fractions.
@@ -61,7 +64,7 @@ impl Box2 {
 
 impl Painter {
     pub fn new(origin: (f64, f64), scale: f64, alpha: f32) -> Painter {
-        Painter { items: Vec::new(), origin, scale, alpha }
+        Painter { items: Vec::new(), origin, scale, alpha, ground: None }
     }
 
     pub fn fill(&mut self, b: Box2, color: Rgba) {
@@ -172,14 +175,25 @@ impl Painter {
     }
 
     /// The scene items, front first, with stable identities from `cache`.
+    ///
+    /// A see-through piece (its own alpha, or the painter's while fading)
+    /// lying wholly on one flat colour is drawn as the opaque colour the
+    /// two make: the same pixels, but filled rather than blended, and it
+    /// hides what's under it from the renderer. Under pixman a blend
+    /// costs a read of every pixel it covers; the overview fading in
+    /// blended the whole output several times a frame.
     pub fn finish(self, cache: &mut DecorCache) -> Scene {
-        let alpha = self.alpha;
+        let flat = self.flatten();
         let mut out = Vec::new();
         let mut slot = 0;
-        for item in self.items {
+        for (item, flat) in self.items.into_iter().zip(flat) {
             match item {
                 Item::Piece(p) => {
-                    if let Some(e) = cache.element(slot, &p, self.origin, self.scale, alpha) {
+                    let e = match flat {
+                        Some(c) => cache.element(slot, &Piece { color: c, ..p }, self.origin, self.scale, 1.0),
+                        None => cache.element(slot, &p, self.origin, self.scale, self.alpha),
+                    };
+                    if let Some(e) = e {
                         out.push(vec![SceneItem::Solid(e)]);
                     }
                     slot += 1;
@@ -189,6 +203,81 @@ impl Painter {
         }
         out.into_iter().rev().flatten().collect()
     }
+
+    /// For each item, the opaque colour a piece shows as, when it can be
+    /// drawn as one (see [`Painter::finish`]).
+    fn flatten(&self) -> Vec<Option<Rgba>> {
+        let rect = |p: &Piece| crate::pieces::to_physical(p.x, p.y, p.w, p.h, self.origin, self.scale);
+        let bounds: Vec<Option<Rectangle<i32, Physical>>> = self
+            .items
+            .iter()
+            .map(|i| match i {
+                Item::Piece(p) => Some(rect(p)),
+                Item::Items(items) => items_bounds(items, self.scale),
+            })
+            .collect();
+        let mut flat: Vec<Option<Rgba>> = Vec::with_capacity(self.items.len());
+        for (i, item) in self.items.iter().enumerate() {
+            let Item::Piece(p) = item else {
+                flat.push(None);
+                continue;
+            };
+            let a = p.color.a as f32 / 255.0 * self.alpha;
+            let r = bounds[i].unwrap_or_default();
+            if a >= 1.0 {
+                flat.push(Some(p.color));
+                continue;
+            }
+            if r.is_empty() {
+                flat.push(None);
+                continue;
+            }
+            // What's under it: the nearest item below that touches it must
+            // be a flat colour covering all of it.
+            let mut under = self.ground;
+            for j in (0..i).rev() {
+                let Some(b) = bounds[j] else {
+                    // Something of unknown extent: it may be under.
+                    under = None;
+                    break;
+                };
+                if !b.overlaps(r) {
+                    continue;
+                }
+                under = if b.contains_rect(r) { flat[j] } else { None };
+                break;
+            }
+            flat.push(under.map(|u| over(p.color, a, u)));
+        }
+        flat
+    }
+}
+
+/// `c` at alpha `a` (its own alpha times any fading) over an opaque colour.
+fn over(c: Rgba, a: f32, under: Rgba) -> Rgba {
+    let mix = |s: u8, d: u8| (s as f32 * a + d as f32 * (1.0 - a)).round().clamp(0.0, 255.0) as u8;
+    Rgba { r: mix(c.r, under.r), g: mix(c.g, under.g), b: mix(c.b, under.b), a: 255 }
+}
+
+/// Where scene items draw, in pixels, when that's known.
+fn items_bounds(items: &[SceneItem], scale: f64) -> Option<Rectangle<i32, Physical>> {
+    let mut all: Option<Rectangle<i32, Physical>> = None;
+    for item in items {
+        let r = match item {
+            SceneItem::Memory { loc, size: Some(size), .. } => {
+                let s = size.to_f64().to_physical(scale);
+                Rectangle::new(loc.to_i32_floor(), (s.w.ceil() as i32 + 1, s.h.ceil() as i32 + 1).into())
+            }
+            SceneItem::Thumb { crop, .. } => *crop,
+            SceneItem::Solid(e) => {
+                use smithay::backend::renderer::element::Element;
+                e.geometry(scale.into())
+            }
+            _ => return None,
+        };
+        all = Some(all.map_or(r, |a| a.merge(r)));
+    }
+    all
 }
 
 /// Text styles the overlays use.
@@ -203,4 +292,77 @@ pub fn mono(size: f64, color: Rgba) -> Style {
 }
 pub fn mono_bold(size: f64, color: Rgba) -> Style {
     Style::new(Face::MonoBold, size, color)
+}
+
+#[cfg(test)]
+mod tests {
+    use smithay::backend::allocator::Fourcc;
+    use smithay::backend::renderer::element::Element;
+    use smithay::backend::renderer::element::memory::MemoryRenderBuffer;
+    use smithay::utils::Transform;
+
+    use super::*;
+
+    /// Each solid's colour (straight, 0–255) and whether it's opaque, back
+    /// to front.
+    fn solids(scene: &Scene) -> Vec<([u8; 4], bool)> {
+        scene
+            .iter()
+            .rev()
+            .filter_map(|i| match i {
+                SceneItem::Solid(e) => {
+                    let c = e.color().components();
+                    let a = c[3];
+                    let ch = |v: f32| if a > 0.0 { (v / a * 255.0).round() as u8 } else { 0 };
+                    Some(([ch(c[0]), ch(c[1]), ch(c[2]), (a * 255.0).round() as u8], e.alpha() >= 1.0))
+                }
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn see_through_pieces_on_flat_colour_become_opaque() {
+        let mut cache = DecorCache::default();
+        let mut pt = Painter::new((0.0, 0.0), 2.0, 0.5);
+        pt.ground = Some(Rgba::hex(0x000000));
+        // White at half (the painter fading) over black; then a box at half
+        // over that.
+        pt.fill(Box2::new(0.0, 0.0, 100.0, 100.0), Rgba::hex(0xffffff));
+        pt.fill(Box2::new(10.0, 10.0, 20.0, 20.0), Rgba::hex(0x0000ff));
+        let s = solids(&pt.finish(&mut cache));
+        assert_eq!(s, vec![([128, 128, 128, 255], true), ([64, 64, 192, 255], true)]);
+    }
+
+    #[test]
+    fn pieces_over_other_things_still_blend() {
+        let mut cache = DecorCache::default();
+        let mut pt = Painter::new((0.0, 0.0), 1.0, 1.0);
+        pt.ground = Some(Rgba::hex(0x000000));
+        pt.fill(Box2::new(0.0, 0.0, 100.0, 100.0), Rgba::hex(0x202020));
+        // A label, then a see-through piece over it, and one beside it.
+        let buffer = MemoryRenderBuffer::new(Fourcc::Abgr8888, (10, 10), 1, Transform::Normal, None);
+        pt.items.push(Item::Items(vec![SceneItem::Memory {
+            buffer,
+            loc: (5.0, 5.0).into(),
+            alpha: None,
+            src: None,
+            size: Some((10, 10).into()),
+            kind: Kind::Unspecified,
+        }]));
+        pt.fill(Box2::new(0.0, 0.0, 20.0, 20.0), Rgba::hex(0xffffff).with_alpha(0.5));
+        pt.fill(Box2::new(50.0, 50.0, 20.0, 20.0), Rgba::hex(0xffffff).with_alpha(0.5));
+        let s = solids(&pt.finish(&mut cache));
+        assert_eq!(s[1], ([255, 255, 255, 128], false));
+        assert_eq!(s[2], ([144, 144, 144, 255], true));
+    }
+
+    #[test]
+    fn without_a_ground_the_lowest_piece_blends() {
+        let mut cache = DecorCache::default();
+        let mut pt = Painter::new((0.0, 0.0), 1.0, 0.5);
+        pt.fill(Box2::new(0.0, 0.0, 100.0, 100.0), Rgba::hex(0xffffff));
+        let s = solids(&pt.finish(&mut cache));
+        assert_eq!(s, vec![([255, 255, 255, 128], false)]);
+    }
 }

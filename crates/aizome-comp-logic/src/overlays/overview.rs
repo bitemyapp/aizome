@@ -193,6 +193,8 @@ pub fn items(st: &mut State, output: &Output, scale: f64) -> aizome_comp_core::s
     let alpha = l.anims.overlay_progress("overview") as f32;
     let mut pt: Painter = Painter::new(origin, scale, 1.0);
     let p = az.palette;
+    // Nothing is drawn under the overview but the frame's clear colour.
+    pt.ground = Some(p.desktop);
     let shadows = az.settings.appearance.effects.shadows();
 
     // The backdrop covers the desktop.
