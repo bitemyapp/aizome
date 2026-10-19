@@ -237,6 +237,8 @@ pub struct Shell {
     pub settings_list: Vec<crate::palette::model::SettingEntry>,
     /// The theme showing is Day.
     pub theme_day: bool,
+    /// What GTK was last told of the look (dconf).
+    pub gtk_look: Option<crate::gtk::GtkLook>,
     /// The text selected in the focused app, for Services.
     pub selection: Option<String>,
     pub panel: Option<crate::systray::glue::OpenPanel>,
@@ -358,6 +360,7 @@ impl Shell {
             file_index: None,
             settings_list: Vec::new(),
             theme_day: false,
+            gtk_look: None,
             selection: None,
             panel: None,
             panel_ui: Default::default(),
@@ -989,6 +992,7 @@ impl Shell {
         self.recorders.start();
         self.read_logind_power_key(cx);
         self.start_polkit();
+        self.follow_gtk();
     }
 
     fn take_ipc(&mut self, e: IpcEvent, cx: &mut Cx<Msg>) {
@@ -1290,6 +1294,10 @@ impl Program for Shell {
             Msg::Tick => {
                 self.now = Local::now();
                 self.arm_clock(cx);
+                // Auto turns at its hours.
+                let day = self.settings.appearance.theme.resolve(aizome_kit::theme::local_hour())
+                    == aizome_theme::ThemeName::Day;
+                self.theme_changed(day);
                 if self.panel.as_ref().is_some_and(|p| p.widget == TrayWidget::Clock) {
                     self.refresh_agenda(cx);
                 }
@@ -1597,6 +1605,7 @@ impl Shell {
     /// The theme turned: foot instances and GTK follow (foot reloads its
     /// colours on SIGUSR1 for dark and SIGUSR2 for light).
     pub fn theme_changed(&mut self, day: bool) {
+        self.follow_gtk();
         if self.theme_day == day {
             return;
         }
@@ -1630,13 +1639,21 @@ impl Shell {
                     }
                 }
             }
-            let scheme = if day { "'prefer-light'" } else { "'prefer-dark'" };
-            let _ = std::process::Command::new("dconf")
-                .args(["write", "/org/gnome/desktop/interface/color-scheme", scheme])
-                .stdout(std::process::Stdio::null())
-                .stderr(std::process::Stdio::null())
-                .status();
         });
+    }
+
+    /// GTK and libadwaita apps follow the theme and the focus colour
+    /// (dconf), told only when what they'd be told changes.
+    pub fn follow_gtk(&mut self) {
+        if !self.opts.live {
+            return;
+        }
+        let a = &self.settings.appearance;
+        let look = crate::gtk::look(a.theme.resolve(aizome_kit::theme::local_hour()), a.focus);
+        if self.gtk_look != Some(look) {
+            self.gtk_look = Some(look);
+            crate::gtk::tell(look);
+        }
     }
 }
 

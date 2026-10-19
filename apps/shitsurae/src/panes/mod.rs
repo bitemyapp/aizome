@@ -57,7 +57,7 @@ pub fn all() -> Vec<Box<dyn AnyPane>> {
         // Devices.
         pane(keyboard::Keyboard::default()),
         pane(mouse::Mouse),
-        pane(trackpad::Trackpad),
+        pane(trackpad::Trackpad::default()),
         pane(printers::Printers::default()),
     ]
 }

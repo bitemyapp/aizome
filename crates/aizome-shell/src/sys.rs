@@ -75,7 +75,12 @@ impl Sys {
 
     /// What the systray shows now.
     pub fn tray(&self, cfg: &MenubarSettings) -> Tray {
-        let mut t = Tray { cpu: cfg.shows("cpu"), memory: cfg.shows("memory"), ..Tray::default() };
+        let mut t = Tray {
+            cpu: cfg.shows("cpu"),
+            memory: cfg.shows("memory"),
+            battery_glyph_only: !cfg.battery_percent,
+            ..Tray::default()
+        };
         if cfg.shows("network")
             && let Some(n) = &self.network
             && n.available()

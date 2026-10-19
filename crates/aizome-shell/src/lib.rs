@@ -15,6 +15,7 @@ pub mod deskbar;
 mod deskbar_glue;
 pub mod desktop;
 mod desktop_glue;
+pub mod gtk;
 pub mod ipc;
 pub mod launch;
 pub mod lock;

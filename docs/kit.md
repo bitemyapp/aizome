@@ -573,3 +573,13 @@ included now that it moves pixels (under the heaviest load seen, load
 average 25, the list and table scrolling took 2.7 ms at the median and
 5.8 ms at the 95th percentile): moving a region costs about a millisecond
 at 2× (copying it), against 2.5–5 ms to draw rows and lines again.
+
+To drive a running app from outside (the NixOS VM test of Settings clicks
+and types through `aizomectl input`), set `AIZOME_KIT_INSPECT` to a
+directory: each window then writes `<app_id>.<pid>.<window>.json` there
+after it paints and as the pointer moves over it, with its title, kind,
+size, the pointer and every element with a name, text or semantics (role,
+label, value, checked, selected, range), its rectangle in the window's
+points and the part that shows. Widgets name parts that aren't elements
+through `Widget::parts` (a segmented control's segments). `Harness::inspected`
+gives the same list. Without the variable nothing is written.

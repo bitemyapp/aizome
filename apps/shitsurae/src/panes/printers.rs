@@ -425,11 +425,14 @@ impl Pane for Printers {
                 self.look_for_devices(cx);
             }
             Msg::Found(r) => {
+                let printers = self.spool.snapshot().printers.clone();
                 if let Some(a) = &mut self.add {
                     a.devices = Some(
                         r.map(|mut d| {
-                            // Network printers that need no driver first.
-                            d.retain(|x| x.class != DeviceClass::File);
+                            // Not the printers already here (cups-browsed
+                            // sets up the network's by itself); network
+                            // printers that need no driver first.
+                            d.retain(|x| x.class != DeviceClass::File && !already_added(x, &printers));
                             d.sort_by_key(|x| (x.is_manual(), !x.driverless, x.class != DeviceClass::Network));
                             d
                         })
@@ -617,8 +620,8 @@ impl Pane for Printers {
         // The default printer.
         if !state.printers.is_empty() {
             let labels: Vec<&str> = state.printers.iter().map(|p| p.display_name()).collect();
-            let at =
-                state.default_printer().and_then(|d| state.printers.iter().position(|p| p.name == d.name)).unwrap_or(0);
+            // None chosen shows none, so the first printer can be chosen too.
+            let at = state.default_printer().and_then(|d| state.printers.iter().position(|p| p.name == d.name));
             let shown = |n: &str| state.printer(n).map(|p| p.display_name().to_owned()).unwrap_or_else(|| n.to_owned());
             let help = match (&state.user_default, &state.system_default) {
                 (None, Some(s)) => format!("Everyone's default is {}", shown(s)),
@@ -629,7 +632,13 @@ impl Pane for Printers {
             sections.push(vcx.section(
                 "",
                 vec![
-                        form::row("Default printer", form::choice(&labels, at, Msg::Default))
+                        form::row(
+                            "Default printer",
+                            dropdown(labels.iter().map(|l| (*l).to_owned()), at)
+                                .placeholder("None")
+                                .on_select(Msg::Default)
+                                .min_width(160.0),
+                        )
                             .help(help)
                             .entry("default-printer"),
                     ],
@@ -639,7 +648,8 @@ impl Pane for Printers {
         let mut rows: Vec<Row<Msg>> = Vec::new();
         for p in &state.printers {
             let jobs: Vec<&Job> = state.jobs_on(&p.name).collect();
-            rows.push(printer_row(self, p, &jobs));
+            let default = state.default_printer().is_some_and(|d| d.name == p.name);
+            rows.push(printer_row(self, p, &jobs, default));
             if self.expanded.as_deref() == Some(p.name.as_str()) {
                 rows.extend(printer_details(self, p, &jobs));
             }
@@ -674,7 +684,7 @@ impl Pane for Printers {
     }
 }
 
-fn printer_row(p: &Printers, printer: &Printer, jobs: &[&Job]) -> Row<Msg> {
+fn printer_row(p: &Printers, printer: &Printer, jobs: &[&Job], default: bool) -> Row<Msg> {
     let words = state_words(printer, jobs);
     let colour = match printer.state {
         PrinterState::Stopped => Tile::Red,
@@ -699,7 +709,8 @@ fn printer_row(p: &Printers, printer: &Printer, jobs: &[&Job]) -> Row<Msg> {
     .spacing(10.0)
     .align(Align::Center)
     .width(Fill);
-    if printer.is_user_default || (printer.is_system_default && !printer.is_user_default) {
+    // The one documents go to: yours, else everyone's (never both).
+    if default {
         line = line.push(badge("Default").role(Role::Success));
     }
     if !jobs.is_empty() {
@@ -789,6 +800,55 @@ fn printer_details(p: &Printers, printer: &Printer, jobs: &[&Job]) -> Vec<Row<Ms
         button("Remove Printer…").destructive().compact().on_press(Msg::Remove(name)),
     ));
     rows
+}
+
+/// A DNS-SD service's name from a URI that names one
+/// (`ipps://Brother%20HL._ipps._tcp.local/`, `dnssd://…`,
+/// `driverless:ipp://…`): `Brother HL`.
+fn service_name(uri: &str) -> Option<String> {
+    let rest = uri.split_once("://")?.1;
+    let host = rest.split('/').next()?;
+    let at = host.find("._ipp").or_else(|| host.find("._pdl-datastream")).or_else(|| host.find("._printer"))?;
+    let mut name = Vec::new();
+    let bytes = &host.as_bytes()[..at];
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%'
+            && let Some(b) = host.get(i + 1..i + 3).and_then(|h| u8::from_str_radix(h, 16).ok())
+        {
+            name.push(b);
+            i += 3;
+        } else {
+            name.push(bytes[i]);
+            i += 1;
+        }
+    }
+    String::from_utf8(name).ok().filter(|n| !n.is_empty())
+}
+
+/// The queue name CUPS and cups-browsed make of a printer's name: what
+/// isn't a letter, digit or `-` becomes `_`.
+fn queue_name(name: &str) -> String {
+    name.chars().map(|c| if c.is_ascii_alphanumeric() || c == '-' { c } else { '_' }).collect()
+}
+
+/// Whether a printer found on the network is one already set up: the same
+/// address, or the same DNS-SD service (a queue cups-browsed made for it,
+/// `implicitclass://Its_Name/`, or one added by its service's address).
+pub(crate) fn already_added(device: &Device, printers: &[Printer]) -> bool {
+    let uri = device.uri.strip_prefix("driverless:").unwrap_or(&device.uri);
+    let service = service_name(uri);
+    printers.iter().any(|p| {
+        let Some(theirs) = p.device_uri.as_deref() else { return false };
+        if theirs == uri || theirs == device.uri {
+            return true;
+        }
+        let Some(service) = &service else { return false };
+        if let Some(q) = theirs.strip_prefix("implicitclass://") {
+            return q.trim_end_matches('/').eq_ignore_ascii_case(&queue_name(service));
+        }
+        service_name(theirs).is_some_and(|s| s.eq_ignore_ascii_case(service))
+    })
 }
 
 fn add_sheet(a: &Add) -> Element<Msg> {
@@ -928,6 +988,7 @@ pub fn sample() -> PrintersState {
         "ipp://brother.local:631/ipp/print",
     );
     laser.is_user_default = true;
+    laser.is_system_default = true;
     let mut inkjet = printer(
         "Canon_TS8350",
         "Canon TS8350",
@@ -1012,4 +1073,86 @@ fn sample_drivers() -> Vec<Driver> {
             device_id: None,
         },
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn device(uri: &str) -> Device {
+        Device { uri: uri.into(), ..Device::default() }
+    }
+
+    fn printer(name: &str, uri: &str) -> Printer {
+        Printer { name: name.into(), device_uri: Some(uri.into()), ..Printer::default() }
+    }
+
+    #[test]
+    fn a_service_is_named_from_its_uri() {
+        assert_eq!(
+            service_name("ipps://Aizome%20Test%20Printer._ipps._tcp.local/").as_deref(),
+            Some("Aizome Test Printer")
+        );
+        assert_eq!(
+            service_name("dnssd://Brother%20HL-L2390DW._ipp._tcp.local/?uuid=e3248000").as_deref(),
+            Some("Brother HL-L2390DW")
+        );
+        assert_eq!(service_name("ipp://192.168.1.40/ipp/print"), None);
+        assert_eq!(service_name("usb://Brother/HL"), None);
+    }
+
+    #[test]
+    fn a_printer_cups_browsed_set_up_isnt_offered_again() {
+        let found = device("driverless:ipps://Aizome%20Test%20Printer._ipps._tcp.local/");
+        let browsed = printer("Aizome_Test_Printer", "implicitclass://Aizome_Test_Printer/");
+        assert!(already_added(&found, &[browsed]));
+        // Added before by its service's address, or the very same URI.
+        let added = printer("Desk", "ipps://Aizome%20Test%20Printer._ipps._tcp.local/");
+        assert!(already_added(&found, std::slice::from_ref(&added)));
+        assert!(already_added(&device("ipp://10.0.0.5/ipp/print"), &[printer("Lab", "ipp://10.0.0.5/ipp/print")]));
+    }
+
+    #[test]
+    fn other_printers_and_backends_still_are() {
+        let found = device("dnssd://Office%20Laser._ipp._tcp.local/");
+        let others = [
+            printer("Aizome_Test_Printer", "implicitclass://Aizome_Test_Printer/"),
+            printer("Lab", "ipp://10.0.0.5/ipp/print"),
+        ];
+        assert!(!already_added(&found, &others));
+        // A backend that asks for an address is never "added".
+        assert!(!already_added(&device("ipp"), &others));
+    }
+}
+
+#[cfg(test)]
+mod default_tests {
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    use aizome_kit::testing::Harness;
+
+    use super::Msg;
+    use crate::app::{AppMsg, Shitsurae, Start};
+
+    #[test]
+    fn only_the_printer_documents_go_to_says_default() {
+        let dir = std::env::temp_dir().join(format!("shitsurae-default-printer-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut h = Harness::new(Shitsurae::sample(dir.join("settings.toml"), Start::parse("printers")));
+        let w = h.window();
+        let badges = |h: &Harness<Shitsurae>| h.texts(w).iter().filter(|t| *t == "Default").count();
+        for _ in 0..20 {
+            h.advance(Duration::from_millis(50));
+        }
+        assert_eq!(badges(&h), 1);
+        // Yours becomes the Canon; everyone's stays the Brother.
+        h.send(AppMsg::Pane("printers", Arc::new(Msg::Default(1))));
+        for _ in 0..20 {
+            h.advance(Duration::from_millis(50));
+        }
+        assert!(h.texts(w).iter().any(|t| t.starts_with("Yours; everyone's is")), "{:?}", h.texts(w));
+        assert_eq!(badges(&h), 1, "{:?}", h.texts(w));
+    }
 }

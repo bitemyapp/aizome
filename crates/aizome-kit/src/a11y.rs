@@ -18,16 +18,16 @@ pub struct SemanticNode {
     pub children: Vec<SemanticNode>,
 }
 
-/// The semantics of `idx`, with the element's own label over the
-/// widget's.
-fn of(tree: &Tree, idx: usize) -> Option<Semantics> {
+/// The semantics of `idx`: the element's own label over the widget's,
+/// and its tooltip naming it when it has no label or shows no text (an
+/// icon button is "Move up", not its glyph's name).
+pub(crate) fn of(tree: &Tree, idx: usize) -> Option<Semantics> {
     let n = &tree.nodes[idx];
     let mut s = n.widget.semantics()?;
     if let Some(l) = &n.common.label {
         s.label = Some(l.to_string());
-    }
-    if s.label.is_none()
-        && let Some(t) = &n.common.tooltip
+    } else if let Some(t) = &n.common.tooltip
+        && (s.label.is_none() || n.widget.text().is_none())
     {
         s.label = Some(t.to_string());
     }

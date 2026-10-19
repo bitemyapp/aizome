@@ -498,21 +498,24 @@ impl Pane for Battery {
             } else {
                 rows.push(form::value("The power key", logind_words(&l.power_key)).entry("power-key"));
             }
-            let lid = if l.managed {
-                form::managed(
-                    "When the lid closes",
-                    logind_words(&l.lid),
-                    "services.logind.settings.Login.HandleLidSwitch",
-                )
-            } else {
-                form::value("When the lid closes", logind_words(&l.lid))
-            };
-            rows.push(lid.entry("lid"));
-            if !l.lid_on_power.is_empty() {
-                rows.push(form::value("…when plugged in", logind_words(&l.lid_on_power)));
+            // A computer without a lid (a desktop, a VM) has nothing to close.
+            if st.lid_present {
+                let lid = if l.managed {
+                    form::managed(
+                        "When the lid closes",
+                        logind_words(&l.lid),
+                        "services.logind.settings.Login.HandleLidSwitch",
+                    )
+                } else {
+                    form::value("When the lid closes", logind_words(&l.lid))
+                };
+                rows.push(lid.entry("lid"));
+                if !l.lid_on_power.is_empty() {
+                    rows.push(form::value("…when plugged in", logind_words(&l.lid_on_power)));
+                }
+                rows.push(form::value("…with a display connected", logind_words(&l.lid_docked)));
             }
-            rows.push(form::value("…with a display connected", logind_words(&l.lid_docked)));
-            sections.push(vcx.section("Power Key and Lid", rows));
+            sections.push(vcx.section(if st.lid_present { "Power Key and Lid" } else { "Power Key" }, rows));
         }
 
         let menubar = s.menubar_settings();

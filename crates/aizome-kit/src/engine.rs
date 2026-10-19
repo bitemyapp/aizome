@@ -1493,6 +1493,10 @@ impl Core {
         let started = Instant::now();
         let Some(w) = self.wins.get_mut(&win) else { return };
         w.pointer = Some(p);
+        if crate::inspect::enabled() {
+            self.inspect(win);
+        }
+        let Some(w) = self.wins.get(&win) else { return };
         if w.tree.root.is_none() {
             return;
         }
@@ -2165,6 +2169,7 @@ impl Core {
             "size": [w.size.width, w.size.height],
             "menu_strip": self.menu_strip_of(win),
             "has_keyboard": w.has_keyboard,
+            "pointer": w.pointer.map(|p| [p.x, p.y]),
         });
         crate::inspect::painted(&self.info.app_id, win, header, &w.tree, w.focused);
     }
