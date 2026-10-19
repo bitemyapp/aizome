@@ -106,6 +106,12 @@ pub trait Platform {
     /// Ask for an activation token: the engine hears it under the id
     /// returned.
     fn request_activation_token(&mut self, app_id: Option<&str>) -> u64;
+    /// Have `bytes` of window memory free and faulted in now (see
+    /// [`Cx::reserve_buffers`](crate::Cx::reserve_buffers)); nothing where
+    /// there's no shared memory.
+    fn reserve_buffers(&mut self, bytes: usize) {
+        let _ = bytes;
+    }
 }
 
 /// A layer surface's placement, changed while it shows.

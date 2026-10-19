@@ -438,6 +438,17 @@ impl<Msg: Clone + Send + 'static> Cx<'_, Msg> {
         ActivationRequest(self.platform.request_activation_token(app_id))
     }
 
+    /// Have `bytes` of the shared memory windows draw into free and
+    /// faulted in now, at a moment the program chooses (at start, or
+    /// idle), so that a surface it shows later (a panel's first opening, a
+    /// desktop's first frame) draws into memory that's there rather than
+    /// faulting in a new buffer's pages in that frame: about 5 ms for a
+    /// 2880 × 1800 surface. Count a surface's width × height × 4 bytes in
+    /// device pixels (twice where the compositor holds on to buffers).
+    pub fn reserve_buffers(&mut self, bytes: usize) {
+        self.platform.reserve_buffers(bytes);
+    }
+
     /// Start dragging `source` out of `window`, to another program, the
     /// desktop, the Shelf or another window:
     /// `DragSource::new().urls(files).actions(true, false).icon(chip, hotspot)`.
