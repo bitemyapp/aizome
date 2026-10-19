@@ -242,6 +242,13 @@ impl Pane for General {
         self.page_hidden(cx);
     }
 
+    fn system_changed(&mut self, cx: &mut PaneCx<Msg>) {
+        // The locale changed (here, or elsewhere): the preview follows.
+        if self.page == Page::Language {
+            self.language.system_changed(cx);
+        }
+    }
+
     fn focus_entry(&mut self, entry: &str, cx: &mut PaneCx<Msg>) {
         let under = self.entries().into_iter().find(|e| e.id == entry).and_then(|e| e.under.first().cloned());
         let page = match under {
