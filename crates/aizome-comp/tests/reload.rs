@@ -559,7 +559,15 @@ fn restarting_the_shell_keeps_apps_and_notifications() {
     let first = first.unwrap();
     let old_pid = first["pid"].as_u64().unwrap() as u32;
     assert_eq!(notifications_owner(&conn), Some(old_pid));
-    let outputs_before = c.request(Request::Outputs);
+    // The shell lists its surfaces as soon as one draws, which can be
+    // before the bar's exclusive zone is in: wait for the bar's area to be
+    // taken from the top (read too early, it failed this test now and then).
+    let mut outputs_before = c.request(Request::Outputs);
+    wait_for("the bar's exclusive zone", 60, || {
+        outputs_before = c.request(Request::Outputs);
+        matches!(&outputs_before, Response::Outputs { outputs }
+            if outputs.first().is_some_and(|o| o.usable.y > o.logical.y))
+    });
 
     // Apps: a test client, foot, and a kit app talking to the shell.
     let a = c.client(Spec::new("org.example.a", 0x2266cc).size(420, 300));

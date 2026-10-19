@@ -66,6 +66,16 @@ impl Backend {
         }
     }
 
+    /// Whether frames are drawn on the CPU (pixman): there, blending and
+    /// scaling cost a pass over every pixel they touch.
+    pub fn software(&self) -> bool {
+        match self {
+            Backend::Headless(h) => matches!(h.renderer, headless::HeadlessRenderer::Pixman(_)),
+            Backend::Winit(_) => false,
+            Backend::Udev(u) => u.software(),
+        }
+    }
+
     /// Whether an output can draw a frame now; if not, the backend comes
     /// back when it can (a vblank, the refresh timer).
     pub fn frame_due(&mut self, az: &mut Aizome, output: &Output) -> bool {
@@ -119,6 +129,21 @@ impl Backend {
             Backend::Headless(h) => h.import_dmabuf(dmabuf),
             Backend::Winit(w) => w.import_dmabuf(dmabuf),
             Backend::Udev(u) => u.import_dmabuf(dmabuf),
+        }
+    }
+
+    /// Renders a surface (and what's on it) into memory at a size and
+    /// scale of its own, over nothing (a layer surface's last frame).
+    pub fn render_to_memory(
+        &mut self,
+        surface: &WlSurface,
+        size: Size<i32, smithay::utils::Physical>,
+        scale: f64,
+    ) -> Result<Capture, String> {
+        match self {
+            Backend::Headless(h) => h.render_to_memory(surface, size, scale),
+            Backend::Winit(w) => w.render_to_memory(surface, size, scale),
+            Backend::Udev(u) => u.render_to_memory(surface, size, scale),
         }
     }
 
@@ -240,7 +265,7 @@ pub fn render_frame<R>(
     wait_gpu: bool,
 ) -> Result<Frame, String>
 where
-    R: Renderer + ImportAll + ImportMem,
+    R: Renderer + ImportAll + ImportMem + crate::blur::BlurRenderer,
     R::TextureId: Clone + Send + 'static,
 {
     let res = tracker.render_output(renderer, framebuffer, age, elements, clear).map_err(|e| format!("{e:?}"))?;
@@ -384,7 +409,7 @@ pub fn capture_with<R, T>(
     clear: [f32; 4],
 ) -> Result<Capture, String>
 where
-    R: Renderer + ImportAll + ImportMem + Offscreen<T> + Bind<T> + ExportMem,
+    R: Renderer + ImportAll + ImportMem + Offscreen<T> + Bind<T> + ExportMem + crate::blur::BlurRenderer,
     R::TextureId: Clone + Send + 'static,
 {
     let mode = output.current_mode().ok_or("the output has no mode")?;
@@ -399,6 +424,55 @@ where
         let mut fb = renderer.bind(&mut target).map_err(|e| format!("bind: {e:?}"))?;
         let res =
             tracker.render_output(renderer, &mut fb, 0, &elements, clear).map_err(|e| format!("render: {e:?}"))?;
+        let _ = res.sync.wait();
+        let mapping = renderer
+            .copy_framebuffer(&fb, Rectangle::from_size(buffer_size), Fourcc::Abgr8888)
+            .map_err(|e| format!("read back: {e:?}"))?;
+        renderer.map_texture(&mapping).map_err(|e| format!("map: {e:?}"))?.to_vec()
+    };
+    Ok(Capture { width: size.w as u32, height: size.h as u32, rgba })
+}
+
+/// Renders a surface tree into a fresh buffer `size` pixels big, at
+/// `scale`, over nothing, and reads it back.
+pub fn memory_with<R, T>(
+    renderer: &mut R,
+    surface: &WlSurface,
+    size: Size<i32, smithay::utils::Physical>,
+    scale: f64,
+) -> Result<Capture, String>
+where
+    R: Renderer + ImportAll + ImportMem + Offscreen<T> + Bind<T> + ExportMem + crate::blur::BlurRenderer,
+    R::TextureId: Clone + Send + 'static,
+{
+    use smithay::backend::renderer::element::Kind;
+    use smithay::backend::renderer::element::surface::{
+        WaylandSurfaceRenderElement, render_elements_from_surface_tree,
+    };
+    let mut elements: Vec<WaylandSurfaceRenderElement<R>> =
+        render_elements_from_surface_tree(renderer, surface, (0, 0), scale, 1.0, Kind::Unspecified);
+    if elements.is_empty() {
+        // A surface being destroyed is no longer in its own tree: just it.
+        let root = smithay::wayland::compositor::with_states(surface, |states| {
+            WaylandSurfaceRenderElement::from_surface(
+                renderer,
+                surface,
+                states,
+                (0.0, 0.0).into(),
+                1.0,
+                Kind::Unspecified,
+            )
+        });
+        elements.extend(root.ok().flatten());
+    }
+    let buffer_size: Size<i32, BufferCoords> = Size::from((size.w, size.h));
+    let mut target: T =
+        renderer.create_buffer(Fourcc::Abgr8888, buffer_size).map_err(|e| format!("offscreen buffer: {e:?}"))?;
+    let mut tracker = OutputDamageTracker::new(size, scale, Transform::Normal);
+    let rgba = {
+        let mut fb = renderer.bind(&mut target).map_err(|e| format!("bind: {e:?}"))?;
+        let res =
+            tracker.render_output(renderer, &mut fb, 0, &elements, [0.0; 4]).map_err(|e| format!("render: {e:?}"))?;
         let _ = res.sync.wait();
         let mapping = renderer
             .copy_framebuffer(&fb, Rectangle::from_size(buffer_size), Fourcc::Abgr8888)
@@ -445,7 +519,7 @@ pub fn scene_for<R, T>(
     clear: [f32; 4],
 ) -> (Vec<OutputElement<R>>, [f32; 4])
 where
-    R: Renderer + ImportAll + ImportMem + Offscreen<T> + Bind<T> + ExportMem,
+    R: Renderer + ImportAll + ImportMem + Offscreen<T> + Bind<T> + ExportMem + crate::blur::BlurRenderer,
     R::TextureId: Clone + Send + 'static,
 {
     let Some(source) = az.mirror_source(output) else {
@@ -471,7 +545,7 @@ fn mirror_elements<R, T>(
     clear: [f32; 4],
 ) -> Result<Vec<OutputElement<R>>, String>
 where
-    R: Renderer + ImportAll + ImportMem + Offscreen<T> + Bind<T> + ExportMem,
+    R: Renderer + ImportAll + ImportMem + Offscreen<T> + Bind<T> + ExportMem + crate::blur::BlurRenderer,
     R::TextureId: Clone + Send + 'static,
 {
     use smithay::backend::renderer::element::Kind;

@@ -55,8 +55,10 @@ fn state_type() -> TypeId {
 
 fn init(st: &mut State, saved: Option<&[u8]>) -> Result<(), String> {
     let mut logic = Logic::new(&st.az.settings);
+    let mut slides = Vec::new();
     if let Some(bytes) = saved {
         let saved: Saved = serde_json::from_slice(bytes).map_err(|e| format!("the saved state: {e}"))?;
+        slides = saved.slides;
         if let Some(model) = saved.model {
             logic.wm = model;
         }
@@ -66,6 +68,7 @@ fn init(st: &mut State, saved: Option<&[u8]>) -> Result<(), String> {
     }
     install(&mut st.lg, logic);
     crate::actions::adopt_windows(st);
+    crate::slides::restore(st, &slides);
     publish(st);
     st.update_keyboard_focus();
     tracing::info!(build = VTABLE.build, windows = st.lg.r().wm.windows().count(), "compositor logic started");
@@ -77,6 +80,7 @@ fn save(st: &mut State) -> Result<Vec<u8>, String> {
     let saved = Saved {
         model: Some(l.wm.clone()),
         requested_sizes: l.wins.iter().filter_map(|(id, d)| d.requested_size.map(|s| (*id, s))).collect(),
+        slides: crate::slides::save(l),
     };
     serde_json::to_vec(&saved).map_err(|e| e.to_string())
 }
@@ -103,11 +107,14 @@ fn release(st: &mut State) {
 pub fn publish(st: &mut State) {
     let l = st.lg.m();
     let grabs = l.overlays.grabs_keyboard();
-    let animating = l.anims.active() || l.overlays.animating();
-    // Called on every commit and frame: only the model's generation and two
+    let animating = l.anims.active() || l.overlays.animating() || l.slides.active();
+    // Cards going leave their last frame to slide out, when there's motion.
+    let keep = st.az.motion_ms() > 0;
+    let l = st.lg.m();
+    // Called on every commit and frame: only the model's generation and three
     // flags are looked at until something changed (the Desk's folder is
     // the model's too).
-    let now = (l.wm.generation(), grabs, animating);
+    let now = (l.wm.generation(), grabs, animating, keep);
     if l.published == Some(now) {
         return;
     }
@@ -124,6 +131,7 @@ pub fn publish(st: &mut State) {
         animating,
         outset: crate::decor::OUTSET,
         desk_folder: folder,
+        keep_on_unmap: if keep { vec![crate::slides::NOTES.to_owned()] } else { Vec::new() },
     };
     let wins: Vec<(WinId, WinView)> =
         l.wm.windows()

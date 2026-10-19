@@ -16,12 +16,14 @@
 //! here; the re-exports below are for logic code that prefers one path.
 
 pub mod backend;
+pub mod blur;
 pub mod cli;
 pub mod config;
 pub mod cursor;
 pub mod fallback;
 pub mod focus;
 pub mod geom;
+pub mod ghosts;
 pub mod handlers;
 pub mod icons;
 pub mod idle;
@@ -46,6 +48,7 @@ pub mod state;
 pub mod stats;
 pub mod svg;
 pub mod text;
+pub mod thumbs;
 pub mod timers;
 pub mod view;
 pub mod watchdog;

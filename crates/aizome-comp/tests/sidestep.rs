@@ -170,3 +170,65 @@ fn the_session_locks_and_unlocks() {
     lock.unlock();
     wait_px(&c, g.x + 10, g.y + 10, 0xcc2222, "the window shows again");
 }
+
+/// The frosted panel's face (`sidestep_client frost`), at 90% alpha.
+const FACE: u32 = 0x24283b;
+
+#[test]
+fn frosted_shell_surfaces_blur_what_is_behind_them_under_gles_in_full() {
+    let c = Compositor::start(Options {
+        renderer: Some("gles"),
+        settings: "[appearance]\neffects = \"full\"\n",
+        ..Options::default()
+    });
+    if let Response::Stats { stats } = c.request(Request::Stats { reset: false })
+        && stats.renderer != "gles"
+    {
+        eprintln!("no GLES here ({}): nothing to blur", stats.renderer);
+        return;
+    }
+    // A red window whose left edge runs under the panel (200–500 × 120–520)
+    // and on below it.
+    let _a = c.client(Spec::new("test.a", 0xcc2222).size(300, 400));
+    let w = c.wait_window("test.a");
+    c.ok(Request::Move { id: Some(w.id), x: 350, y: 250 });
+    let _p = run(&c, "frost");
+    let face = rgb(FACE);
+    let desk = rgb(0x16161e);
+    let over_desk: [u8; 3] = std::array::from_fn(|i| (face[i] as f32 * 0.9 + desk[i] as f32 * 0.1).round() as u8);
+    wait_px(&c, 260, 160, u32::from_be_bytes([0, over_desk[0], over_desk[1], over_desk[2]]), "the panel");
+    c.settle();
+    let full = c.screenshot();
+    keep(&full, "frost-full-gles");
+    // The same in Lean, where nothing is blurred.
+    std::fs::write(c.dir.join("config/aizome/settings.toml"), "[appearance]\neffects = \"lean\"\n").unwrap();
+    c.ok(Request::ReloadConfig);
+    std::thread::sleep(Duration::from_millis(300));
+    c.settle();
+    let lean = c.screenshot();
+    let diff = |x: i32, y: i32| -> i32 {
+        let (a, b) = (full.px(x, y), lean.px(x, y));
+        (0..3).map(|i| (a[i] as i32 - b[i] as i32).abs()).max().unwrap()
+    };
+    // Across the window's edge under the face, the blur softens the step a
+    // tenth of the window shows with.
+    let edge = 350 - 1;
+    assert!(
+        diff(edge - 3, 380) > 1 || diff(edge + 3, 380) > 1,
+        "a blurred edge: {:?} vs {:?}",
+        full.px(edge + 3, 380),
+        lean.px(edge + 3, 380)
+    );
+    // Far from any edge, under the face, the blur of a flat colour is it.
+    assert!(diff(260, 160) <= 2, "flat backdrop: {:?} vs {:?}", full.px(260, 160), lean.px(260, 160));
+    assert!(diff(450, 400) <= 2, "flat window: {:?} vs {:?}", full.px(450, 400), lean.px(450, 400));
+    // The hard shadow and everything off the panel are as they were.
+    assert_eq!(full.px(501, 380), lean.px(501, 380), "the shadow, beside the face");
+    // Nor does the blur spill past the face: the edge below the panel is
+    // as sharp as ever.
+    for x in [edge - 3, edge, edge + 3] {
+        assert_eq!(full.px(x, 540), lean.px(x, 540), "the window's edge below the panel, at {x}");
+    }
+    assert_eq!(full.px(600, 380), lean.px(600, 380), "the window, off the panel");
+    assert_eq!(full.px(100, 100), lean.px(100, 100), "the desktop, off the panel");
+}

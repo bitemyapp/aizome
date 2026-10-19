@@ -103,6 +103,8 @@ struct Surface {
     output: Output,
     connector: connector::Handle,
     drm: SurfaceOutput,
+    /// What changed under blurs since the last frame ([`crate::blur`]).
+    blur_probe: crate::blur::Probe,
     redraw: Redraw,
     modes: Vec<smithay::reexports::drm::control::Mode>,
 }
@@ -121,6 +123,9 @@ pub struct Udev {
     seat: String,
     primary_gpu: DrmNode,
     renderers: Renderers,
+    /// Thumbnails drawn once and kept (pixman), in the dumb buffers'
+    /// channel order.
+    thumbs: crate::thumbs::ThumbCache,
     devices: HashMap<DrmNode, Device>,
     // Kept so the context lives as long as the backend.
     #[allow(dead_code)]
@@ -237,6 +242,7 @@ impl Udev {
             seat,
             primary_gpu,
             renderers,
+            thumbs: crate::thumbs::ThumbCache::new(Fourcc::Argb8888),
             devices: HashMap::new(),
             libinput,
             input_devices: Vec::new(),
@@ -313,6 +319,10 @@ impl Udev {
 
     pub fn seat_name(&self) -> String {
         self.seat.clone()
+    }
+
+    pub fn software(&self) -> bool {
+        matches!(self.renderers, Renderers::Pixman(_))
     }
 
     pub fn renderer_name(&self) -> String {
@@ -396,7 +406,7 @@ impl Udev {
         &mut self,
         az: &mut Aizome,
         output: &Output,
-        scene: crate::scene::Scene,
+        mut scene: crate::scene::Scene,
         clear: [f32; 4],
         started: Instant,
     ) {
@@ -421,7 +431,8 @@ impl Udev {
                 };
                 match renderer {
                     Ok(mut r) => {
-                        let (elements, clear) = scene_for::<_, GlesRenderbuffer>(&mut r, az, output, &scene, clear);
+                        let (mut elements, clear) = scene_for::<_, GlesRenderbuffer>(&mut r, az, output, &scene, clear);
+                        crate::blur::prepare(&mut surface.blur_probe, output, &mut elements, Some(render_node));
                         match drm.render_frame(&mut r, &elements, clear, frame_flags(az)) {
                             Ok(res) => {
                                 let damaged = !res.is_empty;
@@ -438,6 +449,7 @@ impl Udev {
                 }
             }
             (Renderers::Pixman(r), SurfaceOutput::Pixman(drm)) => {
+                self.thumbs.bake(r, &mut scene, output.current_scale().fractional_scale());
                 let (elements, clear) =
                     scene_for::<_, smithay::reexports::pixman::Image<'static, 'static>>(r, az, output, &scene, clear);
                 match drm.render_frame(r, &elements, clear, frame_flags(az)) {
@@ -464,6 +476,25 @@ impl Udev {
         }
     }
 
+    pub fn render_to_memory(
+        &mut self,
+        surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
+        size: smithay::utils::Size<i32, smithay::utils::Physical>,
+        scale: f64,
+    ) -> Result<Capture, String> {
+        let primary = self.primary_gpu;
+        match &mut self.renderers {
+            Renderers::Gles(gpus) => {
+                let mut r = gpus.single_renderer(&primary).map_err(|e| format!("{e:?}"))?;
+                super::memory_with::<UdevRenderer<'_>, GlesRenderbuffer>(&mut r, surface, size, scale)
+            }
+            Renderers::Pixman(r) => super::memory_with::<
+                PixmanRenderer,
+                smithay::reexports::pixman::Image<'static, 'static>,
+            >(r, surface, size, scale),
+        }
+    }
+
     pub fn capture(
         &mut self,
         az: &Aizome,
@@ -478,8 +509,11 @@ impl Udev {
                 capture_with::<UdevRenderer<'_>, GlesRenderbuffer>(&mut r, az, output, scene, clear)
             }
             Renderers::Pixman(r) => {
+                // As the screen shows it.
+                let mut scene = scene.clone();
+                self.thumbs.bake(r, &mut scene, output.current_scale().fractional_scale());
                 capture_with::<PixmanRenderer, smithay::reexports::pixman::Image<'static, 'static>>(
-                    r, az, output, scene, clear,
+                    r, az, output, &scene, clear,
                 )
             }
         }
@@ -990,7 +1024,14 @@ fn connector_connected_as(
     };
     device.surfaces.insert(
         crtc,
-        Surface { output: output.clone(), connector: info.handle(), drm: drm_output, redraw: Redraw::Idle, modes },
+        Surface {
+            output: output.clone(),
+            connector: info.handle(),
+            drm: drm_output,
+            blur_probe: Default::default(),
+            redraw: Redraw::Idle,
+            modes,
+        },
     );
     let scale = cfg.as_ref().and_then(|c| c.scale).unwrap_or_else(|| auto_scale(wl_mode.size.w, mm_w as i32));
     let x = state.az.outputs.iter().map(|o| state.az.output_rect(o).right()).max().unwrap_or(0);

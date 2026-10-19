@@ -31,6 +31,7 @@ pub mod bindings;
 pub mod cmdkey;
 pub mod config;
 pub mod decor;
+pub mod frost;
 pub mod grabs;
 pub mod hooks;
 pub mod input;
@@ -38,6 +39,7 @@ pub mod memory;
 pub mod overlays;
 pub mod render;
 pub mod requests;
+pub mod slides;
 pub mod wm;
 
 use std::collections::{HashMap, HashSet};
@@ -75,13 +77,15 @@ pub struct Logic {
     pub bindings: bindings::Bindings,
     pub anims: anim::Animations,
     pub overlays: overlays::Overlays,
+    /// The shell's notification cards sliding in and out.
+    pub slides: slides::Slides,
     pub interactive: input::Interactive,
     /// Slow keys and sticky keys.
     pub access: input::Access,
     /// The action a key decided on, run once the key is through.
     pub pending_action: Option<bindings::Action>,
     /// What was last published to the core ([`hooks::publish`]).
-    published: Option<(u64, bool, bool)>,
+    published: Option<(u64, bool, bool, bool)>,
 }
 
 /// Per window, beside the model.
@@ -104,12 +108,15 @@ pub struct ResizeAnchor {
 }
 
 /// What a logic hands to the next across a reload: the model and what
-/// else the user would miss. Caches, overlays and grabs start afresh.
+/// else the user would miss (and cards in motion). Caches, overlays and
+/// grabs start afresh.
 #[derive(Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Saved {
     pub model: Option<wm::Model>,
     pub requested_sizes: HashMap<WinId, (i32, i32)>,
+    /// Notification cards in motion.
+    pub slides: Vec<slides::SavedSlide>,
 }
 
 impl Logic {
@@ -123,6 +130,7 @@ impl Logic {
             bindings: bindings::Bindings::new(&settings.keys.bindings),
             anims: anim::Animations::default(),
             overlays: overlays::Overlays::default(),
+            slides: slides::Slides::default(),
             interactive: input::Interactive::default(),
             access: input::Access::default(),
             pending_action: None,

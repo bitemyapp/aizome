@@ -38,12 +38,16 @@ enum Target {
 struct HeadlessOutputState {
     target: Target,
     tracker: OutputDamageTracker,
+    /// What changed under blurs since the last frame ([`crate::blur`]).
+    blur_probe: crate::blur::Probe,
     rendered_once: bool,
     timer: Option<RegistrationToken>,
 }
 
 pub struct Headless {
     pub renderer: HeadlessRenderer,
+    /// Thumbnails drawn once and kept (pixman).
+    thumbs: crate::thumbs::ThumbCache,
     outputs: HashMap<Output, HeadlessOutputState>,
     render_node: Option<DrmNode>,
     configs: Vec<HeadlessOutput>,
@@ -63,7 +67,13 @@ impl Headless {
                 }
             },
         };
-        Headless { renderer, outputs: HashMap::new(), render_node, configs: outputs }
+        Headless {
+            renderer,
+            thumbs: crate::thumbs::ThumbCache::new(Fourcc::Abgr8888),
+            outputs: HashMap::new(),
+            render_node,
+            configs: outputs,
+        }
     }
 
     pub fn renderer_name(&self) -> &'static str {
@@ -134,6 +144,7 @@ impl Headless {
             HeadlessOutputState {
                 target,
                 tracker: OutputDamageTracker::from_output(output),
+                blur_probe: Default::default(),
                 rendered_once: false,
                 timer: None,
             },
@@ -233,7 +244,7 @@ impl Headless {
         &mut self,
         az: &mut Aizome,
         output: &Output,
-        scene: crate::scene::Scene,
+        mut scene: crate::scene::Scene,
         clear: [f32; 4],
         started: Instant,
     ) {
@@ -245,13 +256,15 @@ impl Headless {
         let result = match (&mut self.renderer, &mut hs.target) {
             (HeadlessRenderer::Gles(r), Target::Gles(rb)) => {
                 let r = r.as_mut();
-                let (elements, clear) = scene_for::<_, GlesRenderbuffer>(r, az, output, &scene, clear);
+                let (mut elements, clear) = scene_for::<_, GlesRenderbuffer>(r, az, output, &scene, clear);
+                crate::blur::prepare(&mut hs.blur_probe, output, &mut elements, None);
                 match r.bind(rb) {
                     Ok(mut fb) => render_frame(r, &mut fb, &mut hs.tracker, age, &elements, clear, started, true),
                     Err(e) => Err(format!("bind: {e:?}")),
                 }
             }
             (HeadlessRenderer::Pixman(r), Target::Pixman(img)) => {
+                self.thumbs.bake(r, &mut scene, output.current_scale().fractional_scale());
                 let (elements, clear) =
                     scene_for::<_, smithay::reexports::pixman::Image<'static, 'static>>(r, az, output, &scene, clear);
                 match r.bind(img) {
@@ -292,6 +305,23 @@ impl Headless {
         }
     }
 
+    pub fn render_to_memory(
+        &mut self,
+        surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
+        size: smithay::utils::Size<i32, smithay::utils::Physical>,
+        scale: f64,
+    ) -> Result<Capture, String> {
+        match &mut self.renderer {
+            HeadlessRenderer::Gles(r) => {
+                super::memory_with::<GlesRenderer, GlesRenderbuffer>(r.as_mut(), surface, size, scale)
+            }
+            HeadlessRenderer::Pixman(r) => super::memory_with::<
+                PixmanRenderer,
+                smithay::reexports::pixman::Image<'static, 'static>,
+            >(r, surface, size, scale),
+        }
+    }
+
     pub fn capture(
         &mut self,
         az: &Aizome,
@@ -303,10 +333,14 @@ impl Headless {
             HeadlessRenderer::Gles(r) => {
                 capture_with::<GlesRenderer, GlesRenderbuffer>(r.as_mut(), az, output, scene, clear)
             }
-            HeadlessRenderer::Pixman(r) => capture_with::<
-                PixmanRenderer,
-                smithay::reexports::pixman::Image<'static, 'static>,
-            >(r, az, output, scene, clear),
+            HeadlessRenderer::Pixman(r) => {
+                // As the screen shows it.
+                let mut scene = scene.clone();
+                self.thumbs.bake(r, &mut scene, output.current_scale().fractional_scale());
+                capture_with::<PixmanRenderer, smithay::reexports::pixman::Image<'static, 'static>>(
+                    r, az, output, &scene, clear,
+                )
+            }
         }
     }
 }
