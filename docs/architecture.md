@@ -177,7 +177,8 @@ transform), `desks` (names, folders), `keys` (overrides), `menubar`,
 - The compositor starts and keeps alive `aizome-shell` and
   `xwayland-satellite` (X11 apps).
 - Portals: xdg-desktop-portal-wlr for screenshots and screencasts (over
-  ext-image-copy-capture, for outputs and windows), xdg-desktop-portal-gtk
+  ext-image-copy-capture, for outputs and windows, chosen with
+  `aizome-share-picker`), xdg-desktop-portal-gtk
   for the rest (`aizome-portals.conf`).
 - Terminal: foot. Shell: Sekka's fish (set up as Omarchy sets it up).
 - The lock screen uses PAM service `aizome`.
