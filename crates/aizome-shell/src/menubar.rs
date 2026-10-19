@@ -49,6 +49,8 @@ pub enum Slot {
     Tray(TrayWidget),
     /// `N apps ⌄`.
     Apps,
+    /// The sharing indicator: what's shared, and Stop Sharing.
+    Sharing,
 }
 
 /// The systray's widgets.
@@ -183,6 +185,14 @@ pub struct RecordBadge {
     pub stopping: bool,
 }
 
+/// Something shared (screen or window sharing): the indicator in the
+/// accent.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ShareBadge {
+    /// How many shares.
+    pub count: usize,
+}
+
 /// Everything the bar shows.
 #[derive(Clone, Debug, PartialEq)]
 pub struct BarModel {
@@ -203,6 +213,8 @@ pub struct BarModel {
     pub banner: Option<Banner>,
     /// This bar's output is the one the Deskbar hangs from.
     pub primary: bool,
+    /// Something shared (the primary bar's systray shows it).
+    pub sharing: Option<ShareBadge>,
     /// A screen recording going (the primary bar's systray shows it).
     pub recording: Option<RecordBadge>,
 }
@@ -561,6 +573,47 @@ fn recording(badge: &RecordBadge) -> Element<BarMsg> {
     .into()
 }
 
+/// The sharing indicator's chip: its size, and the glyph's.
+const SHARE_W: f64 = 24.0;
+const SHARE_GLYPH: f64 = 13.0;
+
+/// Something shared (macOS's indicator, in Aizome's look and accent): a
+/// chip in the accent blue with the screen-share glyph, and how many when
+/// several; a press opens what's shared, with Stop Sharing.
+fn sharing(badge: &ShareBadge, open: bool) -> Element<BarMsg> {
+    let count = badge.count;
+    drawn(0.0, HEIGHT, (count, open), move |cx| {
+        let t = cx.theme();
+        let b = cx.bounds();
+        let chip = Rect::new(0.0, 4.0, b.x1, HEIGHT - 5.0);
+        let accent = t.role(aizome_kit::Role::Accent);
+        let fill = if cx.is_hovered() || open { t.hover(accent) } else { accent };
+        // Dark ink on Night's light blue, white on Day's deep one.
+        let ink = if t.is_dark() { t.on_focus() } else { t.on_selection() };
+        cx.canvas.fill_rect(chip, fill);
+        let gy = (HEIGHT - 1.0 - SHARE_GLYPH) / 2.0;
+        Icon::ScreenShare.draw(cx.canvas, Point::new(5.5, gy), SHARE_GLYPH, ink);
+        if count > 1 {
+            let spec = look::digits(11.0 * t.metrics.factor, typeface::WEIGHT_SEMIBOLD, ink);
+            let r = Rect::new(5.5 + SHARE_GLYPH + 3.0, 0.0, b.x1 - 4.0, HEIGHT - 1.0);
+            cx.draw_text_in(&count.to_string(), &spec, r, Align::Start);
+        }
+    })
+    .fit(move |_| share_width(count))
+    .on_press(|p: Press| BarMsg::Press(Slot::Sharing, p.rect))
+    .overflow(2.0)
+    .text(
+        if count == 1 { "Sharing the screen".to_owned() } else { format!("Sharing {count} things") },
+        SemanticRole::Button,
+    )
+    .key("sharing")
+    .into()
+}
+
+fn share_width(count: usize) -> f64 {
+    if count > 1 { SHARE_W + 3.0 + 7.0 * count.to_string().len() as f64 } else { SHARE_W }
+}
+
 /// The clock, alone in its element so its tick repaints only itself.
 fn clock(label: &str, open: bool) -> Element<BarMsg> {
     let s = label.to_owned();
@@ -626,6 +679,9 @@ fn header(model: &BarModel) -> Element<BarMsg> {
     let open = |w: TrayWidget| model.open == Some(Slot::Tray(w));
     let mut items: Vec<Element<BarMsg>> = Vec::new();
     let tray = &model.tray;
+    if let Some(s) = &model.sharing {
+        items.push(sharing(s, model.open == Some(Slot::Sharing)));
+    }
     if let Some(r) = &model.recording {
         items.push(recording(r));
     }
@@ -758,6 +814,9 @@ pub type Measure<'a> = dyn FnMut(&str, &aizome_kit::text::TextSpec) -> f64 + 'a;
 pub fn header_width(t: &aizome_kit::Theme, m: &mut Measure, model: &BarModel) -> f64 {
     let tray = &model.tray;
     let mut items: Vec<f64> = Vec::new();
+    if let Some(s) = &model.sharing {
+        items.push(share_width(s.count));
+    }
     if let Some(r) = &model.recording {
         items.push((DOT + DOT_GAP + m(&r.label, &record_spec(t, r.stopping))).ceil());
     }

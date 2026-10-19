@@ -311,6 +311,20 @@ fn tick(state: &mut State) {
     }
 }
 
+/// A window went: an open overlay drops an app whose last window it was
+/// at once, rather than at its next tick (a force-quit app would linger
+/// for up to a second).
+pub fn windows_changed(state: &mut State) {
+    if !state.az.recovery.open {
+        return;
+    }
+    let before = rows_signature(&state.az.recovery.rows);
+    refresh_rows(state);
+    if rows_signature(&state.az.recovery.rows) != before {
+        redraw(state);
+    }
+}
+
 fn ping_all(state: &mut State) {
     state.az.recovery.last_ping = Some(Instant::now());
     let toplevels: Vec<_> = state.az.windows.values().map(|m| m.toplevel().clone()).collect();

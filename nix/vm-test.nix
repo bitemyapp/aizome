@@ -298,22 +298,82 @@ pkgs.testers.runNixOSTest {
         assert int(stream["nb_read_frames"]) >= 100, stream
         capture("07-recording-saved")
 
-    with subtest("sharing the screen streams through the portal"):
-        # As a browser shares the screen: xdg-desktop-portal-wlr over the
-        # compositor's ext-image-copy-capture (wl_shm here, under pixman),
-        # and its PipeWire stream. Through wlr-screencopy it froze after
-        # one frame. The terminal above keeps the screen changing; no
-        # picker in the VM, so the portal takes the first display.
-        machine.succeed(alice(
-            "mkdir -p ~/.config/xdg-desktop-portal-wlr && "
-            "printf '[screencast]\\nchooser_type=none\\n' > ~/.config/xdg-desktop-portal-wlr/config && "
-            "(systemctl --user stop xdg-desktop-portal-wlr.service || true)"
-        ))
-        shared = machine.succeed(alice(
-            "export DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus; aizome-screencast-check 6 20"
-        ))
-        print(shared)
-        assert "frames:" in shared, shared
+    with subtest("sharing a screen or a window streams, chosen with Aizome's picker"):
+        # As a browser shares: xdg-desktop-portal-wlr asks Aizome's picker
+        # (aizome-share-picker, set up by the module for Aizome sessions),
+        # then streams through the compositor's ext-image-copy-capture
+        # (wl_shm here, under pixman) into PipeWire. The terminal above
+        # keeps changing.
+        least = 20
+        bus = "export DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus; "
+        # In Aizome sessions the module's drop-in starts the portal with
+        # Aizome's config (the portal reads only ~/.config otherwise).
+        unit = machine.succeed(alice(f"{bus}systemctl --user cat xdg-desktop-portal-wlr.service"))
+        print(unit)
+        assert "xdg-desktop-portal-wlr-aizome" in unit, unit
+
+        def portal_state():
+            print(machine.execute("ps -ef | grep -E 'slurp|share-picker|portal-wlr|screencast-check' | grep -v grep")[1])
+            print(machine.execute(alice(f"{bus}systemctl --user show-environment | grep -E 'XDG_CURRENT|WAYLAND'"))[1])
+            print(machine.execute(alice(f"{bus}journalctl --user -u xdg-desktop-portal-wlr --no-pager | tail -30"))[1])
+
+        def share(name, types, pick):
+            """Asks to share; once the picker is up, picks as a person
+            would; returns what the portal client said."""
+            out = f"/tmp/share-{name}.log"
+            events = f"/tmp/share-{name}-events.log"
+            detached = "</dev/null >/dev/null 2>&1"
+            machine.succeed(alice(f"setsid -f sh -c 'timeout 60 aizomectl events > {events} 2>&1' {detached}"))
+            machine.wait_until_succeeds(f"test -e {events}", timeout=10)
+            machine.succeed(alice(
+                f"{bus}setsid -f sh -c 'aizome-screencast-check 6 {least} {types} > {out} 2>&1; echo exit $? >> {out}' {detached}"
+            ))
+            try:
+                machine.wait_until_succeeds(f"grep -q '^pick-started share-' {events}", timeout=60)
+            except Exception:
+                portal_state()
+                raise
+            time.sleep(0.5)
+            pick()
+            machine.wait_until_succeeds(f"grep -q '^exit ' {out}", timeout=90)
+            text = machine.succeed(f"cat {out}")
+            print(text)
+            return text
+
+        def sharing():
+            return json.loads(machine.succeed(alice("aizome-shell msg state")))["sharing"]
+
+        mode = ipc("outputs")["outputs"][0]["current_mode"]
+        # The terminal printing the time (the newest, on top).
+        foot = [w for w in ipc("windows")["windows"] if w["app_id"] == "foot"][-1]
+
+        # A screen: a click. The banner says what's being chosen.
+        def click_screen():
+            capture("09-share-picker")
+            as_alice(f"aizomectl input motion {mode['width'] // 2} {mode['height'] - 40}")
+            as_alice("aizomectl input click")
+            # The Deskbar's indicator shows it while it lasts.
+            machine.wait_until_succeeds(alice("aizome-shell msg state | grep -q '\"sharing\":\\[{'"), timeout=10)
+            capture("10-sharing")
+
+        text = share("screen", 1, click_screen)
+        assert "exit 0" in text and "frames:" in text, text
+        machine.wait_until_succeeds(alice("aizome-shell msg state | grep -q '\"sharing\":\\[\\]'"), timeout=20)
+
+        # A window: Space, then a click on it.
+        def click_window():
+            as_alice("aizomectl input key space")
+            g = foot["geometry"]
+            as_alice(f"aizomectl input motion {g['x'] + g['w'] // 2} {g['y'] + g['h'] // 2}")
+            as_alice("aizomectl input click")
+
+        text = share("window", 3, click_window)
+        assert "exit 0" in text and "frames:" in text, text
+
+        # Esc: the portal refuses the share, and nothing is shared.
+        text = share("refused", 3, lambda: as_alice("aizomectl input key escape"))
+        assert "response 1" in text and "exit 1" in text, text
+        assert sharing() == [], sharing()
 
     with subtest("frame times stay inside the budget"):
         print(as_alice("aizomectl stats"))

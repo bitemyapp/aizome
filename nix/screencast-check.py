@@ -1,9 +1,14 @@
-"""Shares the screen as a browser does: a ScreenCast portal session on a
-display, started, and its PipeWire stream read through the remote the
-portal opens; then counts the frames that came. It fails with fewer
-than MIN_FRAMES (the stream that froze after one).
+"""Shares the screen as a browser does: a ScreenCast portal session on
+what the person picks (in Aizome, with its picker), started, and its
+PipeWire stream read through the remote the portal opens; then counts
+the frames that came. It fails with fewer than MIN_FRAMES (the stream
+that froze after one).
 
-    aizome-screencast-check SECONDS MIN_FRAMES
+    aizome-screencast-check SECONDS MIN_FRAMES [TYPES]
+
+TYPES is the portal's source types: 1 a display (the default), 2 a
+window, 3 either. A share the person refuses exits with the portal's
+response (1: cancelled).
 """
 
 import re
@@ -15,6 +20,7 @@ from dbus.mainloop.glib import DBusGMainLoop
 from gi.repository import GLib
 
 seconds, least = int(sys.argv[1]), int(sys.argv[2])
+types = int(sys.argv[3]) if len(sys.argv) > 3 else 1
 DBusGMainLoop(set_as_default=True)
 bus = dbus.SessionBus()
 portal = bus.get_object("org.freedesktop.portal.Desktop", "/org/freedesktop/portal/desktop")
@@ -45,8 +51,9 @@ def request(call, *args, options):
 
 
 session = request(screencast.CreateSession, options={"session_handle_token": "aizome"})["session_handle"]
-# A display, the pointer in the picture.
-request(screencast.SelectSources, session, options={"types": dbus.UInt32(1), "cursor_mode": dbus.UInt32(2)})
+# What may be shared (the portal asks the person), the pointer in the
+# picture.
+request(screencast.SelectSources, session, options={"types": dbus.UInt32(types), "cursor_mode": dbus.UInt32(2)})
 streams = request(screencast.Start, session, "", options={})["streams"]
 print(f"portal: PipeWire node {int(streams[0][0])}, {dict(streams[0][1])}", flush=True)
 fd = screencast.OpenPipeWireRemote(session, dbus.Dictionary({}, signature="sv")).take()
