@@ -619,6 +619,44 @@ def menubar():
     S.quit()
 
 
+def shell_request(request):
+    """A request over the shell's socket, as the compositor or an app sends
+    one ({"request": "open", "what": "sound"}); its reply."""
+    script = (
+        "import socket, sys\n"
+        "s = socket.socket(socket.AF_UNIX)\n"
+        "s.connect(sys.argv[1])\n"
+        "s.sendall((sys.argv[2] + '\\n').encode())\n"
+        "print(s.makefile().readline())\n"
+    )
+    line = json.dumps({"type": "request", **request})
+    out = alice(
+        f"python3 -c {shlex.quote(script)} $XDG_RUNTIME_DIR/aizome-shell.$WAYLAND_DISPLAY.sock {shlex.quote(line)}"
+    )
+    return json.loads(out)
+
+
+def shell_state():
+    return json.loads(shell_request({"request": "state"})["message"])
+
+
+@part("Shell: a systray panel asked for over the shell's socket opens under its widget")
+def tray_panel():
+    widgets = until(
+        "the bar's sound widget",
+        lambda: [e["rect"] for d in shell_docs() for e in d["elements"] if e.get("name") == "tray-sound"],
+    )
+    reply = shell_request({"request": "open", "what": "sound"})
+    assert reply.get("ok"), reply
+    state = until("the panel open", lambda: (lambda s: s if s.get("panel") == "sound" else None)(shell_state()))
+    under = state["panel_under"]
+    print("the panel is under", under, "; the widgets are at", widgets)
+    assert any(abs(under[0] - x) < 1 and abs(under[2] - (x + w)) < 1 for x, y, w, h in widgets), (under, widgets)
+    shot("tray-panel")
+    shell_request({"request": "dismiss"})
+    until("the panel closed", lambda: shell_state().get("panel") is None)
+
+
 @part(
     "Date & Time: the 12-hour clock and Tokyo's time zone reach the shell and timedated; NixOS's network time is explained"
 )

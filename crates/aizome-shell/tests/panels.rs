@@ -230,3 +230,37 @@ fn escape_closes_a_panel() {
         assert!(h.program().panel.is_none(), "Escape closes the {} panel", w.name());
     }
 }
+
+/// Asked for over the shell's socket (Settings, a key, aizomectl), a panel
+/// opens under its widget, as a press on it would put it.
+#[test]
+fn a_panel_asked_for_over_the_socket_opens_under_its_widget() {
+    use aizome_shell::apps::server::ServerEvent;
+    use aizome_shell_proto as proto;
+    let mut h = scene(false);
+    h.program_mut().panels_fixture = Some(fixture());
+    let bar = window_titled(&h, "Menu bar");
+    let ask = |h: &mut aizome_kit::testing::Harness<aizome_shell::shell::Shell>, what: &str| {
+        h.send(Msg::Server(ServerEvent::Message(
+            1,
+            proto::AppMessage::Request { request: proto::ShellRequest::Open { what: what.into() } },
+        )));
+    };
+    for w in [TrayWidget::Sound, TrayWidget::Network, TrayWidget::Clock] {
+        let widget = h.find_id(bar, &aizome_shell::menubar::tray_id(w)).expect("the widget in the bar");
+        ask(&mut h, w.name());
+        let open = h.program().panel.as_ref().expect("a panel");
+        assert_eq!(open.widget, w);
+        assert_eq!(open.under, widget, "{} not under its widget", w.name());
+        let spec = &h.platform.windows.values().last().unwrap().spec;
+        match spec.kind {
+            aizome_kit::platform::OpenKind::Popup { anchor, .. } => {
+                assert!((anchor.x1 - (widget.x1 + 10.0)).abs() < 0.5, "{anchor:?} against {widget:?}");
+            }
+            ref other => panic!("{other:?}"),
+        }
+        // Asked again: it closes.
+        ask(&mut h, w.name());
+        assert!(h.program().panel.is_none());
+    }
+}

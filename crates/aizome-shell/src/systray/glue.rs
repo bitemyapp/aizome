@@ -19,6 +19,8 @@ pub struct OpenPanel {
     pub widget: TrayWidget,
     pub bar: WindowKey,
     pub size: Size,
+    /// The rectangle of the bar it opened under (its widget's).
+    pub under: Rect,
 }
 
 /// What panels remember while open.
@@ -202,7 +204,7 @@ impl Shell {
         spec.kind = WindowKind::Popup { parent: bar, anchor, placement: MenuPlacement::Below, grab: true };
         let window = cx.open_window(spec);
         self.surfaces.insert(window, Surface::Panel);
-        self.panel = Some(OpenPanel { window, widget: w, bar, size });
+        self.panel = Some(OpenPanel { window, widget: w, bar, size, under: rect });
         cx.focus("panel");
     }
 

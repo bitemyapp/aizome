@@ -1160,8 +1160,16 @@ impl Shell {
                 let Some(screen) = self.primary().cloned() else { return (false, "no output".into()) };
                 let Some(bar) = screen.bar else { return (false, "no bar".into()) };
                 if let Some(w) = TrayWidget::named(&what) {
-                    let x = screen.output.frame.width() - 60.0;
-                    self.toggle_panel(bar, w, Rect::new(x, 0.0, x + 16.0, crate::menubar::HEIGHT), cx);
+                    // Under its widget, as a press would put it; a widget
+                    // the bar leaves out has its panel under the clock.
+                    let rect = cx
+                        .element_rect(bar, &crate::menubar::tray_id(w))
+                        .or_else(|| cx.element_rect(bar, &crate::menubar::tray_id(TrayWidget::Clock)))
+                        .unwrap_or_else(|| {
+                            let x = screen.output.frame.width() - 60.0;
+                            Rect::new(x, 0.0, x + 16.0, crate::menubar::HEIGHT)
+                        });
+                    self.toggle_panel(bar, w, rect, cx);
                     (true, String::new())
                 } else if what.eq_ignore_ascii_case("toolchest") {
                     self.open_toolchest(None, cx);
@@ -1237,6 +1245,8 @@ impl Shell {
             "menu": self.bar_menu.map(|m| format!("{:?}", m.slot)),
             "palette": self.palette.as_ref().map(|p| p.query.clone()),
             "panel": self.panel.as_ref().map(|p| p.widget.name()),
+            // The rectangle of the bar it's under (its widget's).
+            "panel_under": self.panel.as_ref().map(|p| [p.under.x0, p.under.y0, p.under.x1, p.under.y1]),
             "pid": std::process::id(),
             // The notifications it keeps (summaries).
             "notes": self.notes.list.iter().map(|n| n.summary.clone()).collect::<Vec<_>>(),

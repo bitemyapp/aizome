@@ -91,6 +91,7 @@ What `launched` and `update` act with:
 | `clipboard_text()`, `set_clipboard_text(s)` | |
 | `open_url(url)`, `notify(summary, body)` | xdg-open; a desktop notification. |
 | `focus(name)` | Focus the element given `.id(name)` (now, or once it shows). |
+| `element_rect(window, name)` | Where the element given `.id(name)` is in a window, as last laid out (to put something by it without a press: the shell's panels asked for over its socket). |
 | `theme() -> &Theme`, `quit()` | |
 | `show_context_menu(window, at, Menu)` | A menu at a point. |
 | `show_menu(window, anchor_rect, Menu, MenuStyle)` | A menu anchored to any rectangle of any window (the shell's bar menus). |

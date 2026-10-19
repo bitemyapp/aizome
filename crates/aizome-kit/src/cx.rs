@@ -237,6 +237,19 @@ impl<Msg: Clone + Send + 'static> Cx<'_, Msg> {
         }
     }
 
+    /// Where the element given `.id(name)` is in `window`, in the window's
+    /// points, as last laid out: none before it shows, or without one (to
+    /// put something by an element the program didn't get a press from,
+    /// such as the shell's panel under a systray widget asked for over its
+    /// socket).
+    pub fn element_rect(&self, window: WindowKey, name: &str) -> Option<Rect> {
+        let win = self.core.window_of(window)?;
+        let w = self.core.wins.get(&win)?;
+        let id = w.tree.names.get(name).copied()?;
+        let i = w.tree.get(id)?;
+        Some(w.tree.nodes[i].rect)
+    }
+
     /// Focus the element given `.id(name)`, in the window with the
     /// keyboard (now, or once it shows); right after `open_window`, in the
     /// window just opened, once it shows.
