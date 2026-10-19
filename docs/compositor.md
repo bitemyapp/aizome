@@ -127,6 +127,13 @@ Notes for client authors:
 
 - Outputs use integer scales (2 for panels over ~180 dpi) unless the
   settings give a fractional one.
+- Every surface hears its output's scale and transform, and hears them
+  again when they change or the window moves to another output:
+  wp_fractional_scale's preferred_scale, and wl_surface 6's
+  preferred_buffer_scale and preferred_buffer_transform (the logic's
+  `scales.rs`, for windows with their subsurfaces and popups, layer
+  surfaces and lock surfaces). `tests/scales.rs` checks an open window
+  follows its output from 1× to 2×, 1.5× and back.
 - wl_shm takes every format the renderer reads (ABGR8888 and XBGR8888
   besides ARGB and XRGB). Under GLES a shm buffer is released as soon as
   its commit has been uploaded into a texture, not at the next commit, so

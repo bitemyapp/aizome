@@ -281,5 +281,6 @@ fn settings_changed(st: &mut State, old: &Settings) {
 
 fn loop_iteration(st: &mut State) {
     crate::actions::flush_ipc_events(st);
+    crate::scales::refresh(st);
     st.az.labels.gc();
 }
