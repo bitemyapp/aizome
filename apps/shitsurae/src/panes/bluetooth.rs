@@ -22,6 +22,14 @@ use crate::panes::hw::{signal, spinner};
 use crate::system::Cell;
 use crate::widgets::{PressStyle, press, tile};
 
+/// What a pairing of ours that fails is said as (and how its end is told).
+const PAIRING: &str = "Couldn't pair";
+
+/// Whether a question only shows a code (no answer but Cancel).
+fn is_display(r: &PairingRequest) -> bool {
+    matches!(r, PairingRequest::DisplayPasskey { .. } | PairingRequest::DisplayPinCode(_))
+}
+
 /// BlueZ, live or the sample.
 pub enum Bt {
     None,
@@ -114,6 +122,14 @@ impl Bt {
                 let name = name.to_owned();
                 self.sample_device(device, move |d| d.name = name)
             }
+        }
+    }
+
+    /// Stop a pairing that only shows a code (its sheet's Cancel).
+    fn cancel_pairing(&self, device: &str) -> Task<()> {
+        match self {
+            Bt::Live(b) => b.cancel_pairing(device),
+            _ => Task::ready(Ok(())),
         }
     }
 
@@ -299,10 +315,29 @@ impl Bluetooth {
         self.looking = true;
     }
 
+    /// Close the question showing, if it's about `device` (any device for
+    /// none); its responder goes (a question left unanswered is a no).
+    fn close_prompt(&mut self, device: Option<&str>, cx: &mut PaneCx<Msg>) -> bool {
+        let Some(p) = self.prompt.as_ref() else { return false };
+        if device.is_some_and(|d| !d.is_empty() && d != p.device) {
+            return false;
+        }
+        let id = p.id;
+        self.prompt = None;
+        self.responders.lock().unwrap_or_else(|e| e.into_inner()).remove(&id);
+        cx.close_sheet();
+        true
+    }
+
     fn answer(&mut self, accept: bool, cx: &mut PaneCx<Msg>) {
         let Some(p) = self.prompt.take() else { return };
         cx.close_sheet();
         let responder = self.responders.lock().unwrap_or_else(|e| e.into_inner()).remove(&p.id);
+        // A code only shown, cancelled: BlueZ is told to stop pairing.
+        if !accept && is_display(&p.request) {
+            let t = self.bt.cancel_pairing(&p.device);
+            cx.wait(t, |_| Msg::Done(String::new(), String::new(), Ok(())));
+        }
         let response = if !accept {
             PairingResponse::Reject
         } else {
@@ -322,7 +357,7 @@ impl Bluetooth {
                         d.trusted = true;
                         d.connected = true;
                     });
-                    self.act(cx, "Couldn't pair", &p.device, t);
+                    self.act(cx, PAIRING, &p.device, t);
                 } else {
                     self.busy.remove(&p.device);
                 }
@@ -426,6 +461,15 @@ impl Pane for Bluetooth {
         if self.showing && !self.looking {
             self.look(cx, false);
         }
+        // A code shown to a device that paired by itself (it started it):
+        // done once it's paired.
+        if let Some(p) = &self.prompt
+            && is_display(&p.request)
+            && self.bt.snapshot().device(&p.device).is_some_and(|d| d.paired)
+        {
+            let device = p.device.clone();
+            self.close_prompt(Some(&device), cx);
+        }
     }
 
     fn hidden(&mut self, cx: &mut PaneCx<Msg>) {
@@ -488,7 +532,7 @@ impl Pane for Bluetooth {
                 match &self.bt {
                     Bt::Live(b) => {
                         let t = b.pair(&d);
-                        self.act(cx, "Couldn't pair", &d, t);
+                        self.act(cx, PAIRING, &d, t);
                     }
                     Bt::Sample(c) => {
                         // The sample asks to compare a code, as most devices do.
@@ -542,16 +586,23 @@ impl Pane for Bluetooth {
             }
             Msg::Prompted(p) => {
                 if p.request == PairingRequest::Cancelled {
-                    if self.prompt.as_ref().is_some_and(|q| q.device == p.device) {
-                        self.prompt = None;
-                        cx.close_sheet();
-                    }
-                    self.busy.remove(&p.device);
+                    // BlueZ gave up (the agent names the device it asked
+                    // about; none closes whatever shows). A pairing of ours
+                    // ends with its task, which says why.
+                    self.close_prompt(Some(&p.device), cx);
                     return;
                 }
-                self.busy.insert(p.device.clone());
+                // A question has no spinner of its own: a device spins
+                // while a pairing of ours runs (it ends with its task), and
+                // one that asked by itself (Authorize) doesn't.
                 let typing = matches!(p.request, PairingRequest::PinCode | PairingRequest::Passkey);
-                // A display-only update (keys typed so far) keeps the sheet.
+                // Another question in its place: the one before is a no
+                // (a display-only update, keys typed so far, keeps the sheet).
+                if let Some(old) = self.prompt.take()
+                    && old.id != p.id
+                {
+                    self.responders.lock().unwrap_or_else(|e| e.into_inner()).remove(&old.id);
+                }
                 self.prompt = Some(p);
                 cx.open_sheet();
                 if typing {
@@ -573,6 +624,11 @@ impl Pane for Bluetooth {
             Msg::Done(what, device, result) => {
                 if !device.is_empty() {
                     self.busy.remove(&device);
+                    // Pairing ended, joined or not: its question is moot (a
+                    // code only shown has nothing else to close it).
+                    if what == PAIRING {
+                        self.close_prompt(Some(&device), cx);
+                    }
                 }
                 if let Err(e) = result
                     && !what.is_empty()
@@ -1004,5 +1060,97 @@ mod tests {
         assert_eq!(shown_adapter(&state, Some("/org/bluez/hci0")).unwrap().path, "/org/bluez/hci0");
         // Gone: the default again.
         assert_eq!(shown_adapter(&state, Some("/org/bluez/hci9")).unwrap().path, "/org/bluez/hci1");
+    }
+}
+
+#[cfg(test)]
+mod sheets {
+    use std::sync::Arc;
+
+    use aizome_kit::testing::Harness;
+    use aizome_sys::bluetooth::PairingRequest;
+
+    use super::{Msg, PAIRING, Prompt};
+    use crate::app::{AppMsg, Shitsurae, Start};
+
+    const JBL: &str = "/org/bluez/hci0/dev_05";
+
+    fn open(name: &str) -> Harness<Shitsurae> {
+        let dir = std::env::temp_dir().join(format!("shitsurae-bt-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut h = Harness::new(Shitsurae::sample(dir.join("settings.toml"), Start::parse("bluetooth")));
+        for _ in 0..400 {
+            if has(&h, "JBL Flip 6") {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+            h.send(AppMsg::Nothing);
+        }
+        h
+    }
+
+    fn has(h: &Harness<Shitsurae>, s: &str) -> bool {
+        h.texts(h.window()).iter().any(|t| t == s)
+    }
+
+    fn send(h: &mut Harness<Shitsurae>, m: Msg) {
+        h.send(AppMsg::Pane("bluetooth", Arc::new(m)));
+    }
+
+    fn ask(h: &mut Harness<Shitsurae>, id: u64, device: &str, request: PairingRequest) {
+        let name = if device.is_empty() { String::new() } else { "JBL Flip 6".to_owned() };
+        send(h, Msg::Prompted(Prompt { id, device: device.into(), name, request, typed: String::new() }));
+    }
+
+    /// Whether the speaker's row has a spinner (the pane has others: the
+    /// search for devices).
+    fn spinning(h: &Harness<Shitsurae>) -> bool {
+        let w = h.window();
+        let Some(row) = h.find(w, "JBL Flip 6") else { return false };
+        h.semantics(w)
+            .iter()
+            .any(|(s, r)| s.label.as_deref() == Some("Busy") && (r.center().y - row.center().y).abs() < 16.0)
+    }
+
+    #[test]
+    fn a_code_only_shown_closes_when_pairing_ends() {
+        let mut h = open("display");
+        ask(&mut h, 1, JBL, PairingRequest::DisplayPasskey { passkey: 123_456, entered: 0 });
+        assert!(has(&h, "123 456"), "{:?}", h.texts(h.window()));
+        // Keys typed on the device: the same sheet, updated.
+        ask(&mut h, 2, JBL, PairingRequest::DisplayPasskey { passkey: 123_456, entered: 3 });
+        assert!(has(&h, "123 456"));
+        send(&mut h, Msg::Done(PAIRING.into(), JBL.into(), Ok(())));
+        assert!(!has(&h, "123 456"), "the code still shows after pairing: {:?}", h.texts(h.window()));
+        assert!(!has(&h, "Pair with “JBL Flip 6”"));
+    }
+
+    #[test]
+    fn a_cancel_from_bluez_closes_its_question() {
+        let mut h = open("cancel");
+        ask(&mut h, 1, JBL, PairingRequest::Confirm(111_222));
+        assert!(has(&h, "Pair with “JBL Flip 6”?"));
+        // About another device: it stays.
+        ask(&mut h, 2, "/org/bluez/hci0/dev_06", PairingRequest::Cancelled);
+        assert!(has(&h, "Pair with “JBL Flip 6”?"));
+        ask(&mut h, 3, JBL, PairingRequest::Cancelled);
+        assert!(!has(&h, "Pair with “JBL Flip 6”?"), "{:?}", h.texts(h.window()));
+        // A cancel naming no device closes what shows.
+        ask(&mut h, 4, JBL, PairingRequest::Confirm(333_444));
+        assert!(has(&h, "Pair with “JBL Flip 6”?"));
+        ask(&mut h, 5, "", PairingRequest::Cancelled);
+        assert!(!has(&h, "Pair with “JBL Flip 6”?"));
+    }
+
+    #[test]
+    fn allowing_a_device_that_asked_leaves_no_spinner() {
+        let mut h = open("authorize");
+        assert!(!spinning(&h));
+        ask(&mut h, 1, JBL, PairingRequest::Authorize);
+        assert!(has(&h, "Allow “JBL Flip 6” to pair?"), "{:?}", h.texts(h.window()));
+        send(&mut h, Msg::Answer(true));
+        assert!(!has(&h, "Allow “JBL Flip 6” to pair?"));
+        assert!(!spinning(&h), "a spinner left after allowing it");
     }
 }
