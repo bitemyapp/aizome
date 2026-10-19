@@ -436,6 +436,176 @@ def appearance():
     S.quit()
 
 
+def sun_times(lat, lon, day_of_year, utc_offset):
+    """Sunrise and sunset in local minutes (NOAA's approximation, as
+    aizome-config reckons them), or None where the sun doesn't rise or set."""
+    import math
+
+    g = 2 * math.pi / 365 * (day_of_year - 1)
+    eqtime = 229.18 * (
+        0.000075 + 0.001868 * math.cos(g) - 0.032077 * math.sin(g) - 0.014615 * math.cos(2 * g) - 0.040849 * math.sin(2 * g)
+    )
+    decl = (
+        0.006918
+        - 0.399912 * math.cos(g)
+        + 0.070257 * math.sin(g)
+        - 0.006758 * math.cos(2 * g)
+        + 0.000907 * math.sin(2 * g)
+        - 0.002697 * math.cos(3 * g)
+        + 0.00148 * math.sin(3 * g)
+    )
+    la = math.radians(lat)
+    cos_ha = math.cos(math.radians(90.833)) / (math.cos(la) * math.cos(decl)) - math.tan(la) * math.tan(decl)
+    if abs(cos_ha) > 1:
+        return None
+    ha = math.degrees(math.acos(cos_ha))
+
+    def wrap(m):
+        return int(math.floor(m + utc_offset + 0.5)) % 1440
+
+    return wrap(720 - 4 * (lon + ha) - eqtime), wrap(720 - 4 * (lon - ha) - eqtime)
+
+
+def where_and_when():
+    """The VM's time zone, the place sunrise and sunset are reckoned for
+    (GeoClue's, if the shell kept one, else the zone's city from tzdata),
+    and the local day of the year, UTC offset and minutes past midnight."""
+    zone = localtime_zone()
+    doy, off, h, m = machine.succeed("date '+%j %z %H %M'").split()
+    sign = -1 if off.startswith("-") else 1
+    offset = sign * (int(off[1:3]) * 60 + int(off[3:5]))
+    lat, lon = setting("location.latitude"), setting("location.longitude")
+    # As aizome-config holds it: only while the zone is the one it was found in.
+    if lat is not None and lon is not None and (zone == "" or setting("location.zone") in (None, zone)):
+        return zone, (lat, lon), "where you are", int(doy), offset, int(h) * 60 + int(m)
+    assert "/" in zone, f"no city's time zone here: {zone!r}"
+    line = machine.succeed(f"grep -P '\\t{zone}(\\t|$)' /etc/zoneinfo/zone1970.tab | head -1").split("\t")
+    coords = line[1]
+    split = max(coords.rfind("+"), coords.rfind("-"))
+
+    def angle(t, d):
+        digits = t[1:]
+        v = int(digits[:d]) + int(digits[d : d + 2]) / 60 + (int(digits[d + 2 : d + 4]) / 3600 if len(digits) > d + 2 else 0)
+        return -v if t[0] == "-" else v
+
+    city = zone.split("/")[-1].replace("_", " ")
+    return zone, (angle(coords[:split], 2), angle(coords[split:], 3)), f"in {city}", int(doy), offset, int(h) * 60 + int(m)
+
+
+def localtime_zone():
+    """The zone /etc/localtime names, as Aizome reads it ("" for none or UTC)."""
+    status, link = machine.execute("readlink /etc/localtime")
+    link = link.strip() if status == 0 else ""
+    return link.rsplit("zoneinfo/", 1)[-1] if "zoneinfo/" in link else ""
+
+
+def near_minutes(a, b, slack=2):
+    return min((a - b) % 1440, (b - a) % 1440) <= slack
+
+
+def hm_minutes(t):
+    h, m = t.split(":")
+    return int(h) * 60 + int(m)
+
+
+@part("Sunrise and sunset: Auto's theme turns at them where the computer is, and Night Light's schedule follows them")
+def sun():
+    S.open("appearance")
+    S.press("Auto")
+    until("theme = auto", lambda: setting("appearance.theme") == "auto")
+    # The switch is usable with Auto chosen.
+    follow = until(
+        "the switch usable",
+        lambda: (lambda c: c if not c.get("disabled") else None)(
+            S.control("appearance", "follow-sunset", role="switch")
+        ),
+    )
+    assert follow.get("checked") is False, follow
+    S.click(follow)
+    until("follow_sunset = true", lambda: setting("appearance.follow_sunset") is True)
+    # A zone that names no place (UTC, as this computer starts, and GeoClue
+    # has nothing to go on offline): no sunrise and sunset to follow, and
+    # it says so; Night Light runs from 19:00 to 07:00.
+    status, before = machine.execute("readlink /etc/localtime")
+    zone_set = False
+    if "/" not in localtime_zone() and setting("location.latitude") is None:
+        until(
+            "the pane to say where isn't known",
+            lambda: any("isn't known" in t for t in S.texts(S.row("appearance", "follow-sunset"))),
+        )
+        night = ipc("night-light")["state"]
+        assert night.get("place") is None and (night.get("from"), night.get("to")) == ("19:00", "07:00"), night
+    # The shell asks GeoClue (offline, as in the sandbox, it gives up after
+    # 30 s; with a network it may find where the host is): wait for its
+    # answer, which decides the place.
+    until(
+        "the shell to hear from GeoClue",
+        lambda: machine.succeed(
+            "journalctl -b --no-pager -o cat | grep -c -E 'where the computer is: |the computer is near ' || true"
+        ).strip()
+        not in ("", "0"),
+        timeout=60,
+        every=2,
+    )
+    if "/" not in localtime_zone() and setting("location.latitude") is None:
+        # A city's zone: its sunrise and sunset. Set as timedated sets one
+        # (a relative link; an absolute one is NixOS's own, which Date &
+        # Time reads as the configuration's), and put back after.
+        machine.succeed("ln -sfn ../etc/zoneinfo/Europe/Paris /etc/localtime")
+        zone_set = True
+        reopen("appearance")
+    zone, (lat, lon), where, doy, offset, now = where_and_when()
+    rise, dusk = sun_times(lat, lon, doy, offset)
+    print(f"{zone} ({lat:.2f}, {lon:.2f}): sunrise {rise // 60:02}:{rise % 60:02}, sunset {dusk // 60:02}:{dusk % 60:02}")
+    # Settings says when, for where.
+    words = until(
+        "the hours under the switch",
+        lambda: re.search(
+            r"sunrise \((\d\d:\d\d)\) to sunset \((\d\d:\d\d)\) (.+?), Night after",
+            " ".join(S.texts(S.row("appearance", "follow-sunset"))),
+        ),
+    )
+    assert near_minutes(hm_minutes(words.group(1)), rise) and near_minutes(hm_minutes(words.group(2)), dusk), (
+        words.group(0),
+        rise,
+        dusk,
+    )
+    assert words.group(3) == where, (words.group(3), where)
+    # The shell's theme (which GTK apps follow) turns at them, not at
+    # 07:00 and 19:00: checked away from the moments it turns. The shell
+    # looks again each minute (nothing tells it the zone changed).
+    zone, (lat, lon), where, doy, offset, now = where_and_when()
+    if not any(near_minutes(now, t, 3) for t in (rise, dusk)):
+        day = rise <= now < dusk if rise < dusk else not (dusk <= now < rise)
+        want = "prefer-light" if day else "prefer-dark"
+        until(
+            f"dconf to say {want}",
+            lambda: want in alice("dconf read /org/gnome/desktop/interface/color-scheme"),
+            timeout=90,
+            every=2,
+        )
+
+    # Night Light's sunset schedule, as the compositor runs it.
+    night = ipc("night-light")["state"]
+    print("night light:", night)
+    assert night["schedule"] == "sunset", night
+    assert night.get("place") in (zone, "located"), night
+    assert near_minutes(hm_minutes(night["from"]), dusk) and near_minutes(hm_minutes(night["to"]), rise), (night, rise, dusk)
+
+    reopen("appearance")
+    assert S.checked("appearance", "follow-sunset") is True
+    S.click(S.control("appearance", "follow-sunset", role="switch"))
+    until("follow_sunset = false", lambda: setting("appearance.follow_sunset") is False)
+    S.press("Night")
+    until("theme = night", lambda: setting("appearance.theme") == "night")
+    S.quit()
+    if zone_set:
+        if status == 0:
+            machine.succeed(f"ln -sfn {shlex.quote(before.strip())} /etc/localtime")
+        else:
+            machine.succeed("rm -f /etc/localtime")
+
+
 @part("Desktop & Deskbar: a Desk renamed and added, the Shelf and Trash hidden, tabs minimise on double-click")
 def desktop():
     S.open("desktop")
@@ -500,6 +670,44 @@ def menubar():
     S.click(S.control("menubar", "widget-bluetooth", role="switch"))
     until("widgets with bluetooth", lambda: "bluetooth" in (setting("menubar.widgets") or []))
     S.quit()
+
+
+def shell_request(request):
+    """A request over the shell's socket, as the compositor or an app sends
+    one ({"request": "open", "what": "sound"}); its reply."""
+    script = (
+        "import socket, sys\n"
+        "s = socket.socket(socket.AF_UNIX)\n"
+        "s.connect(sys.argv[1])\n"
+        "s.sendall((sys.argv[2] + '\\n').encode())\n"
+        "print(s.makefile().readline())\n"
+    )
+    line = json.dumps({"type": "request", **request})
+    out = alice(
+        f"python3 -c {shlex.quote(script)} $XDG_RUNTIME_DIR/aizome-shell.$WAYLAND_DISPLAY.sock {shlex.quote(line)}"
+    )
+    return json.loads(out)
+
+
+def shell_state():
+    return json.loads(shell_request({"request": "state"})["message"])
+
+
+@part("Shell: a systray panel asked for over the shell's socket opens under its widget")
+def tray_panel():
+    widgets = until(
+        "the bar's sound widget",
+        lambda: [e["rect"] for d in shell_docs() for e in d["elements"] if e.get("name") == "tray-sound"],
+    )
+    reply = shell_request({"request": "open", "what": "sound"})
+    assert reply.get("ok"), reply
+    state = until("the panel open", lambda: (lambda s: s if s.get("panel") == "sound" else None)(shell_state()))
+    under = state["panel_under"]
+    print("the panel is under", under, "; the widgets are at", widgets)
+    assert any(abs(under[0] - x) < 1 and abs(under[2] - (x + w)) < 1 for x, y, w, h in widgets), (under, widgets)
+    shot("tray-panel")
+    shell_request({"request": "dismiss"})
+    until("the panel closed", lambda: shell_state().get("panel") is None)
 
 
 @part(
@@ -705,7 +913,26 @@ def performance():
     S.quit()
 
 
-@part("Search: a palette scope turned off is kept")
+FRECENCY = f"{HOME}/.local/state/aizome/frecency.json"
+
+
+def frecency():
+    return machine.succeed(f"cat {FRECENCY} 2>/dev/null || true")
+
+
+def launch_from_palette(name, app_id):
+    """Open an app the way a person does: ❖Space, its name, Return."""
+    chord("super+space")
+    until("the palette", lambda: any(d.get("title") == "Palette" for d in shell_docs()), timeout=10)
+    type_text(name)
+    time.sleep(1)
+    key("return")
+    w = until(f"{name}'s window", lambda: next((w for w in ipc("windows")["windows"] if w["app_id"] == app_id), None))
+    ipc(f"close {w['id']}")
+    until(f"{name} gone", lambda: not any(w["app_id"] == app_id for w in ipc("windows")["windows"]))
+
+
+@part("Search: a palette scope turned off is kept; forgetting what the palette learnt sticks")
 def search():
     S.open("search")
     S.click(S.control("search", "scopes", role="switch"))
@@ -713,7 +940,22 @@ def search():
     reopen("search")
     assert S.checked("search", "scopes") is False
     S.click(S.control("search", "scopes", role="switch"))
+    until("every scope", lambda: "commands" in (setting("palette.scopes") or ["commands"]))
     S.quit()
+
+    # The palette learns a pick...
+    launch_from_palette("Tokei", "org.aizome.Tokei")
+    until("the pick learnt", lambda: "app:org.aizome.Tokei" in frecency())
+    # ...Settings forgets it...
+    S.open("search")
+    S.press("Forget…")
+    S.press("Forget")
+    until("the history gone", lambda: machine.execute(f"test -e {FRECENCY}")[0] != 0)
+    S.quit()
+    # ...and the next pick doesn't bring it back.
+    launch_from_palette("Soroban", "org.aizome.Soroban")
+    until("the new pick learnt", lambda: "app:org.aizome.Soroban" in frecency())
+    assert "Tokei" not in frecency(), frecency()
 
 
 def write_png(path, rgb, side=96):
@@ -776,9 +1018,19 @@ def users():
     until("the new picture", lambda: machine.succeed(f"sha256sum {icon_file()}").split()[0] != first)
     shot("users-picture")
 
+    # Another account, whose home isn't under /home: Remove names it, and
+    # its type can change (accounts aren't fixed by the configuration here).
+    machine.succeed("useradd -m -d /srv/bob -s /run/current-system/sw/bin/bash -c 'Bob Example' bob")
     reopen("users")
     assert S.control("users", "name", role="textinput").get("value") == "Alice Pleasance Liddell"
+    kind = until("Bob's account type", lambda: S.beside("Bob Example", "combobox"), timeout=30)
+    assert not kind.get("disabled"), kind
+    S.click(S.beside("Bob Example", "button", label="Remove"))
+    S.wait(text="Also delete /srv/bob and everything in it")
+    S.press("Cancel")
+    S.gone("the sheet to go", text="Also delete /srv/bob and everything in it")
     S.quit()
+    machine.succeed("userdel -r bob")
 
 
 @part("Keyboard: quick repeat and a German layout reach the compositor; Caps Lock as Escape is kept")
@@ -880,13 +1132,13 @@ def sidebar_top():
     return S.find(text="Network", role="label", visible=False)["rect"][1]
 
 
-def scrolled_by_wheel(dz):
-    """Turn the real mouse's wheel (QEMU's PS/2 mouse, whose wheel libinput
-    can turn round itself) over Settings' sidebar; how far its list moved up."""
+def scrolled_by_wheel(dz, kind="PS/2"):
+    """Turn a real mouse's wheel (QEMU's PS/2 mouse, or another plugged in)
+    over Settings' sidebar; how far its list moved up."""
     y0 = sidebar_top()
     win = S.window()["geometry"]
     move(win["x"] + 116, win["y"] + win["h"] / 2)
-    machine.send_monitor_command(f"mouse_set {mouse_index('PS/2')}")
+    machine.send_monitor_command(f"mouse_set {mouse_index(kind)}")
     for _ in range(2):
         machine.send_monitor_command(f"mouse_move 0 0 {dz}")
         time.sleep(0.2)
@@ -923,14 +1175,34 @@ def mouse():
     print(f"the same movement took the pointer {slow} then {fast} points")
     assert fast > 1.5 * max(slow, 1), (slow, fast)
 
-    traditional = scrolled_by_wheel(1)
+    # The same turn of the wheel, before and after: the list goes one way,
+    # then back (libinput offers this PS/2 wheel natural scrolling of its
+    # own, so turning it round there too would turn it back: no change).
+    dz = 1
+    traditional = scrolled_by_wheel(dz)
     if traditional == 0:
-        traditional = scrolled_by_wheel(-1)
+        # Already at that end of the list.
+        dz = -1
+        traditional = scrolled_by_wheel(dz)
     S.click(S.control("mouse", "natural-scroll", role="switch"))
     until("natural_scroll = true", lambda: setting("input.pointer.natural_scroll") is True)
-    natural = scrolled_by_wheel(1 if traditional > 0 else -1)
+    time.sleep(1)
+    natural = scrolled_by_wheel(dz)
     print(f"the wheel moved the pane {traditional}, then {natural} with natural scrolling")
     assert traditional * natural < 0, (traditional, natural)
+    # A mouse plugged in with natural scrolling already on (libinput can
+    # turn a USB wheel round itself): turned round once, as the other is.
+    added = machine.send_monitor_command("device_add usb-mouse,bus=usb-bus.0,id=natmouse")
+    if "rror" in added or "not found" in added:
+        print("device_add on usb-bus.0:", added)
+        machine.send_monitor_command("device_add usb-mouse,id=natmouse")
+    until("the USB mouse", lambda: mouse_index("HID Mouse") is not None)
+    time.sleep(2)
+    # The other way, which, turned round, goes as the first turn did.
+    usb = scrolled_by_wheel(-dz, kind="HID Mouse")
+    print(f"the USB mouse's wheel moved the pane {usb}")
+    machine.send_monitor_command("device_del natmouse")
+    assert usb * traditional > 0, f"turned round twice: {usb} against {traditional}"
 
     reopen("mouse")
     assert S.checked("mouse", "natural-scroll") is True
@@ -1000,17 +1272,101 @@ def sound():
     until("unmuted", lambda: "MUTED" not in wpctl("get-volume @DEFAULT_AUDIO_SINK@"))
     vol = S.control("sound", "output-volume", role="slider")
     assert abs(vol["range"][2] - 0.3) < 0.06 or abs(vol["range"][2] - 30) < 6, vol
+
+    # Alerts, heard on the output (its monitor recorded, the output at full
+    # volume: 30% is about 3% of the signal): the bell plays the alert
+    # sound at the alert volume, silent at none...
+    wpctl("set-volume @DEFAULT_AUDIO_SINK@ 1.0")
+    bell = lambda: alice("aizomectl action bell")  # noqa: E731
+    loud = loudness_during(bell)
+    print(f"the bell peaked at {loud}")
+    assert loud > 300, f"the bell made no sound ({loud})"
+    S.slide(S.control("sound", "alert-volume", role="slider"), 0.0)
+    until("alert_volume = 0", lambda: setting("sound.alert_volume") == 0.0)
+    quiet = loudness_during(bell)
+    assert quiet < 50, f"the bell sounded at no volume ({quiet})"
+    S.slide(S.control("sound", "alert-volume", role="slider"), 0.7)
+    until("alert_volume back", lambda: (setting("sound.alert_volume") or 0) > 0.5)
+    # (Letting go of the slider plays the alert, to hear it: let it end.)
+    time.sleep(3)
+    # ...and with feedback on, the volume keys are heard at the new volume.
+    silent = loudness_during(lambda: alice("aizomectl action volume-up"))
+    assert silent < 50, f"feedback without asking ({silent})"
+    S.click(S.control("sound", "feedback", role="switch"))
+    until("volume_feedback = true", lambda: setting("sound.volume_feedback") is True)
+    heard = loudness_during(lambda: alice("aizomectl action volume-down"))
+    print(f"the volume key's feedback peaked at {heard}")
+    assert heard > 300, f"no feedback from the volume key ({heard})"
+    S.click(S.control("sound", "feedback", role="switch"))
+    until("volume_feedback = false", lambda: setting("sound.volume_feedback") is False)
+    wpctl("set-volume @DEFAULT_AUDIO_SINK@ 0.3")
     S.quit()
 
 
-@part("Network: joining a WPA2 network with its passphrase, airplane mode, and the wired details")
+def loudness_during(act, seconds=4):
+    """The loudest sample on the default output (its monitor) while `act`
+    runs, 0–32767."""
+    raw = "/tmp/aizome-monitor.raw"
+    alice(
+        f"rm -f {raw}; setsid timeout {seconds} parecord --device=@DEFAULT_MONITOR@ --raw --format=s16le "
+        f"--channels=1 --rate=16000 {raw} </dev/null >/dev/null 2>&1 &"
+    )
+    time.sleep(1)
+    act()
+    time.sleep(seconds)
+    script = (
+        "import array, sys\n"
+        "d = open(sys.argv[1], 'rb').read()\n"
+        "a = array.array('h')\n"
+        "a.frombytes(d[: len(d) // 2 * 2])\n"
+        "print(max(map(abs, a)) if a else 0)\n"
+    )
+    return int(machine.succeed(f"python3 -c {shlex.quote(script)} {raw}").strip())
+
+
+def search_settings(words):
+    """Search Settings and open what it finds first, as a person does."""
+    S.click(S.wait(name="search"))
+    chord("super+a")
+    type_text(words)
+    key("return")
+    time.sleep(1)
+
+
+def revealed(entry):
+    """The option search opened, shown in the pane."""
+    return until(f"{entry} shown", lambda: S.find(name=entry))
+
+
+def clear_search():
+    """Empty Settings' search field (Escape there could go Back instead)."""
+    S.click(S.wait(name="search"))
+    chord("super+a")
+    key("backspace")
+    time.sleep(0.5)
+
+
+@part("Network: search reveals Add VPN and Other Network…; a wrong passphrase is asked again as typed; the hotspot")
 def network():
     S.open("network")
     S.reveal(label="Aizome Test AP", role="button") if S.find(label="Aizome Test AP", visible=False) else None
     ap = until("the access point listed", lambda: S.find(label="Aizome Test AP", role="button", visible=False), timeout=60)
+    # No VPNs here: Add VPN is the VPN section's only row, and found.
+    search_settings("Add VPN")
+    revealed("entry:network.add-vpn")
+    clear_search()
+    # A wrong passphrase: the sheet comes back with it, to be put right.
     S.click(S.reveal(label=ap["label"], role="button"))
     field = S.wait(name="network-password")
     assert field.get("focused"), field
+    type_text("not-the-passphrase")
+    key("return")
+    until("the sheet back", lambda: S.find(contains="Couldn't join: "), timeout=120)
+    field = S.wait(name="network-password")
+    assert field.get("text") == "not-the-passphrase", field
+    assert "Aizome Test AP" not in machine.succeed("nmcli -t -f NAME connection show"), "a refused network left behind"
+    S.click(field)
+    chord("super+a")
     type_text(WIFI_PASSPHRASE)
     key("return")
     until(
@@ -1021,19 +1377,75 @@ def network():
     until("the pane to say so", lambda: any("Connected to Aizome Test AP" in t for t in S.texts()), timeout=30)
     shot("network-joined")
 
+    # Airplane mode through rfkill (the seat's user may write /dev/rfkill).
     S.click(S.control("network", "airplane", role="switch"))
     until("radios off", lambda: "disabled" in machine.succeed("nmcli radio wifi") or "blocked" in machine.succeed("rfkill -n -o SOFT"))
     S.click(S.control("network", "airplane", role="switch"))
     until("radios on", lambda: "enabled" in machine.succeed("nmcli radio wifi"))
+    until("Wi-Fi back", lambda: any("Connected to Aizome Test AP" in t for t in S.texts()), timeout=90)
+
+    # Without rfkill (no uaccess on /dev/rfkill): NetworkManager's Wi-Fi and
+    # BlueZ's adapters go off instead, and those that were on come back.
+    before = until("Bluetooth on", lambda: (lambda p: p if any(p.values()) else None)(bluetooth_powered()))
+    machine.succeed("setfacl -b /dev/rfkill")
+    assert machine.execute("su alice -c 'test -w /dev/rfkill'")[0] != 0, "alice may still write /dev/rfkill"
+    S.click(S.control("network", "airplane", role="switch"))
+    until("Wi-Fi off", lambda: "disabled" in machine.succeed("nmcli radio wifi"))
+    until("Bluetooth off", lambda: not any(bluetooth_powered().values()))
+    # Bluetooth went off through BlueZ, not rfkill (NetworkManager blocks
+    # the Wi-Fi radios itself when its Wi-Fi goes off).
+    radios = machine.succeed("rfkill -n -o TYPE,SOFT")
+    print("radios:", radios)
+    assert not any(
+        line.split()[0] == "bluetooth" and line.split()[1] == "blocked" for line in radios.splitlines() if line.strip()
+    ), radios
+    time.sleep(1)
+    assert S.checked("network", "airplane") is True, "the switch sprang back"
+    S.click(S.control("network", "airplane", role="switch"))
+    until("Wi-Fi on", lambda: "enabled" in machine.succeed("nmcli radio wifi"))
+    until("Bluetooth back as it was", lambda: bluetooth_powered() == before)
+    machine.succeed("setfacl -m u:alice:rw /dev/rfkill")
 
     addr = machine.succeed("nmcli -g IP4.ADDRESS dev show eth0").strip().split("/")[0]
     wired = " ".join(S.texts(S.row("network", "wired")))
     assert addr in wired, (addr, wired)
 
+    # Wi-Fi off: search for Other Network… shows the switch that brings it.
+    S.click(S.control("network", "wifi", role="switch"))
+    until("Wi-Fi off", lambda: "disabled" in machine.succeed("nmcli radio wifi"))
+    search_settings("Other Network")
+    revealed("entry:network.join-other")
+    clear_search()
+    S.click(S.control("network", "wifi", role="switch"))
+    until("Wi-Fi on", lambda: "enabled" in machine.succeed("nmcli radio wifi"))
+    until("Wi-Fi back", lambda: any("Connected to Aizome Test AP" in t for t in S.texts()), timeout=90)
+
+    # The hotspot says the network's name, not its profile's ("Hotspot").
+    S.click(S.control("network", "hotspot", role="switch"))
+    name = S.wait(name="network-hotspot-name").get("value")
+    assert name and name != "Hotspot", name
+    S.click(S.wait(name="network-hotspot-password"))
+    type_text("hotspot-pass-1")
+    key("return")
+    until(
+        "the hotspot named",
+        lambda: f"Sharing as “{name}”" in " ".join(S.texts(S.row("network", "hotspot"))),
+        timeout=60,
+    )
+    shot("network-hotspot")
+    S.click(S.control("network", "hotspot", role="switch"))
+    until("the hotspot off", lambda: "Sharing as" not in " ".join(S.texts(S.row("network", "hotspot"))), timeout=30)
+
     reopen("network")
-    until("Wi-Fi back", lambda: any("Connected to Aizome Test AP" in t for t in S.texts()), timeout=60)
+    until("Wi-Fi back", lambda: any("Connected to Aizome Test AP" in t for t in S.texts()), timeout=90)
     assert S.find(text="Aizome Test AP", visible=False), "the network in use isn't shown"
     S.quit()
+
+
+def bluetooth_powered():
+    """Each BlueZ controller's address, and whether it's on."""
+    macs = re.findall(r"Controller (\S+)", machine.succeed("bluetoothctl list"))
+    return {m: "Powered: yes" in machine.succeed(f"bluetoothctl show {m}") for m in macs}
 
 
 def controller_named(alias):
@@ -1136,11 +1548,18 @@ def displays():
     until("Virtual-2 straight again", lambda: outputs()["Virtual-2"]["transform"] == "normal")
     assert (output_entry("Virtual-2") or {}).get("transform") in (None, "normal")
 
+    # Mirroring: seen at once, before it's kept; Revert takes it back.
+    S.choose(S.control("displays", "use-as", role="combobox"), "Mirror for")
+    until("Virtual-2 mirroring before Keep", lambda: outputs()["Virtual-2"].get("mirror") == "Virtual-1", timeout=30)
+    assert S.find(text="Keep these display settings?"), "mirrored without asking"
+    keep_sheet("Revert")
+    until("Virtual-2 its own after Revert", lambda: outputs()["Virtual-2"].get("mirror") is None, timeout=30)
+    assert (output_entry("Virtual-2") or {}).get("mirror") is None, setting("outputs")
     # Mirroring, kept.
     S.choose(S.control("displays", "use-as", role="combobox"), "Mirror for")
-    keep_sheet("Keep Changes")
     until("Virtual-2 mirroring", lambda: outputs()["Virtual-2"].get("mirror") == "Virtual-1", timeout=30)
-    assert (output_entry("Virtual-2") or {}).get("mirror") == "Virtual-1", setting("outputs")
+    keep_sheet("Keep Changes")
+    until("kept mirroring", lambda: (output_entry("Virtual-2") or {}).get("mirror") == "Virtual-1")
 
     reopen("displays")
     S.segment(S.wait(role="tablist", contains="RHT QEMU Monitor"), two)
@@ -1150,6 +1569,23 @@ def displays():
     S.choose(use, "Extended display")
     keep_sheet("Keep Changes")
     until("Virtual-2 its own again", lambda: outputs()["Virtual-2"].get("mirror") is None, timeout=30)
+
+    # `[[outputs]]` changed elsewhere (Virtual-2 made the main display by
+    # hand) and applied: the open pane follows, without opening it again.
+    assert S.control("displays", "use-as", role="combobox").get("value") == "Extended display"
+    edit = (
+        "import sys\n"
+        "p = sys.argv[1]\n"
+        "t = open(p).read().replace('primary = true\\n', '')\n"
+        "t = t.replace('name = \"Virtual-2\"\\n', 'name = \"Virtual-2\"\\nprimary = true\\n', 1)\n"
+        "open(p, 'w').write(t)\n"
+    )
+    alice(f"python3 -c {shlex.quote(edit)} {HOME}/.config/aizome/settings.toml && aizomectl reload-config")
+    until("the compositor's main display", lambda: outputs()["Virtual-2"].get("primary") is True)
+    until(
+        "the pane to say Virtual-2 is the main display",
+        lambda: S.control("displays", "use-as", role="combobox").get("value") == "Main display",
+    )
     S.quit()
 
 

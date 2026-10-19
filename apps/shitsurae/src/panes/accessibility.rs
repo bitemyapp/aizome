@@ -95,7 +95,7 @@ impl Pane for Accessibility {
         let k = &s.input.keyboard.extra;
         let slow = extra::get_bool(k, "slow_keys", false);
         let slow_ms = extra::get_int(k, "slow_keys_ms", 300) as f64;
-        let now = match aizome_kit::theme::Appearance::from(a).theme_name() {
+        let now = match s.theme_now() {
             ThemeName::HighContrast => ThemeName::Night,
             t => t,
         };
@@ -164,7 +164,7 @@ impl Pane for Accessibility {
                         toggle(extra::get_bool(&s.sound, "visual_alert", false)).on_toggle(Msg::Flash),
                     )
                     .entry("flash")
-                    .help("The menu bar flashes when the alert sound plays, so it's seen as well as heard."),
+                    .help("The screen's edge flashes when the alert sound plays, so it's seen as well as heard."),
                 ],
             ),
             vcx.section("Typing", typing),

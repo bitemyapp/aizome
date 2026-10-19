@@ -405,3 +405,30 @@ fn a_blocked_adapter_is_unblocked_before_powering_on() {
     assert_eq!(written, [0, 0, 0, 0, 2, 3, 0, 0]);
     assert!(eventually(|| bt.snapshot().powered()));
 }
+
+/// BlueZ's `Cancel` names no device: the agent says which one it was
+/// about (the one it asked last), so the UI can close that question.
+#[test]
+fn a_cancel_from_bluez_names_the_device_it_was_about() {
+    let bus = test_bus!();
+    let (fake, shared) = serve(&bus);
+    let bt = Bluetooth::with_bus(bus.bus(), Wake::none());
+    assert!(eventually(|| bt.available()));
+    let prompts = Arc::new(Mutex::new(Vec::new()));
+    let seen = prompts.clone();
+    bt.register_agent(move |p| seen.lock().unwrap().push(p)).wait().unwrap();
+    let pairing = bt.pair(SPEAKER);
+    assert!(eventually(|| prompts.lock().unwrap().len() == 1));
+    let (sender, agent) = shared.lock().unwrap().agent.clone().unwrap();
+    fake.call_method(Some(sender.as_str()), agent.as_str(), Some("org.bluez.Agent1"), "Cancel", &()).unwrap();
+    assert!(eventually(|| prompts.lock().unwrap().len() == 2));
+    {
+        let p = &prompts.lock().unwrap()[1];
+        assert_eq!(p.request, PairingRequest::Cancelled);
+        assert_eq!(p.device, SPEAKER);
+    }
+    // The question left unanswered is a no: pairing ends.
+    let first = prompts.lock().unwrap().remove(0);
+    first.responder.reject();
+    assert!(pairing.wait().is_err());
+}

@@ -19,6 +19,8 @@ pub struct OpenPanel {
     pub widget: TrayWidget,
     pub bar: WindowKey,
     pub size: Size,
+    /// The rectangle of the bar it opened under (its widget's).
+    pub under: Rect,
 }
 
 /// What panels remember while open.
@@ -202,7 +204,7 @@ impl Shell {
         spec.kind = WindowKind::Popup { parent: bar, anchor, placement: MenuPlacement::Below, grab: true };
         let window = cx.open_window(spec);
         self.surfaces.insert(window, Surface::Panel);
-        self.panel = Some(OpenPanel { window, widget: w, bar, size });
+        self.panel = Some(OpenPanel { window, widget: w, bar, size, under: rect });
         cx.focus("panel");
     }
 
@@ -308,6 +310,10 @@ impl Shell {
                     let _ = a.set_sink_volume(d.index, v);
                 }
             }
+            PanelMsg::VolumeSet => {
+                let muted = sys.audio.as_ref().and_then(|a| a.snapshot().default_output().map(|d| d.muted));
+                self.volume_feedback(muted.unwrap_or(false), cx);
+            }
             PanelMsg::Mute => {
                 if let Some(a) = &sys.audio {
                     let _ = a.toggle_mute();
@@ -398,8 +404,7 @@ impl Shell {
             }
             self.ipc.send(aizome_ipc::Request::ReloadConfig);
         }
-        let day =
-            self.settings.appearance.theme.resolve(aizome_kit::theme::local_hour()) == aizome_theme::ThemeName::Day;
+        let day = self.settings.theme_now() == aizome_theme::ThemeName::Day;
         self.theme_changed(day);
     }
 }

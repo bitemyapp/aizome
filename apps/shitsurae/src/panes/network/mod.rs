@@ -275,6 +275,8 @@ pub struct JoinForm {
     pub validate: bool,
     pub domain: String,
     pub anonymous: String,
+    /// Why the last try didn't join.
+    pub error: Option<String>,
 }
 
 impl JoinForm {
@@ -290,6 +292,7 @@ impl JoinForm {
             validate: true,
             domain: String::new(),
             anonymous: String::new(),
+            error: None,
         }
     }
 
@@ -428,6 +431,12 @@ pub struct Network {
     sheet: Option<Sheet>,
     /// The network being joined (one at a time).
     joining: Option<String>,
+    /// The sheet a join in progress was asked for in, with what was typed
+    /// in it: it opens again, as it was, if the join fails.
+    tried: Option<(String, Sheet)>,
+    /// A sheet waiting for the one open to close (a join that ended while
+    /// another was being typed in).
+    queued: Option<Sheet>,
     /// Connections being brought up or down.
     busy: HashSet<String>,
     scanning: bool,
@@ -447,6 +456,8 @@ impl Default for Network {
             from_saved: false,
             sheet: None,
             joining: None,
+            tried: None,
+            queued: None,
             busy: HashSet::new(),
             scanning: false,
             scan_timer: None,
@@ -558,9 +569,42 @@ impl Network {
         cx.open_sheet();
     }
 
+    /// Open a sheet, or, while another is open (something being typed),
+    /// once that one closes.
+    fn open_sheet_after(&mut self, sheet: Sheet, cx: &mut PaneCx<Msg>) {
+        if self.sheet.is_some() {
+            self.queued = Some(sheet);
+        } else {
+            self.open_sheet(sheet, cx);
+            Self::focus_sheet(self.sheet.as_ref(), cx);
+        }
+    }
+
+    fn focus_sheet(sheet: Option<&Sheet>, cx: &mut PaneCx<Msg>) {
+        match sheet {
+            Some(Sheet::Password { .. }) => cx.focus("network-password"),
+            Some(Sheet::Form(f)) if f.hidden => cx.focus("network-name"),
+            Some(Sheet::Form(_)) => cx.focus("network-username"),
+            _ => {}
+        }
+    }
+
     fn close_sheet(&mut self, cx: &mut PaneCx<Msg>) {
         self.sheet = None;
         cx.close_sheet();
+        if let Some(next) = self.queued.take() {
+            self.open_sheet(next, cx);
+            Self::focus_sheet(self.sheet.as_ref(), cx);
+        }
+    }
+
+    /// Say in the open sheet why it can't join yet, keeping what's typed.
+    fn sheet_error(&mut self, e: String) {
+        match &mut self.sheet {
+            Some(Sheet::Password { error, .. }) | Some(Sheet::Hotspot { error, .. }) => *error = Some(e),
+            Some(Sheet::Form(f)) => f.error = Some(e),
+            None => {}
+        }
     }
 
     fn ask_password(&mut self, ssid: &str, security: Security, title: String, message: String, cx: &mut PaneCx<Msg>) {
@@ -665,8 +709,9 @@ impl Network {
 
     fn submit(&mut self, cx: &mut PaneCx<Msg>) {
         let Some(sheet) = self.sheet.clone() else { return };
-        match sheet {
+        match &sheet {
             Sheet::Password { ssid, security, password, .. } => {
+                let (ssid, security, password) = (ssid.clone(), *security, password.clone());
                 if !logic::password_ok(security, &password) {
                     let min = logic::minimum_password(security);
                     if let Some(Sheet::Password { error, .. }) = &mut self.sheet {
@@ -674,28 +719,32 @@ impl Network {
                     }
                     return;
                 }
+                // Another join first: the sheet stays, with what's typed.
+                if let Some(j) = self.joining.clone() {
+                    self.sheet_error(format!("Still joining {j}: join this one once that's done"));
+                    return;
+                }
                 let state = self.state();
                 let Some(network) = state.network(&ssid).cloned() else {
-                    self.close_sheet(cx);
-                    cx.failed(&format!("Couldn't join {ssid}"), "the network is out of range");
+                    self.sheet_error(format!("{ssid} is out of range"));
                     return;
                 };
                 self.close_sheet(cx);
-                if self.busy_joining(cx) {
-                    return;
-                }
                 let task = self.net.connect(&network, Some(&password));
+                self.tried = Some((ssid.clone(), sheet.clone()));
                 self.run_join(&ssid, false, task, cx);
             }
             Sheet::Form(form) => {
                 if !form.ready() {
                     return;
                 }
-                self.close_sheet(cx);
-                if self.busy_joining(cx) {
+                if let Some(j) = self.joining.clone() {
+                    self.sheet_error(format!("Still joining {j}: join this one once that's done"));
                     return;
                 }
+                self.close_sheet(cx);
                 let ssid = form.name.trim().to_owned();
+                self.tried = Some((ssid.clone(), sheet.clone()));
                 let in_range = self.state().network(&ssid).cloned();
                 let task = match (form.enterprise(), form.hidden, in_range) {
                     (true, false, Some(n)) => self.net.connect_enterprise(&n, form.credentials()),
@@ -709,6 +758,7 @@ impl Network {
                 self.run_join(&ssid, false, task, cx);
             }
             Sheet::Hotspot { name, password, .. } => {
+                let (name, password) = (name.clone(), password.clone());
                 let error = if name.trim().is_empty() || name.len() > 32 {
                     Some("A network name has 1 to 32 characters")
                 } else if !(8..=63).contains(&password.chars().count()) {
@@ -1079,17 +1129,35 @@ impl Pane for Network {
             }
             Msg::Joined { ssid, retry, result } => {
                 self.joining = None;
+                let tried = self.tried.take().filter(|(s, _)| *s == ssid).map(|(_, sheet)| sheet);
                 match result {
                     Ok(()) => cx.say(format!("Connected to {ssid}")),
+                    // What was typed is asked for again, as it was, with
+                    // why it didn't join.
+                    Err(e) if tried.is_some() => {
+                        let why = logic::reason(&e);
+                        let mut sheet = tried.expect("tried");
+                        match &mut sheet {
+                            Sheet::Password { error, .. } => *error = Some(format!("Couldn't join: {why}")),
+                            Sheet::Form(f) => f.error = Some(format!("Couldn't join: {why}")),
+                            Sheet::Hotspot { .. } => {}
+                        }
+                        self.open_sheet_after(sheet, cx);
+                    }
                     Err(Error::Rejected(_)) if retry => {
                         // A refused saved password: ask for it again.
                         let security =
                             self.state().network(&ssid).map(|n| n.security).unwrap_or(Security::Wpa2Personal);
-                        self.ask_password(
-                            &ssid,
-                            security,
-                            format!("Password for “{ssid}”"),
-                            format!("“{ssid}” didn't accept the saved password. Enter it again to join."),
+                        self.open_sheet_after(
+                            Sheet::Password {
+                                ssid: ssid.clone(),
+                                security,
+                                title: format!("Password for “{ssid}”"),
+                                message: format!("“{ssid}” didn't accept the saved password. Enter it again to join."),
+                                password: String::new(),
+                                show: false,
+                                error: None,
+                            },
                             cx,
                         );
                     }
@@ -1199,6 +1267,7 @@ impl Pane for Network {
             }
             Msg::SheetField(f) => {
                 if let Some(Sheet::Form(form)) = &mut self.sheet {
+                    form.error = None;
                     match f {
                         Field::Name(v) => form.name = v,
                         Field::Security(v) => form.security = v.min(FORM_SECURITY.len() - 1),
@@ -1273,5 +1342,67 @@ impl Network {
 impl Network {
     pub(crate) fn came_from_saved(&self) -> bool {
         self.from_saved
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use aizome_kit::testing::Harness;
+
+    use super::Msg;
+    use crate::app::{AppMsg, Shitsurae, Start};
+
+    fn open(name: &str) -> Harness<Shitsurae> {
+        let dir = std::env::temp_dir().join(format!("shitsurae-network-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut h = Harness::new(Shitsurae::sample(dir.join("settings.toml"), Start::parse("network")));
+        settle(&mut h, |h| has(h, "Kohaku"));
+        h
+    }
+
+    fn settle(h: &mut Harness<Shitsurae>, until: impl Fn(&Harness<Shitsurae>) -> bool) {
+        for _ in 0..400 {
+            if until(h) {
+                return;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+            h.send(AppMsg::Nothing);
+        }
+    }
+
+    fn has(h: &Harness<Shitsurae>, s: &str) -> bool {
+        h.texts(h.window()).iter().any(|t| t == s)
+    }
+
+    fn send(h: &mut Harness<Shitsurae>, m: Msg) {
+        h.send(AppMsg::Pane("network", Arc::new(m)));
+    }
+
+    fn found(h: &Harness<Shitsurae>, entry: &str) -> bool {
+        h.find_id(h.window(), &format!("entry:network.{entry}")).is_some()
+    }
+
+    #[test]
+    fn search_finds_add_vpn_and_other_network_in_every_state() {
+        let mut h = open("anchors");
+        for e in ["wifi", "networks", "join-other", "known", "vpn", "add-vpn"] {
+            assert!(found(&h, e), "{e} with Wi-Fi on");
+        }
+        // No VPNs yet: Add VPN is the section's only row, and both answer.
+        for uuid in ["c-office-vpn", "c-home-vpn"] {
+            send(&mut h, Msg::ForgetNow(uuid.into()));
+        }
+        settle(&mut h, |h| !has(h, "Home (OpenVPN)"));
+        assert!(!has(&h, "Home (OpenVPN)"));
+        assert!(found(&h, "vpn") && found(&h, "add-vpn"), "VPN and Add VPN without VPNs");
+        // Wi-Fi off: what the network lists hold shows the switch.
+        send(&mut h, Msg::Wifi(false));
+        settle(&mut h, |h| !has(h, "Other Network…"));
+        for e in ["networks", "join-other", "known"] {
+            assert!(found(&h, e), "{e} with Wi-Fi off");
+        }
     }
 }

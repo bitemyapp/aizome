@@ -23,6 +23,13 @@ pub struct Appearance {
     pub effects: Effects,
     pub size: SizeChoice,
     pub reduced_motion: bool,
+    /// With Auto: Day from sunrise to sunset at `place` rather than from
+    /// 07:00 to 19:00.
+    pub follow_sunset: bool,
+    /// Where sunrise and sunset are reckoned for, in hundredths of a degree
+    /// north and east (`aizome_config::Settings::place`); none where it
+    /// isn't known or isn't followed.
+    pub place: Option<(i32, i32)>,
 }
 
 impl Default for Appearance {
@@ -33,6 +40,8 @@ impl Default for Appearance {
             effects: Effects::Lean,
             size: SizeChoice::Medium,
             reduced_motion: false,
+            follow_sunset: false,
+            place: None,
         }
     }
 }
@@ -44,8 +53,8 @@ pub enum ThemeChoice {
     Night,
     Day,
     HighContrast,
-    /// Day from 07:00 to 19:00 local time, Night otherwise (the shell
-    /// writes `night` or `day` back when it follows the sunset).
+    /// Day from 07:00 to 19:00 local time, or from sunrise to sunset where
+    /// it follows them; Night otherwise.
     Auto,
 }
 
@@ -87,6 +96,21 @@ impl From<&aizome_config::Appearance> for Appearance {
                 S::Large => SizeChoice::Large,
             },
             reduced_motion: a.reduced_motion,
+            follow_sunset: a.follow_sunset,
+            place: None,
+        }
+    }
+}
+
+impl From<&aizome_config::Settings> for Appearance {
+    /// The `[appearance]` table, with the place sunrise and sunset are
+    /// reckoned for when Auto follows them.
+    fn from(s: &aizome_config::Settings) -> Appearance {
+        let follows = s.appearance.theme == aizome_config::ThemeChoice::Auto && s.appearance.follow_sunset;
+        let place = if follows { s.place() } else { None };
+        Appearance {
+            place: place.map(|p| ((p.latitude * 100.0).round() as i32, (p.longitude * 100.0).round() as i32)),
+            ..Appearance::from(&s.appearance)
         }
     }
 }
@@ -95,22 +119,41 @@ impl Appearance {
     /// The `[appearance]` table of a settings file's text (through
     /// `aizome-config`); a broken file gives the defaults.
     pub fn parse(toml_text: &str) -> Appearance {
-        aizome_config::Settings::from_toml(toml_text).map(|s| Appearance::from(&s.appearance)).unwrap_or_default()
+        aizome_config::Settings::from_toml(toml_text).map(|s| Appearance::from(&s)).unwrap_or_default()
     }
 
     /// The settings file's appearance, or the defaults if there's none.
     pub fn load() -> Appearance {
-        Appearance::from(&aizome_config::Settings::load_or_default().appearance)
+        Appearance::from(&aizome_config::Settings::load_or_default())
     }
 
     /// The palette for these settings now.
     pub fn theme_name(&self) -> ThemeName {
-        match self.theme {
-            ThemeChoice::Night => ThemeName::Night,
-            ThemeChoice::Day => ThemeName::Day,
-            ThemeChoice::HighContrast => ThemeName::HighContrast,
-            ThemeChoice::Auto => aizome_config::ThemeChoice::Auto.resolve(local_hour()),
-        }
+        self.theme_at(aizome_config::LocalNow::now())
+    }
+
+    /// The palette at a moment: Auto shows Day from sunrise to sunset at
+    /// the place where it follows them, else from 07:00 to 19:00.
+    pub fn theme_at(&self, now: aizome_config::LocalNow) -> ThemeName {
+        let day = match (self.follow_sunset, self.place) {
+            (true, Some((lat, lon))) => {
+                let place = aizome_config::Place {
+                    latitude: f64::from(lat) / 100.0,
+                    longitude: f64::from(lon) / 100.0,
+                    source: aizome_config::PlaceSource::Settings,
+                };
+                aizome_config::daylight(Some(&place), now.day_of_year, now.utc_offset)
+                    .unwrap_or(aizome_config::CLOCK_DAY)
+            }
+            _ => aizome_config::CLOCK_DAY,
+        };
+        let choice = match self.theme {
+            ThemeChoice::Night => aizome_config::ThemeChoice::Night,
+            ThemeChoice::Day => aizome_config::ThemeChoice::Day,
+            ThemeChoice::HighContrast => aizome_config::ThemeChoice::HighContrast,
+            ThemeChoice::Auto => aizome_config::ThemeChoice::Auto,
+        };
+        choice.resolve_in(day, now.minutes)
     }
 }
 
@@ -537,6 +580,22 @@ mod tests {
         assert_eq!(Appearance::parse("not toml ["), Appearance::default());
         assert_eq!(Appearance::parse("[appearance]\ntheme = 3\n").theme, ThemeChoice::Night);
         assert_eq!(Appearance::parse("[appearance]\ntheme = \"auto\"\n").theme, ThemeChoice::Auto);
+    }
+
+    #[test]
+    fn auto_follows_the_sun_where_it_is_asked_to() {
+        // Paris, as set by hand, at 18:00 on 1 November: after sunset
+        // (about 17:25), before 19:00.
+        let text = "[appearance]\ntheme = \"auto\"\nfollow_sunset = true\n[night_light]\nlatitude = 48.8667\nlongitude = 2.3333\n";
+        let a = Appearance::parse(text);
+        assert_eq!(a.place, Some((4887, 233)));
+        let evening = aizome_config::LocalNow::at(18, 0, 305, 60);
+        assert_eq!(a.theme_at(evening), ThemeName::Night);
+        assert_eq!(a.theme_at(aizome_config::LocalNow::at(12, 0, 305, 60)), ThemeName::Day);
+        let clock = Appearance { follow_sunset: false, ..a };
+        assert_eq!(clock.theme_at(evening), ThemeName::Day, "by the clock until 19:00");
+        // Not following, no place is looked up (the appearance stays the same).
+        assert_eq!(Appearance::parse("[appearance]\ntheme = \"auto\"\n").place, None);
     }
 
     #[test]

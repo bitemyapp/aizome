@@ -1280,27 +1280,6 @@ pub(crate) fn hotspot_settings<'a>(ssid: &str, password: &'a str, band: Option<B
     ])
 }
 
-/// A connection's settings as sent back in `Update2`: what `GetSettings`
-/// returned, with one property replaced.
-pub(crate) fn with_setting(
-    settings: &ConnectionSettings,
-    group: &str,
-    key: &str,
-    value: Value<'static>,
-) -> HashMap<String, HashMap<String, Value<'static>>> {
-    let mut out: HashMap<String, HashMap<String, Value<'static>>> = settings
-        .iter()
-        .map(|(group, props)| {
-            (
-                group.clone(),
-                props.iter().filter_map(|(k, v)| Some((k.clone(), v.try_clone().ok().map(Value::from)?))).collect(),
-            )
-        })
-        .collect();
-    out.entry(group.to_owned()).or_default().insert(key.to_owned(), value);
-    out
-}
-
 /// A connection's settings in the form `Update2` takes.
 pub(crate) type EditableSettings = HashMap<String, HashMap<String, Value<'static>>>;
 

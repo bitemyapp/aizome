@@ -9,8 +9,10 @@
 //! Actions:
 //! - Wi-Fi, mobile and networking switches; **airplane mode** blocks every
 //!   radio through `/dev/rfkill` (Wi-Fi, Bluetooth, mobile, as the hardware
-//!   key does), falling back to NetworkManager's Wi-Fi and mobile switches
-//!   when rfkill can't be written;
+//!   key does), falling back, when rfkill can't be written, to
+//!   NetworkManager's Wi-Fi and mobile switches and BlueZ's adapters
+//!   (those on are switched on again after, kept in
+//!   [`RadioPaths::fallback`] meanwhile);
 //! - scan; join a network (with a password, enterprise credentials, or a
 //!   hidden one by name); disconnect; forget; auto-connect; metered;
 //! - VPN and WireGuard: activate, deactivate, import a `.conf` / `.ovpn`
@@ -41,7 +43,7 @@ pub use model::{
     RadioKind, SavedConnection, Security, WifiNetwork, bars, describe_reason, signal_icon, ssid_name,
 };
 
-use crate::bus::{self, Bus, Event, Objects, Opts, signals_from};
+use crate::bus::{self, Bus, Event, Objects, Opts, PropsExt, signals_from};
 use crate::error::{Error, Result};
 use crate::service::{Model, Stop, Task, Wake, lock, service_handle};
 use model::*;
@@ -61,12 +63,71 @@ pub struct RadioPaths {
     pub device: PathBuf,
     /// `/sys/class/rfkill`.
     pub sysfs: PathBuf,
+    /// Airplane mode turned on without rfkill (NetworkManager's radios and
+    /// BlueZ's adapters switched off instead): the adapters it switched off,
+    /// one per line, to switch on again. Gone while it's off.
+    pub fallback: PathBuf,
 }
 
 impl Default for RadioPaths {
     fn default() -> RadioPaths {
-        RadioPaths { device: rfkill::DEVICE.into(), sysfs: rfkill::SYSFS.into() }
+        let runtime = std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from).unwrap_or_else(std::env::temp_dir);
+        RadioPaths {
+            device: rfkill::DEVICE.into(),
+            sysfs: rfkill::SYSFS.into(),
+            fallback: runtime.join("aizome-airplane-mode"),
+        }
     }
+}
+
+/// BlueZ, for airplane mode without rfkill.
+const BLUEZ: &str = "org.bluez";
+const IFACE_ADAPTER: &str = "org.bluez.Adapter1";
+
+/// BlueZ's adapters that are on.
+fn bluetooth_on(bus: &Bus) -> Vec<String> {
+    match Objects::load(bus, BLUEZ, "/") {
+        Ok(objects) => {
+            objects.with(IFACE_ADAPTER).filter(|(_, p)| p.bool("Powered")).map(|(path, _)| path.to_owned()).collect()
+        }
+        Err(_) => Vec::new(),
+    }
+}
+
+/// Airplane mode where rfkill can't be written: NetworkManager's Wi-Fi and
+/// mobile radios, and BlueZ's adapters (those on, kept in `fallback` to
+/// switch on again when it ends).
+fn airplane_without_rfkill(bus: &Bus, fallback: &Path, on: bool) -> Result<()> {
+    bus.set(NM, NM_PATH, NM, "WirelessEnabled", !on)?;
+    // Mobile broadband, where NetworkManager has it.
+    if let Err(e) = bus.set(NM, NM_PATH, NM, "WwanEnabled", !on) {
+        log::debug!("aizome-sys: airplane mode: mobile broadband: {e}");
+    }
+    if on {
+        let adapters = bluetooth_on(bus);
+        for a in &adapters {
+            if let Err(e) = bus.set(BLUEZ, a, IFACE_ADAPTER, "Powered", false) {
+                log::warn!("aizome-sys: airplane mode: switching {a} off: {e}");
+            }
+        }
+        std::fs::write(fallback, adapters.join("\n"))?;
+    } else {
+        let adapters = std::fs::read_to_string(fallback).unwrap_or_default();
+        for a in adapters.lines().filter(|l| !l.trim().is_empty()) {
+            if let Err(e) = bus.set(BLUEZ, a.trim(), IFACE_ADAPTER, "Powered", true) {
+                log::warn!("aizome-sys: airplane mode: switching {a} on: {e}");
+            }
+        }
+        let _ = std::fs::remove_file(fallback);
+    }
+    Ok(())
+}
+
+/// Whether airplane mode is on: every radio blocked, or (without rfkill)
+/// NetworkManager's Wi-Fi off since airplane mode turned it off.
+fn airplane(radios: &[Radio], fallback: &Path, wifi_enabled: bool) -> bool {
+    (!radios.is_empty() && radios.iter().all(|r| r.soft_blocked || r.hard_blocked))
+        || (!wifi_enabled && fallback.exists())
 }
 
 /// NetworkManager: devices, Wi-Fi, VPNs.
@@ -107,11 +168,12 @@ impl Network {
         {
             let shared = shared_radios.clone();
             let model = model.clone();
+            let fallback = radios.fallback.clone();
             rfkill::watch(radios.device.clone(), stop.clone(), move |now| {
                 *lock(&shared) = now.clone();
                 if model.get().available {
                     model.update(|state| {
-                        state.airplane_mode = now.iter().all(|r| r.soft_blocked || r.hard_blocked) && !now.is_empty();
+                        state.airplane_mode = airplane(&now, &fallback, state.wifi_enabled);
                         state.radios = now;
                     });
                 }
@@ -122,6 +184,7 @@ impl Network {
             objects: Objects::default(),
             settings: HashMap::new(),
             radios: shared_radios,
+            fallback: radios.fallback.clone(),
             model: model.clone(),
             dirty: false,
             present: false,
@@ -158,17 +221,32 @@ impl Network {
 
     /// Airplane mode: block (or unblock) every radio through rfkill; where
     /// rfkill can't be written, switch NetworkManager's Wi-Fi and mobile
-    /// radios instead (Bluetooth is then left alone).
+    /// radios and BlueZ's adapters off instead (and those back on after).
     pub fn set_airplane_mode(&self, on: bool) -> Task<()> {
         let device = self.radios.device.clone();
+        let fallback = self.radios.fallback.clone();
         let wake = self.model.wake();
         let bus = self.bus.clone();
+        let model = self.model.clone();
         Task::spawn("airplane mode", &wake, move || match rfkill::block_all(&device, on) {
-            Ok(()) => Ok(()),
+            Ok(()) => {
+                // Turned off through rfkill after the fallback: what the
+                // fallback switched off comes back too.
+                if !on
+                    && fallback.exists()
+                    && let Some(bus) = &bus
+                {
+                    airplane_without_rfkill(bus, &fallback, false)?;
+                }
+                Ok(())
+            }
             Err(error) if rfkill::is_permission(&error) => {
                 let bus = bus.ok_or_else(|| Error::Unavailable("NetworkManager".into()))?;
-                bus.set(NM, NM_PATH, NM, "WirelessEnabled", !on)?;
-                bus.set(NM, NM_PATH, NM, "WwanEnabled", !on)
+                airplane_without_rfkill(&bus, &fallback, on)?;
+                // Shown at once (NetworkManager says Wi-Fi is off a moment
+                // later), so the switch doesn't spring back.
+                model.update(|s| s.airplane_mode = on || airplane(&s.radios, &fallback, s.wifi_enabled));
+                Ok(())
             }
             Err(error) => Err(error),
         })
@@ -229,15 +307,24 @@ impl Network {
     }
 
     /// Join an enterprise (802.1X) network with a username and password.
+    /// A saved profile takes the new account in memory first and keeps it
+    /// only once joining works (as a new password does, [`Self::connect`]):
+    /// a refused account leaves the saved profile as it was.
     pub fn connect_enterprise(&self, network: &WifiNetwork, credentials: Enterprise) -> Task<()> {
         let network = network.clone();
         let saved = network.connection.as_ref().and_then(|uuid| self.snapshot().connection(uuid).cloned());
         self.task(move |bus| {
-            if let Some(saved) = &saved {
-                forget_paths(bus, std::slice::from_ref(&saved.path))?;
-            }
             let settings = wifi_settings(&network.ssid_bytes, Security::Enterprise, None, Some(&credentials), false);
-            add_and_wait(bus, settings, &network.device, &network.best_access_point)
+            match &saved {
+                Some(saved) => rejoin_with(
+                    bus,
+                    saved,
+                    |current| enterprise_account(current, &settings),
+                    &network.device,
+                    &network.best_access_point,
+                ),
+                None => add_and_wait(bus, settings, &network.device, &network.best_access_point),
+            }
         })
     }
 
@@ -412,6 +499,8 @@ struct Follower {
     objects: Objects,
     settings: HashMap<String, ConnectionSettings>,
     radios: Arc<Mutex<Vec<Radio>>>,
+    /// Airplane mode turned on without rfkill ([`RadioPaths::fallback`]).
+    fallback: PathBuf,
     model: Arc<Model<NetworkState>>,
     dirty: bool,
     present: bool,
@@ -482,7 +571,9 @@ impl Follower {
             Event::Idle => {
                 if self.present && self.dirty {
                     let radios = lock(&self.radios).clone();
-                    self.model.set_if_changed(build(&self.objects, &self.settings, &radios));
+                    let mut state = build(&self.objects, &self.settings, &radios);
+                    state.airplane_mode |= !state.wifi_enabled && self.fallback.exists();
+                    self.model.set_if_changed(state);
                     self.dirty = false;
                 }
             }
@@ -565,11 +656,48 @@ fn rejoin(
     device: &str,
     access_point: &str,
 ) -> Result<()> {
-    let settings: ConnectionSettings = bus.call(NM, &saved.path, IFACE_CONNECTION, "GetSettings", &())?;
-    let mut updated = with_setting(&settings, group, key, Value::from(password.to_owned()));
-    if let Some(flags) = updated.get_mut(group) {
-        flags.insert(format!("{key}-flags"), Value::from(0u32));
+    rejoin_with(
+        bus,
+        saved,
+        |settings| {
+            let props = settings.entry(group.to_owned()).or_default();
+            props.insert(key.to_owned(), Value::from(password.to_owned()));
+            props.insert(format!("{key}-flags"), Value::from(0u32));
+        },
+        device,
+        access_point,
+    )
+}
+
+/// A saved profile's settings with a new enterprise account: the new
+/// `802-1x` setting in place of the old one, and WPA-EAP.
+fn enterprise_account(settings: &mut EditableSettings, new: &NewSettings<'_>) {
+    let owned = |props: &HashMap<&'static str, Value<'_>>| -> HashMap<String, Value<'static>> {
+        props.iter().filter_map(|(k, v)| Some(((*k).to_owned(), Value::from(v.try_to_owned().ok()?)))).collect()
+    };
+    if let Some(eap) = new.get("802-1x") {
+        settings.insert("802-1x".to_owned(), owned(eap));
     }
+    settings
+        .entry("802-11-wireless-security".to_owned())
+        .or_default()
+        .insert("key-mgmt".to_owned(), Value::from("wpa-eap"));
+}
+
+/// Join a saved network with its settings changed by `edit` (a new
+/// password, a new account): in memory first, saved to disk only once
+/// joining works, reloaded from disk otherwise, so a refused change never
+/// costs the profile that was saved.
+fn rejoin_with(
+    bus: &Bus,
+    saved: &SavedConnection,
+    edit: impl FnOnce(&mut EditableSettings),
+    device: &str,
+    access_point: &str,
+) -> Result<()> {
+    let settings: ConnectionSettings = bus.call(NM, &saved.path, IFACE_CONNECTION, "GetSettings", &())?;
+    let mut updated = editable(&settings);
+    edit(&mut updated);
     let args: HashMap<&str, Value> = HashMap::new();
     bus.call_with::<_, HashMap<String, OwnedValue>>(
         Opts::ACTION,

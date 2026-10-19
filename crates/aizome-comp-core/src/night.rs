@@ -23,18 +23,6 @@ pub struct Night {
     started: bool,
 }
 
-/// The local time: minutes since midnight, day of the year (1–366), and
-/// the UTC offset in minutes.
-pub fn local_now() -> (u32, u32, i32) {
-    // Safety: localtime_r writes only into `tm`.
-    unsafe {
-        let t = libc::time(std::ptr::null_mut());
-        let mut tm: libc::tm = std::mem::zeroed();
-        libc::localtime_r(&t, &mut tm);
-        ((tm.tm_hour * 60 + tm.tm_min) as u32, (tm.tm_yday + 1) as u32, (tm.tm_gmtoff / 60) as i32)
-    }
-}
-
 /// Gamma ramps for a temperature: `size` entries each of red, green, blue.
 pub fn ramps(kelvin: u32, size: usize) -> (Vec<u16>, Vec<u16>, Vec<u16>) {
     let k = aizome_config::temperature_rgb(kelvin);
@@ -64,14 +52,31 @@ impl State {
 
     pub fn night_state(&self) -> NightLightState {
         let n = self.night_settings();
-        let (m, d, off) = local_now();
-        let current = n.temperature_at(m, d, off);
+        let now = aizome_config::LocalNow::now();
+        // Sunset and sunrise where the computer is (or its time zone's
+        // city), looked up again each minute: the time zone may change.
+        let place = self.az.settings.place();
+        let current = n.temperature_at(place.as_ref(), now);
         let schedule = match n.schedule {
             aizome_config::NightSchedule::Sunset => "sunset",
             aizome_config::NightSchedule::Manual => "manual",
             aizome_config::NightSchedule::Always => "always",
         };
+        let (from, to) = match n.span(place.as_ref(), now.day_of_year, now.utc_offset) {
+            aizome_config::Span::Between { start, end } => {
+                (Some(aizome_config::hm(start)), Some(aizome_config::hm(end)))
+            }
+            _ => (None, None),
+        };
+        let place = place.filter(|_| n.schedule == aizome_config::NightSchedule::Sunset).map(|p| match p.source {
+            aizome_config::PlaceSource::Settings => "settings".to_owned(),
+            aizome_config::PlaceSource::Located => "located".to_owned(),
+            aizome_config::PlaceSource::TimeZone(zone) => zone,
+        });
         NightLightState {
+            from,
+            to,
+            place,
             enabled: n.enabled,
             temperature: n.temperature.clamp(1900, aizome_config::compositor::NEUTRAL_K),
             schedule: schedule.into(),
@@ -92,10 +97,16 @@ impl State {
     pub fn update_night_light(&mut self, force: bool) {
         if !self.az.night.started {
             self.az.night.started = true;
-            // Every minute, for the schedule.
+            // Every minute, for the schedule, and for Auto's theme on the
+            // tabs and frames (which turns at sunrise and sunset, or 07:00
+            // and 19:00).
             let _ =
                 self.az.lh.insert_source(Timer::from_duration(Duration::from_secs(60)), |_, _, state: &mut State| {
                     state.update_night_light(false);
+                    if state.az.settings.appearance.theme == aizome_config::ThemeChoice::Auto {
+                        let palette = crate::config::palette_for(&state.az.settings);
+                        state.az.set_palette(palette);
+                    }
                     TimeoutAction::ToDuration(Duration::from_secs(60))
                 });
         }

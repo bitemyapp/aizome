@@ -5,6 +5,12 @@
 //! last week's habit fades in a month. The store is a small JSON file in the
 //! state directory (`$XDG_STATE_HOME/aizome/frecency.json`), capped at
 //! [`CAPACITY`] entries, the faintest dropped first.
+//!
+//! The file is the history, not a copy of what a process holds: picks are
+//! recorded into it ([`Frecency::record`]: read, add, write), and a
+//! process holding a store reads it again when the file changed under it
+//! ([`Frecency::is_stale`]), so forgetting it (Settings removes the file)
+//! sticks.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -27,11 +33,23 @@ struct Entry {
 
 /// Picks by key: `"app:org.aizome.Shitsurae"`, `"file:/home/…/notes.md"`,
 /// `"cmd:org.aizome.Sumi:Edit/Find/Find and Replace…"`.
-#[derive(Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Frecency {
     entries: HashMap<String, Entry>,
     #[serde(skip)]
     path: Option<PathBuf>,
+    /// The file as it was when last read or written: none if it wasn't
+    /// there.
+    #[serde(skip)]
+    seen: Option<Stamp>,
+}
+
+/// What tells a file's versions apart: its modification time and length.
+type Stamp = (SystemTime, u64);
+
+fn stamp(path: &Path) -> Option<Stamp> {
+    let m = std::fs::metadata(path).ok()?;
+    Some((m.modified().ok()?, m.len()))
 }
 
 fn now() -> f64 {
@@ -55,21 +73,50 @@ impl Frecency {
     /// Loads the store, or starts an empty one if it's missing or unreadable.
     pub fn load(path: impl AsRef<Path>) -> Frecency {
         let path = path.as_ref();
+        let seen = stamp(path);
         let mut store: Frecency =
             std::fs::read(path).ok().and_then(|bytes| serde_json::from_slice(&bytes).ok()).unwrap_or_default();
         store.path = Some(path.to_owned());
+        store.seen = seen;
         store
     }
 
     /// Writes the store back where it was loaded from, atomically.
-    pub fn save(&self) -> std::io::Result<()> {
-        let Some(path) = &self.path else { return Ok(()) };
+    pub fn save(&mut self) -> std::io::Result<()> {
+        let Some(path) = self.path.clone() else { return Ok(()) };
         if let Some(dir) = path.parent() {
             std::fs::create_dir_all(dir)?;
         }
         let tmp = path.with_extension("json.tmp");
         std::fs::write(&tmp, serde_json::to_vec(self)?)?;
-        std::fs::rename(tmp, path)
+        std::fs::rename(tmp, &path)?;
+        self.seen = stamp(&path);
+        Ok(())
+    }
+
+    /// Whether the file changed (or went) since this store read or wrote
+    /// it: someone else recorded a pick, or forgot the history.
+    pub fn is_stale(&self) -> bool {
+        self.path.as_deref().is_some_and(|p| stamp(p) != self.seen)
+    }
+
+    /// Records picks of `keys` now into the file at `path` (read, add,
+    /// write), and returns the store as written: what the file held, not
+    /// what a caller remembered, so a history forgotten meanwhile stays
+    /// forgotten.
+    pub fn record(path: impl AsRef<Path>, keys: &[String]) -> std::io::Result<Frecency> {
+        let mut store = Frecency::load(path);
+        let at = now();
+        for key in keys {
+            store.visit_at(key, at);
+        }
+        store.save()?;
+        Ok(store)
+    }
+
+    /// Whether it remembers anything.
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
     }
 
     /// Records a pick of `key` now.
@@ -136,6 +183,31 @@ mod tests {
         f.save().unwrap();
         let g = Frecency::load(&path);
         assert!(g.score("file:/x") > 0.9);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_forgotten_history_stays_forgotten() {
+        let dir = std::env::temp_dir().join(format!("aizome-frecency-forget-{}", std::process::id()));
+        let path = dir.join("frecency.json");
+        let _ = std::fs::remove_dir_all(&dir);
+        // A process holding the store (the shell) records a pick.
+        let mut held = Frecency::record(&path, &["app:org.aizome.Sumi".into()]).unwrap();
+        assert!(!held.is_stale());
+        assert!(held.score("app:org.aizome.Sumi") > 0.9);
+        // Settings forgets the history.
+        std::fs::remove_file(&path).unwrap();
+        assert!(held.is_stale(), "the file went");
+        // The next pick doesn't bring the old ones back.
+        held = Frecency::record(&path, &["app:org.aizome.Tokei".into()]).unwrap();
+        assert_eq!(held.score("app:org.aizome.Sumi"), 0.0);
+        let on_disk = Frecency::load(&path);
+        assert_eq!(on_disk.score("app:org.aizome.Sumi"), 0.0);
+        assert!(on_disk.score("app:org.aizome.Tokei") > 0.9);
+        // Another writer's pick makes a held store stale too.
+        let other = Frecency::record(&path, &["file:/x".into(), "file:/y".into()]).unwrap();
+        assert!(!other.is_stale());
+        assert!(held.is_stale());
         let _ = std::fs::remove_dir_all(dir);
     }
 

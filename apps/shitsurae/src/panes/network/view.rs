@@ -107,13 +107,20 @@ fn main(n: &Network, vcx: &ViewCx, state: &NetworkState) -> Element<Msg> {
             })
             .entry("airplane"),
     );
-    sections.push(vcx.section("", top));
+    let top = vcx.section("", top);
+    // Wi-Fi off: what search finds in the network lists shows the switch
+    // that brings them.
+    sections.push(if on {
+        top
+    } else {
+        ["networks", "known", "join-other"].iter().fold(top, |el, e| vcx.anchor(e, el))
+    });
 
     if on {
         let (known, others) = logic::in_range(state);
         if !known.is_empty() {
             let rows = known.iter().map(|w| network_row(n, state, w)).collect::<Vec<_>>();
-            sections.push(vcx.section("Known Networks", mark_first(rows, "known")));
+            sections.push(marked_section(vcx, "Known Networks", rows, "known"));
         }
         let mut rows: Vec<Row<Msg>> = others.iter().map(|w| network_row(n, state, w)).collect();
         if state.networks.is_empty() {
@@ -151,7 +158,17 @@ fn main(n: &Network, vcx: &ViewCx, state: &NetworkState) -> Element<Msg> {
                 .label("Look for networks")
                 .into()
         };
-        sections.push(section_with_tail(vcx, "Other Networks", tail, mark_first(rows, "networks")));
+        let mut other = if rows.first().is_some_and(|r| !r.has_entry()) {
+            section_with_tail(vcx, "Other Networks", tail, mark_first(rows, "networks"))
+        } else {
+            // Only "Other Network…": it keeps its own entry, and the
+            // section answers for the list.
+            vcx.anchor("networks", section_with_tail(vcx, "Other Networks", tail, rows))
+        };
+        if known.is_empty() {
+            other = vcx.anchor("known", other);
+        }
+        sections.push(other);
     }
 
     // Wired.
@@ -173,7 +190,7 @@ fn main(n: &Network, vcx: &ViewCx, state: &NetworkState) -> Element<Msg> {
                 line(r, None, &w.title)
             })
             .collect();
-        sections.push(vcx.section("Wired", mark_first(rows, "wired")));
+        sections.push(marked_section(vcx, "Wired", rows, "wired"));
     }
 
     // VPN.
@@ -184,13 +201,13 @@ fn main(n: &Network, vcx: &ViewCx, state: &NetworkState) -> Element<Msg> {
             .help("A WireGuard .conf or OpenVPN .ovpn file from your provider")
             .entry("add-vpn"),
     );
-    sections.push(vcx.section("VPN", mark_first(rows, "vpn")));
+    sections.push(marked_section(vcx, "VPN", rows, "vpn"));
 
     // Hotspot.
     if has_wifi && logic::hotspot_possible(state) {
         let active = state.hotspot().is_some();
-        let detail = match state.hotspot() {
-            Some(a) => format!("Sharing as “{}”", a.id),
+        let detail = match logic::hotspot_name(state) {
+            Some(name) => format!("Sharing as “{name}”"),
             None => "Share this computer's connection over Wi-Fi".to_owned(),
         };
         sections.push(vcx.section(
@@ -230,13 +247,25 @@ fn main(n: &Network, vcx: &ViewCx, state: &NetworkState) -> Element<Msg> {
     form::page(sections)
 }
 
-/// The first row of a section answers to its search entry.
+/// The first row of a section answers to its search entry (unless it's
+/// an entry of its own).
 fn mark_first(mut rows: Vec<Row<Msg>>, entry: &str) -> Vec<Row<Msg>> {
-    if !rows.is_empty() {
+    if rows.first().is_some_and(|r| !r.has_entry()) {
         let first = rows.remove(0);
         rows.insert(0, first.entry(entry));
     }
     rows
+}
+
+/// A section that answers to a search entry: by its first row, or, when
+/// that row is an entry of its own ("Add VPN" with no VPNs yet), as a
+/// whole, so both are found.
+fn marked_section(vcx: &ViewCx, title: &str, rows: Vec<Row<Msg>>, entry: &str) -> Element<Msg> {
+    if rows.first().is_some_and(|r| !r.has_entry()) {
+        vcx.section(title, mark_first(rows, entry))
+    } else {
+        vcx.anchor(entry, vcx.section(title, rows))
+    }
 }
 
 fn details_button(uuid: &str) -> Element<Msg> {
@@ -814,6 +843,7 @@ fn form_sheet(f: &JoinForm) -> Element<Msg> {
                 .width(Fill),
         ));
     }
+    col = col.push(error_line(f.error.clone()));
     col = col.push(buttons("Join", f.ready()));
     col.into()
 }

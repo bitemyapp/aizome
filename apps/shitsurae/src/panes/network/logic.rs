@@ -348,6 +348,13 @@ pub fn hotspot_possible(state: &NetworkState) -> bool {
     has_wifi(state) && state.devices.iter().any(|d| d.kind == DeviceKind::Wifi)
 }
 
+/// The name others see the hotspot by: its network's (the SSID), not its
+/// profile's ("Hotspot"); none while it's off.
+pub fn hotspot_name(state: &NetworkState) -> Option<String> {
+    let a = state.hotspot()?;
+    Some(state.connection(&a.uuid).and_then(|c| c.ssid.clone()).unwrap_or_else(|| a.id.clone()))
+}
+
 /// A saved network's row words: when it was joined, and whether it joins
 /// by itself.
 pub fn saved_words(c: &SavedConnection, now: u64) -> String {
@@ -366,6 +373,24 @@ pub fn band_words(mhz: u32) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_hotspot_is_named_by_its_network() {
+        use aizome_sys::network::{ActiveConnection, ConnectionKind, SavedConnection};
+        let mut state = NetworkState::default();
+        assert_eq!(hotspot_name(&state), None);
+        state.connections.push(SavedConnection {
+            uuid: "h".into(),
+            id: "Hotspot".into(),
+            kind: ConnectionKind::Wifi,
+            ssid: Some("ganymede Hotspot".into()),
+            wifi_mode: Some("ap".into()),
+            active: true,
+            ..SavedConnection::default()
+        });
+        state.active.push(ActiveConnection { uuid: "h".into(), id: "Hotspot".into(), ..ActiveConnection::default() });
+        assert_eq!(hotspot_name(&state).as_deref(), Some("ganymede Hotspot"));
+    }
 
     #[test]
     fn dns_presets_and_custom_servers() {

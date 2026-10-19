@@ -48,7 +48,10 @@ pub struct State {
     svc: Option<Svc>,
     /// The locales installed (`locale -a`), as `en_GB.UTF-8`.
     available: Option<Vec<String>>,
+    /// The formats shown, and the locale they're of.
     preview: Option<(String, Formats)>,
+    /// The locale whose formats are being read.
+    reading: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -297,15 +300,26 @@ impl State {
         self.refresh_preview(cx);
     }
 
+    /// The preview, of the locale the system has now: read again (on a
+    /// thread) when it's of another.
     fn refresh_preview(&mut self, cx: &mut PaneCx<G>) {
         let loc = self.shown_locale();
-        if self.preview.as_ref().is_some_and(|(l, _)| *l == loc) {
+        if self.preview.as_ref().is_some_and(|(l, _)| *l == loc) || self.reading.as_deref() == Some(loc.as_str()) {
             return;
         }
         if cx.sample() {
             self.preview = Some((loc.clone(), sample_formats(&loc)));
         } else {
+            self.reading = Some(loc.clone());
             cx.spawn(move || G::Language(Msg::Preview(loc.clone(), formats_of(&loc))));
+        }
+    }
+
+    /// localed said something changed (a choice here taking effect, or a
+    /// change elsewhere).
+    pub fn system_changed(&mut self, cx: &mut PaneCx<G>) {
+        if self.svc.is_some() {
+            self.refresh_preview(cx);
         }
     }
 
@@ -323,7 +337,18 @@ impl State {
     pub fn update(&mut self, msg: Msg, cx: &mut PaneCx<G>) {
         match msg {
             Msg::Available(v) => self.available = Some(v),
-            Msg::Preview(l, f) => self.preview = Some((l, f)),
+            Msg::Preview(l, f) => {
+                if self.reading.as_deref() == Some(l.as_str()) {
+                    self.reading = None;
+                }
+                // Formats of a locale chosen before the one shown now
+                // (read slower than the next) don't replace it.
+                if l == self.shown_locale() {
+                    self.preview = Some((l, f));
+                } else {
+                    self.refresh_preview(cx);
+                }
+            }
             Msg::Language(i) => {
                 let Some(l) = self.available.as_ref().and_then(|v| v.get(i)).cloned() else { return };
                 let mut entries: Vec<String> =
@@ -425,5 +450,50 @@ impl State {
             vcx.section("Language and Region", rows),
             vcx.section("Formats", vec![form::whole(container(preview).padding([14.0, form::INSET]).width(Fill))]),
         ])
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use aizome_kit::testing::Harness;
+
+    use super::{Formats, Msg};
+    use crate::app::{AppMsg, Shitsurae, Start};
+    use crate::panes::general::Msg as G;
+
+    fn has(h: &Harness<Shitsurae>, s: &str) -> bool {
+        h.texts(h.window()).iter().any(|t| t == s)
+    }
+
+    fn settle(h: &mut Harness<Shitsurae>, until: impl Fn(&Harness<Shitsurae>) -> bool) {
+        for _ in 0..400 {
+            if until(h) {
+                return;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+            h.send(AppMsg::Nothing);
+        }
+    }
+
+    #[test]
+    fn the_preview_is_of_the_locale_shown() {
+        let dir = std::env::temp_dir().join(format!("shitsurae-language-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut h = Harness::new(Shitsurae::sample(dir.join("settings.toml"), Start::parse("general.region")));
+        settle(&mut h, |h| has(h, "Week starts"));
+        assert!(has(&h, "Week starts"), "{:?}", h.texts(h.window()));
+        let send = |h: &mut Harness<Shitsurae>, m: Msg| h.send(AppMsg::Pane("general", Arc::new(G::Language(m))));
+        // Formats read for a locale that isn't the one shown (an earlier
+        // choice, read slower than the next) don't replace them.
+        let stale = Formats { date: "stale date".into(), ..Formats::default() };
+        send(&mut h, Msg::Preview("ja_JP.UTF-8".into(), stale));
+        assert!(!has(&h, "stale date"), "a stale preview shows");
+        // German formats chosen: the preview follows.
+        send(&mut h, Msg::Region(1));
+        settle(&mut h, |h| has(h, "17.10.2026"));
+        assert!(has(&h, "17.10.2026"), "{:?}", h.texts(h.window()));
     }
 }

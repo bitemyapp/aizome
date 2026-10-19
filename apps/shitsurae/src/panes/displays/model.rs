@@ -192,7 +192,9 @@ impl Display {
         if mode.width > 0 && !modes.contains(&mode) {
             modes.push(mode);
         }
-        let mirror = entry.and_then(mirror_of);
+        // The compositor says what it mirrors (a mirror previewed, or set
+        // elsewhere); the settings file, for a compositor that doesn't.
+        let mirror = o.mirror.clone().filter(|m| !m.is_empty()).or_else(|| entry.and_then(mirror_of));
         Display {
             name: o.name.clone(),
             make: o.make.trim().to_owned(),
@@ -700,12 +702,27 @@ pub fn request(s: &Settings) -> Request {
 }
 
 /// The requests for the displays that changed, those turned off last (so
-/// a screen is never left without a display that's on).
-pub fn requests(after: &[Settings], names: &[String]) -> Vec<Request> {
+/// a screen is never left without a display that's on). Mirroring goes
+/// through the compositor at once too (`mirror-output`), so it's seen
+/// before it's kept: a display stops mirroring before it's placed, and
+/// starts once it's set.
+pub fn requests(before: &[Settings], after: &[Settings], names: &[String]) -> Vec<Request> {
     let mut on: Vec<Request> = Vec::new();
     let mut off: Vec<Request> = Vec::new();
     for s in after.iter().filter(|s| names.contains(&s.name)) {
-        if s.enabled { on.push(request(s)) } else { off.push(request(s)) }
+        let was = before.iter().find(|b| b.name == s.name).and_then(|b| b.mirror.clone());
+        let mirror = |source: Option<String>| Request::MirrorOutput { name: s.name.clone(), source };
+        if !s.enabled {
+            off.push(request(s));
+        } else if was != s.mirror && s.mirror.is_none() {
+            on.push(mirror(None));
+            on.push(request(s));
+        } else {
+            on.push(request(s));
+            if was != s.mirror {
+                on.push(mirror(s.mirror.clone()));
+            }
+        }
     }
     on.extend(off);
     on
@@ -974,7 +991,9 @@ mod tests {
         let mut scaled = before.clone();
         scaled[1].scale = 1.5;
         assert!(!risky(&before, &scaled));
-        match &requests(&after, &names)[0] {
+        let asked = requests(&before, &after, &names);
+        assert_eq!(asked.len(), 1, "no mirroring asked: {asked:?}");
+        match &asked[0] {
             Request::OutputConfig { name, mode, scale, position, .. } => {
                 assert_eq!(name, "eDP-1");
                 assert_eq!(mode.as_deref(), Some("2880x1800@120"));
@@ -983,6 +1002,23 @@ mod tests {
             }
             other => panic!("{other:?}"),
         }
+        // Mirroring is asked of the compositor at once: after the display
+        // is set when it starts, before it's placed when it stops.
+        let (mut mirrored, mut main2) = two();
+        use_as(&mut mirrored, &mut main2, "eDP-1", Use::Mirror("DP-1".into()));
+        let names = changed(&before, &mirrored);
+        let asked = requests(&before, &mirrored, &names);
+        assert!(matches!(asked.first(), Some(Request::OutputConfig { name, .. }) if name == "eDP-1"), "{asked:?}");
+        assert!(
+            matches!(asked.last(), Some(Request::MirrorOutput { name, source: Some(s) }) if name == "eDP-1" && s == "DP-1"),
+            "{asked:?}"
+        );
+        let back = requests(&mirrored, &before, &changed(&mirrored, &before));
+        assert!(
+            matches!(back.first(), Some(Request::MirrorOutput { name, source: None }) if name == "eDP-1"),
+            "{back:?}"
+        );
+        assert!(matches!(back.last(), Some(Request::OutputConfig { .. })), "{back:?}");
         let edp = Display::from_output(&output("eDP-1", 2880, 1800, 2.0, 1920), None);
         let mut outputs = vec![OutputConfig { name: Some("HDMI-A-1".into()), ..Default::default() }];
         outputs[0].extra.insert("primary".into(), toml::Value::Boolean(true));

@@ -86,8 +86,22 @@ impl SampleOutputs {
     /// Take a request as the compositor would.
     fn apply(&mut self, req: &Request) -> Result<(), String> {
         self.requests.push(req.clone());
+        if let Request::MirrorOutput { name, source } = req {
+            // As the compositor mirrors: the source's place and size.
+            let place = match source {
+                Some(s) => Some(self.on.iter().find(|o| o.name == *s).ok_or_else(|| format!("no output {s}"))?.logical),
+                None => None,
+            };
+            let o = self.on.iter_mut().find(|o| o.name == *name).ok_or_else(|| format!("no output {name}"))?;
+            o.mirror = source.clone();
+            if let Some(r) = place {
+                o.logical = r;
+                o.usable = r;
+            }
+            return Ok(());
+        }
         let Request::OutputConfig { name, mode, scale, position, transform, enabled } = req else {
-            return Err("the sample compositor takes only output-config".into());
+            return Err("the sample compositor takes only output-config and mirror-output".into());
         };
         if *enabled == Some(false) {
             let i = self.on.iter().position(|o| o.name == *name).ok_or_else(|| format!("no output {name}"))?;

@@ -113,6 +113,9 @@ pub struct Displays {
     show_all: bool,
     fractional: bool,
     watching: Option<Arc<AtomicBool>>,
+    /// The compositor's list as last read, to read again with the settings
+    /// when they change on disk.
+    outputs: Vec<OutputInfo>,
     brightness: Brightness,
     /// Night Light as the compositor last told it (none without one).
     night: Option<aizome_ipc::NightLightState>,
@@ -133,6 +136,7 @@ impl Default for Displays {
             show_all: false,
             fractional: false,
             watching: None,
+            outputs: Vec::new(),
             brightness: Brightness { sample: 0.72, ..Brightness::default() },
             night: None,
         }
@@ -166,6 +170,7 @@ impl Displays {
     /// The displays from the compositor's list, with what the settings
     /// file knows (mirrors, the main display, displays that are off).
     fn take(&mut self, outputs: Vec<OutputInfo>, cx: &PaneCx<Msg>) {
+        self.outputs = outputs.clone();
         let entries = cx.settings().outputs.clone();
         let entry_for = |o: &OutputInfo| entries.iter().find(|e| e.matches(&o.name, &o.make, &o.model, &o.serial));
         let mut ds: Vec<Display> = outputs.iter().map(|o| Display::from_output(o, entry_for(o))).collect();
@@ -185,7 +190,10 @@ impl Displays {
             .find(|e| model::is_primary(e))
             .and_then(|e| ds.iter().find(|d| d.config_key().matches(e)).map(|d| d.name.clone()));
         let settings: Vec<Settings> = ds.iter().map(|d| d.settings.clone()).collect();
-        self.main = model::main_display(&settings, self.main.as_deref().or(kept.as_deref()));
+        // The file's main display (it may have changed elsewhere), else the
+        // compositor's, else the one shown.
+        let live = outputs.iter().find(|o| o.primary).map(|o| o.name.clone());
+        self.main = model::main_display(&settings, kept.as_deref().or(live.as_deref()).or(self.main.as_deref()));
         if !ds.iter().any(|d| d.name == self.selected) {
             self.selected = self.main.clone().or_else(|| ds.first().map(|d| d.name.clone())).unwrap_or_default();
         }
@@ -250,7 +258,7 @@ impl Displays {
             return;
         }
         let confirm = confirm && model::risky(&before, &after);
-        let requests: Vec<Request> = model::requests(&after, &names);
+        let requests: Vec<Request> = model::requests(&before, &after, &names);
         let Some(comp) = self.comp.clone() else { return };
         self.applying = true;
         self.revision += 1;
@@ -454,6 +462,16 @@ impl Pane for Displays {
     fn hidden(&mut self, _cx: &mut PaneCx<Msg>) {
         if let Some(stop) = self.watching.take() {
             stop.store(true, Ordering::Relaxed);
+        }
+    }
+
+    fn settings_changed(&mut self, cx: &mut PaneCx<Msg>) {
+        // `[[outputs]]` changed elsewhere (the main display, mirrors,
+        // displays off): what shows is read again with them, unless a
+        // change of the pane's own is on its way or waiting to be kept.
+        if self.loaded && !self.applying && self.keep.is_none() && !self.outputs.is_empty() {
+            let outputs = self.outputs.clone();
+            self.take(outputs, cx);
         }
     }
 
@@ -675,13 +693,15 @@ mod tests {
         (h, path)
     }
 
-    /// The sample's displays read (on a thread of their own).
+    /// The sample's displays read (on a thread of their own: real time
+    /// passes too, or a busy machine doesn't get to it).
     pub(super) fn loaded(h: &mut Harness<Shitsurae>) {
         let w = h.window();
-        for _ in 0..200 {
+        for _ in 0..400 {
             if h.texts(w).iter().any(|t| t == "Use as") {
                 return;
             }
+            std::thread::sleep(std::time::Duration::from_millis(5));
             h.advance(std::time::Duration::from_millis(10));
         }
         panic!("the sample's displays never showed: {:?}", h.texts(w));
@@ -693,6 +713,9 @@ mod tests {
             schedule: "sunset".into(),
             current: 6500,
             outputs: outputs.iter().map(|o| (*o).to_owned()).collect(),
+            from: Some("18:57".into()),
+            to: Some("08:15".into()),
+            place: Some("Europe/Paris".into()),
             ..Default::default()
         };
         AppMsg::Pane("displays", Arc::new(Msg::Night(Some(state))))
@@ -714,7 +737,10 @@ mod tests {
         let w = h.window();
         h.send(night(&["eDP-1"]));
         assert!(!h.texts(w).iter().any(|t| t == "Not on these displays"));
-        assert!(h.texts(w).iter().any(|t| t == "From sunset to sunrise, warmer colours, easier on the eyes at night."));
+        assert!(
+            h.texts(w).iter().any(|t| t
+                == "From sunset (18:57) to sunrise (08:15) in Paris, warmer colours, easier on the eyes at night.")
+        );
         h.send(AppMsg::Pane("displays", Arc::new(Msg::NightLight(true))));
         h.program().shared.flush();
         let saved = std::fs::read_to_string(&path).unwrap();

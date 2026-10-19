@@ -44,7 +44,8 @@ pub enum PairingRequest {
     Authorize,
     /// May this device use the service with this UUID? Accept or reject.
     AuthorizeService(String),
-    /// BlueZ cancelled the request shown last for this device: hide it.
+    /// BlueZ cancelled the request shown last (for this device: the one
+    /// the agent last asked about): hide it.
     Cancelled,
 }
 
@@ -112,6 +113,9 @@ pub(crate) type Prompt = Arc<dyn Fn(PairingPrompt) + Send + Sync>;
 struct Agent {
     bus: Bus,
     prompt: Prompt,
+    /// The device of the request shown last, which BlueZ's `Cancel` (it
+    /// names none) is about.
+    current: Mutex<Option<String>>,
 }
 
 #[derive(Debug, zbus::DBusError)]
@@ -140,6 +144,7 @@ impl Agent {
     async fn ask(&self, device: &OwnedObjectPath, request: PairingRequest) -> Option<PairingResponse> {
         let (tx, rx) = oneshot::channel();
         let name = self.name(device.as_str()).await;
+        self.shown(device.as_str());
         (self.prompt)(PairingPrompt {
             device: device.to_string(),
             name,
@@ -152,7 +157,12 @@ impl Agent {
     /// Show a prompt that needs no answer.
     async fn show(&self, device: &OwnedObjectPath, request: PairingRequest) {
         let name = self.name(device.as_str()).await;
+        self.shown(device.as_str());
         (self.prompt)(PairingPrompt { device: device.to_string(), name, request, responder: Responder::none() });
+    }
+
+    fn shown(&self, device: &str) {
+        *crate::service::lock(&self.current) = Some(device.to_owned());
     }
 
     async fn accept_or_reject(&self, device: OwnedObjectPath, request: PairingRequest) -> Result<(), AgentError> {
@@ -205,8 +215,9 @@ impl Agent {
     }
 
     fn cancel(&self) {
+        let device = crate::service::lock(&self.current).take().unwrap_or_default();
         (self.prompt)(PairingPrompt {
-            device: String::new(),
+            device,
             name: String::new(),
             request: PairingRequest::Cancelled,
             responder: Responder::none(),
@@ -294,7 +305,7 @@ pub(crate) struct Registration {
 
 pub(crate) fn register(bus: &Bus, prompt: Prompt) -> Result<Registration> {
     let conn = bus.connection().clone();
-    let agent = Agent { bus: bus.clone(), prompt };
+    let agent = Agent { bus: bus.clone(), prompt, current: Mutex::new(None) };
     zbus::block_on(async {
         let server = conn.object_server();
         let _ = server.remove::<Agent, _>(AGENT_PATH).await;

@@ -101,6 +101,11 @@ pub enum Msg {
     Recording(u64, crate::recording::run::Event),
     /// The recording indicator's second turned (recording, tick).
     RecordTick(u64, u64),
+    /// Where GeoClue says the computer is (latitude, longitude), or why
+    /// it says nothing.
+    Located(Result<(f64, f64), String>),
+    /// Time to play the volume's feedback (it changed a moment ago).
+    VolumeFeedback,
     /// Nothing: a message to wake the loop.
     Nothing,
 }
@@ -306,6 +311,9 @@ pub struct Shell {
     pub logind_power_key: Option<String>,
     /// Night Light, as the compositor last told.
     pub night: Option<aizome_ipc::NightLightState>,
+    /// GeoClue is being asked where the computer is; when it last answered.
+    pub(crate) locating: bool,
+    pub(crate) located_at: Option<std::time::Instant>,
     /// The screen recording going, if any (one at a time).
     pub recording: Option<crate::recording::Live>,
     pub(crate) record_gen: u64,
@@ -405,6 +413,8 @@ impl Shell {
             power_inhibit: None,
             logind_power_key: None,
             night: None,
+            locating: false,
+            located_at: None,
             recording: None,
             record_gen: 0,
             recorders: Default::default(),
@@ -416,8 +426,7 @@ impl Shell {
             _apps_watch: None,
         };
         s.read_settings();
-        s.theme_day =
-            s.settings.appearance.theme.resolve(aizome_kit::theme::local_hour()) == aizome_theme::ThemeName::Day;
+        s.theme_day = s.settings.theme_now() == aizome_theme::ThemeName::Day;
         s
     }
 
@@ -1090,8 +1099,7 @@ impl Shell {
         self.sync_power_key();
         self.tray = self.sys.tray(&self.bar_cfg);
         self.refresh_wall_paths();
-        let day =
-            self.settings.appearance.theme.resolve(aizome_kit::theme::local_hour()) == aizome_theme::ThemeName::Day;
+        let day = self.settings.theme_now() == aizome_theme::ThemeName::Day;
         self.theme_changed(day);
     }
 
@@ -1163,8 +1171,16 @@ impl Shell {
                 let Some(screen) = self.primary().cloned() else { return (false, "no output".into()) };
                 let Some(bar) = screen.bar else { return (false, "no bar".into()) };
                 if let Some(w) = TrayWidget::named(&what) {
-                    let x = screen.output.frame.width() - 60.0;
-                    self.toggle_panel(bar, w, Rect::new(x, 0.0, x + 16.0, crate::menubar::HEIGHT), cx);
+                    // Under its widget, as a press would put it; a widget
+                    // the bar leaves out has its panel under the clock.
+                    let rect = cx
+                        .element_rect(bar, &crate::menubar::tray_id(w))
+                        .or_else(|| cx.element_rect(bar, &crate::menubar::tray_id(TrayWidget::Clock)))
+                        .unwrap_or_else(|| {
+                            let x = screen.output.frame.width() - 60.0;
+                            Rect::new(x, 0.0, x + 16.0, crate::menubar::HEIGHT)
+                        });
+                    self.toggle_panel(bar, w, rect, cx);
                     (true, String::new())
                 } else if what.eq_ignore_ascii_case("toolchest") {
                     self.open_toolchest(None, cx);
@@ -1240,6 +1256,8 @@ impl Shell {
             "menu": self.bar_menu.map(|m| format!("{:?}", m.slot)),
             "palette": self.palette.as_ref().map(|p| p.query.clone()),
             "panel": self.panel.as_ref().map(|p| p.widget.name()),
+            // The rectangle of the bar it's under (its widget's).
+            "panel_under": self.panel.as_ref().map(|p| [p.under.x0, p.under.y0, p.under.x1, p.under.y1]),
             "pid": std::process::id(),
             // The notifications it keeps (summaries).
             "notes": self.notes.list.iter().map(|n| n.summary.clone()).collect::<Vec<_>>(),
@@ -1267,6 +1285,7 @@ impl Program for Shell {
             // Once the first frames are out, ready the palette's text.
             cx.after(std::time::Duration::from_secs(2), Msg::WarmPalette);
         }
+        self.locate_if_wanted(cx);
         let outputs = cx.outputs();
         self.sync_screens(outputs, cx);
         self.arm_clock(cx);
@@ -1307,14 +1326,18 @@ impl Program for Shell {
                 self.now = Local::now();
                 self.arm_clock(cx);
                 // Auto turns at its hours.
-                let day = self.settings.appearance.theme.resolve(aizome_kit::theme::local_hour())
-                    == aizome_theme::ThemeName::Day;
+                let day = self.settings.theme_now() == aizome_theme::ThemeName::Day;
                 self.theme_changed(day);
                 if self.panel.as_ref().is_some_and(|p| p.widget == TrayWidget::Clock) {
                     self.refresh_agenda(cx);
                 }
             }
-            Msg::SettingsChanged => self.reload_settings(),
+            Msg::SettingsChanged => {
+                self.reload_settings();
+                self.locate_if_wanted(cx);
+            }
+            Msg::Located(found) => self.located(found),
+            Msg::VolumeFeedback => self.play_feedback(),
             Msg::Run(a) => self.run(a, cx),
             Msg::Bar(w, m) => self.bar(w, m, cx),
             Msg::Deskbar(m) => self.deskbar_msg(m, cx),
@@ -1661,8 +1684,7 @@ impl Shell {
         if !self.opts.live {
             return;
         }
-        let a = &self.settings.appearance;
-        let look = crate::gtk::look(a.theme.resolve(aizome_kit::theme::local_hour()), a.focus);
+        let look = crate::gtk::look(self.settings.theme_now(), self.settings.appearance.focus);
         if self.gtk_look != Some(look) {
             self.gtk_look = Some(look);
             crate::gtk::tell(look);

@@ -474,7 +474,7 @@ impl Program for Shitsurae {
         self.shared.window = w;
         // The settings this window edits, which the sample (or a test) may
         // keep somewhere other than where the kit looked.
-        cx.set_appearance(aizome_kit::theme::Appearance::from(&self.shared.settings.appearance));
+        cx.set_appearance(aizome_kit::theme::Appearance::from(&self.shared.settings));
         let tx = cx.stream();
         self.shared.sys = crate::system::System::start(
             self.shared.sample,
@@ -558,7 +558,11 @@ impl Program for Shitsurae {
                     self.panes[self.current].system_changed_any(cx, &mut self.shared);
                 }
             }
-            AppMsg::SettingsOnDisk => self.shared.reread(cx),
+            AppMsg::SettingsOnDisk => {
+                if self.shared.reread(cx) && self.started {
+                    self.panes[self.current].settings_changed_any(cx, &mut self.shared);
+                }
+            }
             AppMsg::Reload => self.shared.reload(cx),
             AppMsg::ClearStatus(g) => self.shared.clear_status(g),
             AppMsg::Said(text, error) => self.shared.say(text, error, cx),

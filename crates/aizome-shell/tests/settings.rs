@@ -95,7 +95,17 @@ fn blocked_apps_are_dropped_and_silent_ones_make_no_sound() {
     assert!(h.program().notes.get(91).is_some(), "shown");
     assert_eq!(h.program().last_sound, None, "but silent");
     note(&mut h, 92, "Chat", "Hi", ding());
-    assert_eq!(h.program().last_sound.as_deref(), Some("Named(\"message-new-instant\")"));
+    assert_eq!(h.program().last_sound.as_deref(), Some("Named(\"message-new-instant\") at 0.70"));
+    // At the alert volume Sound sets.
+    settings(&mut h, |s| {
+        aizome_config::Settings::set_shell_section(
+            s,
+            "sound",
+            &aizome_config::SoundSettings { alert_volume: 0.25, ..Default::default() },
+        )
+    });
+    note(&mut h, 93, "Chat", "Again", ding());
+    assert_eq!(h.program().last_sound.as_deref(), Some("Named(\"message-new-instant\") at 0.25"));
 }
 
 fn lock(h: &mut H) -> WindowKey {
@@ -204,17 +214,36 @@ fn the_palette_finds_only_its_scopes() {
 }
 
 #[test]
-fn the_bell_flashes_the_edge_or_sounds() {
+fn the_bell_sounds_the_alert_and_flashes_the_edge_when_asked() {
     let mut h = scene(false);
     h.send(Msg::Run(Action::None));
     let bell = |h: &mut H| {
         h.send(Msg::Ipc(IpcEvent::Event(Event::Binding { action: "bell".into(), pointer: None, output: None })))
     };
     bell(&mut h);
-    assert_eq!(h.program().last_sound.as_deref(), Some("bell"));
+    assert_eq!(h.program().last_sound.as_deref(), Some("bell at 0.70"));
     assert!(h.program().flash.is_none());
-    settings(&mut h, |s| s.set_shell_section("sound", &aizome_config::SoundSettings { visual_alert: true }));
+    // The alert chosen in Sound, at its volume; silent at none.
+    settings(&mut h, |s| {
+        s.set_shell_section(
+            "sound",
+            &aizome_config::SoundSettings { alert_sound: "message".into(), alert_volume: 0.4, ..Default::default() },
+        )
+    });
     bell(&mut h);
+    assert_eq!(h.program().last_sound.as_deref(), Some("message at 0.40"));
+    h.program_mut().last_sound = None;
+    settings(&mut h, |s| {
+        s.set_shell_section("sound", &aizome_config::SoundSettings { alert_volume: 0.0, ..Default::default() })
+    });
+    bell(&mut h);
+    assert_eq!(h.program().last_sound, None);
+    // Seen as well as heard.
+    settings(&mut h, |s| {
+        s.set_shell_section("sound", &aizome_config::SoundSettings { visual_alert: true, ..Default::default() })
+    });
+    bell(&mut h);
+    assert_eq!(h.program().last_sound.as_deref(), Some("bell at 0.70"));
     let f = window_titled(&h, "Flash");
     h.resize(f, Size::new(W, H));
     h.save_png(f, shots().join("flash-night.png"), 1.0);
@@ -224,6 +253,30 @@ fn the_bell_flashes_the_edge_or_sounds() {
     assert_eq!(at(2, hh / 2), 255, "the edge");
     h.advance(Duration::from_millis(200));
     assert!(h.windows().iter().all(|k| h.title(*k) != "Flash"), "gone after a moment");
+}
+
+#[test]
+fn the_volume_keys_play_feedback_when_sound_asks() {
+    let mut h = scene(false);
+    h.send(Msg::Run(Action::None));
+    let key = |h: &mut H, action: &str| {
+        h.send(Msg::Ipc(IpcEvent::Event(Event::Binding { action: action.into(), pointer: None, output: None })));
+        h.advance(Duration::from_millis(100));
+    };
+    key(&mut h, "volume-up");
+    assert_eq!(h.program().last_sound, None, "no feedback unless asked");
+    settings(&mut h, |s| {
+        s.set_shell_section("sound", &aizome_config::SoundSettings { volume_feedback: true, ..Default::default() })
+    });
+    key(&mut h, "volume-down");
+    assert_eq!(h.program().last_sound.as_deref(), Some("audio-volume-change at 1.00"));
+    // Muting makes none (the mute key is heard by its silence).
+    h.program_mut().last_sound = None;
+    key(&mut h, "mute");
+    assert_eq!(h.program().last_sound, None);
+    // Nor do the brightness keys.
+    key(&mut h, "brightness-up");
+    assert_eq!(h.program().last_sound, None);
 }
 
 #[test]

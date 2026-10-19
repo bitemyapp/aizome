@@ -386,6 +386,12 @@ in
         isAllowed = true;
         isSystem = false;
       };
+      # The shell: where the computer is, for Night Light's sunset
+      # schedule and Auto's theme (it falls back to the time zone's city).
+      "org.aizome.Shell" = {
+        isAllowed = true;
+        isSystem = false;
+      };
     };
     services.gvfs.enable = lib.mkDefault true;
     services.gnome.gnome-keyring.enable = lib.mkDefault true;

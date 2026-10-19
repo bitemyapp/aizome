@@ -89,7 +89,7 @@ The compositor (for its key bindings) and `aizomectl` send
 | `osd` | `kind` (`volume`, `mute`, `brightness`, `keyboard`), `value` 0–1 | Show the on-screen display. |
 | `notify` | `app`, `summary`, `body` | Post a notification. |
 | `deskbar` | `collapsed` | Fold or unfold the Deskbar (toggle if left out). |
-| `open` | `what` | Open a systray panel (`network`, `sound`, `bluetooth`, `display`, `battery`, `clock`) or a bar menu by its title. |
+| `open` | `what` | Open a systray panel (`network`, `sound`, `bluetooth`, `display`, `battery`, `clock`) under its widget in the main display's bar (under the clock where the bar leaves the widget out), or a bar menu by its title. Asked again, the panel closes. |
 | `dismiss` | | Close whatever transient surface is open. |
 | `state` | | What the shell shows, as JSON in the reply's `message`. |
 | `menu-bar` | `output` | The menu bar takes the keyboard (F10, ❖⌥M): the focused app's menu opens with its first row lit; ← → go across the titles. |

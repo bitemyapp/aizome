@@ -105,6 +105,11 @@ impl<Msg> Row<Msg> {
         self
     }
 
+    /// Whether it's a search entry's row already.
+    pub fn has_entry(&self) -> bool {
+        self.entry.is_some()
+    }
+
     /// An explanation under the label, in `text3`.
     pub fn help(mut self, text: impl Into<String>) -> Self {
         self.help = Some(text.into());

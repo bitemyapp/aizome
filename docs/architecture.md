@@ -152,7 +152,8 @@ reduced motion, wallpaper), `input` (keyboard layouts, repeat, pointer,
 touchpad), `outputs` (by make/model/serial: mode, scale, position,
 transform), `desks` (names, folders), `keys` (overrides), `menubar`,
 `deskbar`, `notifications`, `lock`, `power`, `apps` (defaults), `sound`,
-`recording` (screen recordings).
+`recording` (screen recordings), `location` (where the computer is, for
+sunrise and sunset: the shell writes what GeoClue says).
 
 ## Rendering and the 4ms budget
 

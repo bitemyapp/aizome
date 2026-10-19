@@ -143,8 +143,23 @@ As built, beyond the above:
   the field loses the focus as well as on Return. The host name still
   waits for Return, since it asks first.
 - **Displays** shows Night Light where the compositor says a display takes
-  a gamma table (the switch is `[night_light] enabled`, applied at once);
-  where none does, it says why there's no switch.
+  a gamma table (the switch is `[night_light] enabled`, applied at once),
+  with today's sunset and sunrise where the computer is; where none does,
+  it says why there's no switch.
+- **Sound**: the alert sound and volume are the shell's: it plays the
+  alert for the system bell (xdg-system-bell, through the compositor),
+  notifications' sounds at the alert volume, and, with "Play feedback
+  when volume is changed", the theme's `audio-volume-change` at the new
+  volume after the volume keys or the Sound panel's slider; all from the
+  freedesktop sound theme with `pw-play`. Flash the screen for alerts
+  flashes its edge as well as sounding.
+- **Appearance**: Auto following sunset and sunrise turns at them where
+  the computer is, and says when and where ("Day from sunrise (08:15) to
+  sunset (18:57) in Paris"). Where it is: what GeoClue tells the shell
+  (asked as `org.aizome.Shell` while something follows the sun, kept in
+  `[location]` to 0.01°), else the time zone's city from tzdata; the
+  compositor's Night Light, the shell, the apps and Settings reckon it the
+  same way (`aizome_config::location`).
 - **Date & Time** shows automatic time as set by the system configuration
   where NixOS keeps systemd's units in the store (timedated can't switch
   it there): change `services.timesyncd.enable`.
@@ -155,7 +170,29 @@ As built, beyond the above:
 - **Trackpad** says when no trackpad is connected; its settings are kept
   for one.
 - **Users & Groups** reads a picture again when AccountsService replaces
-  it at the same path.
+  it at the same path. With `users.mutableUsers = false` the account
+  types show but can't change; Remove names the account's own home
+  folder.
+- **Network**: search finds every option whatever the pane shows (with
+  no VPNs, "Add VPN"; with Wi-Fi off, the network lists' options show the
+  Wi-Fi switch). A password sheet keeps what's typed while another join
+  goes, and a join that fails opens its sheet again as it was, with why.
+  A saved network's new password or enterprise account is tried in
+  memory and kept only once it joins, so a refused one costs nothing.
+  The hotspot says the network's name others see. Airplane mode where
+  `/dev/rfkill` can't be written switches NetworkManager's radios and
+  BlueZ's adapters off, and those back on after.
+- **Bluetooth**: a pairing sheet closes when BlueZ cancels it, when our
+  pairing ends (a code only shown included), and a device that asked to
+  pair (Authorize) leaves no spinner once answered.
+- **Displays** previews mirroring live under "Keep these display
+  settings?" as it does the other risky changes, and follows `[[outputs]]`
+  changed elsewhere while it's open (panes hear when `settings.toml`
+  changes on disk).
+- **Language & Region**: the formats preview follows the locale localed
+  has, whenever it changes.
+- **Search**: Forget removes the palette's history for good: the shell
+  records picks into the file and reads it again when it changed.
 - GTK and libadwaita apps follow the theme and the focus colour through
   dconf (`color-scheme`, `gtk-theme`, `accent-color`, high contrast),
   which the shell writes.

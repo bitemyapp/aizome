@@ -1,7 +1,7 @@
 //! The system bell (the compositor's `bell` request, for xdg-system-bell):
-//! its sound from the sound theme, or with `[sound] visual_alert` a flash
-//! of the screen's edge instead, a frame of `amber` on an overlay surface
-//! that takes no input, gone after a moment.
+//! the alert sound (`[sound] alert_sound`, at `alert_volume`) and, with
+//! `visual_alert`, a flash of the screen's edge as well, a frame of
+//! `amber` on an overlay surface that takes no input, gone after a moment.
 
 use std::time::Duration;
 
@@ -20,13 +20,8 @@ pub const EDGE: f64 = 6.0;
 impl Shell {
     /// The bell rang on `output` (else the focused one).
     pub fn bell(&mut self, output: Option<&str>, cx: &mut Cx<Msg>) {
+        self.alert_sound();
         if !self.sound_cfg.visual_alert {
-            self.last_sound = Some("bell".into());
-            if self.opts.live
-                && let Some(f) = crate::sound::theme_file("bell")
-            {
-                crate::sound::play(f);
-            }
             return;
         }
         let Some(screen) = output.and_then(|n| self.screen_named(n)).or(self.focused_screen()).cloned() else { return };

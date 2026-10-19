@@ -136,6 +136,12 @@ impl NetGlyph {
     }
 }
 
+/// The name a systray widget has in the bar (`tray-sound`), for putting
+/// its panel under it when it's asked for without a press.
+pub fn tray_id(widget: TrayWidget) -> String {
+    format!("tray-{}", widget.name())
+}
+
 pub fn sound_icon(volume: f32, muted: bool) -> Icon {
     if muted || volume <= 0.0 {
         Icon::VolumeX
@@ -523,6 +529,7 @@ fn tray_icon(widget: TrayWidget, icon: Icon, text: Option<String>, open: bool, l
     .overflow(3.0)
     .text(label, SemanticRole::Button)
     .key(("tray", widget))
+    .id(tray_id(widget))
     .into()
 }
 
@@ -638,6 +645,7 @@ fn clock(label: &str, open: bool) -> Element<BarMsg> {
     .overflow(4.0)
     .text(label.to_owned(), SemanticRole::Label)
     .key("clock")
+    .id(tray_id(TrayWidget::Clock))
     .into()
 }
 

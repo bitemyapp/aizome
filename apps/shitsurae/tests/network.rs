@@ -68,8 +68,18 @@ fn a_wrong_password_is_said_plainly() {
     h.type_text(w, "wrong");
     // Too short for WPA3? No: any length. Join with it.
     assert!(h.click_text(w, "Join"));
+    // The sheet comes back with what was typed and why it didn't join.
     settle(&mut h, |h| h.texts(h.window()).iter().any(|t| t.contains("Check the password")));
-    assert!(h.texts(w).iter().any(|t| t.contains("Couldn't join Tōkyō Guest")), "{:?}", h.texts(w));
+    let texts = h.texts(w);
+    assert!(texts.iter().any(|t| t.starts_with("Couldn't join: ")), "{texts:?}");
+    assert!(texts.iter().any(|t| t == "Join “Tōkyō Guest”"), "{texts:?}");
+    let field = h.inspected(w).into_iter().find(|e| e["name"] == "network-password").expect("the field");
+    assert_eq!(field["text"].as_str(), Some("wrong"), "the password kept: {field}");
+    // Put right, it joins.
+    h.command(w, 'a');
+    h.type_text(w, "kamenozoki\n");
+    settle(&mut h, |h| h.texts(h.window()).iter().any(|t| t == "Connected to Tōkyō Guest"));
+    assert!(h.texts(w).iter().any(|t| t == "Connected to Tōkyō Guest"), "{:?}", h.texts(w));
 }
 
 #[test]

@@ -18,6 +18,7 @@ mod desktop_glue;
 pub mod gtk;
 pub mod ipc;
 pub mod launch;
+pub mod location;
 pub mod lock;
 pub mod look;
 pub mod menubar;

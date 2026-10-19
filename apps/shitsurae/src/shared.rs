@@ -65,16 +65,20 @@ impl Shared {
 
     /// Read the file again (someone else wrote it), unless writes of ours
     /// are still on their way to it.
-    pub fn reread(&mut self, cx: &mut Cx<AppMsg>) {
+    /// Read the file again (it changed on disk); whether what it says
+    /// changed.
+    pub fn reread(&mut self, cx: &mut Cx<AppMsg>) -> bool {
         if self.writer.as_ref().is_some_and(|w| w.pending() > 0) {
-            return;
+            return false;
         }
         if let Ok(s) = Settings::load_from(&self.settings_path)
             && s != self.settings
         {
             self.settings = s;
-            cx.set_appearance(aizome_kit::theme::Appearance::from(&self.settings.appearance));
+            cx.set_appearance(aizome_kit::theme::Appearance::from(&self.settings));
+            return true;
         }
+        false
     }
 
     /// Apply `f` to the settings as the file has them (read again, so
@@ -108,7 +112,7 @@ impl Shared {
         };
         self.settings = fresh;
         // This window first, without waiting for the file's watcher.
-        cx.set_appearance(aizome_kit::theme::Appearance::from(&self.settings.appearance));
+        cx.set_appearance(aizome_kit::theme::Appearance::from(&self.settings));
         let writer = self.writer.get_or_insert_with(|| Writer::start(cx.stream()));
         writer.sent += 1;
         let _ = writer.tx.send((self.settings_path.clone(), text));

@@ -138,4 +138,36 @@ fn arranges_and_applies_on_a_headless_compositor() {
     );
     // The file still says what was kept before the rotation.
     assert!(!std::fs::read_to_string(&path).unwrap().contains("transform = \"90\""));
+
+    // Mirroring shows at once, before it's kept; Revert takes it back.
+    let mirror_of = |name: &str| outputs().into_iter().find(|o| o.name == name).and_then(|o| o.mirror);
+    // The "Use as" menu: Main display, Extended display, Mirror for …, Off.
+    let choose = |h: &mut Harness<Shitsurae>, now: &str, row: usize| {
+        assert!(h.click_text(w, now), "no {now:?} in {:?}", h.texts(w));
+        let popup = h.popups(w).last().map(|(p, _)| *p).expect("the menu");
+        // Nothing is lit at first: the first press lights the first row.
+        for _ in 0..=row {
+            h.popup_keyboard(popup, Key::Named(NamedKey::ArrowDown), Modifiers::default());
+        }
+        h.popup_keyboard(popup, Key::Named(NamedKey::Enter), Modifiers::default());
+    };
+    let used = if has(&h, "Main display") { "Main display" } else { "Extended display" };
+    choose(&mut h, used, 2);
+    assert!(settle(&mut h, |h| has(h, "Keep these display settings?")), "{:?}", h.texts(w));
+    assert_eq!(mirror_of(&first).as_deref(), Some(second.as_str()), "mirroring only once kept");
+    assert!(h.click_text(w, "Revert"));
+    assert!(settle(&mut h, |_| mirror_of(&first).is_none()), "still mirroring after Revert");
+    assert!(!std::fs::read_to_string(&path).unwrap().contains("mirror ="));
+
+    // `[[outputs]]` changed elsewhere (the other display made the main
+    // one) and applied: the open pane follows.
+    assert!(settle(&mut h, |h| has(h, "Main display")), "{:?}", h.texts(w));
+    let text = std::fs::read_to_string(&path).unwrap().replace("primary = true\n", "");
+    std::fs::write(&path, format!("{text}\n[[outputs]]\nname = \"{second}\"\nprimary = true\n")).unwrap();
+    Client::connect().unwrap().call(&Request::ReloadConfig).unwrap();
+    assert!(
+        settle(&mut h, |h| has(h, "Extended display") && !has(h, "Main display")),
+        "the pane kept the old main display: {:?}",
+        h.texts(w)
+    );
 }
