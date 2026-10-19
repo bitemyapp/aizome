@@ -305,18 +305,33 @@ pkgs.testers.runNixOSTest {
         # (wl_shm here, under pixman) into PipeWire. Through wlr-screencopy
         # it froze after one frame. The terminal above keeps changing.
         bus = "export DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus; "
+        # In Aizome sessions the module's drop-in starts the portal with
+        # Aizome's config (the portal reads only ~/.config otherwise).
+        unit = machine.succeed(alice(f"{bus}systemctl --user cat xdg-desktop-portal-wlr.service"))
+        print(unit)
+        assert "xdg-desktop-portal-wlr-aizome" in unit, unit
+
+        def portal_state():
+            print(machine.execute("ps -ef | grep -E 'slurp|share-picker|portal-wlr|screencast-check' | grep -v grep")[1])
+            print(machine.execute(alice(f"{bus}systemctl --user show-environment | grep -E 'XDG_CURRENT|WAYLAND'"))[1])
+            print(machine.execute(alice(f"{bus}journalctl --user -u xdg-desktop-portal-wlr --no-pager | tail -30"))[1])
 
         def share(name, types, pick):
             """Asks to share; once the picker is up, picks as a person
             would; returns what the portal client said."""
             out = f"/tmp/share-{name}.log"
             events = f"/tmp/share-{name}-events.log"
-            machine.succeed(alice(f"setsid -f sh -c 'timeout 60 aizomectl events > {events} 2>&1'"))
+            detached = "</dev/null >/dev/null 2>&1"
+            machine.succeed(alice(f"setsid -f sh -c 'timeout 60 aizomectl events > {events} 2>&1' {detached}"))
             machine.wait_until_succeeds(f"test -e {events}", timeout=10)
             machine.succeed(alice(
-                f"{bus}setsid -f sh -c 'aizome-screencast-check 6 20 {types} > {out} 2>&1; echo exit $? >> {out}'"
+                f"{bus}setsid -f sh -c 'aizome-screencast-check 6 20 {types} > {out} 2>&1; echo exit $? >> {out}' {detached}"
             ))
-            machine.wait_until_succeeds(f"grep -q '^pick-started share-' {events}", timeout=60)
+            try:
+                machine.wait_until_succeeds(f"grep -q '^pick-started share-' {events}", timeout=60)
+            except Exception:
+                portal_state()
+                raise
             time.sleep(0.5)
             pick()
             machine.wait_until_succeeds(f"grep -q '^exit ' {out}", timeout=90)
