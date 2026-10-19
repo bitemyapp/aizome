@@ -1,6 +1,6 @@
 [package]
 name = "aizome-ipc"
-description = "Aizome's compositor IPC: request, response and event types, a blocking client, and the aizomectl CLI"
+description = "Aizome's compositor IPC: request, response and event types, a blocking client, the aizomectl CLI, and the screen-sharing chooser"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -14,3 +14,7 @@ serde_json.workspace = true
 [[bin]]
 name = "aizomectl"
 path = "src/bin/aizomectl.rs"
+
+[[bin]]
+name = "aizome-share-picker"
+path = "src/bin/aizome-share-picker.rs"

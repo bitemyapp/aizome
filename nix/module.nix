@@ -33,6 +33,33 @@ let
     '';
     derivationArgs.passthru.providedSessions = [ "aizome" ];
   };
+  # Screen sharing: xdg-desktop-portal-wlr asks Aizome's picker what to
+  # share (aizome-share-picker: the compositor's picker, a display or a
+  # window, with a banner saying why). The portal reads its config only
+  # from ~/.config or its own package, not XDG_CONFIG_DIRS, so in Aizome
+  # sessions it's started with /etc/xdg/aizome's, unless the person has
+  # configured it themselves; other desktops start it as before.
+  sharePickerConfig = ''
+    [screencast]
+    chooser_type=dmenu
+    chooser_cmd=${cfg.package}/bin/aizome-share-picker
+  '';
+  portalWlr = pkgs.writeShellScript "xdg-desktop-portal-wlr-aizome" ''
+    own=''${XDG_CONFIG_HOME:-$HOME/.config}/xdg-desktop-portal-wlr
+    case ":''${XDG_CURRENT_DESKTOP:-}:" in
+      *:Aizome:*)
+        if [ ! -e "$own/Aizome" ] && [ ! -e "$own/config" ]; then
+          set -- -c /etc/xdg/aizome/xdg-desktop-portal-wlr/config "$@"
+        fi
+        ;;
+    esac
+    exec ${pkgs.xdg-desktop-portal-wlr}/libexec/xdg-desktop-portal-wlr "$@"
+  '';
+  portalWlrDropIn = pkgs.writeTextDir "lib/systemd/user/xdg-desktop-portal-wlr.service.d/aizome.conf" ''
+    [Service]
+    ExecStart=
+    ExecStart=${portalWlr}
+  '';
   # wf-recorder (the fallback recorder) puts its wl_shm buffers in files in
   # /tmp, which on most NixOS systems is on disk: every frame the compositor
   # copies would be written out (over 1 GB/s at 2880 × 1800 and 60 fps) and
@@ -148,7 +175,10 @@ in
     hardware.graphics.enable = lib.mkDefault true;
     hardware.graphics.extraPackages = lib.mkIf cfg.videoAcceleration [ pkgs.intel-media-driver ];
     services.displayManager.sessionPackages = [ session ];
-    systemd.packages = [ cfg.package ];
+    systemd.packages = [
+      cfg.package
+      portalWlrDropIn
+    ];
 
     # Under load, the session (the compositor, which also weighs 1000 within
     # it, pipewire, the portals) runs before apps, so the desktop keeps
@@ -230,6 +260,7 @@ in
         )
       );
       "xdg/aizome/foot/foot.ini".source = ../etc/foot/foot.ini;
+      "xdg/aizome/xdg-desktop-portal-wlr/config".text = sharePickerConfig;
       # Aizome's apps open what they're for in Aizome sessions: the
       # desktop-specific list (XDG_CURRENT_DESKTOP=Aizome) is read before
       # mimeapps.list, so other desktops keep their own defaults, and the
