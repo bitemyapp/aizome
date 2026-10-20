@@ -8,8 +8,11 @@ connections, supplicant and VPN services; it does not create a tray icon.
 `aizome-network-agent.service` now supplies the credential agent for an
 Aizome session. It starts with `aizome-session.target`, independently of
 the shell, and ends with that session. Reloading the shell leaves requests
-and dialogs intact. After NetworkManager restarts, the agent registers
-with its new D-Bus owner.
+and dialogs intact. The agent follows NetworkManager's D-Bus name rather
+than polling it: when NetworkManager restarts, the agent cancels the old
+one's requests and registers with the new one. If its system bus
+connection closes, the agent exits with an error and systemd starts it
+again.
 
 The NixOS module prevents `nm-applet` from starting in Aizome through
 either its systemd user service or the XDG autostart entry. An override

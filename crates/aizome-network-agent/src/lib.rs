@@ -11,7 +11,8 @@ use model::{AGENT_OWNED, ALLOW_INTERACTION, NOT_REQUIRED, NOT_SAVED, Profile, Pr
 use process::{Cancel, GET_SECRETS_TIMEOUT, SAVE_SECRETS_TIMEOUT};
 use prompt::Prompter;
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, mpsc};
+use std::time::Duration;
 use zbus::{message::Header, zvariant::OwnedObjectPath};
 
 pub const NM: &str = "org.freedesktop.NetworkManager";
@@ -254,42 +255,112 @@ impl Agent {
     }
 }
 
+/// How soon to ask NetworkManager again after it refused to register us.
+pub const REGISTER_RETRY: Duration = Duration::from_secs(2);
+
 /// Keep the same agent process across shell reloads. Re-register after a
 /// NetworkManager restart; cancel requests belonging to its old owner.
 pub fn serve() -> std::result::Result<(), Box<dyn std::error::Error>> {
     let _singleton = zbus::blocking::connection::Builder::session()?.name(IDENTIFIER)?.build()?;
-    let connection = zbus::blocking::Connection::system()?;
     let engine = Arc::new(Engine {
         store: Arc::new(keyring::Keyring),
         ui: Arc::new(prompt::Native),
         plugins: vpn::Plugins::default(),
     });
-    let agent = Agent::new(connection.inner().clone(), engine);
-    connection.object_server().at(PATH, agent)?;
+    run(zbus::blocking::Connection::system()?, engine)
+}
+
+/// Serve on `connection` (the system bus) until it closes, so that
+/// systemd starts the agent again.
+pub fn run(
+    connection: zbus::blocking::Connection,
+    engine: Arc<Engine>,
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    connection.object_server().at(PATH, Agent::new(connection.inner().clone(), engine))?;
+    let agent = connection.object_server().interface::<_, Agent>(PATH)?;
     let bus = zbus::blocking::fdo::DBusProxy::new(&connection)?;
-    let mut registered = None;
-    loop {
-        let owner = bus.get_name_owner(NM.try_into().unwrap()).ok().map(|n| n.to_string());
-        if owner != registered {
-            connection.object_server().interface::<_, Agent>(PATH)?.get().cancel_all();
-            registered = None;
-            if owner.is_some() {
-                let manager = zbus::blocking::Proxy::new(
-                    &connection,
-                    NM,
-                    "/org/freedesktop/NetworkManager/AgentManager",
-                    "org.freedesktop.NetworkManager.AgentManager",
-                )?;
-                // VPN_HINTS: pass plugin challenge hints through unchanged.
-                match manager.call::<_, _, ()>("RegisterWithCapabilities", &(IDENTIFIER, 1u32)) {
-                    Ok(()) => {
-                        registered = owner;
-                        log::info!("Network credential agent registered");
-                    }
-                    Err(_) => log::warn!("Network credential agent registration deferred"),
-                }
+    // Watch before asking, so that no change is missed. The signals end
+    // with the connection.
+    let changes = bus.receive_name_owner_changed_with_args(&[(0, NM)])?;
+    let (tx, owners) = mpsc::channel();
+    std::thread::spawn(move || {
+        for signal in changes {
+            if let Ok(args) = signal.args()
+                && tx.send((args.old_owner.is_some(), args.new_owner.as_ref().map(|n| n.to_string()))).is_err()
+            {
+                break;
             }
         }
-        std::thread::sleep(std::time::Duration::from_secs(1));
+    });
+    let mut owner = match bus.get_name_owner(NM.try_into()?) {
+        Ok(name) => Some(name.to_string()),
+        Err(zbus::fdo::Error::NameHasNoOwner(_)) => None,
+        Err(e) => return Err(e.into()),
+    };
+    let mut registration = Registration::default();
+    loop {
+        if owner.is_some() {
+            registration.attempt(&connection);
+        }
+        let change = if owner.is_some() && !registration.done {
+            match owners.recv_timeout(REGISTER_RETRY) {
+                Err(mpsc::RecvTimeoutError::Timeout) => continue,
+                change => change.ok(),
+            }
+        } else {
+            owners.recv().ok()
+        };
+        let Some((left, new_owner)) = change else {
+            return Err("The system bus connection closed".into());
+        };
+        if left {
+            // The NetworkManager that asked can no longer be answered.
+            agent.get().cancel_all();
+        }
+        if new_owner != owner {
+            registration = Registration::default();
+            owner = new_owner;
+        }
+    }
+}
+
+/// Registration with one NetworkManager.
+#[derive(Default)]
+struct Registration {
+    done: bool,
+    asked: bool,
+}
+impl Registration {
+    fn attempt(&mut self, connection: &zbus::blocking::Connection) {
+        if self.done {
+            return;
+        }
+        let reply = zbus::blocking::Proxy::new(
+            connection,
+            NM,
+            "/org/freedesktop/NetworkManager/AgentManager",
+            "org.freedesktop.NetworkManager.AgentManager",
+        )
+        // VPN_HINTS: pass plugin challenge hints through unchanged.
+        .and_then(|manager| manager.call::<_, _, ()>("RegisterWithCapabilities", &(IDENTIFIER, 1u32)));
+        self.done = match reply {
+            Ok(()) => true,
+            // NetworkManager allows one agent per name and user. If this
+            // process asked before, it is the one registered (a reply was
+            // lost); if not, another still is, until its connection closes.
+            Err(zbus::Error::MethodError(name, Some(message), _))
+                if name == "org.freedesktop.NetworkManager.AgentManager.PermissionDenied"
+                    && message.contains("already registered") =>
+            {
+                self.asked
+            }
+            Err(_) => false,
+        };
+        if self.done {
+            log::info!("Network credential agent registered");
+        } else if !self.asked {
+            log::warn!("Network credential agent registration deferred");
+        }
+        self.asked = true;
     }
 }

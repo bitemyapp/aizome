@@ -276,6 +276,109 @@ fn only_networkmanager_can_call_and_cancellation_interrupts_pending_prompt() {
     daemon.wait().unwrap();
 }
 
+#[derive(Debug, zbus::DBusError)]
+#[zbus(prefix = "org.freedesktop.NetworkManager.AgentManager")]
+enum ManagerError {
+    Failed(String),
+    PermissionDenied(String),
+}
+/// NetworkManager's agent manager, as far as registering goes: `answers`
+/// are its replies in turn, then success.
+struct AgentManager {
+    calls: Arc<AtomicUsize>,
+    answers: Vec<ManagerError>,
+}
+#[zbus::interface(name = "org.freedesktop.NetworkManager.AgentManager")]
+impl AgentManager {
+    fn register_with_capabilities(
+        &mut self,
+        identifier: String,
+        _capabilities: u32,
+    ) -> std::result::Result<(), ManagerError> {
+        assert_eq!(identifier, "org.aizome.NetworkAgent");
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        if self.answers.is_empty() { Ok(()) } else { Err(self.answers.remove(0)) }
+    }
+}
+fn network_manager(
+    connect: &dyn Fn() -> zbus::blocking::Connection,
+    answers: Vec<ManagerError>,
+) -> (zbus::blocking::Connection, Arc<AtomicUsize>) {
+    let nm = connect();
+    let calls = Arc::new(AtomicUsize::new(0));
+    nm.object_server()
+        .at("/org/freedesktop/NetworkManager/AgentManager", AgentManager { calls: calls.clone(), answers })
+        .unwrap();
+    nm.request_name(NM).unwrap();
+    (nm, calls)
+}
+fn eventually(what: &str, check: impl Fn() -> bool) {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while !check() {
+        assert!(Instant::now() < deadline, "{what}");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+}
+
+#[test]
+fn registers_once_per_networkmanager_and_ends_with_the_bus() {
+    let mut daemon = Command::new("dbus-daemon")
+        .args(["--session", "--nofork", "--print-address"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("dbus-daemon is required");
+    let mut address = String::new();
+    BufReader::new(daemon.stdout.take().unwrap()).read_line(&mut address).unwrap();
+    let connect = || zbus::blocking::connection::Builder::address(address.trim()).unwrap().build().unwrap();
+    // The first reply is lost, though NetworkManager registered the agent:
+    // its second answer is that the agent is registered already.
+    let (nm, calls) = network_manager(
+        &connect,
+        vec![
+            ManagerError::Failed("Timed out".into()),
+            ManagerError::PermissionDenied("An agent with this ID is already registered for this user.".into()),
+        ],
+    );
+    let (_, ui, engine) = fixture(Some("secret"), true);
+    let agent = connect();
+    let dest = agent.unique_name().unwrap().to_string();
+    let served = std::thread::spawn(move || aizome_network_agent::run(agent, engine).map_err(|e| e.to_string()));
+    eventually("the agent asks again after a failure", || calls.load(Ordering::SeqCst) == 2);
+    // A request now stays until NetworkManager goes.
+    let owned = nm.clone();
+    let pending = std::thread::spawn(move || {
+        zbus::blocking::Proxy::new(&owned, dest, PATH, "org.freedesktop.NetworkManager.SecretAgent")
+            .unwrap()
+            .call::<_, _, Settings>(
+                "GetSecrets",
+                &(
+                    profile(1),
+                    OwnedObjectPath::try_from("/test/connection").unwrap(),
+                    "802-11-wireless-security",
+                    Vec::<String>::new(),
+                    1u32,
+                ),
+            )
+    });
+    eventually("the dialog opens", || !ui.asked.lock().unwrap().is_empty());
+    std::thread::sleep(aizome_network_agent::REGISTER_RETRY + Duration::from_millis(500));
+    assert_eq!(calls.load(Ordering::SeqCst), 2, "the agent registered again");
+    assert!(!pending.is_finished());
+    // NetworkManager restarts: its request is cancelled, and the agent
+    // registers with the new one.
+    nm.release_name(NM).unwrap();
+    let error = pending.join().unwrap().unwrap_err().to_string();
+    assert!(error.contains("AgentCanceled"), "{error}");
+    let (_restarted, calls) = network_manager(&connect, vec![]);
+    eventually("the agent registers with the new NetworkManager", || calls.load(Ordering::SeqCst) == 1);
+    // Without its bus the agent ends, for systemd to start it again.
+    daemon.kill().unwrap();
+    daemon.wait().unwrap();
+    eventually("the agent ends with the bus", || served.is_finished());
+    assert!(served.join().unwrap().is_err());
+}
+
 struct Directory(std::path::PathBuf);
 impl Directory {
     fn new() -> Self {
