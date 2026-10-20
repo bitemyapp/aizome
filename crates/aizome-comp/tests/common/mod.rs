@@ -5,6 +5,7 @@
 #![allow(dead_code)]
 
 pub mod layer;
+pub mod desktop;
 
 use std::io::Write;
 use std::os::fd::{AsFd, FromRawFd, OwnedFd};
