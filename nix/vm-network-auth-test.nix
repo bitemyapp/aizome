@@ -103,7 +103,7 @@ pkgs.testers.runNixOSTest {
     # Both startup paths must be blocked in Aizome and usable elsewhere.
     programs.nm-applet.enable = true;
     environment.etc."xdg/autostart/nm-applet.desktop".source =
-      "${pkgs.networkmanagerapplet}/etc/xdg/autostart/nm-applet.desktop";
+      lib.mkDefault "${pkgs.networkmanagerapplet}/etc/xdg/autostart/nm-applet.desktop";
     networking.networkmanager = {
       unmanaged = [
         "wlan0"

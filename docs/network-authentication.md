@@ -92,3 +92,33 @@ Protocol tests additionally cover unauthorized callers, VPN challenges,
 legacy helpers, noninteractive requests, storage flags and cancellation
 of blocked helper processes. Testing one VPN plugin does not establish
 compatibility with every third-party plugin or authentication provider.
+
+### Tatami compatibility
+
+The optional compatibility VM installs both desktops and switches from
+Aizome to Tatami and back through password logins. A lingering systemd
+user manager makes stale environment variables and services observable.
+It checks Tatami's desktop services, portals, keyring, Wi-Fi password
+panel, saved connections, WPA3, cancellation, radio controls, DNS settings,
+notifications, terminal and Displays. An explicitly started `nm-applet`
+must still authenticate OpenVPN in Tatami, both interactively and using a
+credential saved by Aizome before logout and a NetworkManager restart.
+
+Tatami is an explicit test input, not an Aizome runtime dependency. With
+a Tatami checkout alongside this repository, run:
+
+```sh
+nix build --impure --expr '
+  let self = builtins.getFlake (toString ./.);
+  in import ./nix/vm-tatami-compat-test.nix {
+    inherit self;
+    pkgs = self.inputs.nixpkgs.legacyPackages.x86_64-linux;
+    tatamiModule = ../tatami/module.nix;
+  }
+' -L
+```
+
+The test preserves Tatami's own shared `NotShowIn` desktop entry, while
+Aizome's `Hidden` override remains confined to its session. Tatami does
+not start Aizome's agent. Its existing Wi-Fi panel continues to supply
+system-owned credentials through NetworkManager.
