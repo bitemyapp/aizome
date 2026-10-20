@@ -139,6 +139,10 @@ fn passwords_show_dots_and_dont_copy() {
     h.command(w, 'c');
     assert_eq!(h.platform.clipboard, None);
     assert_eq!(h.selection(w), None);
+    let inspected = h.inspected(w);
+    let field = inspected.iter().find(|e| e["name"] == "secret").unwrap();
+    assert_eq!(field["role"], "passwordinput");
+    assert!(field.get("text").is_none() && field.get("value").is_none());
 }
 
 #[test]

@@ -36,6 +36,7 @@
   freetype,
   dbus,
   libpulseaudio,
+  libsecret,
   pam,
   src,
   sidestep,
@@ -56,6 +57,7 @@ let
   runtimeLibs = [
     libglvnd
     libpulseaudio
+    libsecret
     fontconfig
     libxkbcommon
     wayland
@@ -121,6 +123,7 @@ rustPlatform.buildRustPackage {
     dbus
     pam
     libpulseaudio
+    libsecret
   ];
 
   postPatch = ''

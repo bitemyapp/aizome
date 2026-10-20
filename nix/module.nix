@@ -69,6 +69,24 @@ let
     ExecStart=
     ExecStart=${portalWlr}
   '';
+  # Keep other installed desktops' network applet, but Aizome supplies
+  # both network controls and a session credential agent. Cover explicit
+  # programs.nm-applet services as well as XDG-generated autostart units.
+  otherDesktop = pkgs.writeShellScript "nm-applet-outside-aizome" ''
+    case ":''${XDG_CURRENT_DESKTOP:-}:" in
+      *:Aizome:*) exit 1 ;;
+      *) exit 0 ;;
+    esac
+  '';
+  nmAppletDropIns = pkgs.runCommand "aizome-nm-applet-session-policy" { } ''
+    for unit in 'nm-applet.service' 'app-nm\x2dapplet@autostart.service'; do
+      mkdir -p "$out/lib/systemd/user/$unit.d"
+      cat > "$out/lib/systemd/user/$unit.d/aizome.conf" <<EOF
+    [Service]
+    ExecCondition=${otherDesktop}
+    EOF
+    done
+  '';
   # wf-recorder (the fallback recorder) puts its wl_shm buffers in files in
   # /tmp, which on most NixOS systems is on disk: every frame the compositor
   # copies would be written out (over 1 GB/s at 2880 × 1800 and 60 fps) and
@@ -190,6 +208,7 @@ in
     systemd.packages = [
       cfg.package
       portalWlrDropIn
+      nmAppletDropIns
     ];
 
     # Under load, the session (the compositor, which also weighs 1000 within
@@ -329,6 +348,14 @@ in
       # itself whether to show; OnlyShowIn=Aizome keeps it out of others).
       "xdg/autostart/org.aizome.Annai.Welcome.desktop".source =
         "${cfg.package}/share/applications/org.aizome.Annai.Welcome.desktop";
+      # XDG_CONFIG_DIRS selects this override only in Aizome. The shared
+      # entry remains available to Xfce and other installed sessions.
+      "xdg/aizome/autostart/nm-applet.desktop".text = ''
+        [Desktop Entry]
+        Type=Application
+        Name=NetworkManager Applet
+        Hidden=true
+      '';
     };
 
     # Screenshots and screencasts (browsers' screen and window sharing)

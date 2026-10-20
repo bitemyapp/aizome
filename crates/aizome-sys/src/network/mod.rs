@@ -20,8 +20,11 @@
 //!   importer);
 //! - a hotspot sharing this machine's connection.
 //!
-//! No secret agent is registered: passwords go into the profile when
-//! joining (owned by the system, readable by root only), and a new
+//! This client does not register a secret agent: the independent
+//! `aizome-network-agent` session service handles NetworkManager's later
+//! credential requests, including keyring and VPN authentication.
+//! Passwords supplied here go into the profile when joining (owned by
+//! the system, readable by root only), and a new
 //! profile that fails to join is removed again, so a mistyped password
 //! leaves nothing behind. A saved network joined with a new password gets
 //! it in memory first and keeps it only once joining works.

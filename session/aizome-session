@@ -57,6 +57,9 @@ case "$state" in
     # shellcheck disable=SC2086
     systemctl --user import-environment $vars
     dbus-update-activation-environment --systemd $vars 2>/dev/null
+    # Re-run the XDG generator with this session's configuration search
+    # path, including its nm-applet override, before autostart runs.
+    systemctl --user daemon-reload
     # A compositor its watchdog stopped (its main loop stalled) starts
     # again, up to three times in a row; one that ran for five minutes
     # since resets the count. Anything else ends the session.
@@ -75,6 +78,7 @@ case "$state" in
     done
     systemctl --user start --job-mode=replace-irreversibly aizome-shutdown.target
     systemctl --user unset-environment WAYLAND_DISPLAY DISPLAY AIZOME_SOCKET AIZOME_SHELL_SOCKET $vars
+    systemctl --user daemon-reload
     exit $status
     ;;
   *)

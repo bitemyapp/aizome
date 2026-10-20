@@ -91,6 +91,9 @@ Settei pane (`aizome-settei --pane <name>`):
 - **Network**: Wi-Fi switch; networks by strength with lock and signal
   glyphs, the connected one checked; picking a secured one asks for the
   password inline; VPN switches; airplane mode; "Network Settings…".
+  Later password requests and VPN authentication use the session's
+  [credential agent](network-authentication.md); `nm-applet` does not
+  autostart in Aizome.
 - **Sound**: output volume slider and mute, output device list, input
   volume and mute, the playing media (MPRIS: art, title, artist, ⏮ ⏯ ⏭);
   "Sound Settings…".
