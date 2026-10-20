@@ -81,7 +81,17 @@ the first person's session.
 
 On NixOS, `programs.aizome.greeter.enable = true` (with
 `programs.aizome.enable`) sets up greetd and writes
-`/etc/aizome/greeter.toml`:
+`/etc/aizome/greeter.toml`.
+
+greetd starts the greeter as `/run/current-system/sw/bin/aizome-greeter`,
+not by its store path. Sekka starts Tatami the same way. The greeter's own
+configuration names the compositor by store path, and the greeter reads it
+each time it starts. So an Aizome update leaves greetd's configuration and
+unit unchanged and applies live, and the next login screen is the new one.
+By store path, every update would change greetd's configuration, and
+updaters stage a display manager change for the next start.
+
+Its keys:
 
 | Key | Default | |
 |---|---|---|
