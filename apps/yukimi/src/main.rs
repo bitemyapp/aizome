@@ -1,21 +1,31 @@
 //! Yukimi 雪見 (Software): Sekka's Nix software manager, made native.
 //!
-//! `aizome-yukimi [--page overview|installed|discover|updates|history|storage]
-//! [--sample]`: open Yukimi (on that page). A second launch hands its
-//! arguments to the running Yukimi. `--sample` shows a sample system and
-//! changes nothing.
+//! `aizome-yukimi [--page PAGE] [--choose SETTING=VALUE[,VALUE]]... [--early |
+//! --nightly] [--sample]`: open Yukimi (on that page, proposing those
+//! changes). A second launch hands its arguments to the running Yukimi.
+//! `--sample` shows a sample system and changes nothing.
 use aizome_yukimi::app::Yukimi;
 use aizome_yukimi::instance::{self, Instance};
 
-const HELP: &str = "Usage: aizome-yukimi [--page PAGE] [--sample]
+const HELP: &str = "Usage: aizome-yukimi [--page PAGE] [--choose SETTING=VALUE[,VALUE]]...
+                     [--early | --nightly] [--sample]
 
 Yukimi (雪見), Aizome's software manager for Sekka's NixOS: see what is
 installed and why, find what is available, install it for yourself or for
-everyone, update, go back to an earlier version and keep the store tidy.
+everyone, update, go back to an earlier version, keep the store tidy, and
+choose the system's desktops and login screen.
 
-  --page PAGE   overview, installed, discover, updates, history or storage
+  --page PAGE   overview, installed, discover, updates, history, storage or
+                desktops
+  --choose S=V  propose one of the system's choices on the Desktops page, such
+                as --choose calamares.loginScreen=aizome; Apply builds it
+  --early       propose updating Sekka early, from its main branch
+  --nightly     propose updating Sekka from the nightly again
   --sample      show a sample system instead of this one (changes nothing)
   -h, --help    show this
+
+Nothing proposed changes until you confirm it and enter an administrator
+password.
 
 Environment:
   AIZOME_YUKIMI_ETC   read the system's configuration from this directory
@@ -31,8 +41,8 @@ fn main() {
         print!("{HELP}");
         return;
     }
-    let page = match aizome_yukimi::app::page_from_args(&args) {
-        Ok(page) => page,
+    let launch = match aizome_yukimi::app::launch_from_args(&args) {
+        Ok(launch) => launch,
         Err(e) => {
             eprintln!("aizome-yukimi: {e}\n\n{HELP}");
             std::process::exit(2);
@@ -48,9 +58,10 @@ fn main() {
         }
     };
     let mut app = if sample { Yukimi::sample() } else { Yukimi::new() };
-    if let Some(page) = page {
+    if let Some(page) = launch.page {
         app.page = page;
     }
+    app.launch = Some(launch);
     app.listener = listener;
     aizome_kit::run(app);
     if !sample {

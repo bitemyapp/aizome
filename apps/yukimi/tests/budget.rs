@@ -98,7 +98,8 @@ fn measure(
 fn typical_interactions() {
     let (mut h, w) = sample(false);
     // Choosing a place in the sidebar: a new page, drawn whole.
-    let places = [Page::Installed, Page::Discover, Page::Updates, Page::History, Page::Storage, Page::Overview];
+    let places =
+        [Page::Installed, Page::Discover, Page::Updates, Page::History, Page::Storage, Page::Desktops, Page::Overview];
     measure("switching pages", 36, &mut h, w, |h, i| h.send(Msg::Show(places[i % places.len()])));
 
     // Scrolling Installed with the wheel.
@@ -121,6 +122,12 @@ fn typical_interactions() {
     // Opening and closing a generation in History.
     h.send(Msg::Show(Page::History));
     measure("opening a generation", 20, &mut h, w, |h, i| h.send(Msg::ToggleGeneration(24 + (i % 5) as u32)));
+
+    // Picking desktops on the Desktops page.
+    h.send(Msg::Show(Page::Desktops));
+    measure("picking a desktop", 20, &mut h, w, |h, i| {
+        h.send(Msg::Pick { setting: "calamares.desktops".into(), id: "plasma".into(), on: i % 2 == 0 })
+    });
 
     // Hovering over rows (no view: the kit redraws the row).
     h.send(Msg::Show(Page::Discover));

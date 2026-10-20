@@ -63,6 +63,11 @@ fn goldens() {
     assert_golden(&mut h, w, golden("history-night"), 1.0);
     h.send(Msg::Show(Page::Storage));
     assert_golden(&mut h, w, golden("storage-night"), 1.0);
+    h.send(Msg::Show(Page::Desktops));
+    assert_golden(&mut h, w, golden("desktops-night"), 1.0);
+    h.send(Msg::Pick { setting: "calamares.desktops".into(), id: "gnome".into(), on: false });
+    h.send(Msg::Pick { setting: "calamares.loginScreen".into(), id: "aizome".into(), on: true });
+    assert_golden(&mut h, w, golden("desktops-changed-night"), 1.0);
 
     let mut h = sample(ThemeChoice::Day);
     let w = h.window();
@@ -71,4 +76,6 @@ fn goldens() {
     assert_golden(&mut h, w, golden("installed-day"), 1.0);
     h.send(Msg::Show(Page::Updates));
     assert_golden(&mut h, w, golden("updates-day"), 1.0);
+    h.send(Msg::Show(Page::Desktops));
+    assert_golden(&mut h, w, golden("desktops-day"), 1.0);
 }

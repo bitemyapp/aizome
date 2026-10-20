@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 use aizome_kit::WindowKey;
 use aizome_kit::layout::{Point, Vec2};
 use aizome_kit::testing::Harness;
-use aizome_yukimi::app::{Changes, Clock, Msg, Page, Runner, Source, Yukimi};
+use aizome_yukimi::app::{Changes, Clock, Launch, Msg, Page, Runner, Source, Yukimi, launch_from_args};
 use aizome_yukimi::job::Outcome;
 use aizome_yukimi::ops::{Operation, Run, Step, SystemChange};
 
@@ -343,4 +343,161 @@ fn the_rest_of_the_system_shows_all_and_filters() {
     assert!(!has(&h, w, "aizome"));
     h.send(Msg::Filter("emacs".into()));
     assert!(has(&h, w, "Nothing called “emacs” is part of the system."));
+}
+
+fn pick(setting: &str, id: &str, on: bool) -> Msg {
+    Msg::Pick { setting: setting.into(), id: id.into(), on }
+}
+
+#[test]
+fn the_desktops_and_login_screen_are_chosen_then_applied_once() {
+    let (mut h, w, ran) = sample(WORKS);
+    assert!(h.click_text(w, "Desktops"), "the sidebar offers Desktops");
+    assert_eq!(h.program().page, Page::Desktops);
+    for text in ["Desktops and login", "Default desktop", "Login screen", "Automatic", "Plasma Login"] {
+        assert!(h.texts(w).iter().any(|t| t.eq_ignore_ascii_case(text)), "{text}: {:?}", h.texts(w));
+    }
+    // Picking changes nothing yet.
+    h.send(pick("calamares.desktops", "gnome", false));
+    h.send(pick("calamares.loginScreen", "aizome", true));
+    assert!(ran.lock().unwrap().is_empty());
+    assert!(has(&h, w, "not applied yet"));
+    assert!(has(&h, w, "removing"));
+    // Apply asks first, saying what changes.
+    h.send(Msg::ApplyChoices);
+    assert!(ran.lock().unwrap().is_empty());
+    assert!(has(&h, w, "Apply these changes?"), "{:?}", h.texts(w));
+    let body = h.texts(w).into_iter().find(|t| t.starts_with("Desktops: removing GNOME.")).expect("what changes");
+    assert!(body.contains("Login screen: Aizome, instead of Automatic."), "{body}");
+    assert!(click_last(&mut h, w, "Apply"));
+    let expected = Operation::Choose {
+        choices: vec![
+            ("calamares.desktops".into(), vec!["aizome".into(), "tatami".into()]),
+            ("calamares.loginScreen".into(), vec!["aizome".into()]),
+        ],
+        what: "the desktops and the login screen".into(),
+    };
+    assert_eq!(ran.lock().unwrap().as_slice(), std::slice::from_ref(&expected));
+    assert_eq!(
+        expected.helper_args(None),
+        [
+            "change",
+            "--choose",
+            "calamares.desktops=aizome,tatami",
+            "--choose",
+            "calamares.loginScreen=aizome",
+            "--mode",
+            "auto"
+        ]
+    );
+    settle(&mut h, |a| a.job.as_ref().is_some_and(|j| j.outcome.is_some()));
+    assert_eq!(
+        h.program().job.as_ref().unwrap().outcome,
+        Some(Outcome::Done("The desktops and the login screen changed".into()))
+    );
+}
+
+#[test]
+fn a_default_desktop_stays_among_the_desktops() {
+    let (mut h, _, _) = sample(WORKS);
+    h.send(Msg::Show(Page::Desktops));
+    // Taking out the default desktop moves the default to one that's left.
+    h.send(pick("calamares.desktops", "aizome", false));
+    assert_eq!(h.program().chosen("calamares.defaultDesktop"), ["tatami"]);
+    assert!(h.program().choice_problems().is_empty(), "{:?}", h.program().choice_problems());
+    // Putting it back puts the default back.
+    h.send(pick("calamares.desktops", "aizome", true));
+    assert_eq!(h.program().chosen("calamares.defaultDesktop"), ["aizome"]);
+    assert!(h.program().choice_changes().is_empty(), "{:?}", h.program().choice_changes());
+    // One chosen on purpose stays.
+    h.send(pick("calamares.defaultDesktop", "gnome", true));
+    h.send(pick("calamares.desktops", "aizome", false));
+    h.send(pick("calamares.desktops", "aizome", true));
+    assert_eq!(h.program().chosen("calamares.defaultDesktop"), ["gnome"]);
+    // A value that isn't offered isn't taken.
+    h.send(pick("calamares.defaultDesktop", "windows", true));
+    assert_eq!(h.program().chosen("calamares.defaultDesktop"), ["gnome"]);
+    h.send(Msg::RevertChoices);
+    assert!(h.program().choice_changes().is_empty());
+}
+
+#[test]
+fn what_an_option_needs_must_be_chosen_before_applying() {
+    let (mut h, w, ran) = sample(WORKS);
+    h.send(Msg::Show(Page::Desktops));
+    h.send(pick("calamares.loginScreen", "aizome", true));
+    h.send(pick("calamares.desktops", "aizome", false));
+    let problems = h.program().choice_problems();
+    assert_eq!(problems, ["Aizome as the login screen needs Aizome among the desktops"], "{problems:?}");
+    assert!(has(&h, w, "Aizome as the login screen needs Aizome among the desktops."));
+    h.send(Msg::ApplyChoices);
+    assert!(!has(&h, w, "Apply these changes?"));
+    assert!(ran.lock().unwrap().is_empty());
+    // Every desktop out is a problem too.
+    h.send(Msg::RevertChoices);
+    for id in ["aizome", "tatami", "gnome"] {
+        h.send(pick("calamares.desktops", id, false));
+    }
+    assert_eq!(h.program().choice_problems(), ["Choose at least one of the desktops"]);
+}
+
+#[test]
+fn early_updates_ask_then_follow_sekkas_main() {
+    let (mut h, w, ran) = sample(WORKS);
+    h.send(Msg::Show(Page::Updates));
+    assert!(has(&h, w, "Early updates"));
+    h.send(Msg::Early(true));
+    assert!(has(&h, w, "Turn on early updates?"), "{:?}", h.texts(w));
+    assert!(ran.lock().unwrap().is_empty());
+    assert!(click_last(&mut h, w, "Turn On"));
+    assert_eq!(ran.lock().unwrap().as_slice(), [Operation::Early { on: true }]);
+    settle(&mut h, |a| a.job.as_ref().is_some_and(|j| j.outcome.is_some()));
+    // Already following the nightly: nothing to ask.
+    h.advance(Duration::from_secs(1));
+    h.send(Msg::Early(false));
+    assert!(h.program().notes.iter().any(|(_, n)| n == "Sekka updates from the nightly already"));
+    assert_eq!(ran.lock().unwrap().len(), 1);
+}
+
+#[test]
+fn a_launch_proposes_and_changes_nothing_by_itself() {
+    let args = |a: &[&str]| a.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+    assert_eq!(
+        launch_from_args(&args(&["--choose", "calamares.loginScreen=aizome", "--early"])).unwrap(),
+        Launch { page: None, choose: vec![("calamares.loginScreen".into(), vec!["aizome".into()])], early: Some(true) }
+    );
+    assert_eq!(launch_from_args(&args(&["--page", "desktops"])).unwrap().page, Some(Page::Desktops));
+    for bad in [&["--choose"][..], &["--choose", "x"], &["--choose", "a b=c"], &["--choose", "a="], &["--page", "x"]] {
+        assert!(launch_from_args(&args(bad)).is_err(), "{bad:?}");
+    }
+    assert!(launch_from_args(&args(&["--choose", "a=b", "--choose", "a=c"])).is_err(), "once each");
+
+    // A running Yukimi handed a launch shows what it proposes.
+    let (mut h, w, ran) = sample(WORKS);
+    h.send(Msg::Launched(args(&["--choose", "calamares.loginScreen=aizome", "--early"])));
+    assert_eq!(h.program().page, Page::Desktops);
+    assert_eq!(h.program().choice_changes(), [("calamares.loginScreen".to_owned(), vec!["aizome".to_owned()])]);
+    assert!(has(&h, w, "Turn on early updates?"));
+    assert!(ran.lock().unwrap().is_empty());
+    // What the system doesn't offer is only noted.
+    h.send(Msg::Launched(args(&["--choose", "services.openssh.enable=true"])));
+    h.send(Msg::Launched(args(&["--choose", "calamares.loginScreen=lightdm"])));
+    let notes: Vec<&str> = h.program().notes.iter().map(|(_, n)| n.as_str()).collect();
+    assert!(notes.contains(&"services.openssh.enable isn't one of this system's choices"), "{notes:?}");
+    assert!(notes.iter().any(|n| n.contains("\"lightdm\" isn't one of the choices")), "{notes:?}");
+    assert_eq!(h.program().chosen("calamares.loginScreen"), ["aizome"]);
+}
+
+#[test]
+fn a_system_without_choices_offers_no_desktops_page() {
+    let mut model = aizome_yukimi::fixture::model();
+    model.setup.facts.choices.clear();
+    let app = Yukimi::with(
+        Source::Sample(Arc::new(model)),
+        Runner::Mock(Arc::new(|_| Vec::new())),
+        Clock::Fixed(aizome_yukimi::fixture::NOW, 21),
+    );
+    let h = Harness::new(app);
+    let w = h.window();
+    assert!(!has(&h, w, "Desktops"));
 }

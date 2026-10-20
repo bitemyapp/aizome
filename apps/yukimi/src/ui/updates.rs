@@ -231,7 +231,7 @@ fn channels(app: &Yukimi, moves: Option<&BTreeMap<String, Movement>>) -> Vec<Ele
 
 /// Whether the running system is the one installed, or a restart (or a new
 /// session) would finish an update.
-fn completion(c: &Completion) -> Element<Msg> {
+pub fn completion(c: &Completion) -> Element<Msg> {
     let (icon_name, role) = match c.action {
         Action::None => (Icon::CircleCheck, Role::Success),
         Action::Reboot | Action::Logout => (Icon::RotateCw, Role::Warning),
@@ -288,6 +288,9 @@ pub fn page(app: &Yukimi) -> Element<Msg> {
     let mut c = column![intro].spacing(18.0).width(Fill);
     if !app.loading {
         c = c.push(completion(&model.completion));
+        if app.sekka() && model.setup.kind == Kind::Flake {
+            c = c.push(early(app));
+        }
     }
     if let Some(moves) = &moves {
         let older = checks::older(moves);
@@ -326,6 +329,33 @@ pub fn page(app: &Yukimi) -> Element<Msg> {
         column![caption(title), text(whence).size(12.0).role(Role::Text3), super::list(rows)].spacing(6.0).width(Fill),
     )
     .into()
+}
+
+/// Early updates: Sekka from its main branch, as soon as changes are
+/// merged, or from the nightly once its checks pass.
+fn early(app: &Yukimi) -> Element<Msg> {
+    let on = app.model.early();
+    let words = if on {
+        "Sekka's changes reach this computer as soon as they are merged, before the nightly checks run. Whatever \
+         its binary cache doesn't have yet is built here."
+    } else {
+        "Get Sekka's changes as soon as they are merged, before the nightly checks run, to try what is new. \
+         Whatever its binary cache doesn't have yet is built here, which takes longer."
+    };
+    let r = row![
+        icon(Icon::Zap).size(20.0).role(if on { Role::Accent } else { Role::Text3 }),
+        column![text("Early updates").weight(650.0), text(words).wrap().size(12.0).role(Role::Text2)]
+            .spacing(3.0)
+            .width(Fill),
+        toggle(on).on_toggle(Msg::Early).id("early").tooltip(if on {
+            "Go back to updating from the nightly"
+        } else {
+            "Update from Sekka's main branch"
+        }),
+    ]
+    .spacing(12.0)
+    .width(Fill);
+    panel(r).width(Fill).into()
 }
 
 /// Choosing another branch for an input to follow: the repository's
