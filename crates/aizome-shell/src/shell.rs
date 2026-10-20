@@ -43,6 +43,10 @@ pub enum Msg {
     /// A system service changed.
     Sys,
     Meters(Reading),
+    /// Keep Awake changed (on, off, or on without its locks).
+    Awake(aizome_awake::Status),
+    /// `aizome-awake on` or `off` finished: on or off, or why not.
+    AwakeSet(Result<bool, String>),
     /// The clock's label turned.
     Tick,
     /// The settings file changed.
@@ -323,6 +327,8 @@ pub struct Shell {
     pub logind_power_key: Option<String>,
     /// Night Light, as the compositor last told.
     pub night: Option<aizome_ipc::NightLightState>,
+    /// Keep Awake, as the watcher last saw it (`awake.rs`).
+    pub awake: aizome_awake::Status,
     /// GeoClue is being asked where the computer is; when it last answered.
     pub(crate) locating: bool,
     pub(crate) located_at: Option<std::time::Instant>,
@@ -427,6 +433,7 @@ impl Shell {
             power_inhibit: None,
             logind_power_key: None,
             night: None,
+            awake: aizome_awake::Status::Off,
             locating: false,
             located_at: None,
             recording: None,
@@ -838,6 +845,7 @@ impl Shell {
                 self.notes_cfg.do_not_disturb = !self.notes_cfg.do_not_disturb;
                 self.save_section("notifications");
             }
+            Action::ToggleKeepAwake => self.set_keep_awake(self.awake == aizome_awake::Status::Off, cx),
             // The compositor does it (⌃❖R's way): the logic, this shell and
             // the settings, whatever changed.
             Action::ReloadAizome => self.ipc.send(Request::Action { action: "reload".into() }),
@@ -980,6 +988,12 @@ impl Shell {
                     }
                 })
                 .ok();
+        }
+        // Keep Awake belongs to the real session; a headless or nested
+        // shell leaves it alone.
+        if real_session() {
+            let tx = tx.clone();
+            crate::awake::watch(move |m| tx.send(m));
         }
         {
             let tx = tx.clone();
@@ -1341,10 +1355,13 @@ impl Program for Shell {
             }
             Msg::Sys => {
                 self.tray = self.sys.tray(&self.bar_cfg);
+                self.tray.awake = (self.awake != aizome_awake::Status::Off).then_some(self.awake);
                 self.sync_status_items();
                 self.session_events(cx);
             }
             Msg::Meters(r) => self.meters = r,
+            Msg::Awake(s) => self.keep_awake_status(s, cx),
+            Msg::AwakeSet(r) => self.keep_awake_set(r, cx),
             Msg::Tick => {
                 self.now = Local::now();
                 self.arm_clock(cx);

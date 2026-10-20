@@ -710,6 +710,48 @@ def tray_panel():
     until("the panel closed", lambda: shell_state().get("panel") is None)
 
 
+@part("Keep Awake: logind blocks sleep, idle and the lid until it's off, and the bar shows its cup meanwhile")
+def keep_awake():
+    def cup():
+        return [e for d in shell_docs() for e in d["elements"] if e.get("name") == "tray-keep-awake" and e["visible"]]
+
+    def held():
+        return machine.execute("systemd-inhibit --list --no-legend | grep 'Aizome Keep Awake' | grep -q block")[0] == 0
+
+    def holder():
+        return alice("systemctl --user show -p MainPID --value aizome-keep-awake.service").strip()
+
+    assert not cup() and not held()
+    print(alice("aizome-awake on"))
+    line = machine.succeed("systemd-inhibit --list --no-legend | grep 'Aizome Keep Awake'")
+    assert "block" in line and all(w in line for w in ("sleep", "idle", "handle-lid-switch")), line
+    assert json.loads(alice("aizome-awake status")) == {"enabled": True, "protected": True}
+    until("the cup in the bar", cup)
+    shot("keep-awake")
+    # What logind goes by for the lid, its idle action and sleep asked for
+    # by others (the login screen's own idle suspend). An explicit Sleep
+    # from alice herself still goes through: logind lets a user past her
+    # own inhibitors, as it should, so that isn't tried here.
+    blocked = machine.succeed(
+        "busctl get-property org.freedesktop.login1 /org/freedesktop/login1 org.freedesktop.login1.Manager BlockInhibited"
+    )
+    assert all(w in blocked for w in ("sleep", "idle", "handle-lid-switch")), blocked
+    # A holder that dies takes the locks again in a second.
+    first = holder()
+    machine.succeed(f"kill -9 {first}")
+    until("another holder", lambda: holder() not in ("", "0", first))
+    until("the locks again", held)
+    # It stays on for the next login: the service starts when it was left on.
+    machine.succeed(f"test -e {HOME}/.local/state/aizome/keep-awake")
+    print(alice("aizome-awake off"))
+    assert not held()
+    assert json.loads(alice("aizome-awake status")) == {"enabled": False, "protected": False}
+    until("the cup gone", lambda: not cup())
+    # Off, the unit doesn't start (its condition), so a login doesn't hold sleep off.
+    alice("systemctl --user start aizome-keep-awake.service", check=False)
+    assert not held()
+
+
 @part(
     "Date & Time: the 12-hour clock and Tokyo's time zone reach the shell and timedated; NixOS's network time is explained"
 )

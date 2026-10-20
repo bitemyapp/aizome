@@ -50,6 +50,8 @@ pub struct Battery {
     modes: Option<Modes>,
     history: Option<Arc<Vec<HistoryPoint>>>,
     logind: Option<Logind>,
+    /// Keep Awake is on (`None` until read).
+    awake: Option<bool>,
 }
 
 #[derive(Clone, Debug)]
@@ -61,6 +63,10 @@ pub enum Msg {
     LockAfter(usize),
     PowerKey(usize),
     Percent(bool),
+    /// Keep Awake turned on or off here.
+    KeepAwake(bool),
+    /// Keep Awake as it is now (read, or after `aizome-awake on`/`off`).
+    Awake(bool),
     Done(&'static str, Result<(), String>),
 }
 
@@ -326,6 +332,9 @@ impl Pane for Battery {
             self.fetch_history(cx);
             cx.spawn(|| Msg::Logind(read_logind()));
         }
+        // The setting, not whether logind holds the locks: the menu bar's
+        // cup says that (docs/keep-awake.md).
+        self.awake = Some(!sample && aizome_awake::requested());
     }
 
     fn system_changed(&mut self, cx: &mut PaneCx<Msg>) {
@@ -362,8 +371,34 @@ impl Pane for Battery {
                 m.battery_percent = on;
                 s.set_shell_section("menubar", &m);
             }),
+            Msg::KeepAwake(on) => {
+                self.awake = Some(on);
+                if cx.sample() {
+                    return;
+                }
+                cx.spawn(move || {
+                    let out = std::process::Command::new("aizome-awake").arg(if on { "on" } else { "off" }).output();
+                    match out {
+                        Ok(o) if o.status.success() => Msg::Awake(on),
+                        Ok(o) => Msg::Done(
+                            "Keep Awake",
+                            Err(String::from_utf8_lossy(&o.stderr)
+                                .trim()
+                                .trim_start_matches("aizome-awake: ")
+                                .to_owned()),
+                        ),
+                        Err(e) => Msg::Done("Keep Awake", Err(format!("couldn't run aizome-awake: {e}"))),
+                    }
+                });
+            }
+            Msg::Awake(on) => self.awake = Some(on),
             Msg::Done(_, Ok(())) => {}
-            Msg::Done(what, Err(e)) => cx.failed(what, e),
+            Msg::Done(what, Err(e)) => {
+                if what == "Keep Awake" {
+                    self.awake = Some(aizome_awake::requested());
+                }
+                cx.failed(what, e)
+            }
         }
     }
 
@@ -459,6 +494,21 @@ impl Pane for Battery {
             sections.push(vcx.section(
                 "Power Mode",
                 vec![form::row("Power mode", form::segments(&names, i, Msg::Mode)).entry("mode").help(help)],
+            ));
+        }
+
+        if let Some(on) = self.awake {
+            sections.push(vcx.section(
+                "Keep Awake",
+                vec![
+                    form::row("Keep the computer awake", toggle(on).on_toggle(Msg::KeepAwake))
+                        .entry("keep-awake")
+                        .help(
+                            "It won't sleep, lock or turn the displays off, not even when the lid is closed, until \
+                             this is off again. A cup in the menu bar shows meanwhile. Sleep chosen from the menu \
+                             still sleeps.",
+                        ),
+                ],
             ));
         }
 

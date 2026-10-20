@@ -80,6 +80,8 @@ pub enum Action {
         day: bool,
     },
     ToggleDoNotDisturb,
+    /// Keep Awake on or off (`awake.rs`).
+    ToggleKeepAwake,
     /// Reload Aizome without touching the apps: the compositor's logic,
     /// the shell and the settings, whatever changed (as ⌃❖R).
     ReloadAizome,

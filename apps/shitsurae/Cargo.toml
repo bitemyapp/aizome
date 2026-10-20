@@ -22,6 +22,7 @@ aizome-config.workspace = true
 aizome-ipc.workspace = true
 aizome-sys.workspace = true
 aizome-search.workspace = true
+aizome-awake = { path = "../../crates/aizome-awake" }
 serde.workspace = true
 serde_json.workspace = true
 toml.workspace = true

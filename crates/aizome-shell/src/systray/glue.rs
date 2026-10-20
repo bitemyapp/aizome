@@ -7,7 +7,8 @@ use aizome_kit::prelude::*;
 use aizome_kit::{MenuPlacement, WindowKind};
 
 use super::panels::{
-    self, BatteryPanel, BtDevice, BtPanel, ClockPanel, DisplayPanel, NetPanel, NetRow, Panel, PanelMsg, SoundPanel,
+    self, AwakePanel, BatteryPanel, BtDevice, BtPanel, ClockPanel, DisplayPanel, NetPanel, NetRow, Panel, PanelMsg,
+    SoundPanel,
 };
 use crate::menubar::TrayWidget;
 use crate::shell::{Msg, Shell, Surface};
@@ -39,6 +40,9 @@ impl Shell {
             if let Panel::Network(n) = &mut p {
                 n.asking = self.panel_ui.asking.clone();
                 n.error = self.panel_ui.error.clone();
+            }
+            if let Panel::Battery(b) = &mut p {
+                b.keep_awake = self.awake;
             }
             return p;
         }
@@ -131,8 +135,9 @@ impl Shell {
                 }
                 Panel::Display(p)
             }
+            TrayWidget::Awake => Panel::Awake(AwakePanel { status: self.awake }),
             TrayWidget::Battery => {
-                let mut p = BatteryPanel::default();
+                let mut p = BatteryPanel { keep_awake: self.awake, ..BatteryPanel::default() };
                 if let Some(u) = &self.sys.upower {
                     let s = u.snapshot();
                     if let Some(d) = &s.display {
@@ -369,6 +374,11 @@ impl Shell {
                     [aizome_config::UiSize::Small, aizome_config::UiSize::Medium, aizome_config::UiSize::Large]
                         [i.min(2)];
                 self.save_appearance();
+            }
+            PanelMsg::KeepAwake(on) => {
+                if (self.awake != aizome_awake::Status::Off) != on {
+                    self.set_keep_awake(on, cx);
+                }
             }
             PanelMsg::DoNotDisturb(on) => {
                 if self.notes_cfg.do_not_disturb != on {

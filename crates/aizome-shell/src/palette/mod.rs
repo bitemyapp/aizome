@@ -117,7 +117,7 @@ pub enum PaletteEvent {
 
 /// The system actions the palette offers (with Stop Recording instead
 /// of the Record ones while a recording goes).
-pub fn actions(day: bool, dnd: bool, recording: bool) -> Vec<Item> {
+pub fn actions(day: bool, dnd: bool, recording: bool, awake: bool) -> Vec<Item> {
     let a = |t: &str, g: Icon, action: Action, kw: &[&str]| {
         Item::new(Scope::Action, t, g, action)
             .keywords(kw.iter().map(|s| s.to_string()).collect())
@@ -139,6 +139,12 @@ pub fn actions(day: bool, dnd: bool, recording: bool) -> Vec<Item> {
             Icon::BellOff,
             Action::ToggleDoNotDisturb,
             &["notifications", "quiet", "focus"],
+        ),
+        a(
+            if awake { "Turn Off Keep Awake" } else { "Keep Awake" },
+            Icon::Coffee,
+            Action::ToggleKeepAwake,
+            &["stay awake", "sleep", "caffeine", "lid", "suspend", "inhibit", "no sleep", "amphetamine"],
         ),
         a("Screenshot", Icon::Camera, Action::Screenshot, &["capture", "screen"]),
         a(
@@ -416,7 +422,12 @@ impl Shell {
             out.push(item);
         }
         // Actions.
-        for mut a in actions(self.theme_day, self.notes_cfg.do_not_disturb, self.recording.is_some()) {
+        for mut a in actions(
+            self.theme_day,
+            self.notes_cfg.do_not_disturb,
+            self.recording.is_some(),
+            self.awake != aizome_awake::Status::Off,
+        ) {
             a.boost = a.key.as_deref().map_or(0, |k| self.frecency.boost(k));
             out.push(a);
         }

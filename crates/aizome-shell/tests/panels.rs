@@ -73,6 +73,7 @@ fn fixture() -> aizome_shell::systray::glue::Fixture {
             time: Some("5:12 left".into()),
             modes: vec!["power-saver".into(), "balanced".into(), "performance".into()],
             mode: Some(1),
+            keep_awake: Default::default(),
         }),
     );
     f.insert(
@@ -263,4 +264,49 @@ fn a_panel_asked_for_over_the_socket_opens_under_its_widget() {
         ask(&mut h, w.name());
         assert!(h.program().panel.is_none());
     }
+}
+
+/// Keep Awake: its cup shows in the bar only while it's on, red while it's
+/// on without its locks; it opens its panel, and turning it off there
+/// takes the panel and the cup away. The Battery panel and the palette's
+/// command switch it too. (A test's shell keeps Keep Awake to itself.)
+#[test]
+fn keep_awake_shows_its_cup_and_switches_from_its_panels() {
+    use aizome_awake::Status;
+    use aizome_shell::actions::Action;
+    let mut h = scene(false);
+    h.program_mut().panels_fixture = Some(fixture());
+    let bar = window_titled(&h, "Menu bar");
+    let cup = aizome_shell::menubar::tray_id(TrayWidget::Awake);
+    assert!(h.find_id(bar, &cup).is_none(), "a cup while it's off");
+
+    let p = open(&mut h, TrayWidget::Battery);
+    assert!(h.texts(p).iter().any(|t| t == "Keep Awake"), "{:?}", h.texts(p));
+    h.send(Msg::Panel(PanelMsg::KeepAwake(true)));
+    assert_eq!(h.program().awake, Status::On);
+    let data = h.program().panel_data(TrayWidget::Battery);
+    assert_eq!(h.size(p).height, aizome_shell::systray::panels::size(&data).height);
+    h.send(Msg::Panel(PanelMsg::Close));
+    assert!(h.find_id(bar, &cup).is_some(), "no cup while it's on");
+
+    let p = open(&mut h, TrayWidget::Awake);
+    assert!(h.texts(p).iter().any(|t| t.starts_with("Won't sleep")), "{:?}", h.texts(p));
+    let data = h.program().panel_data(TrayWidget::Awake);
+    assert_eq!(h.size(p).height, aizome_shell::systray::panels::size(&data).height);
+    h.save_png(p, shots().join("panel-keep-awake-night.png"), 2.0);
+    // On, but logind doesn't list the locks: it says so.
+    h.send(Msg::Awake(Status::Unprotected));
+    assert!(h.texts(p).iter().any(|t| t.starts_with("Not working")), "{:?}", h.texts(p));
+    h.save_png(bar, shots().join("bar-keep-awake-unprotected.png"), 2.0);
+
+    // Off from its own panel: the panel goes with the cup.
+    h.send(Msg::Panel(PanelMsg::KeepAwake(false)));
+    assert!(h.program().panel.is_none());
+    assert!(h.find_id(bar, &cup).is_none(), "a cup after it's off");
+
+    // The palette's command.
+    h.send(Msg::Run(Action::ToggleKeepAwake));
+    assert_eq!(h.program().awake, Status::On);
+    h.send(Msg::Run(Action::ToggleKeepAwake));
+    assert_eq!(h.program().awake, Status::Off);
 }

@@ -251,6 +251,13 @@ in
     # (its window manager and shell) without closing anything; a changed
     # compositor core waits for the next login (docs/reload.md).
     systemd.user.paths.aizome-update.wantedBy = [ "aizome-session.target" ];
+    # Keep Awake starts with the session when it was left on (the unit
+    # comes with the package; docs/keep-awake.md). A system update doesn't
+    # restart it, so its locks are never let go in between.
+    systemd.user.services.aizome-keep-awake = {
+      wantedBy = [ "aizome-session.target" ];
+      restartIfChanged = false;
+    };
     # An alarm can wake the computer (Tokei's "Wake the computer"), which
     # needs CAP_WAKE_ALARM for the user's timers.
     systemd.services."user@".serviceConfig.AmbientCapabilities = lib.mkIf cfg.alarmsWakeSystem [

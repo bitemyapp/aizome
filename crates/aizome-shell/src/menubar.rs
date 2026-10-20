@@ -62,6 +62,8 @@ pub enum Slot {
 /// The systray's widgets.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum TrayWidget {
+    /// Keep Awake's cup, shown while it's on.
+    Awake,
     Network,
     Sound,
     Bluetooth,
@@ -73,6 +75,7 @@ pub enum TrayWidget {
 impl TrayWidget {
     pub fn name(self) -> &'static str {
         match self {
+            TrayWidget::Awake => "keep-awake",
             TrayWidget::Network => "network",
             TrayWidget::Sound => "sound",
             TrayWidget::Bluetooth => "bluetooth",
@@ -84,6 +87,7 @@ impl TrayWidget {
 
     pub fn named(n: &str) -> Option<TrayWidget> {
         [
+            TrayWidget::Awake,
             TrayWidget::Network,
             TrayWidget::Sound,
             TrayWidget::Bluetooth,
@@ -112,6 +116,8 @@ pub struct Tray {
     /// The battery's glyph alone, without its percentage (`[menubar]
     /// battery_percent = false`).
     pub battery_glyph_only: bool,
+    /// Keep Awake, while it's on (`None` while it's off).
+    pub awake: Option<aizome_awake::Status>,
     pub cpu: bool,
     pub memory: bool,
     /// Apps' status items (Steam, Discord…), in the order they came.
@@ -567,6 +573,38 @@ fn tray_icon(widget: TrayWidget, icon: Icon, text: Option<String>, open: bool, l
     .into()
 }
 
+/// Keep Awake, while it's on: a cup in kohaku while logind holds its locks,
+/// in red while it's on but they aren't there (sleep may happen). Shown
+/// even when the systray folds, as recording is. Opens its panel.
+fn awake(status: aizome_awake::Status, open: bool) -> Element<BarMsg> {
+    use aizome_awake::Status;
+    let warning = status == Status::Unprotected;
+    drawn(15.0, HEIGHT, (warning, open), move |cx| {
+        let t = cx.theme();
+        let b = cx.bounds();
+        let face = Rect::new(0.0, 2.0, b.x1, HEIGHT - 3.0);
+        let fg = if open {
+            cx.canvas.fill_rect(face.inflate(3.0, 0.0), t.selection());
+            t.on_selection()
+        } else {
+            if cx.is_hovered() {
+                cx.canvas.fill_rect(face.inflate(3.0, 0.0), t.hover(t.bar()));
+            }
+            if warning { look::Hue::Red.color(t) } else { look::Hue::Amber.color(t) }
+        };
+        Icon::Coffee.draw(cx.canvas, Point::new(0.0, ((HEIGHT - 15.0) / 2.0).round()), 15.0, fg);
+    })
+    .on_press(|p: Press| BarMsg::Press(Slot::Tray(TrayWidget::Awake), p.rect))
+    .overflow(3.0)
+    .text(
+        if warning { "Keep Awake is on, but not working: the computer may sleep" } else { "Keep Awake is on" },
+        SemanticRole::Button,
+    )
+    .key(("tray", TrayWidget::Awake))
+    .id(tray_id(TrayWidget::Awake))
+    .into()
+}
+
 /// An app's status item: its icon at 16pt (or a generic glyph until one
 /// reads); left click activates it, right click its menu, middle click its
 /// secondary action.
@@ -760,6 +798,9 @@ fn header(model: &BarModel) -> Element<BarMsg> {
     if let Some(r) = &model.recording {
         items.push(recording(r));
     }
+    if let Some(s) = tray.awake {
+        items.push(awake(s, open(TrayWidget::Awake)));
+    }
     if tray.cpu {
         items.push(cpu_meter(&model.meters));
     }
@@ -897,6 +938,9 @@ pub fn header_width(t: &aizome_kit::Theme, m: &mut Measure, model: &BarModel) ->
     }
     if let Some(r) = &model.recording {
         items.push((DOT + DOT_GAP + m(&r.label, &record_spec(t, r.stopping))).ceil());
+    }
+    if tray.awake.is_some() {
+        items.push(15.0);
     }
     if tray.cpu {
         items.push(model.meters.cores.len().max(1) as f64 * 4.0 - 1.0);

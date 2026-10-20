@@ -48,6 +48,8 @@ pub enum PanelMsg {
     PowerMode(String),
     DoNotDisturb(bool),
     NightLight(bool),
+    /// Keep Awake turned on or off.
+    KeepAwake(bool),
     /// Open Koyomi at a day (`YYYY-MM-DD`).
     OpenDay(String),
     /// Open Tokei's world clocks.
@@ -138,6 +140,13 @@ pub struct BatteryPanel {
     /// and the active one's index.
     pub modes: Vec<String>,
     pub mode: Option<usize>,
+    pub keep_awake: aizome_awake::Status,
+}
+
+/// Keep Awake's panel, under its cup.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct AwakePanel {
+    pub status: aizome_awake::Status,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -157,6 +166,7 @@ pub const EVENTS: usize = 4;
 /// What each panel shows.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Panel {
+    Awake(AwakePanel),
     Network(NetPanel),
     Sound(SoundPanel),
     Bluetooth(BtPanel),
@@ -168,6 +178,7 @@ pub enum Panel {
 impl Panel {
     pub fn widget(&self) -> TrayWidget {
         match self {
+            Panel::Awake(_) => TrayWidget::Awake,
             Panel::Network(_) => TrayWidget::Network,
             Panel::Sound(_) => TrayWidget::Sound,
             Panel::Bluetooth(_) => TrayWidget::Bluetooth,
@@ -593,6 +604,43 @@ fn battery(p: &BatteryPanel) -> Vec<Element<PanelMsg>> {
             .into(),
         );
     }
+    v.push(labelled(
+        "Keep Awake",
+        typeface::WEIGHT_REGULAR,
+        Some(toggle(p.keep_awake != aizome_awake::Status::Off).on_toggle(PanelMsg::KeepAwake).into()),
+        ROW,
+    ));
+    v.push(sep());
+    v.push(settings_row("Battery Settings…", "power"));
+    v
+}
+
+/// Keep Awake's two lines under its switch.
+const AWAKE_TEXT: f64 = 40.0;
+
+fn awake(p: &AwakePanel) -> Vec<Element<PanelMsg>> {
+    use aizome_awake::Status;
+    let on = p.status != Status::Off;
+    let mut v = vec![head("Keep Awake", Some(toggle(on).on_toggle(PanelMsg::KeepAwake).into()))];
+    let (lines, hue) = match p.status {
+        Status::On => (["Won't sleep, lock or turn the displays off,", "not even when the lid is closed."], Hue::Text3),
+        Status::Unprotected => {
+            (["Not working: the computer may sleep.", "Turn it off and on again to retry."], Hue::Red)
+        }
+        Status::Off => (["Off: the computer sleeps, locks and turns", "the displays off as usual."], Hue::Text3),
+    };
+    v.push(
+        drawn(WIDTH, AWAKE_TEXT, (lines, hue), move |cx| {
+            let t = cx.theme();
+            let s = ui(t, typeface::SMALL, typeface::WEIGHT_REGULAR, hue.color(t));
+            for (i, line) in lines.iter().enumerate() {
+                let y = 2.0 + i as f64 * 17.0;
+                cx.draw_text_in(line, &s, Rect::new(PAD, y, WIDTH - PAD, y + 17.0), Align::Start);
+            }
+        })
+        .text(lines.join(" "), SemanticRole::Label)
+        .into(),
+    );
     v.push(sep());
     v.push(settings_row("Battery Settings…", "power"));
     v
@@ -750,6 +798,7 @@ pub fn view(p: &Panel) -> Element<PanelMsg> {
         Panel::Sound(s) => sound(s),
         Panel::Bluetooth(b) => bluetooth(b),
         Panel::Display(d) => display(d),
+        Panel::Awake(a) => awake(a),
         Panel::Battery(b) => battery(b),
         Panel::Clock(c) => clock(c),
     };
@@ -812,7 +861,8 @@ pub fn height(p: &Panel) -> f64 {
                 + sep
                 + ROW
         }
-        Panel::Battery(b) => HEAD + 34.0 + if b.modes.is_empty() { 0.0 } else { 24.0 + 30.0 } + sep + ROW,
+        Panel::Awake(_) => HEAD + AWAKE_TEXT + sep + ROW,
+        Panel::Battery(b) => HEAD + 34.0 + if b.modes.is_empty() { 0.0 } else { 24.0 + 30.0 } + ROW + sep + ROW,
         Panel::Clock(c) => {
             let weeks = crate::clock::month_grid(c.now.year, c.now.month).len();
             let events = c.events.as_ref().map_or(0.0, |e| sep + e.len().clamp(1, EVENTS) as f64 * ROW);

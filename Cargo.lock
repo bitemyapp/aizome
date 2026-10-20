@@ -43,6 +43,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "aizome-awake"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "serde_json",
+ "wayland-client",
+ "wayland-protocols",
+ "zbus",
+]
+
+[[package]]
 name = "aizome-comp"
 version = "0.1.0"
 dependencies = [
@@ -253,6 +264,7 @@ dependencies = [
 name = "aizome-shell"
 version = "0.1.0"
 dependencies = [
+ "aizome-awake",
  "aizome-config",
  "aizome-ipc",
  "aizome-kit",
@@ -281,6 +293,7 @@ dependencies = [
 name = "aizome-shitsurae"
 version = "0.1.0"
 dependencies = [
+ "aizome-awake",
  "aizome-config",
  "aizome-ipc",
  "aizome-kit",

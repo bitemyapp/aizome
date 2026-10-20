@@ -6,6 +6,7 @@ pub mod actions;
 pub mod agenda;
 pub mod apps;
 pub mod auth;
+pub mod awake;
 pub mod barmenus;
 pub mod bell;
 pub mod carry;
