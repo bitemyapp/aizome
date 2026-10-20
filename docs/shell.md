@@ -229,7 +229,9 @@ items.
   icon (Lucide glyph for Aizome's apps by kind, the app's own icon at 16pt
   for others), name in Archivo 650 and window count right-aligned. Click
   focuses its last window (or shows it if hidden); right-click: New Window,
-  Hide, Quit, Keep in Deskbar.
+  Hide, Quit, Keep in Deskbar, Move Up and Move Down. Drag an app header to
+  rearrange groups. The `[deskbar] order` preference persists separately
+  from pins, including an absent app's position for its next launch.
 - Its windows indented beneath: the focused one with a 3pt `focus` bar at
   the left edge, hidden or minimised ones in italic `text3` with "hidden",
   stacked ones with "stack", ones on another desk with "desk N", urgent ones

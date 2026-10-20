@@ -303,6 +303,7 @@ pub struct Shell {
     /// Actions to carry out once the update in hand is done.
     pub(crate) pending_actions: Vec<Action>,
     pub(crate) deskbar_size: Option<aizome_kit::Size>,
+    pub(crate) deskbar_drag: Option<(String, Point)>,
     /// Apps' own icons (PNG), by app id, for apps the shell has no glyph for.
     pub(crate) icons: HashMap<String, Option<aizome_kit::Image>>,
     /// Apps' status items' icons, read once per change.
@@ -422,6 +423,7 @@ impl Shell {
             note_actions: HashMap::new(),
             pending_actions: Vec::new(),
             deskbar_size: None,
+            deskbar_drag: None,
             icons: HashMap::new(),
             item_icons: HashMap::new(),
             item_wheel: HashMap::new(),
@@ -823,6 +825,7 @@ impl Shell {
                 self.deskbar_cfg.collapsed = on;
                 self.save_section("deskbar");
             }
+            Action::MoveDeskbarApp { app_id, down } => self.move_deskbar_app(&app_id, down),
             Action::EmptyTrash => crate::launch::empty_trash(),
             Action::MoveToTrash { path } => {
                 if let Err(e) = crate::launch::move_to_trash(&path) {
@@ -908,7 +911,7 @@ impl Shell {
         self.launches.insert(req, (l, cwd));
     }
 
-    fn save_section(&mut self, section: &str) {
+    pub(crate) fn save_section(&mut self, section: &str) {
         match section {
             "deskbar" => self.settings.set_shell_section("deskbar", &self.deskbar_cfg),
             "menubar" => self.settings.set_shell_section("menubar", &self.bar_cfg),

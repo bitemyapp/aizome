@@ -134,3 +134,63 @@ fn overflowing_deskbar_scrolls_to_the_shelf_and_tracks_output_size() {
     let expanded = aizome_shell::deskbar::size(&h.program().deskbar_model());
     assert!(expanded.height > size.height && expanded.height < H);
 }
+
+#[test]
+fn app_groups_can_be_reordered_without_pinning_them() {
+    use aizome_shell::actions::Action;
+    let mut h = scene(false);
+    let db = window_titled(&h, "Deskbar");
+    h.resize(db, aizome_shell::deskbar::size(&h.program().deskbar_model()));
+    let from = h.find(db, "Editor").expect("editor").center();
+    let to = h.find(db, "Thunderbird").expect("mail").center() + Vec2::new(0.0, 8.0);
+    h.drag(db, from, to, 8);
+    let ids = |h: &aizome_kit::testing::Harness<aizome_shell::shell::Shell>| {
+        h.program().deskbar_model().apps.into_iter().map(|a| a.app_id).collect::<Vec<_>>()
+    };
+    assert_eq!(ids(&h), ["foot", "org.aizome.Hako", "firefox", "thunderbird", "org.aizome.Sumi"]);
+    assert!(h.program().deskbar_cfg.pinned.is_empty());
+    h.send(Msg::Run(Action::MoveDeskbarApp { app_id: "org.aizome.Sumi".into(), down: false }));
+    assert_eq!(ids(&h), ["foot", "org.aizome.Hako", "firefox", "org.aizome.Sumi", "thunderbird"]);
+    // Settings reloads keep the user's order, including dormant app preferences.
+    let saved = h.program().settings.deskbar_settings().order;
+    h.send(Msg::SettingsChanged);
+    assert_eq!(ids(&h), saved);
+    h.send(Msg::Run(Action::MoveDeskbarApp { app_id: "foot".into(), down: false }));
+    assert_eq!(ids(&h), saved, "moving the first app up is a no-op");
+}
+
+#[test]
+fn reordering_uses_content_coordinates_after_scrolling() {
+    let mut h = scene(false);
+    let mut output = output();
+    output.frame.y1 = 240.0;
+    h.set_outputs(vec![output]);
+    let db = window_titled(&h, "Deskbar");
+    h.resize(db, aizome_shell::deskbar::size(&h.program().deskbar_model()));
+    h.scroll(db, Point::new(100.0, 100.0), Vec2::new(0.0, 60.0));
+    let from = h.find(db, "Foot").expect("terminal after scroll").center();
+    let to = h.find(db, "Hako").expect("files after scroll").center() + Vec2::new(0.0, 8.0);
+    h.drag(db, from, to, 5);
+    let order = h.program().deskbar_model().apps.into_iter().map(|a| a.app_id).collect::<Vec<_>>();
+    assert_eq!(order, ["org.aizome.Sumi", "org.aizome.Hako", "foot", "firefox", "thunderbird"]);
+}
+
+#[test]
+fn reordering_tracks_scroll_changes_while_the_button_is_down() {
+    use aizome_kit::sidestep_ui::PointerButton;
+    let mut h = scene(false);
+    let mut output = output();
+    output.frame.y1 = 240.0;
+    h.set_outputs(vec![output]);
+    let db = window_titled(&h, "Deskbar");
+    h.resize(db, aizome_shell::deskbar::size(&h.program().deskbar_model()));
+    let from = h.find(db, "Editor").expect("editor").center();
+    h.press(db, from, PointerButton::Left, 1);
+    h.move_to(db, from + Vec2::new(0.0, 8.0));
+    h.scroll(db, from + Vec2::new(0.0, 8.0), Vec2::new(0.0, 100.0));
+    let to = h.find(db, "Thunderbird").expect("mail after scroll").center() + Vec2::new(0.0, 8.0);
+    h.move_to(db, to);
+    h.release(db, to, PointerButton::Left);
+    let order = h.program().deskbar_model().apps.into_iter().map(|a| a.app_id).collect::<Vec<_>>();
+    assert_eq!(order, ["foot", "org.aizome.Hako", "firefox", "thunderbird", "org.aizome.Sumi"]);
+}

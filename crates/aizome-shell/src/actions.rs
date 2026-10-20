@@ -113,6 +113,11 @@ pub enum Action {
     Service(ServiceVerb),
     /// The Deskbar shows, or folds into the bar.
     SetDeskbarCollapsed(bool),
+    /// Move an app one place in the Deskbar without changing its pinned state.
+    MoveDeskbarApp {
+        app_id: String,
+        down: bool,
+    },
     /// Mount, unmount or eject a disk by its device path.
     Disk {
         device: String,

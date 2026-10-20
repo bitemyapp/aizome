@@ -67,13 +67,15 @@ pub struct DeskbarSettings {
     pub collapsed: bool,
     /// App ids kept in the Deskbar while not running ("Keep in Deskbar").
     pub pinned: Vec<String>,
+    /// An explicitly arranged order, independent of whether apps are pinned.
+    pub order: Vec<String>,
     /// The Shelf under the apps.
     pub show_shelf: bool,
 }
 
 impl Default for DeskbarSettings {
     fn default() -> Self {
-        DeskbarSettings { collapsed: false, pinned: Vec::new(), show_shelf: true }
+        DeskbarSettings { collapsed: false, pinned: Vec::new(), order: Vec::new(), show_shelf: true }
     }
 }
 

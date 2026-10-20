@@ -32,6 +32,9 @@ const CAPTION: f64 = 27.0;
 pub enum DeskbarMsg {
     FocusApp(String),
     AppMenu(String, Point),
+    /// Rearrange app groups: row center in content coordinates, pointer in
+    /// the row's current local coordinates (including scroll displacement).
+    AppDrag(String, f64, DragPhase),
     /// Fold or unfold an app's windows.
     Fold(String),
     FocusWindow(WindowId),
@@ -76,6 +79,14 @@ pub struct AppRow {
     pub cards: Vec<NoteCard>,
 }
 
+impl AppRow {
+    fn height(&self) -> f64 {
+        APP_ROW
+            + if self.folded { 0.0 } else { self.windows.len() as f64 * WINDOW_ROW }
+            + self.cards.iter().map(|c| CARD + CARD_GAP + if c.buttons.is_empty() { 0.0 } else { BUTTONS }).sum::<f64>()
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct WindowRow {
     pub id: WindowId,
@@ -117,12 +128,7 @@ impl DeskbarModel {
     pub fn content_height(&self) -> f64 {
         let mut h = 4.0 + 2.0;
         for a in &self.apps {
-            h += APP_ROW;
-            if !a.folded {
-                h += a.windows.len() as f64 * WINDOW_ROW;
-            }
-            h +=
-                a.cards.iter().map(|c| CARD + CARD_GAP + if c.buttons.is_empty() { 0.0 } else { BUTTONS }).sum::<f64>();
+            h += a.height();
         }
         if self.hide_shelf {
             return (h + 4.0).ceil() + SHADOW;
@@ -131,18 +137,31 @@ impl DeskbarModel {
         h += self.shelf.len() as f64 * (SHELF_ROW + SHELF_GAP) + SHELF_ROW + 10.0;
         (h + 1.0).ceil() + SHADOW
     }
+
+    /// The app slot before which a dragged header should land.
+    pub fn insertion_at(&self, y: f64) -> usize {
+        let mut top = 4.0;
+        for (i, app) in self.apps.iter().enumerate() {
+            if y < top + APP_ROW / 2.0 {
+                return i;
+            }
+            top += app.height();
+        }
+        self.apps.len()
+    }
 }
 
 fn ui(t: &aizome_kit::Theme, size: f64, weight: f32, c: aizome_kit::Color) -> aizome_kit::text::TextSpec {
     look::ui(size * t.metrics.factor, weight, c)
 }
 
-fn app_row(a: &AppRow) -> Element<DeskbarMsg> {
+fn app_row(a: &AppRow, top: f64) -> Element<DeskbarMsg> {
     let (name, glyph, hue, n, folded, unread) = (a.name.clone(), a.glyph, a.hue, a.windows.len(), a.folded, a.unread);
     let image = a.image.clone();
     let id = a.app_id.clone();
     let id2 = a.app_id.clone();
     let id3 = a.app_id.clone();
+    let drag_id = a.app_id.clone();
     let right = if unread > 0 {
         format!("{unread} new")
     } else if folded && n > 0 {
@@ -180,7 +199,9 @@ fn app_row(a: &AppRow) -> Element<DeskbarMsg> {
     .on_click(DeskbarMsg::FocusApp(id))
     .on_right_click(move |p: Press| DeskbarMsg::AppMenu(id2.clone(), p.at))
     .on_middle_click(DeskbarMsg::Fold(id3))
+    .on_drag_local(move |phase| DeskbarMsg::AppDrag(drag_id.clone(), top + APP_ROW / 2.0, phase))
     .text(label, SemanticRole::ListItem)
+    .tooltip("Drag to reorder; right-click for more options")
     .key(("app", a.app_id.as_str()))
     .into()
 }
@@ -337,10 +358,11 @@ fn drop_row() -> Element<DeskbarMsg> {
 /// The Deskbar.
 pub fn view(m: &DeskbarModel) -> Element<DeskbarMsg> {
     let mut rows: Vec<Element<DeskbarMsg>> = vec![aizome_kit::space(4.0)];
+    let mut top = 4.0;
     for a in &m.apps {
         rows.push(
             aizome_kit::stack(vec![
-                app_row(a),
+                app_row(a, top),
                 aizome_kit::container(count_hit(a)).padding([0.0, 0.0, 0.0, WIDTH - 56.0]).into(),
             ])
             .into(),
@@ -353,6 +375,7 @@ pub fn view(m: &DeskbarModel) -> Element<DeskbarMsg> {
         for c in &a.cards {
             rows.push(card(c));
         }
+        top += a.height();
     }
     if m.hide_shelf {
         rows.push(aizome_kit::space(4.0));

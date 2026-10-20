@@ -104,6 +104,9 @@ impl Shell {
                 })
                 .collect();
         }
+        // Unlisted apps retain their normal pinned/launch order; explicit
+        // ordering never manufactures a row for an app that has gone away.
+        apps.sort_by_key(|a| self.deskbar_cfg.order.iter().position(|id| id == &a.app_id).unwrap_or(usize::MAX));
         let shelf = self
             .shelf
             .items
@@ -188,6 +191,8 @@ impl Shell {
                 let Some(k) = self.deskbar else { return };
                 let running = self.wm.is_running(&app_id);
                 let pinned = self.deskbar_cfg.pinned.contains(&app_id);
+                let apps = self.deskbar_model().apps;
+                let position = apps.iter().position(|a| a.app_id == app_id).unwrap_or(0);
                 let menu = ShellMenu::new(
                     self.app_look(&app_id).0,
                     vec![
@@ -198,10 +203,29 @@ impl Shell {
                         Entry::separator(),
                         Entry::action("Keep in Deskbar", Action::Pin { app_id: app_id.clone(), on: !pinned })
                             .checked(pinned),
+                        Entry::separator(),
+                        Entry::action("Move Up", Action::MoveDeskbarApp { app_id: app_id.clone(), down: false })
+                            .enabled(position > 0),
+                        Entry::action("Move Down", Action::MoveDeskbarApp { app_id: app_id.clone(), down: true })
+                            .enabled(position + 1 < apps.len()),
                     ],
                 );
                 self.show_menu(k, at_point(at), &menu, MenuStyle::at_point(), cx);
             }
+            DeskbarMsg::AppDrag(app, center, phase) => match phase {
+                DragPhase::Start(at) => self.deskbar_drag = Some((app, at)),
+                DragPhase::Move(_) => {}
+                DragPhase::End(at) => {
+                    if let Some((source, from)) = self.deskbar_drag.take()
+                        && source == app
+                        && (0.0..crate::deskbar::WIDTH).contains(&at.x)
+                    {
+                        let model = self.deskbar_model();
+                        let before = model.insertion_at(center + at.y - from.y);
+                        self.reorder_deskbar_app(&app, before);
+                    }
+                }
+            },
             DeskbarMsg::Fold(app_id) => {
                 let model_folded =
                     self.deskbar_model().apps.iter().find(|a| a.app_id == app_id).map(|a| a.folded).unwrap_or(false);
@@ -280,6 +304,33 @@ impl Shell {
         {
             log::warn!("the Shelf: {e}");
         }
+    }
+
+    pub fn move_deskbar_app(&mut self, app: &str, down: bool) {
+        let apps = self.deskbar_model().apps;
+        let Some(i) = apps.iter().position(|a| a.app_id == app) else { return };
+        let before = if down { (i + 2).min(apps.len()) } else { i.saturating_sub(1) };
+        self.reorder_deskbar_app(app, before);
+    }
+
+    fn reorder_deskbar_app(&mut self, app: &str, before: usize) {
+        let mut ids: Vec<String> = self.deskbar_model().apps.into_iter().map(|a| a.app_id).collect();
+        let Some(i) = ids.iter().position(|id| id == app) else { return };
+        let before = before.min(ids.len());
+        let at = before.saturating_sub(usize::from(i < before));
+        if at == i {
+            return;
+        }
+        let id = ids.remove(i);
+        ids.insert(at, id);
+        // Keep preferences for absent apps, ready for their next launch.
+        for id in &self.deskbar_cfg.order {
+            if !ids.contains(id) {
+                ids.push(id.clone());
+            }
+        }
+        self.deskbar_cfg.order = ids;
+        self.save_section("deskbar");
     }
 
     fn open_shelf_item(&mut self, item: &ShelfItem, cx: &mut Cx<Msg>) {

@@ -345,12 +345,9 @@ impl Pane for Desktop {
             );
             col.into()
         };
-        deskbar.push(
-            form::row("Kept in the Deskbar", pins)
-                .entry("pinned")
-                .stacked()
-                .help("Pinned apps stay listed while closed, first, ready to open."),
-        );
+        deskbar.push(form::row("Kept in the Deskbar", pins).entry("pinned").stacked().help(
+            "Pinned apps stay listed while closed, ready to open. Drag app rows in the Deskbar to arrange them.",
+        ));
 
         let desktop = extra::section_ref(s, "desktop");
         let icons = vec![
