@@ -13,7 +13,7 @@ pub mod users;
 pub mod view;
 
 pub const USAGE: &str = "\
-usage: aizome-greeter [--config PATH] [--nested] [--demo]
+usage: aizome-greeter [--config PATH] [--nested] [--demo] | --session ID
 
 Aizome's login screen, run by greetd as its greeter. It starts Aizome's
 compositor for itself (without the shell) and stops it on the way out.
@@ -22,4 +22,5 @@ compositor for itself (without the shell) and stops it on the way out.
   --nested        show in the current Wayland session instead of starting
                   a compositor (to look at it)
   --demo          pretend to be greetd: anyone, with the password aizome
+  --session ID    start session ID at once (what logging in by itself runs)
 ";

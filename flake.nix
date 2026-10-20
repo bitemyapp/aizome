@@ -89,6 +89,9 @@
         # Changes something in every pane of Settings and checks the
         # system took it (nix/vm-settings-test.nix).
         settings = import ./nix/vm-settings-test.nix { inherit pkgs self; };
+        # The login screen: people, sessions (another Wayland one, an X11
+        # one), a wrong password, logging out and back (nix/vm-greeter-test.nix).
+        greeter = import ./nix/vm-greeter-test.nix { inherit pkgs self; };
       });
 
       devShells = forAll (pkgs: {

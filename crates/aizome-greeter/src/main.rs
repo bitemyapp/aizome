@@ -9,6 +9,7 @@ use aizome_greeter::config::{CONFIG, Config};
 fn main() {
     let mut config = PathBuf::from(CONFIG);
     let (mut nested, mut demo) = (false, false);
+    let mut session: Option<String> = None;
     let mut args = std::env::args().skip(1);
     while let Some(a) = args.next() {
         match a.as_str() {
@@ -17,6 +18,10 @@ fn main() {
                 None => usage(2),
             },
             "--nested" => nested = true,
+            "--session" => match args.next() {
+                Some(s) => session = Some(s),
+                None => usage(2),
+            },
             "--demo" => demo = true,
             "-h" | "--help" => usage(0),
             "-V" | "--version" => {
@@ -33,6 +38,9 @@ fn main() {
         log::error!("{e}; using the defaults");
         Config::default()
     });
+    if let Some(id) = session {
+        std::process::exit(start_session(&cfg, &id));
+    }
     let compositor = if nested {
         None
     } else {
@@ -63,4 +71,26 @@ fn main() {
 fn usage(code: i32) -> ! {
     eprint!("{}", aizome_greeter::USAGE);
     std::process::exit(code);
+}
+
+/// `--session ID`: become session `ID` (greetd's initial session, when the
+/// computer logs in by itself): its environment, then its command.
+fn start_session(cfg: &Config, id: &str) -> i32 {
+    use std::os::unix::process::CommandExt;
+    let sessions = aizome_greeter::sessions::find(&cfg.sessions, &[], !cfg.x11_prefix.is_empty());
+    let Some(s) = sessions.iter().find(|s| s.id == id).or_else(|| sessions.first()) else {
+        log::error!("no session {id}, nor any other");
+        return 1;
+    };
+    let cmd = s.command(&cfg.x11_prefix);
+    let mut c = std::process::Command::new(&cmd[0]);
+    c.args(&cmd[1..]);
+    for kv in s.env() {
+        if let Some((k, v)) = kv.split_once('=') {
+            c.env(k, v);
+        }
+    }
+    let e = c.exec();
+    log::error!("{}: {e}", cmd[0]);
+    1
 }

@@ -89,6 +89,9 @@ let
   };
 in
 {
+  # The login screen, aizome-greeter on greetd (programs.aizome.greeter).
+  imports = [ ./greeter.nix ];
+
   options.programs.aizome = {
     enable = lib.mkEnableOption "the Aizome desktop session";
     package = lib.mkOption {
