@@ -1,7 +1,8 @@
 # Installing Aizome
 
-Aizome is Sekka's desktop. Until Sekka's nightly carries it (Sekka PR #32), a
-Sekka system installs it from Sekka's `aizome` branch.
+Aizome is Sekka's desktop, on Sekka's `main` since 20 October 2026 (Sekka
+PR #32). Until Sekka's nightly carries it (its 4 AM build moves `nightly`
+once its checks pass), a Sekka system installs it from `main`.
 
 ## On a Sekka system
 
@@ -28,7 +29,7 @@ Sekka system installs it from Sekka's `aizome` branch.
    them, so it goes into the next boot instead of switching live:
 
    ```bash
-   sudo nixos-rebuild boot --flake /etc/nixos#$(hostname) --override-input sekka github:bitemyapp/sekka/aizome
+   sudo nixos-rebuild boot --flake /etc/nixos#$(hostname) --override-input sekka github:bitemyapp/sekka/main
    ```
 
    Aizome itself isn't in a binary cache yet, so this compiles it, which takes
@@ -40,8 +41,9 @@ Sekka system installs it from Sekka's `aizome` branch.
 
 To update later, run step 2 again: `nixos-rebuild switch` when nothing
 session-critical changed, or `boot` and a restart when Sekka says so. Keep
-`--override-input sekka github:bitemyapp/sekka/aizome` until Sekka's nightly
-has Aizome; without it, the rebuild stops on the unknown desktop `"aizome"`.
+`--override-input sekka github:bitemyapp/sekka/main` until Sekka's nightly
+has Aizome (`nix flake metadata github:bitemyapp/sekka/nightly` shows when
+it moved); without it, the rebuild stops on the unknown desktop `"aizome"`.
 
 To go back, pick another desktop on the login screen, or boot the previous
 generation from the boot menu.
