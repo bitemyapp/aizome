@@ -150,6 +150,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "aizome-greeter"
+version = "0.1.0"
+dependencies = [
+ "aizome-face",
+ "aizome-kit",
+ "aizome-theme",
+ "env_logger",
+ "libc",
+ "log",
+ "serde",
+ "serde_json",
+ "toml",
+]
+
+[[package]]
 name = "aizome-hako"
 version = "0.1.0"
 dependencies = [
