@@ -225,6 +225,13 @@ Its height is limited to the space below the menu bar on the owning
 output. Scroll to reach overflowing app groups, notifications and Shelf
 items.
 
+Settings → Desktop & Deskbar can enable automatic hiding
+(`[deskbar] auto_hide = true`). Hover the menu bar's app control to reveal
+it; leaving the control and Deskbar hides it after 350 ms. Open menus and
+active drags keep it visible. A temporary reveal overlays applications
+without changing their layout. Manual collapse remains a separate saved
+preference; click the app control to restore it.
+
 - Each running app (by app ID, in launch order, pinned apps first): its
   icon (Lucide glyph for Aizome's apps by kind, the app's own icon at 16pt
   for others), name in Archivo 650 and window count right-aligned. Click

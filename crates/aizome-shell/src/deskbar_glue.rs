@@ -1,7 +1,7 @@
 //! The Deskbar's part of the shell: its model from the window model, the
 //! notifications and the Shelf; its surface; what its rows do.
 
-use aizome_ipc::Request;
+use aizome_ipc::{Request, WindowId};
 use aizome_kit::prelude::*;
 use aizome_kit::{Anchors, KeyboardInteractivity, Layer, LayerOptions, Margins, MenuStyle};
 
@@ -14,7 +14,58 @@ use crate::shelf::ShelfItem;
 use crate::shell::{Msg, Shell, Surface, at_point, layer};
 use crate::widgets::drawn::DragPhase;
 
+/// Transient visibility never writes the user's persistent fold preference.
+#[derive(Default)]
+pub(crate) struct Visibility {
+    pub revealed: bool,
+    pub inside: bool,
+    pub control_inside: bool,
+    pub menu: Option<u64>,
+    pub dragging: Option<DragTarget>,
+    pub generation: u64,
+}
+
+pub(crate) enum DragTarget {
+    App(String),
+    Window(WindowId),
+}
+
 impl Shell {
+    pub fn deskbar_visible(&self) -> bool {
+        !self.deskbar_cfg.collapsed && (!self.deskbar_cfg.auto_hide || self.deskbar_visibility.revealed)
+    }
+
+    pub(crate) fn deskbar_hover(&mut self, control: bool, inside: bool, cx: &mut Cx<Msg>) {
+        let v = &mut self.deskbar_visibility;
+        if control {
+            v.control_inside = inside;
+        } else {
+            v.inside = inside;
+        }
+        v.generation = v.generation.wrapping_add(1);
+        if self.deskbar_cfg.auto_hide && !self.deskbar_cfg.collapsed {
+            if inside {
+                v.revealed = true;
+            } else {
+                self.arm_deskbar_hide(cx);
+            }
+        }
+    }
+
+    fn arm_deskbar_hide(&mut self, cx: &mut Cx<Msg>) {
+        let v = &mut self.deskbar_visibility;
+        if self.deskbar_cfg.auto_hide && v.revealed && !v.inside && !v.control_inside && v.menu.is_none() {
+            v.generation = v.generation.wrapping_add(1);
+            cx.after(std::time::Duration::from_millis(350), Msg::Deskbar(DeskbarMsg::AutoHide(v.generation)));
+        }
+    }
+
+    fn deskbar_menu_style(&mut self) -> MenuStyle<Msg> {
+        self.serial = self.serial.wrapping_add(1);
+        self.deskbar_visibility.menu = Some(self.serial);
+        MenuStyle::at_point().on_closed(Msg::Deskbar(DeskbarMsg::MenuClosed(self.serial)))
+    }
+
     /// An app's name, glyph and colour, as the Deskbar shows it.
     pub fn app_look(&self, app_id: &str) -> (String, Icon, Hue) {
         let hello = self.registry.apps().find(|a| a.app_id == app_id).map(|a| a.name.clone());
@@ -134,19 +185,51 @@ impl Shell {
     /// Open, size or close the Deskbar to match the settings and its
     /// content.
     pub fn sync_deskbar(&mut self, cx: &mut Cx<Msg>) {
-        let want = !self.deskbar_cfg.collapsed && !self.screens.is_empty();
+        // A row removed during a drag cannot deliver its release. Drop its
+        // visibility hold when the source disappears from the current view.
+        if let Some(drag) = &self.deskbar_visibility.dragging {
+            let model = self.deskbar_model();
+            let present = match drag {
+                DragTarget::App(id) => model.apps.iter().any(|a| a.app_id == *id),
+                DragTarget::Window(id) => model.apps.iter().any(|a| !a.folded && a.windows.iter().any(|w| w.id == *id)),
+            };
+            if !present {
+                self.deskbar_visibility.dragging = None;
+                self.deskbar_drag = None;
+                self.arm_deskbar_hide(cx);
+            }
+        }
+        if self.deskbar_transient != self.deskbar_cfg.auto_hide
+            && let Some(k) = self.deskbar.take()
+        {
+            cx.close_window(k);
+            self.surfaces.remove(&k);
+            self.deskbar_size = None;
+            self.deskbar_visibility.inside = false;
+            self.deskbar_visibility.dragging = None;
+            self.deskbar_visibility.menu = None;
+            self.deskbar_drag = None;
+        }
+        let want = self.deskbar_visible() && !self.screens.is_empty();
         match (want, self.deskbar) {
             (false, Some(k)) => {
                 cx.close_window(k);
                 self.surfaces.remove(&k);
                 self.deskbar = None;
                 self.deskbar_size = None;
+                self.deskbar_visibility.inside = false;
+                self.deskbar_visibility.menu = None;
+                self.deskbar_visibility.dragging = None;
+                self.deskbar_drag = None;
             }
             (true, None) => {
                 let Some(output) = self.primary().map(|s| s.output.id) else { return };
                 let model = self.deskbar_model();
                 let size = crate::deskbar::size(&model);
-                let opts = LayerOptions::new(Layer::Top, "aizome-deskbar")
+                // A transient reveal overlays apps; only a persistent Deskbar
+                // participates in the compositor's automatic window layout.
+                let namespace = if self.deskbar_cfg.auto_hide { "aizome-deskbar-transient" } else { "aizome-deskbar" };
+                let opts = LayerOptions::new(Layer::Top, namespace)
                     .anchors(Anchors::TOP | Anchors::RIGHT)
                     // Placed by its margin from the output's top, whatever others'
                     // zones (the bar's) say.
@@ -159,6 +242,7 @@ impl Shell {
                 self.surfaces.insert(k, Surface::Deskbar);
                 self.deskbar = Some(k);
                 self.deskbar_size = Some(size);
+                self.deskbar_transient = self.deskbar_cfg.auto_hide;
             }
             (true, Some(k)) => {
                 let model = self.deskbar_model();
@@ -210,12 +294,17 @@ impl Shell {
                             .enabled(position + 1 < apps.len()),
                     ],
                 );
-                self.show_menu(k, at_point(at), &menu, MenuStyle::at_point(), cx);
+                let style = self.deskbar_menu_style();
+                self.show_menu(k, at_point(at), &menu, style, cx);
             }
             DeskbarMsg::AppDrag(app, center, phase) => match phase {
-                DragPhase::Start(at) => self.deskbar_drag = Some((app, at)),
+                DragPhase::Start(at) => {
+                    self.deskbar_visibility.dragging = Some(DragTarget::App(app.clone()));
+                    self.deskbar_drag = Some((app, at));
+                }
                 DragPhase::Move(_) => {}
                 DragPhase::End(at) => {
+                    self.deskbar_visibility.dragging = None;
                     if let Some((source, from)) = self.deskbar_drag.take()
                         && source == app
                         && (0.0..crate::deskbar::WIDTH).contains(&at.x)
@@ -224,6 +313,7 @@ impl Shell {
                         let before = model.insertion_at(center + at.y - from.y);
                         self.reorder_deskbar_app(&app, before);
                     }
+                    self.arm_deskbar_hide(cx);
                 }
             },
             DeskbarMsg::Fold(app_id) => {
@@ -234,6 +324,13 @@ impl Shell {
             DeskbarMsg::FocusWindow(id) => self.ipc.send(Request::Focus { id }),
             DeskbarMsg::CloseWindow(id) => self.ipc.send(Request::Close { id: Some(id) }),
             DeskbarMsg::WindowDrag(id, phase) => {
+                if matches!(phase, DragPhase::Start(_)) {
+                    self.deskbar_visibility.dragging = Some(DragTarget::Window(id));
+                }
+                if matches!(phase, DragPhase::End(_)) {
+                    self.deskbar_visibility.dragging = None;
+                    self.arm_deskbar_hide(cx);
+                }
                 if let DragPhase::End(p) = phase
                     && let Some(desk) = self.desk_at_deskbar_point(p)
                 {
@@ -280,7 +377,8 @@ impl Shell {
                         Entry::action("Remove", Action::ShelfRemove { index: i }),
                     ],
                 );
-                self.show_menu(k, at_point(at), &menu, MenuStyle::at_point(), cx);
+                let style = self.deskbar_menu_style();
+                self.show_menu(k, at_point(at), &menu, style, cx);
             }
             DeskbarMsg::Park(urls, text) => {
                 for u in &urls {
@@ -294,6 +392,24 @@ impl Shell {
                     self.shelf.park(ShelfItem::from_text(&t));
                 }
                 self.save_shelf();
+            }
+            DeskbarMsg::AutoHide(generation) => {
+                let v = &mut self.deskbar_visibility;
+                if self.deskbar_cfg.auto_hide
+                    && generation == v.generation
+                    && !v.inside
+                    && !v.control_inside
+                    && v.menu.is_none()
+                    && v.dragging.is_none()
+                {
+                    v.revealed = false;
+                }
+            }
+            DeskbarMsg::MenuClosed(serial) => {
+                if self.deskbar_visibility.menu == Some(serial) {
+                    self.deskbar_visibility.menu = None;
+                    self.arm_deskbar_hide(cx);
+                }
             }
         }
     }

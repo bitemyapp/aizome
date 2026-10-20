@@ -5,10 +5,46 @@
 mod common;
 
 use std::path::Path;
+use std::time::Duration;
 
 use aizome_ipc::{Request, Synthetic};
 use common::desktop::*;
 use common::*;
+
+#[test]
+#[ignore = "requires AIZOME_LAYOUT_TEST_SHELL pointing at the shell under test"]
+fn real_deskbar_autohides_after_leaving_its_app_rows() {
+    let shell = std::env::var("AIZOME_LAYOUT_TEST_SHELL").expect("shell binary");
+    let c = Compositor::start(Options {
+        settings: "[appearance]\neffects = \"austere\"\n[deskbar]\nauto_hide = true\n",
+        ..Default::default()
+    });
+    let _shell = program(&c, &shell, &[], "shell");
+    wait("shell ready", || {
+        shell_state(&c, &shell).is_some_and(|s| s["screens"].as_array().is_some_and(|a| !a.is_empty()))
+    });
+    let shown = || {
+        shell_state(&c, &shell)
+            .is_some_and(|s| s["surfaces"].as_array().is_some_and(|ss| ss.iter().any(|v| v == "Deskbar")))
+    };
+    assert!(!shown(), "auto-hide starts closed");
+    let _client = c.client(Spec::new("deskbar-repro", 0x6688aa));
+    let w = c.wait_window("deskbar-repro");
+    c.ok(Request::Fill { id: Some(w.id), state: Some(true) });
+    c.settle();
+    let before = c.window("deskbar-repro").unwrap().geometry;
+    shell_msg(&c, &shell, serde_json::json!({"request":"deskbar", "collapsed":false}));
+    wait("Deskbar revealed", shown);
+    c.ok(Request::Synthesize { events: vec![Synthetic::PointerMotion { x: 1220.0, y: 40.0 }] });
+    c.settle();
+    std::thread::sleep(Duration::from_millis(500));
+    assert!(shown(), "hovering an app row keeps the real shell open");
+    assert_eq!(c.window("deskbar-repro").unwrap().geometry, before);
+    keep(&c.screenshot(), "deskbar-auto-hide-revealed");
+    c.ok(Request::Synthesize { events: vec![Synthetic::PointerMotion { x: 200.0, y: 400.0 }] });
+    wait("Deskbar auto-hidden", || !shown());
+    assert_eq!(c.window("deskbar-repro").unwrap().geometry, before);
+}
 
 #[test]
 #[ignore = "requires AIZOME_LAYOUT_TEST_SHELL and AIZOME_LAYOUT_TEST_CHROME; see docs/ipc.md"]

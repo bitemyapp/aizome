@@ -70,6 +70,7 @@ pub fn drawn<Msg>(
             text: None,
             fit: None,
             hovered_msg: None,
+            left_msg: None,
             pad: aizome_kit::Padding::default(),
             drop: None,
             drag_out: None,
@@ -153,6 +154,13 @@ impl<Msg: Clone + Send + 'static> Drawn<Msg> {
         self.w.hover = true;
         self
     }
+
+    /// Sent when the pointer leaves this element.
+    pub fn on_leave(mut self, msg: Msg) -> Self {
+        self.w.left_msg = Some(MsgFn::new(msg));
+        self.w.hover = true;
+        self
+    }
 }
 
 impl<Msg> Drawn<Msg> {
@@ -232,6 +240,7 @@ struct DrawnWidget {
     fit: Option<Fit>,
     /// Sent when the pointer comes over it.
     hovered_msg: Option<MsgFn>,
+    left_msg: Option<MsgFn>,
     /// Room round its child.
     pad: aizome_kit::Padding,
     /// How far outside its rectangle it paints.
@@ -432,6 +441,9 @@ impl Widget for DrawnWidget {
             },
             Event::PointerLeave => {
                 cx.state::<PressState>().over = false;
+                if let Some(m) = &self.left_msg {
+                    cx.emit(m);
+                }
                 Status::Ignored
             }
             _ => Status::Ignored,

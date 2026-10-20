@@ -35,6 +35,8 @@ pub enum DeskbarMsg {
     /// Rearrange app groups: row center in content coordinates, pointer in
     /// the row's current local coordinates (including scroll displacement).
     AppDrag(String, f64, DragPhase),
+    AutoHide(u64),
+    MenuClosed(u64),
     /// Fold or unfold an app's windows.
     Fold(String),
     FocusWindow(WindowId),

@@ -92,6 +92,12 @@ pub trait Program: Sized + 'static {
         let _ = cx;
     }
 
+    /// The pointer entered or left the window, independently of its widgets.
+    /// Useful for transient shell surfaces whose children handle pointer events.
+    fn pointer_presence(&mut self, window: WindowKey, inside: bool, cx: &mut Cx<Self::Msg>) {
+        let _ = (window, inside, cx);
+    }
+
     /// The compositor locked the session, as [`Cx::lock_session`] asked:
     /// only the lock's windows show until [`Cx::unlock_session`].
     fn session_locked(&mut self, cx: &mut Cx<Self::Msg>) {

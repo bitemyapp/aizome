@@ -572,6 +572,20 @@ impl<P: Program> Harness<P> {
 
     // Input.
 
+    /// Native window entry, before ordinary movement among its widgets.
+    pub fn enter(&mut self, key: WindowKey, at: Point) {
+        let win = self.win(key);
+        self.rt.core.pointer_move(win, at, &mut self.platform);
+        self.rt.pointer_presence(win, true, &mut self.platform);
+    }
+
+    /// Native window exit (distinct from leaving a child widget).
+    pub fn leave(&mut self, key: WindowKey) {
+        let win = self.win(key);
+        self.rt.core.pointer_leave(win, &mut self.platform);
+        self.rt.pointer_presence(win, false, &mut self.platform);
+    }
+
     pub fn move_to(&mut self, key: WindowKey, at: Point) {
         let win = self.win(key);
         self.rt.core.pointer_move(win, at, &mut self.platform);

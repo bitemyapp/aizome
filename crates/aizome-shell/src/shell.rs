@@ -304,6 +304,8 @@ pub struct Shell {
     pub(crate) pending_actions: Vec<Action>,
     pub(crate) deskbar_size: Option<aizome_kit::Size>,
     pub(crate) deskbar_drag: Option<(String, Point)>,
+    pub(crate) deskbar_visibility: crate::deskbar_glue::Visibility,
+    pub(crate) deskbar_transient: bool,
     /// Apps' own icons (PNG), by app id, for apps the shell has no glyph for.
     pub(crate) icons: HashMap<String, Option<aizome_kit::Image>>,
     /// Apps' status items' icons, read once per change.
@@ -424,6 +426,8 @@ impl Shell {
             pending_actions: Vec::new(),
             deskbar_size: None,
             deskbar_drag: None,
+            deskbar_visibility: Default::default(),
+            deskbar_transient: false,
             icons: HashMap::new(),
             item_icons: HashMap::new(),
             item_wheel: HashMap::new(),
@@ -458,7 +462,14 @@ impl Shell {
 
     fn read_settings(&mut self) {
         self.bar_cfg = self.settings.menubar_settings();
-        self.deskbar_cfg = self.settings.deskbar_settings();
+        let deskbar = self.settings.deskbar_settings();
+        if deskbar.auto_hide != self.deskbar_cfg.auto_hide || deskbar.collapsed != self.deskbar_cfg.collapsed {
+            self.deskbar_visibility = crate::deskbar_glue::Visibility {
+                generation: self.deskbar_visibility.generation.wrapping_add(1),
+                ..Default::default()
+            };
+        }
+        self.deskbar_cfg = deskbar;
         self.notes_cfg = self.settings.notification_settings();
         self.lock_cfg = self.settings.lock_settings();
         self.palette_cfg = self.settings.palette_settings();
@@ -582,9 +593,7 @@ impl Shell {
     pub fn bar_model(&self, screen: &Screen) -> BarModel {
         let (app_name, menus) = self.focused_menus();
         let primary = self.primary().is_some_and(|p| p.output.id == screen.output.id);
-        let folded = self
-            .deskbar_cfg
-            .collapsed
+        let folded = (self.deskbar_cfg.collapsed || self.deskbar_cfg.auto_hide)
             .then(|| self.wm.deskbar(&self.deskbar_cfg.pinned).iter().filter(|a| !a.windows.is_empty()).count());
         BarModel {
             app_name,
@@ -600,6 +609,8 @@ impl Shell {
             meters: self.meters.clone(),
             clock: self.now.bar_label(self.bar_cfg.clock, self.bar_cfg.clock_seconds, self.bar_cfg.clock_date),
             folded_apps: folded,
+            deskbar_visible: self.deskbar_visible(),
+            deskbar_auto_hide: self.deskbar_cfg.auto_hide,
             unread: self.notes.unread_count(),
             banner: if primary { self.banner_view() } else { None },
             primary,
@@ -610,6 +621,7 @@ impl Shell {
 
     fn bar(&mut self, win: WindowKey, msg: BarMsg, cx: &mut Cx<Msg>) {
         match msg {
+            BarMsg::DeskbarHover(inside) => self.deskbar_hover(true, inside, cx),
             BarMsg::Run(a) => self.run(a, cx),
             BarMsg::Press(slot, rect) => {
                 // Pressing the open menu's title closes it (the press closed
@@ -823,6 +835,8 @@ impl Shell {
             }
             Action::SetDeskbarCollapsed(on) => {
                 self.deskbar_cfg.collapsed = on;
+                self.deskbar_visibility.revealed = !on;
+                self.deskbar_visibility.generation = self.deskbar_visibility.generation.wrapping_add(1);
                 self.save_section("deskbar");
             }
             Action::MoveDeskbarApp { app_id, down } => self.move_deskbar_app(&app_id, down),
@@ -1570,6 +1584,13 @@ impl Program for Shell {
     fn outputs_changed(&mut self, cx: &mut Cx<Msg>) {
         let outputs = cx.outputs();
         self.sync_screens(outputs, cx);
+    }
+
+    fn pointer_presence(&mut self, window: WindowKey, inside: bool, cx: &mut Cx<Msg>) {
+        if self.deskbar == Some(window) {
+            self.deskbar_hover(false, inside, cx);
+            self.after_update(cx);
+        }
     }
 
     fn activation_token(&mut self, request: ActivationRequest, token: Option<String>, _cx: &mut Cx<Msg>) {

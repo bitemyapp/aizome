@@ -194,3 +194,98 @@ fn reordering_tracks_scroll_changes_while_the_button_is_down() {
     let order = h.program().deskbar_model().apps.into_iter().map(|a| a.app_id).collect::<Vec<_>>();
     assert_eq!(order, ["foot", "org.aizome.Hako", "firefox", "thunderbird", "org.aizome.Sumi"]);
 }
+
+#[test]
+fn auto_hide_reveals_from_the_bar_and_waits_for_pointer_exit() {
+    use std::time::Duration;
+    let mut h = scene(false);
+    let mut config = h.program().settings.deskbar_settings();
+    config.auto_hide = true;
+    h.program_mut().settings.set_shell_section("deskbar", &config);
+    h.send(Msg::SettingsChanged);
+    assert!(h.program().deskbar.is_none());
+    let bar = window_titled(&h, "Menu bar");
+    let apps = h.find(bar, "5 apps").expect("reveal control").center();
+    h.move_to(bar, apps);
+    let db = window_titled(&h, "Deskbar");
+    h.leave(bar);
+    h.enter(db, Point::new(60.0, 20.0));
+    h.advance(Duration::from_secs(1));
+    assert_eq!(h.program().deskbar, Some(db), "the pointer is over its child row");
+    h.leave(db);
+    h.advance(Duration::from_millis(200));
+    assert_eq!(h.program().deskbar, Some(db), "crossing between bar and Deskbar gets a grace period");
+    h.enter(db, Point::new(60.0, 40.0));
+    h.advance(Duration::from_millis(200));
+    assert_eq!(h.program().deskbar, Some(db), "a stale hide timer must not close it");
+    h.leave(db);
+    h.advance(Duration::from_millis(400));
+    assert!(h.program().deskbar.is_none());
+    assert!(!h.program().settings.deskbar_settings().collapsed, "auto-hide is transient");
+    config.auto_hide = false;
+    h.program_mut().settings.set_shell_section("deskbar", &config);
+    h.send(Msg::SettingsChanged);
+    assert!(h.program().deskbar.is_some(), "disabling auto-hide restores the Deskbar");
+}
+
+#[test]
+fn auto_hide_keeps_context_menus_usable() {
+    use std::time::Duration;
+    let mut h = scene(false);
+    h.program_mut().deskbar_cfg.auto_hide = true;
+    h.send(Msg::Run(aizome_shell::actions::Action::SetDeskbarCollapsed(false)));
+    let db = window_titled(&h, "Deskbar");
+    h.enter(db, Point::new(60.0, 20.0));
+    h.send(Msg::Deskbar(DeskbarMsg::AppMenu("foot".into(), Point::new(40.0, 40.0))));
+    h.leave(db);
+    h.advance(Duration::from_secs(1));
+    assert_eq!(h.program().deskbar, Some(db), "an open menu holds its parent surface");
+    h.key(db, aizome_kit::sidestep_ui::Key::Named(aizome_kit::sidestep_ui::NamedKey::Escape), Default::default());
+    h.advance(Duration::from_millis(400));
+    assert!(h.program().deskbar.is_none(), "closing the menu permits hiding");
+}
+
+#[test]
+fn auto_hide_waits_for_a_window_drag_to_end() {
+    use aizome_shell::widgets::drawn::DragPhase;
+    use std::time::Duration;
+    let mut h = scene(false);
+    h.program_mut().deskbar_cfg.auto_hide = true;
+    h.send(Msg::Run(aizome_shell::actions::Action::SetDeskbarCollapsed(false)));
+    let db = window_titled(&h, "Deskbar");
+    h.enter(db, Point::new(60.0, 40.0));
+    h.send(Msg::Deskbar(DeskbarMsg::WindowDrag(1, DragPhase::Start(Point::new(60.0, 40.0)))));
+    h.leave(db);
+    h.advance(Duration::from_secs(1));
+    assert_eq!(h.program().deskbar, Some(db));
+    h.send(Msg::Deskbar(DeskbarMsg::WindowDrag(1, DragPhase::End(Point::new(-100.0, -10.0)))));
+    h.advance(Duration::from_millis(400));
+    assert!(h.program().deskbar.is_none());
+}
+
+#[test]
+fn auto_hide_resumes_when_a_dragged_app_or_window_disappears() {
+    use aizome_kit::sidestep_ui::PointerButton;
+    use aizome_shell::actions::Action;
+    use aizome_shell::ipc::{IpcEvent, SnapshotBox};
+    use std::time::Duration;
+    for row in ["Editor", "architecture.md"] {
+        let mut h = scene(false);
+        h.program_mut().deskbar_cfg.auto_hide = true;
+        h.send(Msg::Run(Action::SetDeskbarCollapsed(false)));
+        let db = window_titled(&h, "Deskbar");
+        h.resize(db, aizome_shell::deskbar::size(&h.program().deskbar_model()));
+        let from = h.find(db, row).expect("drag source").center();
+        h.enter(db, from);
+        h.press(db, from, PointerButton::Left, 1);
+        h.move_to(db, from + Vec2::new(0.0, 8.0));
+        let mut snapshot = snapshot();
+        snapshot.windows.retain(|w| w.app_id != "org.aizome.Sumi");
+        snapshot.focused = None;
+        h.send(Msg::Ipc(IpcEvent::Connected(Box::new(SnapshotBox(snapshot)))));
+        h.release(db, Point::new(-30.0, 50.0), PointerButton::Left);
+        h.leave(db);
+        h.advance(Duration::from_secs(1));
+        assert!(h.program().deskbar.is_none(), "the vanished {row} row cannot suspend auto-hide forever");
+    }
+}
