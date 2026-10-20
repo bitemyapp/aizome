@@ -1,5 +1,4 @@
-//! The shell's own elements over the kit's.
+//! Aizome's own elements over the kit's, in `aizome-face` (the login screen
+//! shares them).
 
-pub mod drawn;
-pub mod field;
-pub mod keys;
+pub use aizome_face::widgets::{drawn, field, keys};

@@ -19,6 +19,7 @@ repository = "https://github.com/bitemyapp/aizome"
 aizome-theme = { path = "crates/aizome-theme" }
 aizome-ipc = { path = "crates/aizome-ipc" }
 aizome-config = { path = "crates/aizome-config" }
+aizome-face = { path = "crates/aizome-face" }
 aizome-kit = { path = "crates/aizome-kit" }
 aizome-sys = { path = "crates/aizome-sys" }
 aizome-search = { path = "crates/aizome-search" }

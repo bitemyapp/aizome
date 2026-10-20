@@ -12,6 +12,7 @@ aizome-theme.workspace = true
 aizome-ipc.workspace = true
 aizome-config.workspace = true
 aizome-kit.workspace = true
+aizome-face.workspace = true
 aizome-sys.workspace = true
 aizome-search.workspace = true
 aizome-shell-proto = { path = "../aizome-shell-proto" }

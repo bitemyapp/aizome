@@ -127,6 +127,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "aizome-face"
+version = "0.1.0"
+dependencies = [
+ "aizome-kit",
+ "aizome-theme",
+]
+
+[[package]]
 name = "aizome-fusen"
 version = "0.1.0"
 dependencies = [
@@ -285,6 +293,7 @@ version = "0.1.0"
 dependencies = [
  "aizome-awake",
  "aizome-config",
+ "aizome-face",
  "aizome-ipc",
  "aizome-kit",
  "aizome-search",
