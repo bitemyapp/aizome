@@ -148,6 +148,10 @@ pub struct OutputState {
     pub gamma: bool,
     /// A wlr-gamma-control client holds its ramps.
     pub gamma_client: bool,
+    /// Last Deskbar geometry reported to the layout policy. Surface buffers
+    /// have already changed by the time commit_layer runs, so reading the
+    /// layer map there cannot recover the previous bounding box.
+    pub deskbar_geometry: Option<Rect>,
 }
 
 impl OutputState {
@@ -168,6 +172,7 @@ impl OutputState {
             refresh,
             gamma: false,
             gamma_client: false,
+            deskbar_geometry: None,
         }
     }
 }

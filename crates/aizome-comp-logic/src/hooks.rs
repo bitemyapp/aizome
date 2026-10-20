@@ -188,6 +188,11 @@ fn usable_area_changed(st: &mut State, output: &Output) {
 
 fn outputs_changed(st: &mut State) {
     crate::actions::rescue_windows(st);
+    if !st.shell_restart_holds_layout() {
+        for output in st.az.outputs.clone() {
+            crate::actions::refit_placed_windows(st, &output);
+        }
+    }
     publish(st);
 }
 

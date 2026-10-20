@@ -91,8 +91,9 @@ impl Compositor {
             // LD_LIBRARY_PATH beats the binary's rpath, and the tests'
             // dev-dependencies can resolve the core's dependencies with
             // other features, so its symbols differ).
-            let dir = exe.parent().unwrap();
-            let mut paths = vec![dir.to_path_buf(), dir.join("deps")];
+            let resolved = exe.canonicalize().expect("resolve the compositor binary");
+            let dir = resolved.parent().unwrap();
+            let mut paths = vec![dir.to_path_buf(), dir.join("deps"), dir.join("../lib/aizome")];
             paths.extend(std::env::split_paths(&std::env::var_os("LD_LIBRARY_PATH").unwrap_or_default()));
             cmd.env("LD_LIBRARY_PATH", std::env::join_paths(paths).unwrap());
         }
@@ -104,11 +105,13 @@ impl Compositor {
             cmd.args(["--renderer", r]);
         }
         cmd.env_remove("WAYLAND_DISPLAY")
+            .env_remove("WAYLAND_SOCKET")
             .env_remove("DISPLAY")
             .env_remove("AIZOME_RENDERER")
             .env("XDG_RUNTIME_DIR", &dir)
             .env("XDG_CONFIG_HOME", dir.join("config"))
             .env("XDG_STATE_HOME", dir.join("state"))
+            .env("XDG_DATA_HOME", dir.join("data"))
             .env("XDG_CACHE_HOME", dir.join("cache"))
             .env("HOME", dir.join("home"))
             .env("AIZOME_LOG", "info,smithay=warn")
@@ -299,11 +302,21 @@ pub struct Spec {
     pub ssd: bool,
     /// xdg_toplevel.set_min_size, if any.
     pub min_size: Option<(i32, i32)>,
+    /// Delay each configure response to exercise commits of obsolete sizes.
+    pub configure_delay: Duration,
 }
 
 impl Spec {
     pub fn new(app_id: &str, color: u32) -> Spec {
-        Spec { app_id: app_id.into(), title: app_id.into(), color, size: (400, 300), ssd: true, min_size: None }
+        Spec {
+            app_id: app_id.into(),
+            title: app_id.into(),
+            color,
+            size: (400, 300),
+            ssd: true,
+            min_size: None,
+            configure_delay: Duration::ZERO,
+        }
     }
     pub fn min_size(mut self, w: i32, h: i32) -> Spec {
         self.min_size = Some((w, h));
@@ -321,11 +334,16 @@ impl Spec {
         self.title = t.into();
         self
     }
+    pub fn configure_delay(mut self, delay: Duration) -> Spec {
+        self.configure_delay = delay;
+        self
+    }
 }
 
 #[derive(Clone, Debug, Default)]
 pub struct Seen {
     pub configures: u32,
+    pub bounds: Option<(i32, i32)>,
     pub size: (i32, i32),
     pub activated: bool,
     pub maximized: bool,
@@ -637,6 +655,7 @@ impl Dispatch<xdg_surface::XdgSurface, ()> for App {
         qh: &QueueHandle<Self>,
     ) {
         if let xdg_surface::Event::Configure { serial } = event {
+            std::thread::sleep(app.spec.configure_delay);
             xs.ack_configure(serial);
             if let Some(s) = app.pending_size.take()
                 && s.0 > 0
@@ -674,6 +693,9 @@ impl Dispatch<xdg_toplevel::XdgToplevel, ()> for App {
         _: &QueueHandle<Self>,
     ) {
         match event {
+            xdg_toplevel::Event::ConfigureBounds { width, height } => {
+                app.seen.lock().unwrap().bounds = Some((width, height));
+            }
             xdg_toplevel::Event::Configure { width, height, states } => {
                 app.pending_size = Some((width, height));
                 let states: Vec<u32> =

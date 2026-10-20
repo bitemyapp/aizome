@@ -10,11 +10,19 @@ use smithay::output::Output;
 use smithay::reexports::wayland_protocols::xdg::decoration::zv1::server::zxdg_toplevel_decoration_v1::Mode as DecorationMode;
 use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel;
 use smithay::reexports::wayland_server::Resource;
-use smithay::wayland::shell::xdg::ToplevelSurface;
+use smithay::wayland::compositor::with_states;
+use smithay::wayland::shell::xdg::{ToplevelSurface, XdgToplevelSurfaceData};
 use tracing::info;
 
 use crate::prelude::*;
 use crate::wm::{DeskId, Placement, Refocus, Side};
+
+/// One work area for initial bounds, restored geometry, fill/split and
+/// subsequent shell/output changes. The Deskbar does not use an exclusive
+/// zone, but automatic placement must reserve its column all the same.
+fn window_area(az: &Aizome, output: &Output) -> Rect {
+    crate::wm::beside(az.usable_area(output), az.deskbar_rect(output))
+}
 
 /// What the logic does to windows, on the compositor's state.
 pub trait Actions {
@@ -416,11 +424,7 @@ impl Actions for State {
         let l = self.lg.r();
         let rect = l.wm.get(id).map(|w| w.rect).unwrap_or_default();
         // Filling and splitting leave the Deskbar clear.
-        let usable = self
-            .az
-            .output_for_rect(rect)
-            .map(|o| crate::wm::beside(self.az.usable_area(&o), self.az.deskbar_rect(&o)))
-            .unwrap_or(rect);
+        let usable = self.az.output_for_rect(rect).map(|o| window_area(&self.az, &o)).unwrap_or(rect);
         (usable, l.insets_for(id))
     }
 
@@ -442,7 +446,7 @@ impl Actions for State {
         let rect = w.rect;
         let requested = l.wins.get(&id).and_then(|d| d.requested_size);
         let size = requested.or_else(|| (placement != Placement::Free).then_some((rect.w, rect.h)));
-        let bounds = self.az.output_for_rect(rect).map(|o| self.az.usable_area(&o));
+        let bounds = self.az.output_for_rect(rect).map(|o| window_area(&self.az, &o));
         let insets = l.insets_for(id);
         let toplevel = m.toplevel().clone();
         toplevel.with_pending_state(|s| {
@@ -467,7 +471,8 @@ impl Actions for State {
                 s.size = Some((w, h).into());
             }
             if let Some(b) = bounds {
-                s.bounds = Some((b.w - insets.left - insets.right, b.h - insets.top - insets.bottom).into());
+                let b = b.inset(insets);
+                s.bounds = Some((b.w, b.h).into());
             }
             s.decoration_mode = Some(if ssd { DecorationMode::ServerSide } else { DecorationMode::ClientSide });
         });
@@ -523,7 +528,16 @@ fn after_visibility_change(st: &mut State, id: WinId) {
     st.redraw_window(id);
 }
 
-fn after_placement(st: &mut State, id: WinId, old: Option<Rect>, rect: Rect) {
+fn after_placement(st: &mut State, id: WinId, old: Option<Rect>, mut rect: Rect) {
+    if st.lg.r().wm.get(id).is_some_and(|w| w.placement == Placement::Free) {
+        // A saved free rectangle can outlive an output or Deskbar change.
+        let (area, insets) = st.usable_for(id);
+        let fitted = crate::wm::fit_into(rect, area, insets);
+        if fitted != rect {
+            st.lg.m().wm.set_rect(id, fitted);
+            rect = fitted;
+        }
+    }
     let members = st.lg.r().wm.group_members(id);
     for m in &members {
         st.request_size(*m, rect.w, rect.h);
@@ -608,25 +622,21 @@ pub fn desk_infos(l: &Logic) -> Vec<DeskInfo> {
 /// Brings windows that ended up off every output back onto the main one.
 pub fn rescue_windows(st: &mut State) {
     let Some(first) = st.az.primary_output() else { return };
-    let usable = st.az.usable_area(&first);
+    let usable = window_area(&st.az, &first);
     let rects: Vec<Rect> = st.az.outputs.iter().map(|o| st.az.output_rect(o)).collect();
     let l = st.lg.m();
-    let ids: Vec<WinId> = l.wm.windows().map(|w| w.id).collect();
-    let mut moved = false;
+    let ids: Vec<WinId> = l.wm.windows().filter(|w| l.wm.is_group_active(w.id)).map(|w| w.id).collect();
     for id in ids {
+        let l = st.lg.m();
         let Some(w) = l.wm.get(id) else { continue };
         let on_any = rects.iter().any(|r| r.intersects(w.rect));
         if !on_any {
             let insets = l.insets_for(id);
-            let r = crate::wm::clamp_into(w.rect, usable, insets);
+            let old = w.rect;
+            let r = crate::wm::fit_into(old, usable, insets);
             l.wm.set_rect(id, r);
-            l.window_changed(id);
-            moved = true;
+            after_placement(st, id, Some(old), r);
         }
-    }
-    if moved {
-        st.az.window_outputs_dirty = true;
-        st.az.queue_redraw_all();
     }
 }
 
@@ -640,9 +650,8 @@ pub fn place_new_window(st: &mut State, id: WinId, size: (i32, i32), parent: Opt
     else {
         return;
     };
-    let usable = st.az.usable_area(&output);
+    let usable = window_area(&st.az, &output);
     let insets = l.insets_for(id);
-    let avoid: Vec<Rect> = st.az.deskbar_rect(&output).into_iter().collect();
     let app_id = l.wm.get(id).map(|w| w.app_id.clone()).unwrap_or_default();
     let usable_rects: Vec<Rect> = st.az.outputs.iter().map(|o| st.az.usable_area(o)).collect();
     let remembered = (parent.is_none() && st.az.settings.windows.remember_geometry)
@@ -651,10 +660,13 @@ pub fn place_new_window(st: &mut State, id: WinId, size: (i32, i32), parent: Opt
         .filter(|r| usable_rects.iter().any(|u| u.intersects(*r)))
         .filter(|r| !l.wm.windows().any(|w| w.id != id && l.wm.is_shown(w.id) && w.rect.x == r.x && w.rect.y == r.y));
     let rect = match remembered {
-        Some(r) => crate::wm::clamp_into(Rect::new(r.x, r.y, size.0, size.1), usable, insets),
-        None => l.wm.place(size, usable, &avoid, insets, parent),
+        Some(r) => crate::wm::fit_into(Rect::new(r.x, r.y, size.0, size.1), usable, insets),
+        None => l.wm.place(size, usable, &[], insets, parent),
     };
     st.lg.m().wm.set_rect(id, rect);
+    if (rect.w, rect.h) != size {
+        st.request_size(id, rect.w, rect.h);
+    }
     info!(id, app_id, ?rect, "placed");
 }
 
@@ -664,15 +676,23 @@ pub fn place_new_window(st: &mut State, id: WinId, size: (i32, i32), parent: Opt
 /// its app last had.
 pub fn first_configure(st: &mut State, toplevel: &ToplevelSurface) {
     let (app_id, _) = aizome_comp_core::shell::toplevel_ids(toplevel);
-    let out = st.az.active_output();
-    let usable = out.as_ref().map(|o| st.az.usable_area(o));
-    let remembered = st.az.settings.windows.remember_geometry.then(|| st.lg.r().remembered.get(&app_id)).flatten();
+    let parent = toplevel.parent().and_then(|p| st.az.window_for_surface(&p));
+    let out = parent
+        .and_then(|p| st.lg.r().wm.get(p))
+        .and_then(|w| st.az.output_for_rect(w.rect))
+        .or_else(|| st.az.active_output());
+    let usable = out.as_ref().map(|o| window_area(&st.az, o));
+    let remembered = (parent.is_none() && st.az.settings.windows.remember_geometry)
+        .then(|| st.lg.r().remembered.get(&app_id))
+        .flatten();
     toplevel.with_pending_state(|s| {
+        let i = crate::decor::insets(s.decoration_mode != Some(DecorationMode::ClientSide));
         if let Some(u) = usable {
-            let i = crate::decor::insets(true);
-            s.bounds = Some((u.w - i.left - i.right, u.h - i.top - i.bottom).into());
+            let bounds = u.inset(i);
+            s.bounds = Some((bounds.w, bounds.h).into());
         }
         if let Some(r) = remembered {
+            let r = usable.map(|u| crate::wm::fit_into(r, u, i)).unwrap_or(r);
             s.size = Some((r.w, r.h).into());
         }
     });
@@ -718,7 +738,8 @@ pub fn window_committed(st: &mut State, id: WinId, is_root: bool) {
     let window = m.window.clone();
     let toplevel = m.toplevel().clone();
     // Decoration mode changes.
-    let ssd = toplevel.current_state().decoration_mode == Some(DecorationMode::ServerSide);
+    let committed = toplevel.current_state();
+    let ssd = committed.decoration_mode == Some(DecorationMode::ServerSide);
     let l = st.lg.m();
     if l.wm.get(id).is_some_and(|w| w.ssd != ssd) {
         let old = l.wm.get(id).map(|w| w.rect).unwrap();
@@ -735,11 +756,27 @@ pub fn window_committed(st: &mut State, id: WinId, is_root: bool) {
     let Some(w) = l.wm.get(id) else { return };
     let old = w.rect;
     let size = (geo.size.w.max(1), geo.size.h.max(1));
+    let requested = l.wins.get(&id).and_then(|d| d.requested_size);
+    let latest_committed = requested.is_none()
+        || with_states(toplevel.wl_surface(), |states| {
+            let data = states.data_map.get::<XdgToplevelSurfaceData>().unwrap().lock().unwrap();
+            data.pending_configures().is_empty() && data.current_serial == data.configure_serial
+        });
+    if !latest_committed || requested.is_some_and(|wanted| committed.size.map(|s| (s.w, s.h)) != Some(wanted)) {
+        // The client is still drawing an older configure. In particular,
+        // do not copy that obsolete size to every member of a tab group.
+        // Check serials too: a grow/shrink/grow can request the same size
+        // twice, so matching dimensions alone cannot identify the response.
+        // Once it commits the latest configure, accept its actual size
+        // even if its own constraints kept it from matching our request.
+        st.redraw_window(id);
+        return;
+    }
+    if requested.is_some() {
+        l.data(id).requested_size = None;
+    }
     if (old.w, old.h) != size && l.wm.is_group_active(id) {
         let d = l.data(id);
-        if d.requested_size == Some(size) {
-            d.requested_size = None;
-        }
         let mut r = Rect::new(old.x, old.y, size.0, size.1);
         if let Some(a) = d.resize_anchor {
             if a.left {
@@ -757,10 +794,6 @@ pub fn window_committed(st: &mut State, id: WinId, is_root: bool) {
         st.az.queue_redraw_rect(old);
         st.lg.m().window_changed(id);
         st.az.window_outputs_dirty = true;
-    } else if let Some(d) = l.wins.get_mut(&id)
-        && d.requested_size == Some(size)
-    {
-        d.requested_size = None;
     }
     st.redraw_window(id);
 }
@@ -851,15 +884,16 @@ pub fn toplevel_request(st: &mut State, id: WinId, req: ToplevelRequest) {
     }
 }
 
-/// Fill and split windows on an output re-fit its usable area.
+/// Refit each window/group once, on the output that owns it. Updating the
+/// rectangle directly preserves its placement and every tab's restore rect.
 pub fn refit_placed_windows(st: &mut State, output: &Output) {
-    let usable = st.az.usable_area(output);
+    let usable = window_area(&st.az, output);
     let out_rect = st.az.output_rect(output);
     let l = st.lg.r();
     let ids: Vec<WinId> =
         l.wm.windows()
-            .filter(|w| matches!(w.placement, Placement::Fill | Placement::SplitLeft | Placement::SplitRight))
-            .filter(|w| out_rect.intersects(w.rect))
+            .filter(|w| l.wm.is_group_active(w.id))
+            .filter(|w| st.az.output_for_rect(w.rect).as_ref() == Some(output))
             .map(|w| w.id)
             .collect();
     for id in ids {
@@ -872,16 +906,20 @@ pub fn refit_placed_windows(st: &mut State, output: &Output) {
             Placement::SplitRight => Rect::new(usable.x + usable.w / 2, usable.y, usable.w - usable.w / 2, usable.h),
             _ => usable,
         };
-        let r = area.inset(insets);
-        let restore = w.restore;
-        l.wm.set_placement(id, Placement::Free, Rect::default());
-        if let Some(w) = l.wm.get_mut(id) {
-            w.restore = restore;
-        }
-        l.wm.set_placement(id, placement, r);
-        for m in l.wm.group_members(id) {
-            st.request_size(m, r.w, r.h);
-            st.configure(m);
+        let old = w.rect;
+        let r = match placement {
+            Placement::Free => crate::wm::fit_into(old, usable, insets),
+            Placement::Fullscreen => out_rect,
+            _ => area.inset(insets),
+        };
+        if r != old {
+            l.wm.set_rect(id, r);
+            after_placement(st, id, Some(old), r);
+        } else {
+            // Bounds may change even when the window itself still fits.
+            for m in l.wm.group_members(id) {
+                st.configure(m);
+            }
         }
     }
 }

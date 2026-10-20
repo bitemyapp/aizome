@@ -109,6 +109,31 @@ Protocol version: **1** (`version` reports it).
 the keys for letters, digits, spaces and punctuation, with Shift where a
 US layout needs it (capitals, `!` `(` `*` `+` `?` and the like).
 
+### Testing window layout without using the login session
+
+In `nix develop`, run `cargo test -p aizome-comp --test layout`.
+The tests start separate headless compositors, with private runtime,
+configuration, state and home directories. They cover launch/close,
+tab groups, restore, oversized defaults, display scaling and Deskbar
+changes. To run the same checks against an installed compositor, set
+`AIZOME_LAYOUT_TEST_EXE` to its executable.
+
+The optional desktop test drives the real launcher with synthetic
+keyboard input, opens Calculator, and checks a filled tab group containing
+Chrome while the Deskbar grows, collapses and reopens:
+
+```sh
+AIZOME_LAYOUT_TEST_SHELL="$(command -v aizome-shell)" \
+AIZOME_LAYOUT_TEST_CHROME="$(command -v google-chrome)" \
+cargo test -p aizome-comp --test layout_desktop -- --ignored --nocapture
+```
+
+It needs the shell, Chrome and Calculator installed. Chrome uses a fresh
+temporary profile and a blank page. Both D-Bus addresses are isolated from
+the login session; no physical input or session services are changed.
+Screenshots are kept in the Cargo target's `tmp/aizome-shots/` directory.
+Use a separate `CARGO_TARGET_DIR` when another checkout is being built.
+
 ## Responses
 
 `ok`, `error {message}`, and the ones named above.
@@ -263,8 +288,14 @@ the pointer, ⌃❖-right-drag resizes it from the nearest corner.
 
 The compositor treats these namespaces specially:
 
-- `aizome-deskbar`: new windows are placed beside it (it isn't an exclusive
-  zone, but windows open clear of it).
+- `aizome-deskbar`: automatic placement, initial size bounds, remembered
+  geometry, fill and split leave its column clear. Oversized windows are
+  asked to fit the available content area, including room for the tab and
+  frame. Output and Deskbar changes refit windows without discarding their
+  saved restore geometry; fullscreen still covers the whole output. It
+  isn't a layer-shell exclusive zone, so `OutputInfo.usable` continues to
+  describe only those zones. Opening or closing a launcher or menu does
+  not change the work area.
 
 Keyboard focus, highest first:
 

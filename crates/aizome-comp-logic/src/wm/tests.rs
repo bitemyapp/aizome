@@ -125,6 +125,38 @@ fn placement_keeps_the_tab_on_screen() {
     let r = m.place((1400, 2000), USABLE, &[], INSETS, None);
     assert!(r.y - INSETS.top >= USABLE.y);
     assert!(r.x - INSETS.left >= USABLE.x);
+    assert!(r.right() + INSETS.right <= USABLE.right());
+    assert!(r.bottom() + INSETS.bottom <= USABLE.bottom());
+}
+
+#[test]
+fn crowded_cascades_and_dialogs_stay_inside_the_work_area() {
+    for usable in [USABLE, Rect::new(-1280, -300, 1280, 800), Rect::new(1440, 24, 800, 576)] {
+        for left in [false, true] {
+            let deskbar = Rect::new(if left { usable.x } else { usable.right() - 232 }, usable.y, 232, 360);
+            let area = beside(usable, Some(deskbar));
+            for size in [(400, 300), (area.w - 2, area.h - 26), (2000, 2000)] {
+                let mut m = model();
+                for n in 0..70 {
+                    let r = m.place(size, usable, &[deskbar], INSETS, None);
+                    assert_eq!(r.outset(INSETS).intersection(area), Some(r.outset(INSETS)), "{r:?} in {area:?}");
+                    let id = m.insert("a", &n.to_string(), None, r, None);
+                    m.focus(Some(id));
+                }
+                let p = m.insert("parent", "parent", None, deskbar, None);
+                let r = m.place(size, usable, &[deskbar], INSETS, Some(p));
+                assert_eq!(r.outset(INSETS).intersection(area), Some(r.outset(INSETS)), "dialog {r:?}");
+            }
+        }
+    }
+}
+
+#[test]
+fn fitting_remembered_geometry_preserves_it_when_it_fits() {
+    let r = Rect::new(200, 200, 600, 400);
+    assert_eq!(fit_into(r, USABLE, INSETS), r);
+    let area = beside(USABLE, Some(Rect::new(1208, 24, 232, 500)));
+    assert_eq!(fit_into(Rect::new(1200, 800, 1800, 1200), area, INSETS), area.inset(INSETS));
 }
 
 #[test]
