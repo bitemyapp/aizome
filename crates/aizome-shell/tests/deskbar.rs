@@ -53,6 +53,21 @@ fn the_deskbar_folds_into_the_bar() {
 }
 
 #[test]
+fn the_bar_has_controls_to_hide_and_show_the_deskbar() {
+    let mut h = scene(false);
+    let bar = window_titled(&h, "Menu bar");
+    let hide = h.find(bar, "Hide Deskbar").expect("visible hide control");
+    h.click(bar, hide.center());
+    assert!(h.program().deskbar_cfg.collapsed);
+    assert!(h.windows().iter().all(|k| h.title(*k) != "Deskbar"));
+    let show = h.find(bar, "5 apps").expect("visible show control");
+    h.click(bar, show.center());
+    assert!(!h.program().deskbar_cfg.collapsed);
+    assert!(h.windows().iter().any(|k| h.title(*k) == "Deskbar"));
+    assert!(h.find(bar, "Hide Deskbar").is_some());
+}
+
+#[test]
 fn pictures_of_the_deskbar() {
     for day in [false, true] {
         let mut h = scene(day);

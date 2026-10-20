@@ -856,6 +856,22 @@ fn header(model: &BarModel) -> Element<BarMsg> {
                 format!("Battery {p:.0}%"),
             ));
         }
+        if model.primary {
+            items.push(
+                drawn(16.0, HEIGHT, "hide-deskbar", |cx| {
+                    let t = cx.theme();
+                    if cx.is_hovered() {
+                        cx.canvas.fill_rect(cx.bounds(), t.hover(t.bar()));
+                    }
+                    Icon::ChevronUp.draw(cx.canvas, Point::new(2.0, 6.0), 12.0, t.text3());
+                })
+                .on_click(BarMsg::Run(Action::SetDeskbarCollapsed(true)))
+                .text("Hide Deskbar", SemanticRole::Button)
+                .tooltip("Hide Deskbar")
+                .key("hide-deskbar")
+                .into(),
+            );
+        }
     }
     let left = row(items).spacing(9.0).align(Align::Center).height(HEIGHT).into();
     let content = split(left, clock(&model.clock, open(TrayWidget::Clock)), HEADER, 16.0, (11.0, 10.0));
@@ -978,6 +994,9 @@ pub fn header_width(t: &aizome_kit::Theme, m: &mut Measure, model: &BarModel) ->
                 .ceil(),
             );
         }
+    }
+    if model.primary && model.folded_apps.is_none() {
+        items.push(16.0);
     }
     let row: f64 = items.iter().sum::<f64>() + 9.0 * (items.len().saturating_sub(1)) as f64;
     let clock = m(&model.clock, &look::digits(12.5 * t.metrics.factor, typeface::WEIGHT_SEMIBOLD, t.text())).ceil();

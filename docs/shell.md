@@ -217,8 +217,9 @@ keys), so the palette learns.
 
 ## Deskbar
 
-At the top right under the bar (C2-Desktop): `chrome`, 232pt, hard shadow,
-collapsible by its header (the `N apps ⌄` control).
+At the top right under the bar (C2-Desktop): `chrome`, 232pt, hard shadow.
+The menu bar's Hide Deskbar control collapses it; the `N apps ⌄` control
+brings it back.
 
 Its height is limited to the space below the menu bar on the owning
 output. Scroll to reach overflowing app groups, notifications and Shelf
