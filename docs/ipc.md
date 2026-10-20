@@ -324,3 +324,25 @@ layer surfaces (a menu of the menu bar shows over the Deskbar and over
 overlay surfaces), newest on top, and take the pointer there first. They
 are constrained to their parent's output by the positioner's constraint
 adjustments, not to the parent's area.
+
+### Demonstrating a group containing different applications
+
+This optional check starts Chrome and Calculator in a private headless
+compositor, groups their windows, clicks between their tabs, and Alt-drags
+the active tab out again. It keeps three screenshots in
+`target/tmp/aizome-shots/`: `heterogeneous-group-calculator`,
+`heterogeneous-group-browser`, and `heterogeneous-group-detached`.
+
+```sh
+AIZOME_LAYOUT_TEST_CHROME="$(command -v google-chrome)" \
+AIZOME_LAYOUT_TEST_CALCULATOR="$(command -v aizome-soroban)" \
+cargo test -p aizome-comp --test layout_desktop chrome_and_calculator_share_a_tab_group_and_tear_apart -- --exact --ignored --nocapture
+```
+
+A background tab can be dragged out without a modifier. Alt-drag detaches
+the active tab; an ordinary drag moves the group. The check uses a fresh
+Chrome profile and isolated display, home and D-Bus addresses.
+
+The captured sequence shows [Calculator active](images/heterogeneous-group-calculator.png),
+[Chrome active](images/heterogeneous-group-browser.png), and
+[the detached windows](images/heterogeneous-group-detached.png).

@@ -7,8 +7,8 @@ mod common;
 use std::path::Path;
 
 use aizome_ipc::{Request, Synthetic};
-use common::*;
 use common::desktop::*;
+use common::*;
 
 #[test]
 #[ignore = "requires AIZOME_LAYOUT_TEST_SHELL and AIZOME_LAYOUT_TEST_CHROME; see docs/ipc.md"]
@@ -91,6 +91,73 @@ fn real_launcher_chrome_and_calculator_keep_the_deskbar_clear() {
     c.settle();
     assert_eq!(c.window("layout-tab").unwrap().geometry, before);
     keep(&c.screenshot(), "layout-desktop-after-toggle");
+    for w in c.windows() {
+        c.ok(Request::Close { id: Some(w.id) });
+    }
+}
+
+/// A repeatable heterogeneous tab-group demo using actual applications,
+/// including switching members and tearing out the active tab with Alt.
+#[test]
+#[ignore = "requires AIZOME_LAYOUT_TEST_CHROME and AIZOME_LAYOUT_TEST_CALCULATOR; see docs/ipc.md"]
+fn chrome_and_calculator_share_a_tab_group_and_tear_apart() {
+    let chrome = std::env::var("AIZOME_LAYOUT_TEST_CHROME").expect("Chrome binary");
+    let calculator = std::env::var("AIZOME_LAYOUT_TEST_CALCULATOR").expect("Calculator binary");
+    let c = Compositor::start(Options { outputs: &["1440x900@1"], ..Default::default() });
+    let profile = format!("--user-data-dir={}/chrome", c.dir.display());
+    let _chrome = program(
+        &c,
+        &chrome,
+        &[
+            &profile,
+            "--ozone-platform=wayland",
+            "--no-first-run",
+            "--no-default-browser-check",
+            "--disable-background-networking",
+            "--disable-background-mode",
+            "--disable-gpu",
+            "about:blank",
+        ],
+        "chrome",
+    );
+    let browser = c.wait_windows("Chrome", |ws| !ws.is_empty())[0].id;
+    let _calculator = program(&c, &calculator, &[], "calculator");
+    let calc = c.wait_window("org.aizome.Soroban");
+    assert_ne!(c.windows().iter().find(|w| w.id == browser).unwrap().app_id, calc.app_id);
+    c.ok(Request::Move { id: Some(browser), x: 140, y: 180 });
+    c.ok(Request::Resize { id: Some(browser), rect: aizome_ipc::Rect::new(140, 180, 900, 560) });
+    c.ok(Request::Stack { a: browser, b: calc.id });
+    c.wait_windows("heterogeneous group", |ws| {
+        ws.len() == 2 && ws.iter().all(|w| w.group.is_some() && w.group_members.len() == 2)
+    });
+    c.settle();
+    keep(&c.screenshot(), "heterogeneous-group-calculator");
+    let geometry = c.window("org.aizome.Soroban").unwrap().geometry;
+    // Switch by clicking the first tab, then use normal focus to return.
+    c.ok(Request::Synthesize {
+        events: vec![
+            Synthetic::PointerMotion { x: (geometry.x + 30) as f64, y: (geometry.y - 12) as f64 },
+            Synthetic::Click { button: "left".into() },
+        ],
+    });
+    c.wait_windows("Chrome's tab selected", |ws| ws.iter().any(|w| w.id == browser && w.group_active && w.focused));
+    c.settle();
+    keep(&c.screenshot(), "heterogeneous-group-browser");
+    // A separate gesture, outside the tab's double-click interval.
+    std::thread::sleep(std::time::Duration::from_millis(450));
+    // Alt-drag the now active first tab out, keeping both clients alive.
+    c.ok(Request::Synthesize {
+        events: vec![
+            Synthetic::Key { key: "alt".into(), pressed: true },
+            Synthetic::PointerButton { button: "left".into(), pressed: true },
+            Synthetic::PointerMotion { x: (geometry.x + 70) as f64, y: (geometry.y + 100) as f64 },
+            Synthetic::PointerButton { button: "left".into(), pressed: false },
+            Synthetic::Key { key: "alt".into(), pressed: false },
+        ],
+    });
+    c.wait_windows("both windows detached", |ws| ws.len() == 2 && ws.iter().all(|w| w.group.is_none()));
+    c.settle();
+    keep(&c.screenshot(), "heterogeneous-group-detached");
     for w in c.windows() {
         c.ok(Request::Close { id: Some(w.id) });
     }
