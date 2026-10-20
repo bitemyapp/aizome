@@ -9,6 +9,7 @@ use std::time::{Duration, Instant};
 use aizome_config::Settings;
 use aizome_ipc::Event;
 use smithay::reexports::calloop::timer::{TimeoutAction, Timer};
+use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 
 use crate::state::State;
 
@@ -66,6 +67,17 @@ impl State {
             if was_off {
                 self.backend.set_power(&mut self.az, true);
             }
+        }
+    }
+
+    /// `surface` no longer holds idleness off: its inhibitor was destroyed,
+    /// or the surface itself was. smithay forgets an inhibitor only when
+    /// its client destroys it, so one whose client died (Keep Awake's
+    /// holder killed, a crashed video player) goes with its surface.
+    pub fn drop_idle_inhibitor(&mut self, surface: &WlSurface) {
+        if self.az.idle_inhibitors.remove(surface) {
+            let any = !self.az.idle_inhibitors.is_empty();
+            self.az.idle_notifier.set_is_inhibited(any);
         }
     }
 

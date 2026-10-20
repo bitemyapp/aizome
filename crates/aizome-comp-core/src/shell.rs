@@ -88,6 +88,11 @@ impl CompositorHandler for State {
         });
     }
 
+    fn destroyed(&mut self, surface: &WlSurface) {
+        // Also when its client goes: an idle inhibitor on it stops counting.
+        self.drop_idle_inhibitor(surface);
+    }
+
     fn commit(&mut self, surface: &WlSurface) {
         let fresh_shm = crate::backend::fresh_shm_buffers(surface);
         // A layer surface taking its buffer down leaves its last frame for
