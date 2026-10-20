@@ -948,10 +948,24 @@ pub fn run(state: &mut State, act: Act, app: Option<String>) -> Result<String, S
             if !matches!(state.backend, crate::backend::Backend::Udev(_)) {
                 return Err("Text consoles are only there on a real display".into());
             }
+            // Once there, nothing of this overlay shows: the way back is
+            // said first, and the second press goes.
             let vt = free_console();
+            let back = current_console().unwrap_or(1);
+            let now = Instant::now();
+            let confirmed =
+                state.az.recovery.confirm.is_some_and(|(a, t)| a == act && now.duration_since(t) < CONFIRM_WITHIN)
+                    || !state.az.recovery.open;
+            if !confirmed {
+                state.az.recovery.confirm = Some((act, now));
+                return Ok(format!(
+                    "Switch to text console {vt}? Press Text Console again\nCtrl+Alt+F{back} comes back to Aizome"
+                ));
+            }
+            state.az.recovery.confirm = None;
             close(state);
             state.backend.change_vt(vt);
-            Ok(format!("Switched to console {vt}; Ctrl+Alt+F{} comes back", current_console().unwrap_or(1)))
+            Ok(format!("Switched to console {vt}; Ctrl+Alt+F{back} comes back"))
         }
     }
 }

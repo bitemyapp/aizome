@@ -61,7 +61,7 @@ icon, name, window count, and
 | Reload Aizome | A | `reload::reload_compositor`: reloads the compositor's logic in place from its saved state, keeping every window (the installed build, even if it's the one running: also the way back from a logic that was set aside); `docs/reload.md` |
 | Lock | L | Asks the shell to lock |
 | Log Out | O, twice | Ends the session (the second press within 4 s confirms) |
-| Text Console | T | Switches to a text console (2–6, not the current one) through the session (libseat); Ctrl+Alt+F1 or F7 comes back |
+| Text Console | T, twice | Switches to a text console (2–6, not the session's own) through the session (libseat). The first press says which console and the way back, Ctrl+Alt+F and the session's console (F2 under GDM, which keeps its login screen on 1); the second, within 4 s, goes |
 
 The arrows and Tab move between the rows and the actions, Return does the
 focused one, and a click on a row selects it (a second click does its
@@ -203,7 +203,8 @@ pointer, or the kernel itself struggling), the kernel's magic SysRq keys
 still work, held as **Alt+SysRq** (Alt+Print) and a letter:
 
 - **R** takes the keyboard back from the compositor (raw mode off), so
-  **Ctrl+Alt+F2** then reaches a text console to log in and look;
+  **Ctrl+Alt+F3** then reaches a text console to log in and look (not
+  F2, which under GDM is the session itself);
 - **F** runs the OOM killer once: the biggest memory hog dies (the
   usual cure for a machine thrashing);
 - **E**, **I**: SIGTERM, then SIGKILL, to every process but init;
