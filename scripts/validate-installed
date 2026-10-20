@@ -75,6 +75,11 @@ export AIZOME_SHELL_SOCKET=$XDG_RUNTIME_DIR/aizome-shell.$name.sock
 c() { "$B/aizomectl" "$@"; }
 shot() { sleep "${2:-1.5}"; c screenshot "$out/$1.png" >/dev/null && echo "shot $1"; }
 win() { c windows | awk -v a="$1" '$2 == a { id = $1 } END { print id }'; }
+# A window's content rectangle in points: x y width height.
+geom() {
+  c windows | awk -v a="$1" '$2 == a && match($0, /-?[0-9]+,-?[0-9]+ [0-9]+x[0-9]+/) {
+    split(substr($0, RSTART, RLENGTH), p, /[, x]/); g = p[1] " " p[2] " " p[3] " " p[4] } END { print g }'
+}
 wait_win() { for _ in $(seq 1 80); do [ -n "$(win "$1")" ] && return 0; sleep 0.25; done; echo "MISSING $1"; return 1; }
 
 for _ in $(seq 1 80); do [ -S "$AIZOME_SHELL_SOCKET" ] && break; sleep 0.25; done
@@ -98,6 +103,18 @@ c focus "$(win foot)"; shot 02-tab-switched 1
 c focus "$(win org.aizome.Sumi)"; sleep 0.5
 c input chord super+space; sleep 1; c input type find; shot 03-palette 1.5
 c input key Escape; sleep 0.5
+
+# NeXT's whole menu at the pointer (❖-right-click over Sumi), and the
+# marking menu (a right press held on Sumi's tab).
+read -r sx sy sw sh <<<"$(geom org.aizome.Sumi)"
+c input motion $((sx + sw / 2)) $((sy + sh / 3))
+c input key super down; c input click right; c input key super up
+shot 03b-menu-at-pointer 1
+c input key escape; sleep 0.5
+c input motion $((sx + 40)) $((sy - 10))
+c input button right down; sleep 0.8
+shot 03c-marking-menu 0.3
+c input key escape; sleep 0.2; c input button right up; sleep 0.5
 
 # The Desks overview and the switcher.
 c overview on; shot 04-overview 1.5; c overview off; sleep 0.5
