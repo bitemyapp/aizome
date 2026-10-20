@@ -4,8 +4,8 @@
 
 #![allow(dead_code)]
 
-pub mod layer;
 pub mod desktop;
+pub mod layer;
 
 use std::io::Write;
 use std::os::fd::{AsFd, FromRawFd, OwnedFd};
@@ -21,7 +21,8 @@ use std::time::{Duration, Instant};
 use aizome_ipc::{Client, Request, Response, WindowInfo};
 use wayland_client::globals::{GlobalListContents, registry_queue_init};
 use wayland_client::protocol::{
-    wl_buffer, wl_compositor, wl_keyboard, wl_registry, wl_seat, wl_shm, wl_shm_pool, wl_surface,
+    wl_buffer, wl_compositor, wl_keyboard, wl_output, wl_registry, wl_seat, wl_shm, wl_shm_pool,
+    wl_surface,
 };
 use wayland_client::{Connection, Dispatch, EventQueue, QueueHandle, WEnum};
 use wayland_protocols::xdg::decoration::zv1::client::{zxdg_decoration_manager_v1, zxdg_toplevel_decoration_v1};
@@ -305,6 +306,11 @@ pub struct Spec {
     pub min_size: Option<(i32, i32)>,
     /// Delay each configure response to exercise commits of obsolete sizes.
     pub configure_delay: Duration,
+    /// Request fullscreen before the first surface commit, optionally on an output.
+    pub fullscreen: bool,
+    pub fullscreen_output: Option<usize>,
+    /// Hold the first buffer until `Cmd::Map`, even after acknowledging configure.
+    pub defer_mapping: bool,
 }
 
 impl Spec {
@@ -317,7 +323,19 @@ impl Spec {
             ssd: true,
             min_size: None,
             configure_delay: Duration::ZERO,
+            fullscreen: false,
+            fullscreen_output: None,
+            defer_mapping: false,
         }
+    }
+    pub fn defer_mapping(mut self) -> Spec {
+        self.defer_mapping = true;
+        self
+    }
+    pub fn fullscreen(mut self, output: Option<usize>) -> Spec {
+        self.fullscreen = true;
+        self.fullscreen_output = output;
+        self
     }
     pub fn min_size(mut self, w: i32, h: i32) -> Spec {
         self.min_size = Some((w, h));
@@ -360,8 +378,10 @@ pub struct Seen {
 }
 
 pub enum Cmd {
+    Map,
     Title(String),
     Color(u32),
+    Fullscreen(bool, Option<usize>),
     Quit,
 }
 
@@ -435,6 +455,12 @@ fn run_client(stream: UnixStream, spec: Spec, rx: Receiver<Cmd>, seen: Arc<Mutex
     let conn = Connection::from_socket(stream).expect("wayland connection");
     let (globals, mut queue): (_, EventQueue<App>) = registry_queue_init(&conn).expect("registry");
     let qh = queue.handle();
+    let outputs: Vec<wl_output::WlOutput> = globals.contents().with_list(|list| {
+        list.iter()
+            .filter(|g| g.interface == "wl_output")
+            .map(|g| globals.registry().bind(g.name, g.version.min(4), &qh, ()))
+            .collect()
+    });
     let compositor: wl_compositor::WlCompositor = globals.bind(&qh, 4..=6, ()).expect("wl_compositor");
     let shm: wl_shm::WlShm = globals.bind(&qh, 1..=1, ()).expect("wl_shm");
     let wm: xdg_wm_base::XdgWmBase = globals.bind(&qh, 1..=6, ()).expect("xdg_wm_base");
@@ -469,6 +495,9 @@ fn run_client(stream: UnixStream, spec: Spec, rx: Receiver<Cmd>, seen: Arc<Mutex
         let td = d.get_toplevel_decoration(&tl, &qh, ());
         td.set_mode(zxdg_toplevel_decoration_v1::Mode::ServerSide);
     }
+    if spec.fullscreen {
+        tl.set_fullscreen(spec.fullscreen_output.and_then(|i| outputs.get(i)));
+    }
     surface.commit();
     app.surface = Some(surface);
     app.xdg_surface = Some(xs);
@@ -477,12 +506,21 @@ fn run_client(stream: UnixStream, spec: Spec, rx: Receiver<Cmd>, seen: Arc<Mutex
     while !app.quit {
         for cmd in rx.try_iter() {
             match cmd {
+                Cmd::Map => app.spec.defer_mapping = false,
                 Cmd::Title(t) => {
                     app.toplevel.as_ref().unwrap().set_title(t);
                 }
                 Cmd::Color(c) => {
                     app.spec.color = c;
                     app.needs_draw = true;
+                }
+                Cmd::Fullscreen(on, output) => {
+                    let tl = app.toplevel.as_ref().unwrap();
+                    if on {
+                        tl.set_fullscreen(output.and_then(|i| outputs.get(i)));
+                    } else {
+                        tl.unset_fullscreen();
+                    }
                 }
                 Cmd::Quit => app.quit = true,
             }
@@ -522,6 +560,9 @@ fn run_client(stream: UnixStream, spec: Spec, rx: Receiver<Cmd>, seen: Arc<Mutex
 
 impl App {
     fn draw(&mut self, qh: &QueueHandle<App>) {
+        if self.spec.defer_mapping {
+            return;
+        }
         self.needs_draw = false;
         let (w, h) = self.size;
         let stride = w * 4;
@@ -570,6 +611,7 @@ macro_rules! ignore {
 }
 ignore!(
     wl_compositor::WlCompositor,
+    wl_output::WlOutput,
     wl_shm::WlShm,
     wl_shm_pool::WlShmPool,
     wl_surface::WlSurface,
@@ -733,7 +775,6 @@ impl Dispatch<zxdg_toplevel_decoration_v1::ZxdgToplevelDecorationV1, ()> for App
 
 // ---- a session-lock client ---------------------------------------------------
 
-use wayland_client::protocol::wl_output;
 use wayland_protocols::ext::session_lock::v1::client::{
     ext_session_lock_manager_v1, ext_session_lock_surface_v1, ext_session_lock_v1,
 };
