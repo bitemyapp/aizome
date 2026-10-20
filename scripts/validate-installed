@@ -12,12 +12,15 @@
 # OUT gets the screenshots, the windows each step had, the compositor's log
 # and its frame times (stats.txt). See docs/checklist.md.
 set -uo pipefail
+case "${DBUS_SESSION_BUS_ADDRESS:-}" in
+  ""|*"/run/user/"*) echo "run it under a session bus of its own: dbus-run-session -- $0 $*" >&2; exit 2 ;;
+esac
 out=${1:?usage: validate-installed OUT [gles|pixman] [BIN]}
 renderer=${2:-gles}
 mkdir -p "$out"
 B=${3:-/run/current-system/sw/bin}
 unset WAYLAND_DISPLAY DISPLAY WAYLAND_SOCKET AIZOME_SOCKET AIZOME_SHELL_SOCKET AIZOME_SESSION \
-  XDG_SESSION_ID XDG_CURRENT_DESKTOP DBUS_SESSION_BUS_ADDRESS
+  XDG_SESSION_ID XDG_CURRENT_DESKTOP
 scratch=$(mktemp -d -t aizome-validate.XXXXXX)
 export XDG_RUNTIME_DIR=$scratch/run HOME=$scratch/home
 mkdir -p "$XDG_RUNTIME_DIR" "$HOME"/{Documents,Notes,Desktop,Pictures} && chmod 700 "$XDG_RUNTIME_DIR"
@@ -29,11 +32,43 @@ cp "$(dirname "$0")/../README.md" "$HOME/Documents/README.md" 2>/dev/null || pri
 printf '# Groceries\n\n- rice\n- miso\n- nori\n' >"$HOME/Notes/Groceries.md"
 [ "$renderer" = pixman ] && export AIZOME_RENDERER=pixman
 
+# Sound from a PipeWire of its own, with a null sink as its default output.
+# Its WirePlumber has every hardware monitor off (ALSA, Bluetooth, cameras),
+# so nothing opens a real device; the systray's sound widget has an output
+# to show.
+sound=()
+if [ -x "$B/pipewire" ] && [ -x "$B/pipewire-pulse" ] && [ -x "$B/wireplumber" ]; then
+  mkdir -p "$XDG_CONFIG_HOME/wireplumber/wireplumber.conf.d"
+  cat >"$XDG_CONFIG_HOME/wireplumber/wireplumber.conf.d/90-no-hardware.conf" <<'CONF'
+wireplumber.profiles = {
+  main = {
+    monitor.alsa = disabled
+    monitor.alsa-midi = disabled
+    monitor.bluez = disabled
+    monitor.bluez-midi = disabled
+    monitor.v4l2 = disabled
+    monitor.libcamera = disabled
+    support.reserve-device = disabled
+    support.logind = disabled
+  }
+}
+CONF
+  "$B/pipewire" >"$out/pipewire.log" 2>&1 & sound+=($!)
+  for _ in $(seq 1 50); do [ -S "$XDG_RUNTIME_DIR/pipewire-0" ] && break; sleep 0.1; done
+  "$B/pw-cli" create-node adapter '{ factory.name=support.null-audio-sink node.name=validate-speakers
+    node.description="Validation Speakers" media.class=Audio/Sink object.linger=true
+    audio.position=[FL FR] }' >/dev/null 2>&1
+  "$B/wireplumber" >>"$out/pipewire.log" 2>&1 & sound+=($!)
+  "$B/pipewire-pulse" >>"$out/pipewire.log" 2>&1 & sound+=($!)
+  for _ in $(seq 1 50); do [ -S "$XDG_RUNTIME_DIR/pulse/native" ] && break; sleep 0.1; done
+  sleep 1
+fi
+
 name=aizome-validate-$$
 "$B/aizome" --backend headless --headless-output 2880x1800@2 --socket "$name" --no-session --no-xwayland \
   >"$out/compositor.log" 2>&1 &
 comp=$!
-trap 'kill $comp 2>/dev/null; wait $comp 2>/dev/null; rm -rf "$scratch"' EXIT
+trap 'kill $comp "${sound[@]}" 2>/dev/null; wait $comp 2>/dev/null; rm -rf "$scratch"' EXIT
 for _ in $(seq 1 100); do [ -S "$XDG_RUNTIME_DIR/aizome.$name.sock" ] && break; sleep 0.1; done
 export WAYLAND_DISPLAY=$name AIZOME_SOCKET=$XDG_RUNTIME_DIR/aizome.$name.sock
 export AIZOME_SHELL_SOCKET=$XDG_RUNTIME_DIR/aizome-shell.$name.sock

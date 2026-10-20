@@ -243,6 +243,11 @@ It checked:
   Tenki, Fusen, Kura, Tansu, Settei, Yukimi, Myaku, Shashin, Annai, with
   Hako and Sumi). Yukimi reads the laptop's own generations.
 - **Both renderers:** the same scene draws under GLES and under pixman.
+- **The systray:** every widget the brief names (network, sound,
+  Bluetooth, display, battery and power) next to the CPU and memory
+  meters and the clock, as on the desktop board. Sound comes from a
+  PipeWire of the session's own: a null sink, with WirePlumber's hardware
+  monitors off.
 
 Compositor frame times at 2880 × 1800, scale 2:
 
