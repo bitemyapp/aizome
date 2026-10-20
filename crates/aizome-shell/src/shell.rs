@@ -1973,6 +1973,37 @@ mod tests {
     }
 
     #[test]
+    fn notification_without_a_window_launches_only_a_known_desktop_identity() {
+        use crate::notifications::{cards::CardMsg, store::Incoming};
+        for (name, hint, expected_app) in [
+            ("Editor", Some("org.example.Editor.desktop"), Some("org.example.Editor")),
+            ("org.other.Editor", None, None),
+            ("unknown-program --flag", None, None),
+            ("org.example.Editor", Some("org.other.Editor.desktop"), None),
+        ] {
+            let mut h = aizome_kit::testing::Harness::new(Shell::new(Options::default()));
+            let (ipc, requests) = Ipc::recording();
+            let s = h.program_mut();
+            s.ipc = ipc;
+            s.apps = Some(crate::apps::test_index(&[("org.example.Editor", "")]));
+            // Activation requests are recorded; no token is delivered, so
+            // the harness cannot start an actual application.
+            s.opts.live = true;
+            let incoming =
+                Incoming { app_name: name.into(), desktop_entry: hint.map(str::to_owned), ..Default::default() };
+            let filed = s.file_under(&incoming);
+            s.notes.post_as(7, incoming, filed, false, 0);
+            h.send(Msg::Card(CardMsg::Open(7)));
+            assert!(requests.try_recv().is_err(), "there is no running window to focus");
+            let launches: Vec<_> = h.program().launches.values().map(|(launch, _)| launch.clone()).collect();
+            let expected: Vec<_> =
+                expected_app.map(|app_id| Launch::App { app_id: app_id.into(), targets: vec![] }).into_iter().collect();
+            assert_eq!(launches, expected, "sender {name:?}, desktop hint {hint:?}");
+            assert!(h.program().notes.get(7).is_none());
+        }
+    }
+
+    #[test]
     fn the_compositor_says_whether_the_session_is_real() {
         // aizome.service's compositor, on a seat.
         assert!(is_real_session(Some("1"), Some("Aizome")));

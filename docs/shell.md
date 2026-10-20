@@ -252,6 +252,14 @@ the clock panel, or a schedule in settings) files them without the line.
 Screenshots post a notification with the image's thumbnail and "Show in
 Hako".
 
+Opening a notification raises its application's most recent window,
+including a minimised window or one on another Desk, and still invokes
+the notification's default action when it has one. With no default action
+and no running window, the shell can launch a known desktop entry. App
+identity comes from desktop IDs, declared window classes, the sender's
+process, or an unambiguous declared name; similar-looking names alone do
+not select another application.
+
 ## Screen recording
 
 As Tatami does it (`desktop/tatami` in Sekka): a display or an area, with
