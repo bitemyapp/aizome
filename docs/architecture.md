@@ -102,7 +102,7 @@ apps, as ⌘ does on a Mac. The system takes only:
 | ⌃❖Q | Lock |
 | ⌃⌥Del | Recovery: force quit stuck apps, reset input, restart the shell (`docs/recovery.md`) |
 | ⌃❖R | Reload what changed: the compositor's logic, the shell, the settings (`docs/reload.md`) |
-| ❖⇧3, ❖⇧4, ❖⇧5, Print | Screenshot: screen, area, window/tool (❖⇧5: the Capture menu, recordings too) |
+| ❖⇧3; ❖⇧4 or Print; ❖⇧5 | Screenshot: screen; area; window/tool (❖⇧5: the Capture menu, recordings too) |
 | ⌥Print | Record an area or a display; again, stop |
 | ❖-right-click | The focused app's whole menu at the pointer (NeXT) |
 | ⌃❖-drag, ⌃❖-right-drag | Move, resize |

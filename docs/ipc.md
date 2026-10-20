@@ -233,8 +233,8 @@ Handled by the compositor:
 | ⌥❖S | `stack-with-behind` |
 | ⌃❖F | `fullscreen` |
 | ❖Return | `terminal` (`keys.terminal`, default `foot`, in the Desk's folder) |
-| ❖⇧3, Print | `screenshot-screen` |
-| ❖⇧4 | `screenshot-area` (a rubber band; Space picks a window; Esc cancels) |
+| ❖⇧3 | `screenshot-screen` |
+| ❖⇧4, Print | `screenshot-area` (a rubber band; Space picks a window; Esc cancels) |
 | XF86Switch_VT_N | `vt-N` |
 | ⌃❖R | `reload`: what changed (the core's own chord, so it works with the logic set aside; `reload` can be bound to another) |
 

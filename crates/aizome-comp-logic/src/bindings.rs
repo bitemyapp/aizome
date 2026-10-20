@@ -230,7 +230,7 @@ pub fn defaults() -> Vec<(&'static str, String)> {
         ("Super+Shift+3", "screenshot-screen".into()),
         ("Super+Shift+4", "screenshot-area".into()),
         ("Super+Shift+5", "screenshot-tool".into()),
-        ("Print", "screenshot-screen".into()),
+        ("Print", "screenshot-area".into()),
         // Tatami's: start a recording (pick an area, or click for a display), or
         // stop the one going.
         ("Alt+Print", "record".into()),
@@ -363,7 +363,7 @@ mod tests {
         let alt = Mods { alt: true, ..Default::default() };
         let print = [Keysym::new(keysyms::KEY_Print), Keysym::new(keysyms::KEY_Sys_Req)];
         assert_eq!(b.find(alt, &print), Some(&Action::Shell("record".into())));
-        assert_eq!(b.find(Mods::default(), &print[..1]), Some(&Action::ScreenshotScreen));
+        assert_eq!(b.find(Mods::default(), &print[..1]), Some(&Action::ScreenshotArea));
         assert_eq!(Action::parse("stop-recording"), Some(Action::Shell("stop-recording".into())));
     }
 }

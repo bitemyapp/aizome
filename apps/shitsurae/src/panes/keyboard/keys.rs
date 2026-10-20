@@ -165,7 +165,7 @@ pub fn defaults() -> Vec<(String, String)> {
         ("Super+Shift+3", "screenshot-screen"),
         ("Super+Shift+4", "screenshot-area"),
         ("Super+Shift+5", "screenshot-tool"),
-        ("Print", "screenshot-screen"),
+        ("Print", "screenshot-area"),
         ("Alt+Print", "record"),
         ("XF86AudioRaiseVolume", "volume-up"),
         ("XF86AudioLowerVolume", "volume-down"),
