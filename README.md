@@ -83,6 +83,8 @@ aizomectl screenshot desktop.png
 - [docs/kit.md](docs/kit.md): writing apps with the kit.
 - [docs/ipc.md](docs/ipc.md): the compositor's IPC.
 - [docs/performance.md](docs/performance.md): the frame budget and its measurements.
+- [docs/profiling.md](docs/profiling.md): process memory, heap traces and optional debug symbols.
+- [docs/memory.md](docs/memory.md): measured memory interventions and their tradeoffs.
 
 ## Licence
 

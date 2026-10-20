@@ -110,6 +110,19 @@ export NIX_DEBUG_INFO_DIRS="$AIZOME_DEBUG_DIRS"
 gdb ./result/bin/aizome-soroban
 ```
 
+The debug output also retains a `.source` link to the exact Aizome and
+Sidestep source used for that build. GDB reports the compilation directory
+as `/build/aizome-source/aizome`; substitute its parent to open the retained
+source, even without a checkout:
+
+```sh
+symbol_file=$(readlink -f result-debug/lib/debug/aizome-soroban)
+source_tree=$(readlink -f "${symbol_file%.debug}.source")
+gdb ./result/bin/aizome-soroban \
+  -ex "set substitute-path /build/aizome-source $source_tree" \
+  -ex 'list aizome_soroban::main'
+```
+
 The workspace's release profiles emit `line-tables-only` DWARF, enough for
 source locations and stack traces; split files also retain ELF symbols.
 They do not provide full local-variable/type inspection. Nix's split-debug
@@ -117,11 +130,15 @@ hook normally injects `-g` into Rust outside Cargo; the package removes
 that injected override so the profile and a matching `aizome-dev` build
 retain the same settings. Cargo stripping is disabled until Nix extracts
 the debug output. Nix still strips the installed runtime binaries.
+The toolchain's prebuilt `libstd` has no build ID or DWARF to extract, so
+this output cannot add source lines for that library.
 
 DWARF debug sections are normally **not mapped into a running process**.
-Splitting them saves installed disk/closure size and makes symbols an
-optional download; it is not a live-heap reduction. The profiler/debugger
-uses memory when it reads them. Unwind tables such as `.eh_frame` are
+Splitting them keeps symbols out of the runtime closure and makes them an
+optional download; it is not a live-heap reduction. The previous Nix package
+already stripped its DWARF; the new output preserves those matching symbols
+for optional use. The profiler/debugger uses memory when it reads them.
+Unwind tables such as `.eh_frame` are
 different: unwinding can need them at runtime, and stripping debug data
 does not remove them. Do not disable unwinding for the compositor's
 reloadable logic: its panic recovery uses it.
