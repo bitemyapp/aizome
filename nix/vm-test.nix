@@ -381,6 +381,15 @@ pkgs.testers.runNixOSTest {
     with subtest("frame times stay inside the budget"):
         print(as_alice("aizomectl stats"))
 
+    with subtest("without a usable GPU the session falls back to software by itself"):
+        # virtio-gpu without 3D: the renderer setting is Automatic, and the
+        # real session (udev, KMS) chose pixman on its own.
+        stats = ipc("stats")["stats"]
+        assert stats["backend"] == "udev", stats
+        assert stats["renderer_setting"] == "auto", stats
+        assert stats["renderer"] == "pixman", stats
+        assert all(o["frames_rendered"] > 0 for o in stats["outputs"]), stats
+
     with subtest("a stalled compositor is restarted, and says so"):
         def main_pid():
             return machine.succeed(
