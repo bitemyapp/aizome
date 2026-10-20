@@ -18,10 +18,29 @@ case "$output/" in
     exit 2 ;;
 esac
 [ ! -e "$output" ] || { echo "Output already exists: $output" >&2; exit 2; }
+warm_target=
+if [ -n "${AIZOME_ALLOCATOR_WARM_TARGET:-}" ]; then
+  # Resolve relative to the caller before changing directory. cp -a must
+  # copy a directory, not preserve a link back into the original cache.
+  warm_target=$(realpath -- "$AIZOME_ALLOCATOR_WARM_TARGET")
+  [ -d "$warm_target" ] || { echo "Warm target is not a directory: $warm_target" >&2; exit 2; }
+  case "$output/" in
+    "$warm_target/"*)
+      echo "Put the experiment outside the warm target directory" >&2
+      exit 2 ;;
+  esac
+fi
 command -v cargo >/dev/null || { echo "Run inside nix develop" >&2; exit 1; }
 mkdir -p "$output/source" "$output/sidestep" "$output/glibc" "$output/jemalloc/lib"
 # Include uncommitted fixes, and keep the original snapshot for comparison.
-git -C "$repo" ls-files -z --cached --others --exclude-standard > "$output/source-files"
+git -C "$repo" ls-files -z --cached --others --exclude-standard |
+  while IFS= read -r -d '' source_file; do
+    # The index still lists unstaged deletions. A dangling symlink, however,
+    # is an existing source entry and must remain in the snapshot.
+    if [ -e "$repo/$source_file" ] || [ -L "$repo/$source_file" ]; then
+      printf '%s\0' "$source_file"
+    fi
+  done > "$output/source-files"
 tar -C "$repo" --exclude='__pycache__' --null --verbatim-files-from \
   -T "$output/source-files" -cf "$output/source-before-allocator.tar"
 tar -xf "$output/source-before-allocator.tar" -C "$output/source"
@@ -39,8 +58,8 @@ cd "$output/source"
 
 export CARGO_TARGET_DIR="$output/target"
 # Optional reuse of an idle target; Cargo still checks its fingerprints.
-if [ -n "${AIZOME_ALLOCATOR_WARM_TARGET:-}" ]; then
-  cp -a --reflink=auto "$AIZOME_ALLOCATOR_WARM_TARGET" "$CARGO_TARGET_DIR"
+if [ -n "$warm_target" ]; then
+  cp -a --reflink=auto "$warm_target" "$CARGO_TARGET_DIR"
 fi
 packages=(aizome-shell aizome-soroban aizome-sumi aizome-settei)
 args=()
