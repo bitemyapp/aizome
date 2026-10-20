@@ -194,12 +194,12 @@ pkgs.testers.runNixOSTest {
         shows("Session: Sway")
         choose("xterm")
         machine.send_chars("bobs-password\n")
-        machine.wait_until_succeeds("pgrep -u bob -x xterm", timeout=120)
+        machine.wait_until_succeeds("pgrep -u bob -f '/bin/xterm'", timeout=120)
         machine.wait_until_succeeds("pgrep -f '/bin/X|Xorg'", timeout=60)
         time.sleep(3)
         machine.screenshot("06-bob-in-x11")
         machine.succeed("loginctl terminate-user bob")
-        machine.wait_until_fails("pgrep -u bob -x xterm", timeout=60)
+        machine.wait_until_fails("pgrep -u bob -f '/bin/xterm'", timeout=60)
         machine.succeed(f"rm -f {INSPECT}/*.json")
 
     with subtest("the power menu opens (Sleep, Restart, Shut Down)"):
