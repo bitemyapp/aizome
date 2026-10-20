@@ -315,7 +315,11 @@ impl Greeter {
 
     fn session_menu(&mut self, cx: &mut Cx<Msg>) {
         let Some(win) = self.main_window() else { return };
-        let Some(anchor) = cx.element_rect(win, "greeter-session") else { return };
+        let Some(r) = cx.element_rect(win, "greeter-session") else { return };
+        // Its names under the button's, as a pop-up button's menu: the
+        // menu's check-mark column (28.5pt to its text) less the button's
+        // own 8pt.
+        let anchor = r - Vec2::new(MENU_TEXT_INSET - 8.0, 0.0);
         let current = self.session().map(|s| s.id.clone());
         let menu =
             Menu::new("Sessions").items(self.sessions.iter().enumerate().map(|(i, s)| {
@@ -618,6 +622,9 @@ impl Program for Greeter {
 fn hostname() -> String {
     std::fs::read_to_string("/proc/sys/kernel/hostname").map(|s| s.trim().to_owned()).unwrap_or_default()
 }
+
+/// Where a kit menu's item text begins, from its left edge.
+const MENU_TEXT_INSET: f64 = 28.5;
 
 /// The field's sideways offset at a step of the shake (the lock screen's).
 pub fn shake_offset(step: u32) -> f64 {

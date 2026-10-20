@@ -249,29 +249,31 @@ fn password(g: &Greeter, size: Size, typed: bool) -> (Element<Msg>, f64) {
     let field_row =
         aizome_kit::container(boxed).padding([0.0, 0.0, 0.0, ((size.width - FIELD_W) / 2.0 + off).max(0.0)]);
     let several = g.sessions.len() > 1;
-    let chooser = drawn(FIELD_W, LINE_H, (session.clone(), several), move |cx| {
+    // As wide as the name (and its chevron), centred: the menu hangs from it.
+    let label = session.clone();
+    let chooser = drawn(0.0, LINE_H, (session.clone(), several), move |cx| {
         let b = cx.bounds();
         let s = look::ui(13.0, typeface::WEIGHT_REGULAR, color(NIGHT.text2));
-        let w = cx.layout_text(&session, &s, None).size().width;
-        let total = if several { w + 6.0 + 12.0 } else { w };
-        let x = ((b.width() - total) / 2.0).round();
         if several && cx.is_hovered() {
-            cx.canvas.fill_rect(Rect::new(x - 8.0, 6.0, x + total + 8.0, 28.0), color(Rgba::hexa(0xc0caf5, 0.10)));
+            cx.canvas.fill_rect(Rect::new(0.0, 4.0, b.x1, 30.0), color(Rgba::hexa(0xc0caf5, 0.10)));
         }
-        cx.draw_text_in(&session, &s, Rect::new(x, 6.0, x + w + 1.0, 28.0), Align::Start);
+        let w = cx.draw_text_in(&session, &s, Rect::new(8.0, 6.0, b.x1, 28.0), Align::Start);
         if several {
-            Icon::ChevronDown.draw(cx.canvas, Point::new(x + w + 6.0, 11.0), 12.0, color(NIGHT.text3));
+            Icon::ChevronDown.draw(cx.canvas, Point::new(8.0 + w + 6.0, 11.0), 12.0, color(NIGHT.text3));
         }
+    })
+    .fit(move |cx| {
+        let s = look::ui(13.0, typeface::WEIGHT_REGULAR, color(NIGHT.text2));
+        let w = cx.measure(&label, &s).width;
+        (8.0 + w + if several { 6.0 + 12.0 } else { 0.0 } + 8.0).ceil()
     })
     .hoverable()
     .text(g.session().map(|s| format!("Session: {}", s.name)).unwrap_or_default(), SemanticRole::Button);
     let chooser = if several { chooser.on_click(Msg::SessionMenu) } else { chooser };
-    let chooser = aizome_kit::container(Element::from(chooser).id("greeter-session")).padding([
-        4.0,
-        0.0,
-        0.0,
-        ((size.width - FIELD_W) / 2.0).max(0.0),
-    ]);
+    let chooser = aizome_kit::container(Element::from(chooser).id("greeter-session"))
+        .width(size.width)
+        .align_x(Align::Center)
+        .padding([4.0, 0.0, 0.0, 0.0]);
     let mut parts: Vec<Element<Msg>> = vec![who.into(), field_row.into(), chooser.into(), message(g, size)];
     let mut h = WHO_H + FIELD_H + 4.0 + LINE_H + LINE_H;
     let others = g.cfg.user_list && g.users.len() > 1 && !typed;
