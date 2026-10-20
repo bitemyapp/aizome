@@ -71,6 +71,9 @@
           version = "0.1.0-${self.shortRev or self.dirtyShortRev or "dirty"}";
           rev = self.rev or self.dirtyRev or null;
         };
+        # Symbols for exactly the same binaries as .#aizome, without
+        # installing them with every desktop session.
+        aizome-debug = aizome.debug;
         archivo = pkgs.callPackage ./nix/fonts.nix { };
         # The session's fonts (Archivo, and nixpkgs' IBM Plex Mono and Noto
         # Sans Symbols 2) as files in one folder, for $AIZOME_FONT_DIR
@@ -94,7 +97,7 @@
         greeter = import ./nix/vm-greeter-test.nix { inherit pkgs self; };
       });
 
-      devShells = forAll (pkgs: {
+      devShells = forAll (pkgs: rec {
         default = pkgs.mkShell {
           nativeBuildInputs = with pkgs; [
             rustc
@@ -114,6 +117,11 @@
           # (docs/reload.md); the wrapper adds it for that crate alone.
           RUSTC_WRAPPER = "${./scripts/rustc-wrapper}";
         };
+        # Profilers are opt-in: the desktop package stays small, and this
+        # shell does not rebuild Aizome just to install analysis tools.
+        profiling = default.overrideAttrs (old: {
+          nativeBuildInputs = old.nativeBuildInputs ++ (with pkgs; [ heaptrack gdb binutils python3 ]);
+        });
       });
     };
 }
