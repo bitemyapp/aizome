@@ -45,12 +45,12 @@ const PANES: [(Icon, &str); 6] = [
 impl Program for Settings {
     type Msg = Msg;
     fn info(&self) -> AppInfo {
-        AppInfo::new("org.aizome.Shitsurae", "Shitsurae", "Settings")
+        AppInfo::new("org.aizome.Settei", "Settei", "Settings")
     }
     fn launched(&mut self, cx: &mut Cx<Msg>) {
         self.brightness = 0.7;
         self.wifi = true;
-        cx.open_window(WindowSpec::new("Shitsurae").size(720.0, 460.0));
+        cx.open_window(WindowSpec::new("Settei").size(720.0, 460.0));
     }
     fn update(&mut self, msg: Msg, _cx: &mut Cx<Msg>) {
         match msg {

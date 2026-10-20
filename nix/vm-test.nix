@@ -132,7 +132,7 @@ pkgs.testers.runNixOSTest {
 
     with subtest("every app is installed: its program, desktop entry and icon"):
         sw = "/run/current-system/sw"
-        apps = ["Shitsurae", "Yukimi", "Hako", "Sumi", "Fusen", "Koyomi", "Tokei",
+        apps = ["Settei", "Yukimi", "Hako", "Sumi", "Fusen", "Koyomi", "Tokei",
                 "Soroban", "Tenki", "Tansu", "Kura", "Myaku", "Shashin", "Annai"]
         for app in apps:
             entry = f"{sw}/share/applications/org.aizome.{app}.desktop"
@@ -147,7 +147,7 @@ pkgs.testers.runNixOSTest {
         machine.fail("grep -Rl @bindir@ /etc/systemd/user/")
 
     with subtest("Aizome's apps open"):
-        for app in ["aizome-shitsurae", "aizome-soroban", "aizome-hako"]:
+        for app in ["aizome-settei", "aizome-soroban", "aizome-hako"]:
             machine.succeed(f"test -x /run/current-system/sw/bin/{app}")
             as_alice(f"aizomectl spawn {app}")
         machine.sleep(5)

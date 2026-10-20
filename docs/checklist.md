@@ -28,8 +28,8 @@ tests, which were run after each fix.
 | Stacked tabs side by side, one window showing; click a tab to switch | done | live (Tokei/Soroban, foot/Hako) | **Fixed** (`9a2bc77`): a fixed-size window (Soroban) stacked with a larger one left a hole onto the desktop; the frame now fills under the client |
 | Unstack by dragging a tab out | done | live | |
 | Double-click a tab, or the zoom box: fill | done | live | **Fixed** (`4b3fd67`): fill and split ran under the Deskbar, hiding windows' right edges |
-| Close box | done | live (Shitsurae) | |
-| Resize by the edges | done | live (right and bottom edges, Shitsurae) | |
+| Close box | done | live (Settei) | |
+| Resize by the edges | done | live (right and bottom edges, Settei) | |
 | ⌃❖-drag moves, ⌃❖-right-drag resizes | done | live | |
 | ❖H hide, ❖M minimise | done | live, Deskbar shows "hidden" | |
 
@@ -92,7 +92,7 @@ tests, which were run after each fix.
 | ❖Space; query row with "in ‹App› · ‹title›" | done | live, `03` | |
 | Commands of the focused app with paths and keycaps | done | live | |
 | Shortcut coach after three runs | done | live, `03` | |
-| Windows, Files, Apps, Settings, Actions scopes; Tab cycles | done | live (opened Shashin from Windows; "caps lock" opened Shitsurae's Keyboard; "night" switched theme) | |
+| Windows, Files, Apps, Settings, Actions scopes; Tab cycles | done | live (opened Shashin from Windows; "caps lock" opened Settei's Keyboard; "night" switched theme) | |
 | Arithmetic: "= result" | done | live (`12*(3+4)/2` = 42) | |
 | ❖K actions | done | live (a file's actions) | |
 | Matched characters in blue, underlined; selected row with the amber rail | done | live | |
@@ -144,7 +144,7 @@ tests, which were run after each fix.
 | Effects tiers Full, Lean, Austere | done | live: switched in Settings, shadows go in Austere; Full examined over the busiest parts of both wallpapers (menus, a systray panel, the palette, the Deskbar, the Toolchest), `13` | **Fixed** (`992e3dc` in the Sidestep fork): see-through windows had buffers without alpha, so Full's frost was opaque on screen (only the test composites showed it) and menus' shadow corners were black. **Tuned** (`d488677`): faces 90% opaque in Night, 94% in Day, the grain at device pixels; text stays legible over the city lights (primary text 5:1 or better over a white light, `text3` 3:1). There's no blur, so text under a frosted face shows as a faint ghost |
 | Shell restart keeps apps working | done | live (killed the shell) | **Fixed** (`4b8f943`): apps lost their keyboard focus when the shell came back |
 
-## Settings (Shitsurae)
+## Settings (Settei)
 
 | Element | Status | How | Notes |
 |---|---|---|---|
@@ -158,7 +158,7 @@ All fourteen opened from the session and were looked at:
 
 | App | Status | Notes |
 |---|---|---|
-| Shitsurae (Settings) | done | `06` |
+| Settei (Settings) | done | `06` |
 | Yukimi (Software) | done | `08`, this machine's configuration |
 | Hako (Files) | done | Miller columns, sidebar, drag out to the Shelf |
 | Sumi (Text Editor) | done | Markdown styling, ❖N/❖W/❖Z. **Fixed** (`7744b6e`): File ▸ New's window didn't take the keys |

@@ -20,7 +20,7 @@ boards' exact CSS. This document is the contract between the parts.
 | Kit | `crates/aizome-kit` | — | Widget kit on sidestep-ui in Aizome's look: layout, controls, lists, text fields, menus (published to the global menu bar), sidebars, sheets, icons |
 | System | `crates/aizome-sys` | — | System services over D-Bus and the kernel: NetworkManager, BlueZ, PipeWire volume, UPower, brightness, power profiles, timedate/locale/hostname, AccountsService, CUPS, logind, MPRIS, disks (UDisks2) |
 | Search | `crates/aizome-search` | — | Fuzzy matching and the file index behind the palette and Find |
-| Apps | `apps/*` | one each | Shitsurae (Settings), Yukimi, Soroban, Koyomi, Tokei, Fusen, Sumi, Tenki, Tansu, Kura, Hako, Myaku |
+| Apps | `apps/*` | one each | Settei (Settings), Yukimi, Soroban, Koyomi, Tokei, Fusen, Sumi, Tenki, Tansu, Kura, Hako, Myaku |
 
 Everything draws with Sidestep: the shell and apps are sidestep-ui programs,
 and the compositor renders its tab labels, overview captions and switcher
@@ -143,7 +143,7 @@ which acts through the compositor.
 ## Config
 
 `~/.config/aizome/settings.toml`, read by every part through
-`aizome-config`. Settings (Shitsurae) writes it and sends `reload-config` to
+`aizome-config`. Settings (Settei) writes it and sends `reload-config` to
 the compositor, which applies it and broadcasts `config-changed`; the shell
 and kit apps reload on that event (kit apps also watch the file, so they
 need no socket). Missing keys take defaults; unknown keys are kept.

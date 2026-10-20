@@ -1,4 +1,4 @@
-//! What Settings (Shitsurae) says, honoured live: the desktop's icons, the
+//! What Settings (Settei) says, honoured live: the desktop's icons, the
 //! Shelf, notifications blocked, silent or previewed on the lock screen,
 //! the lock screen's clock and locking with the monitors off, the power
 //! key, the palette's scopes, the bell's flash and Night Light.
@@ -21,7 +21,7 @@ use common::*;
 
 type H = aizome_kit::testing::Harness<Shell>;
 
-/// Change the settings as Shitsurae would, and have the shell read them.
+/// Change the settings as Settei would, and have the shell read them.
 fn settings(h: &mut H, f: impl FnOnce(&mut aizome_config::Settings)) {
     f(&mut h.program_mut().settings);
     h.send(Msg::SettingsChanged);

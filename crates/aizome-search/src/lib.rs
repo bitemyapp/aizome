@@ -169,7 +169,7 @@ pub struct Candidate {
     /// The row's main text, matched and highlighted ("Find and Replace…").
     pub title: String,
     /// Other names it answers to, matched but not shown ("Settings" for
-    /// Shitsurae, "calculator" for Soroban, "wifi" for Network).
+    /// Settei, "calculator" for Soroban, "wifi" for Network).
     pub keywords: Vec<String>,
     /// Added to the match score: frecency, being in the focused app, and so on.
     pub boost: i64,

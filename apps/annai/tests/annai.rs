@@ -1,5 +1,5 @@
 //! Annai, run headlessly: stepping through the pages, "Show at login" and
-//! the first run, Shitsurae's doors, the scenes playing without
+//! the first run, Settei's doors, the scenes playing without
 //! repainting more than themselves; and golden images of every page in
 //! Night and Day.
 
@@ -80,7 +80,7 @@ fn the_first_run_is_recorded_and_show_at_login_kept() {
 }
 
 #[test]
-fn the_last_page_opens_shitsurae() {
+fn the_last_page_opens_settei() {
     let (mut h, _) = annai("doors", ThemeChoice::Night, false);
     let w = h.window();
     h.send(Msg::Go(PAGES - 1));
@@ -90,7 +90,7 @@ fn the_last_page_opens_shitsurae() {
     }
     let panes: Vec<String> = h.program().commands.iter().map(|c| c[2].clone()).collect();
     assert_eq!(panes, ["appearance", "displays", "network", "keyboard"]);
-    assert!(h.program().commands.iter().all(|c| c[0] == "aizome-shitsurae" && c[1] == "--pane"));
+    assert!(h.program().commands.iter().all(|c| c[0] == "aizome-settei" && c[1] == "--pane"));
 }
 
 #[test]

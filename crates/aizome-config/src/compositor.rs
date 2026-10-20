@@ -1,5 +1,5 @@
 //! Compositor keys that live in the sections' extra tables (Settings
-//! writes them there; see Shitsurae's `extra.rs`), read with defaults, and
+//! writes them there; see Settei's `extra.rs`), read with defaults, and
 //! Night Light.
 
 use serde::{Deserialize, Serialize};

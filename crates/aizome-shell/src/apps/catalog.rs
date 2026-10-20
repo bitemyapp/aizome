@@ -82,7 +82,7 @@ pub fn glyph_for(app_id: &str) -> Option<(Icon, Hue)> {
     let id = id.strip_suffix(".desktop").unwrap_or(&id);
     let last = id.rsplit('.').next().unwrap_or(id);
     Some(match last {
-        "shitsurae" => (Icon::Settings, Hue::Text2),
+        "settei" => (Icon::Settings, Hue::Text2),
         "yukimi" => (Icon::Package, Hue::Blue),
         "hako" => (Icon::Folder, Hue::Blue),
         "sumi" => (Icon::Code, Hue::Violet),

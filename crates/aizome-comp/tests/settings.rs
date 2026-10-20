@@ -1,4 +1,4 @@
-//! Settings keys Shitsurae writes, honoured: what double-clicking a tab
+//! Settings keys Settei writes, honoured: what double-clicking a tab
 //! does, scrolling distance, sticky keys and slow keys.
 
 mod common;

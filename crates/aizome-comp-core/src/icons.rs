@@ -161,7 +161,7 @@ fn line_glyph(app_id: &str) -> Option<&'static str> {
     let id = app_id.to_ascii_lowercase();
     let id = id.strip_suffix(".desktop").unwrap_or(&id);
     Some(match id.rsplit('.').next().unwrap_or(id) {
-        "shitsurae" => lucide!("settings"),
+        "settei" => lucide!("settings"),
         "yukimi" => lucide!("package"),
         "hako" | "nautilus" | "thunar" | "dolphin" | "pcmanfm" | "nemo" => lucide!("folder"),
         "sumi" | "code" | "codium" | "zed" | "helix" | "nvim" | "emacs" | "gedit" => lucide!("code"),

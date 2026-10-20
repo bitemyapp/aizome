@@ -32,7 +32,7 @@ pub enum Msg {
     Go(usize),
     Tick,
     ShowAtLogin(bool),
-    /// Open Shitsurae at a pane.
+    /// Open Settei at a pane.
     Settings(&'static str),
     Done,
     Raise,
@@ -48,7 +48,7 @@ pub struct Annai {
     pub state: State,
     /// Where the state is kept (none: nowhere, for tests).
     pub state_path: Option<PathBuf>,
-    /// Programs started (Shitsurae at a pane), and whether to really start
+    /// Programs started (Settei at a pane), and whether to really start
     /// them.
     pub commands: Vec<Vec<String>>,
     pub dry_run: bool,
@@ -164,7 +164,7 @@ impl Program for Annai {
                 self.state.show_at_login = on;
                 self.save();
             }
-            Msg::Settings(pane) => self.run(vec!["aizome-shitsurae".into(), "--pane".into(), pane.into()]),
+            Msg::Settings(pane) => self.run(vec!["aizome-settei".into(), "--pane".into(), pane.into()]),
             Msg::Done => cx.close_window(self.window),
             Msg::Raise => cx.activate(self.window),
         }

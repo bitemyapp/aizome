@@ -1,5 +1,5 @@
 //! The pages' words, and what goes under them: the essentials of the
-//! command key, Shitsurae's doors, the footer.
+//! command key, Settei's doors, the footer.
 
 use aizome_kit::prelude::*;
 use aizome_kit::row;
@@ -50,7 +50,7 @@ pub const PAGES: [Page; COUNT] = [
     },
     Page {
         title: "Make it yours",
-        body: "Night or Day, a focus colour, how large things are, your wallpaper and the rest: Shitsurae \
+        body: "Night or Day, a focus colour, how large things are, your wallpaper and the rest: Settei \
                (Settings) arranges the room. Start here:",
     },
 ];
@@ -69,7 +69,7 @@ pub const ESSENTIALS: [(&[&str], &str); 10] = [
     (&["⇧", "❖", "4"], "Screenshot an area"),
 ];
 
-/// Shitsurae's panes the last page opens.
+/// Settei's panes the last page opens.
 pub const DOORS: [(Icon, &str, &str); 4] = [
     (Icon::Palette, "Appearance", "appearance"),
     (Icon::Monitor, "Displays", "displays"),

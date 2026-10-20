@@ -487,7 +487,7 @@ mod tests {
 
     #[test]
     fn the_keys_settings_writes_read_typed() {
-        // As Shitsurae writes them (apps/shitsurae/src/extra.rs).
+        // As Settei writes them (apps/settei/src/extra.rs).
         let s = Settings::from_toml(
             "[notifications]\npreviews_when_locked = true\nblocked_apps = [\"firefox.desktop\"]\nsilent_apps = [\"org.aizome.Fusen\"]\n\
              [deskbar]\nshow_shelf = false\n[desktop]\nshow_disks = false\n[lock]\nshow_clock = false\nafter_monitors_off = false\n\

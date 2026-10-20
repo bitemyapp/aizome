@@ -242,6 +242,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "aizome-settei"
+version = "0.1.0"
+dependencies = [
+ "aizome-awake",
+ "aizome-config",
+ "aizome-ipc",
+ "aizome-kit",
+ "aizome-search",
+ "aizome-sys",
+ "aizome-theme",
+ "env_logger",
+ "libc",
+ "log",
+ "serde",
+ "serde_json",
+ "toml",
+]
+
+[[package]]
 name = "aizome-shashin"
 version = "0.1.0"
 dependencies = [
@@ -287,25 +306,6 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
-]
-
-[[package]]
-name = "aizome-shitsurae"
-version = "0.1.0"
-dependencies = [
- "aizome-awake",
- "aizome-config",
- "aizome-ipc",
- "aizome-kit",
- "aizome-search",
- "aizome-sys",
- "aizome-theme",
- "env_logger",
- "libc",
- "log",
- "serde",
- "serde_json",
- "toml",
 ]
 
 [[package]]
