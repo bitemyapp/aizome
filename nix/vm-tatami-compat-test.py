@@ -7,6 +7,7 @@ import time
 AGENT = "aizome-network-agent.service"
 PASSWORD = "wifi-test-password"
 NM_APPLET = "pgrep -u alice -f '(^|/)[.]?nm-applet(-wrapped)?( |$)'"
+AUTOSTART = "app-nm\\x2dapplet@autostart.service"
 
 
 def alice(command, check=True):
@@ -31,6 +32,21 @@ def until(description, check, timeout=60):
         time.sleep(0.5)
     machine.screenshot("failure")
     raise AssertionError("Timed out: " + description)
+
+
+def skips(unit):
+    """How often systemd has skipped this unit for its ExecCondition. (Not
+    its Result: an inactive unit nothing refers to is unloaded, and that
+    resets it.)"""
+    journal = alice("journalctl --user --no-pager -o cat -u " + shlex.quote(unit))
+    return journal.count("Skipped due to 'exec-condition'.")
+
+
+def refusals():
+    """How often Aizome's condition has refused nm-applet. (Not by unit:
+    journald may not tell which unit a process that ended at once was in.)"""
+    journal = alice("journalctl --user --no-pager -o cat")
+    return journal.count("nm-applet is not started in Aizome")
 
 
 def login():
@@ -110,10 +126,16 @@ with subtest("Aizome and Tatami retain their separate startup policy"):
     machine.succeed(
         "grep -q '^NotShowIn=.*Tatami;' /etc/xdg/autostart/nm-applet.desktop"
     )
-    machine.succeed(
-        "grep -q '^Hidden=true' /etc/xdg/aizome/autostart/nm-applet.desktop"
-    )
+    # Tatami's NotShowIn doesn't name Aizome: Aizome's own ExecCondition
+    # skips the autostart unit, and an explicit start too.
+    until("the autostart unit is skipped", lambda: skips(AUTOSTART) > 0)
+    until("Aizome's condition refuses it", lambda: refusals() >= 1)
+    before = (skips("nm-applet.service"), refusals())
     alice("systemctl --user start nm-applet.service")
+    until(
+        "an explicit start is skipped",
+        lambda: skips("nm-applet.service") > before[0] and refusals() > before[1],
+    )
     machine.fail(NM_APPLET)
     alice(
         "printf %s shared-keyring-value | timeout 10 secret-tool store "
@@ -160,6 +182,7 @@ with subtest("Logging out of Aizome stops its agent and clears its environment")
         lambda: (
             "/etc/xdg/aizome" not in desktop_environment()
             and "XDG_CURRENT_DESKTOP=Aizome" not in desktop_environment()
+            and "XDG_SESSION_DESKTOP=aizome" not in desktop_environment()
         ),
     )
     assert (

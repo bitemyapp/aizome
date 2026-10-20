@@ -69,14 +69,19 @@ let
     ExecStart=
     ExecStart=${portalWlr}
   '';
-  # Keep other installed desktops' network applet, but Aizome supplies
-  # both network controls and a session credential agent. Cover explicit
-  # programs.nm-applet services as well as XDG-generated autostart units.
+  # Other installed desktops keep their network applet; Aizome has network
+  # controls and a credential agent of its own. This condition is what keeps
+  # the applet out of Aizome, for programs.nm-applet's service and the unit
+  # systemd generates from its XDG autostart entry alike: the generator
+  # reads only the user manager's own environment, not the session's
+  # imported variables, so an autostart override for Aizome alone can't
+  # work. aizome-session always sets XDG_SESSION_DESKTOP, which, unlike
+  # XDG_CURRENT_DESKTOP, ~/.config/aizome/environment can't change.
   otherDesktop = pkgs.writeShellScript "nm-applet-outside-aizome" ''
-    case ":''${XDG_CURRENT_DESKTOP:-}:" in
-      *:Aizome:*) exit 1 ;;
-      *) exit 0 ;;
-    esac
+    if [ "''${XDG_SESSION_DESKTOP:-}" = aizome ]; then
+      echo "nm-applet is not started in Aizome, whose network agent asks for credentials" >&2
+      exit 1
+    fi
   '';
   nmAppletDropIns = pkgs.runCommand "aizome-nm-applet-session-policy" { } ''
     for unit in 'nm-applet.service' 'app-nm\x2dapplet@autostart.service'; do
@@ -348,14 +353,6 @@ in
       # itself whether to show; OnlyShowIn=Aizome keeps it out of others).
       "xdg/autostart/org.aizome.Annai.Welcome.desktop".source =
         "${cfg.package}/share/applications/org.aizome.Annai.Welcome.desktop";
-      # XDG_CONFIG_DIRS selects this override only in Aizome. The shared
-      # entry remains available to Xfce and other installed sessions.
-      "xdg/aizome/autostart/nm-applet.desktop".text = ''
-        [Desktop Entry]
-        Type=Application
-        Name=NetworkManager Applet
-        Hidden=true
-      '';
     };
 
     # Screenshots and screencasts (browsers' screen and window sharing)

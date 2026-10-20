@@ -14,12 +14,17 @@ one's requests and registers with the new one. If its system bus
 connection closes, the agent exits with an error and systemd starts it
 again.
 
-The NixOS module prevents `nm-applet` from starting in Aizome through
-either its systemd user service or the XDG autostart entry. An override
-in `/etc/xdg/aizome/autostart` disables that startup entry; it does not
-filter tray items. The shared desktop entry and installed applet remain
-available to other desktops. The shell displays status items normally.
-An explicitly launched `nm-applet` can still show an icon.
+The NixOS module keeps `nm-applet` from starting in Aizome, whether
+through its systemd user service (`programs.nm-applet`) or the unit
+systemd generates from its XDG autostart entry: a drop-in gives both an
+`ExecCondition` that skips them when `XDG_SESSION_DESKTOP` is `aizome`,
+which `aizome-session` always sets, and the journal records each skip.
+(An autostart override for Aizome alone can't work: systemd's generator
+reads only the user manager's own environment, not the variables a
+session imports.) The shared desktop entry and installed applet remain
+available to other desktops. The condition does not filter tray items:
+the shell displays status items normally, and an `nm-applet` launched
+by hand can still show an icon.
 
 ## Credentials
 
@@ -97,8 +102,9 @@ enterprise server, a real OpenVPN server/plugin, and a private login
 keyring unlocked through a normal greetd/PAM password login. Tests
 operate the native dialogs through the compositor and
 verify activation, storage policies, compatibility with existing keyring
-entries, wrong passwords, cancellation, deletion, shell reloads,
-NetworkManager restarts and both applet startup paths. Fixture credentials
+entries, wrong passwords, cancellation, deletion, profile updates that
+carry no secrets, shell reloads, NetworkManager restarts and that both
+applet startup paths are skipped by their condition. Fixture credentials
 and servers exist only in the test VM. These tests do not manipulate the
 host's interfaces, desktop session or NetworkManager service.
 
@@ -118,21 +124,30 @@ notifications, terminal and Displays. An explicitly started `nm-applet`
 must still authenticate OpenVPN in Tatami, both interactively and using a
 credential saved by Aizome before logout and a NetworkManager restart.
 
-Tatami is an explicit test input, not an Aizome runtime dependency. With
-a Tatami checkout alongside this repository, run:
+Tatami is an explicit test input, not an Aizome runtime dependency. It
+lives in Sekka, at `desktop/tatami/module.nix`, and builds with Sekka's
+nixpkgs. Its module sets `nixpkgs.overlays`, which the test's shared,
+read-only `pkgs` refuses, so the test machine evaluates its own packages
+instead (`node.pkgs = null`). With a Sekka checkout alongside this
+repository, run:
 
 ```sh
-nix build --impure --expr '
-  let self = builtins.getFlake (toString ./.);
-  in import ./nix/vm-tatami-compat-test.nix {
-    inherit self;
-    pkgs = self.inputs.nixpkgs.legacyPackages.x86_64-linux;
-    tatamiModule = ../tatami/module.nix;
-  }
-' -L
+nix build --impure -L --expr '
+  let
+    self = builtins.getFlake (toString ./.);
+    sekka = builtins.getFlake (toString ../sekka);
+    pkgs = sekka.inputs.nixpkgs.legacyPackages.x86_64-linux;
+    test = import ./nix/vm-tatami-compat-test.nix {
+      inherit self pkgs;
+      tatamiModule = ../sekka/desktop/tatami/module.nix;
+    };
+  in
+  (test.extend { modules = [ { node.pkgs = pkgs.lib.mkForce null; } ]; }).config.result
+'
 ```
 
-The test preserves Tatami's own shared `NotShowIn` desktop entry, while
-Aizome's `Hidden` override remains confined to its session. Tatami does
-not start Aizome's agent. Its existing Wi-Fi panel continues to supply
-system-owned credentials through NetworkManager.
+It builds Hyprland from source, so the first run takes a while. The test
+checks that Tatami's own `NotShowIn` for the shared desktop entry is
+kept, and that Aizome's condition skips the applet only in Aizome.
+Tatami does not start Aizome's agent. Its existing Wi-Fi panel continues
+to supply system-owned credentials through NetworkManager.

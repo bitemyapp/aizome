@@ -8,6 +8,7 @@ APP = "org.aizome.NetworkAuthentication"
 AGENT = "aizome-network-agent.service"
 WIFI_PASSWORD = "wifi-test-password"
 NM_APPLET = "pgrep -u alice -f '(^|/)[.]?nm-applet(-wrapped)?( |$)'"
+APPLET_UNITS = ["nm-applet.service", "app-nm\\x2dapplet@autostart.service"]
 
 
 def alice(command, check=True):
@@ -19,6 +20,21 @@ def alice(command, check=True):
     )
     command = "su - alice -c " + shlex.quote(script)
     return machine.succeed(command) if check else machine.execute(command)
+
+
+def skips(unit):
+    """How often systemd has skipped this unit for its ExecCondition. (Not
+    its Result: an inactive unit nothing refers to is unloaded, and that
+    resets it.)"""
+    journal = alice("journalctl --user --no-pager -o cat -u " + shlex.quote(unit))
+    return journal.count("Skipped due to 'exec-condition'.")
+
+
+def refusals():
+    """How often Aizome's condition has refused nm-applet. (Not by unit:
+    journald may not tell which unit a process that ended at once was in.)"""
+    journal = alice("journalctl --user --no-pager -o cat")
+    return journal.count("nm-applet is not started in Aizome")
 
 
 def until(description, check, timeout=60):
@@ -169,21 +185,21 @@ alice(
 assert alice("secret-tool lookup aizome-test ready").strip() == "keyring-probe"
 agent_pid = alice("systemctl --user show -p MainPID --value " + AGENT).strip()
 
-with subtest("Both nm-applet startup paths are suppressed in Aizome"):
-    machine.fail(NM_APPLET)
+with subtest("Both nm-applet startup paths are skipped by their condition in Aizome"):
+    # The session starts programs.nm-applet's unit and the one generated
+    # from the XDG autostart entry, and Aizome's ExecCondition skips both.
+    for unit in APPLET_UNITS:
+        until(unit + " is skipped", lambda unit=unit: skips(unit) > 0)
+    until("Aizome's condition refuses both", lambda: refusals() >= 2)
+    before = (skips("nm-applet.service"), refusals())
     alice("systemctl --user start nm-applet.service")
+    until(
+        "an explicit start is skipped too",
+        lambda: skips("nm-applet.service") > before[0] and refusals() > before[1],
+    )
     machine.fail(NM_APPLET)
-    assert (
-        alice("systemctl --user show -p ActiveState --value nm-applet.service").strip()
-        == "inactive"
-    )
-    # The override is session-local; the shared original still starts nm-applet.
+    # The shared entry stays as it is, for other desktops.
     machine.succeed("grep -q '^Exec=nm-applet' /etc/xdg/autostart/nm-applet.desktop")
-    machine.succeed(
-        "grep -q '^Hidden=true' /etc/xdg/aizome/autostart/nm-applet.desktop"
-    )
-    unit = "app-nm\\x2dapplet@autostart.service"
-    assert alice("systemctl --user is-active " + shlex.quote(unit), False)[0] != 0
 
 with subtest("WPA2 ask every time, user cancellation, and NM cancellation"):
     wifi("ask", 2)
@@ -386,15 +402,12 @@ with subtest("Other desktops can still start nm-applet"):
     # Only the VM's user manager changes, after authentication tests.
     alice("systemctl --user stop " + AGENT)
     alice(
-        "systemctl --user set-environment XDG_CURRENT_DESKTOP=XFCE XDG_CONFIG_DIRS=/etc/xdg"
+        "systemctl --user set-environment XDG_SESSION_DESKTOP=xfce XDG_CURRENT_DESKTOP=XFCE"
     )
-    alice("systemctl --user daemon-reload && systemctl --user start nm-applet.service")
-    machine.wait_until_succeeds(NM_APPLET)
-    alice("systemctl --user stop nm-applet.service")
-    machine.fail(NM_APPLET)
-    alice("systemctl --user start " + shlex.quote(unit))
-    machine.wait_until_succeeds(NM_APPLET)
-    alice("systemctl --user stop " + shlex.quote(unit))
-    machine.fail(NM_APPLET)
+    for unit in APPLET_UNITS:
+        alice("systemctl --user start " + shlex.quote(unit))
+        machine.wait_until_succeeds(NM_APPLET)
+        alice("systemctl --user stop " + shlex.quote(unit))
+        machine.fail(NM_APPLET)
 
 machine.screenshot("network-authentication-complete")
