@@ -111,6 +111,54 @@ fn searching_finds_packages_and_opens_one() {
 }
 
 #[test]
+fn implicit_catalog_apps_are_installed_but_are_not_written_when_adding_another_app() {
+    let mut model = aizome_yukimi::fixture::model();
+    model.store = None;
+    model.catalog = yukimi_system::catalog::parse(
+        r#"[{"id":"fish","name":"fish","description":"The desktop's shell.","category":"Terminals","packages":["fish"]},
+            {"id":"kitty","name":"Kitty","description":"A terminal.","category":"Terminals","packages":["kitty"]}]"#,
+    )
+    .unwrap();
+    for app in &mut model.catalog {
+        app.setting = Some("calamares.applications".into());
+    }
+    model.configured.settings.insert("calamares.applications".into(), vec!["firefox".into()]);
+    model.installer_applications = ["firefox".into(), "fish".into()].into();
+    let model = Arc::new(model);
+    let ran = Arc::new(Mutex::new(Vec::new()));
+    let seen = ran.clone();
+    let runner = Runner::Mock(Arc::new(move |op: &Operation| {
+        seen.lock().unwrap().push(op.clone());
+        vec![script(WORKS)]
+    }));
+    let mut app = Yukimi::with(Source::Sample(model), runner, Clock::Fixed(aizome_yukimi::fixture::NOW, 21));
+    app.index = Some(Arc::new(aizome_yukimi::fixture::index()));
+    let mut h = Harness::new(app);
+    let w = h.window();
+    h.send(Msg::Show(Page::Discover));
+    assert!(has(&h, w, "fish"));
+    assert!(h.semantics(w).iter().any(|(s, _)| s.label.as_deref() == Some("Installed") && s.disabled));
+    // Only Kitty can be installed; fish already has a disabled Installed button.
+    assert_eq!(h.semantics(w).iter().filter(|(s, _)| s.label.as_deref() == Some("Install")).count(), 1);
+    assert!(h.click_text(w, "Install"));
+    assert!(has(&h, w, "Install Kitty?"));
+    assert!(ran.lock().unwrap().is_empty());
+    assert!(click_last(&mut h, w, "Install"));
+    settle(&mut h, |a| a.job.as_ref().is_some_and(|j| j.outcome.is_some()));
+    assert_eq!(
+        ran.lock().unwrap().as_slice(),
+        &[Operation::ChangeSystem {
+            change: SystemChange {
+                applications: Some(("calamares.applications".into(), vec!["firefox".into(), "kitty".into()])),
+                ..SystemChange::default()
+            },
+            what: "Kitty".into(),
+            adding: true,
+        }]
+    );
+}
+
+#[test]
 fn install_for_everyone_asks_first_then_runs_the_helper() {
     let (mut h, w, ran) = sample(WORKS);
     h.send(Msg::Show(Page::Discover));

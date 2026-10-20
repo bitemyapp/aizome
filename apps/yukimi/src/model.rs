@@ -101,6 +101,10 @@ pub struct Model {
     /// Packages the current user installed for themselves.
     pub user_packages: Vec<Element>,
     pub configured: Configured,
+    /// Sekka's evaluated application ids, including desktop defaults.
+    /// Kept apart from the editable lists so adding or removing an app
+    /// never writes these implicit choices into the configuration.
+    pub installer_applications: BTreeSet<String>,
     /// The current user's name, whose `packages` are read.
     pub user: String,
     /// The system accepts unfree packages.
@@ -131,6 +135,7 @@ impl Default for Model {
             generations: Vec::new(),
             user_packages: Vec::new(),
             configured: Configured::default(),
+            installer_applications: BTreeSet::new(),
             user: String::new(),
             allow_unfree: false,
             catalog: Vec::new(),
@@ -177,6 +182,7 @@ impl Model {
     }
 
     fn read_configuration(&mut self) {
+        self.read_installer_applications();
         let setup = &self.setup;
         if let Some(file) = setup.packages_file()
             && let Ok(text) = std::fs::read_to_string(&file)
@@ -239,6 +245,34 @@ impl Model {
     /// changes are merged, rather than from the nightly.
     pub fn early(&self) -> bool {
         self.sekka_url.as_deref().is_some_and(yukimi_config::sekka::early)
+    }
+
+    /// Sekka already records its evaluated choices at build time. Read
+    /// that small manifest once with the rest of the background load,
+    /// without evaluating Nix or waiting for the store database.
+    fn read_installer_applications(&mut self) {
+        self.installer_applications.clear();
+        if !self.setup.facts.catalogs.iter().any(|source| source.setting.as_deref() == Some("calamares.applications")) {
+            return;
+        }
+        #[derive(serde::Deserialize)]
+        struct Manifest {
+            selected: BTreeSet<String>,
+        }
+        let file = self.paths.etc.join("installer-applications.json");
+        let text = match std::fs::read_to_string(&file) {
+            Ok(text) => text,
+            // Older and non-Sekka systems keep the existing detection.
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return,
+            Err(e) => {
+                self.problems.push(format!("{} could not be read: {e}", file.display()));
+                return;
+            }
+        };
+        match serde_json::from_str::<Manifest>(&text) {
+            Ok(manifest) => self.installer_applications = manifest.selected,
+            Err(e) => self.problems.push(format!("{}: {e}", file.display())),
+        }
     }
 
     fn read_lock(&mut self) {
@@ -310,11 +344,13 @@ impl Model {
     }
 
     /// Whether a catalog application is installed: listed where it is
-    /// installed through, or (for Yukimi's own catalog) all its packages in
-    /// the running system however they got there.
+    /// installed through, supplied by Sekka's evaluated application
+    /// selection, or (for Yukimi's own catalog) all its packages in the
+    /// running system however they got there.
     pub fn app_installed(&self, app: &Application, system: &BTreeSet<&str>) -> bool {
         if let Some(setting) = &app.setting {
-            return self.configured.settings.get(setting).is_some_and(|ids| ids.contains(&app.id));
+            return self.configured.settings.get(setting).is_some_and(|ids| ids.contains(&app.id))
+                || (setting == "calamares.applications" && self.installer_applications.contains(&app.id));
         }
         let mine = &self.configured.yukimi;
         if let Some(program) = &app.program {
@@ -452,4 +488,156 @@ fn heaviest(graph: &Graph, count: usize) -> Vec<Heavy> {
     list.sort_by_key(|h| std::cmp::Reverse(h.size));
     list.truncate(count);
     list
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use yukimi_system::setup::CatalogSource;
+
+    struct System {
+        model: Model,
+    }
+
+    impl System {
+        fn new(name: &str) -> Self {
+            let etc = std::env::temp_dir().join(format!("yukimi-installed-{name}-{}", std::process::id()));
+            std::fs::create_dir_all(etc.join("nixos")).unwrap();
+            let main = etc.join("nixos/configuration.nix");
+            std::fs::write(&main, r#"{ calamares.applications = [ "firefox" ]; }"#).unwrap();
+            let mut model = Model { paths: Paths { etc, elsewhere: true }, ..Model::default() };
+            model.setup.main = Some(main);
+            model.setup.facts.catalogs.push(CatalogSource {
+                file: String::new(),
+                setting: Some("calamares.applications".into()),
+                title: None,
+            });
+            Self { model }
+        }
+
+        fn manifest(&self, text: &str) {
+            std::fs::write(self.model.paths.etc.join("installer-applications.json"), text).unwrap();
+        }
+    }
+
+    impl Drop for System {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.model.paths.etc);
+        }
+    }
+
+    fn app(id: &str, setting: Option<&str>) -> Application {
+        Application {
+            id: id.into(),
+            name: id.into(),
+            description: String::new(),
+            category: "Terminals".into(),
+            packages: vec![id.into()],
+            program: None,
+            needs: None,
+            unfree: false,
+            requires: Vec::new(),
+            setting: setting.map(str::to_owned),
+        }
+    }
+
+    #[test]
+    fn desktop_defaults_are_installed_before_the_store_loads_without_becoming_editable_choices() {
+        let mut system = System::new("defaults");
+        system.manifest(r#"{"selected":["firefox","fish","fish"],"packages":[{"name":"fish-4.9.3"}]}"#);
+        system.model.read_configuration();
+        let model = &system.model;
+        assert!(model.store.is_none());
+        assert!(model.app_installed(&app("fish", Some("calamares.applications")), &BTreeSet::new()));
+        assert_eq!(model.configured.settings["calamares.applications"], ["firefox"]);
+        assert_eq!(model.installer_applications.len(), 2);
+        assert!(!model.app_installed(&app("kitty", Some("calamares.applications")), &BTreeSet::new()));
+        assert!(model.problems.is_empty());
+
+        // The store's later arrival preserves the already-known defaults.
+        let model = model.with_store(Store::default(), Vec::new());
+        assert!(model.app_installed(&app("fish", Some("calamares.applications")), &model.system_names()));
+
+        // A new generation can stop supplying a previously implicit app.
+        system.manifest(r#"{"selected":["firefox"]}"#);
+        system.model.read_configuration();
+        assert!(!system.model.app_installed(&app("fish", Some("calamares.applications")), &BTreeSet::new()));
+    }
+
+    #[test]
+    fn missing_or_invalid_manifests_preserve_explicit_choices() {
+        let mut system = System::new("compatibility");
+        // Missing on older systems: normal, and never borrow the host's manifest.
+        system.model.read_configuration();
+        assert!(system.model.installer_applications.is_empty());
+        assert!(system.model.problems.is_empty());
+        for text in ["{", "{}", r#"{"selected":"fish"}"#, r#"{"selected":[null]}"#] {
+            system.manifest(text);
+            system.model.problems.clear();
+            system.model.read_configuration();
+            assert!(system.model.installer_applications.is_empty());
+            assert_eq!(system.model.problems.len(), 1);
+            assert!(system.model.app_installed(&app("firefox", Some("calamares.applications")), &BTreeSet::new()));
+            assert!(!system.model.app_installed(&app("fish", Some("calamares.applications")), &BTreeSet::new()));
+        }
+        system.manifest(r#"{"selected":[]}"#);
+        system.model.problems.clear();
+        system.model.read_configuration();
+        assert!(system.model.problems.is_empty());
+        assert!(system.model.app_installed(&app("firefox", Some("calamares.applications")), &BTreeSet::new()));
+    }
+
+    #[test]
+    fn manifest_is_scoped_to_sekkas_catalog_and_does_not_require_editable_configuration() {
+        let mut system = System::new("scope");
+        system.manifest(r#"{"selected":["fish"]}"#);
+        system.model.setup.main = None;
+        system.model.read_configuration();
+        let fish = app("fish", Some("calamares.applications"));
+        assert!(system.model.app_installed(&fish, &BTreeSet::new()));
+        assert!(!system.model.app_installed(&app("fish", Some("other.applications")), &BTreeSet::from(["fish"])));
+        assert!(!system.model.app_installed(&app("fish", None), &BTreeSet::new()));
+        assert!(system.model.app_installed(&app("fish", None), &BTreeSet::from(["fish"])));
+
+        // Non-Sekka catalogs should not read this file at all.
+        system.model.setup.facts.catalogs[0].setting = Some("other.applications".into());
+        system.manifest("not JSON");
+        system.model.read_configuration();
+        assert!(system.model.installer_applications.is_empty());
+        assert!(system.model.problems.is_empty());
+    }
+
+    #[test]
+    #[ignore = "prints manifest loading and cached detection timings; run with --ignored --nocapture"]
+    fn catalog_detection_cost() {
+        use std::hint::black_box;
+        use std::time::Instant;
+
+        let mut system = System::new("timing");
+        // Include the package data the reader skips, at about the size of
+        // a real installed system's manifest.
+        let manifest = serde_json::json!({
+            "selected": ["firefox", "fish"],
+            "packages": vec![serde_json::json!({
+                "name": "fish-4.9.3",
+                "path": "/nix/store/x6qcc23lrc64g0vjp9pfsa9scpy1mnpk-fish-4.9.3",
+                "version": "4.9.3"
+            }); 60]
+        })
+        .to_string();
+        system.manifest(&manifest);
+        let start = Instant::now();
+        for _ in 0..1_000 {
+            system.model.read_installer_applications();
+            black_box(&system.model.installer_applications);
+        }
+        eprintln!("{}-byte manifest: {:.1} µs/read", manifest.len(), start.elapsed().as_secs_f64() * 1e3);
+        let fish = app("fish", Some("calamares.applications"));
+        let empty = BTreeSet::new();
+        let start = Instant::now();
+        for _ in 0..1_000_000 {
+            assert!(black_box(&system.model).app_installed(black_box(&fish), black_box(&empty)));
+        }
+        eprintln!("cached detection: {:.1} ns/lookup", start.elapsed().as_secs_f64() * 1e3);
+    }
 }
