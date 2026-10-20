@@ -235,3 +235,43 @@ fn the_picker_picks_what_may_be_shared() {
     c.ok(Request::Synthesize { events: vec![key("escape", true), key("escape", false)] });
     assert_eq!(next_pick().unwrap().1, None);
 }
+
+/// A window is picked on the press, which closes the picker; the release
+/// is the picker's still, not the window's, which would see a release
+/// with no press (foot: "stray button release event"). For a share and
+/// for ❖⇧4's screenshot of a window alike; a click then is the window's.
+#[test]
+fn a_window_pick_keeps_its_release_from_the_window() {
+    use aizome_ipc::{Event, PickTarget};
+    let c = Compositor::start(Options::default());
+    let a = c.client(Spec::new("org.example.alpha", 0x2222cc).size(300, 200));
+    let w = c.wait_window("org.example.alpha");
+    c.settle();
+    let mut events = aizome_ipc::Client::connect_to(&c.ipc).unwrap().events().unwrap();
+    events.stream().set_read_timeout(Some(std::time::Duration::from_secs(10))).unwrap();
+    let button = |pressed| Synthetic::PointerButton { button: "left".into(), pressed };
+    let (cx, cy) = ((w.geometry.x + 20) as f64, (w.geometry.y + 20) as f64);
+    let click = vec![Synthetic::PointerMotion { x: cx, y: cy }, button(true), button(false)];
+    // Shared: windows alone, so a click picks.
+    c.ok(Request::PickArea { tag: "share".into(), prompt: None, targets: vec![PickTarget::Window] });
+    c.ok(Request::Synthesize { events: click.clone() });
+    let picked = events.by_ref().find_map(|e| match e {
+        Ok(Event::AreaPicked { window, .. }) => Some(window),
+        _ => None,
+    });
+    assert_eq!(picked, Some(Some(w.id)));
+    // A screenshot of it: ❖⇧4, Space, a click.
+    c.ok(Request::Synthesize {
+        events: vec![Synthetic::Chord { keys: "super+shift+4".into() }, key("space", true), key("space", false)],
+    });
+    c.ok(Request::Synthesize { events: click.clone() });
+    let shot = events.by_ref().find_map(|e| match e {
+        Ok(Event::ScreenshotTaken { path }) => Some(path),
+        _ => None,
+    });
+    assert!(shot.is_some(), "a screenshot of the window");
+    // The window saw neither click; this one is its own, press and release.
+    c.ok(Request::Synthesize { events: click });
+    let s = a.wait_seen("the click", |s| s.buttons.len() >= 2);
+    assert_eq!(s.buttons, [(0x110, true), (0x110, false)]);
+}
