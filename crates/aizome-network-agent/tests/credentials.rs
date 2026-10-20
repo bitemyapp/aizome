@@ -213,9 +213,14 @@ fn only_networkmanager_can_call_and_cancellation_interrupts_pending_prompt() {
     let connect = || zbus::blocking::connection::Builder::address(address.trim()).unwrap().build().unwrap();
     let nm = connect();
     nm.request_name(NM).unwrap();
-    let connection = connect();
     let (store, ui, engine) = fixture(Some("secret"), true);
-    connection.object_server().at(PATH, Agent::new(connection.inner().clone(), engine)).unwrap();
+    // Listening once built: a call that came first would be lost.
+    let connection = zbus::blocking::connection::Builder::address(address.trim())
+        .unwrap()
+        .serve_at(PATH, Agent::new(engine))
+        .unwrap()
+        .build()
+        .unwrap();
     let dest = connection.unique_name().unwrap().as_str().to_owned();
     let args = || {
         (
@@ -350,9 +355,14 @@ fn registers_once_per_networkmanager_and_ends_with_the_bus() {
         ],
     );
     let (_, ui, engine) = fixture(Some("secret"), true);
-    let agent = connect();
+    let agent = zbus::blocking::connection::Builder::address(address.trim())
+        .unwrap()
+        .serve_at(PATH, Agent::new(engine))
+        .unwrap()
+        .build()
+        .unwrap();
     let dest = agent.unique_name().unwrap().to_string();
-    let served = std::thread::spawn(move || aizome_network_agent::run(agent, engine).map_err(|e| e.to_string()));
+    let served = std::thread::spawn(move || aizome_network_agent::run(agent).map_err(|e| e.to_string()));
     eventually("the agent asks again after a failure", || calls.load(Ordering::SeqCst) == 2);
     // A request now stays until NetworkManager goes.
     let owned = nm.clone();

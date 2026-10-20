@@ -172,16 +172,15 @@ impl Requests {
     }
 }
 pub struct Agent {
-    connection: zbus::Connection,
     engine: Arc<Engine>,
     requests: Arc<Mutex<Requests>>,
 }
 impl Agent {
-    pub fn new(connection: zbus::Connection, engine: Arc<Engine>) -> Self {
-        Self { connection, engine, requests: Arc::default() }
+    pub fn new(engine: Arc<Engine>) -> Self {
+        Self { engine, requests: Arc::default() }
     }
-    async fn authorize(&self, header: &Header<'_>) -> Result<()> {
-        let proxy = zbus::fdo::DBusProxy::new(&self.connection)
+    async fn authorize(bus: &zbus::Connection, header: &Header<'_>) -> Result<()> {
+        let proxy = zbus::fdo::DBusProxy::new(bus)
             .await
             .map_err(|_| AgentError::NotAuthorized("NetworkManager is unavailable".into()))?;
         let owner = proxy
@@ -208,6 +207,8 @@ impl Agent {
 }
 #[zbus::interface(name = "org.freedesktop.NetworkManager.SecretAgent")]
 impl Agent {
+    // NetworkManager's method signature, and what zbus passes along.
+    #[allow(clippy::too_many_arguments)]
     async fn get_secrets(
         &self,
         connection: Settings,
@@ -216,6 +217,7 @@ impl Agent {
         hints: Vec<String>,
         flags: u32,
         #[zbus(header)] header: Header<'_>,
+        #[zbus(connection)] bus: &zbus::Connection,
     ) -> Result<Settings> {
         // NetworkManager gives the whole request two minutes, every dialog
         // and helper included, and then stops waiting without cancelling.
@@ -231,7 +233,7 @@ impl Agent {
             number
         };
         let result = async {
-            self.authorize(&header).await?;
+            Self::authorize(bus, &header).await?;
             let profile = Profile::new(connection)?;
             {
                 let mut requests = self.requests.lock().unwrap();
@@ -256,10 +258,11 @@ impl Agent {
         connection_path: OwnedObjectPath,
         setting_name: String,
         #[zbus(header)] header: Header<'_>,
+        #[zbus(connection)] bus: &zbus::Connection,
     ) -> Result<()> {
         // Only requests that arrived before this.
         let number = self.requests.lock().unwrap().arrive();
-        self.authorize(&header).await?;
+        Self::authorize(bus, &header).await?;
         self.requests.lock().unwrap().cancel_before(&(connection_path.to_string(), setting_name), number);
         Ok(())
     }
@@ -268,9 +271,10 @@ impl Agent {
         connection: Settings,
         _connection_path: OwnedObjectPath,
         #[zbus(header)] header: Header<'_>,
+        #[zbus(connection)] bus: &zbus::Connection,
     ) -> Result<()> {
         let cancel = Cancel::within(SAVE_SECRETS_TIMEOUT);
-        self.authorize(&header).await?;
+        Self::authorize(bus, &header).await?;
         let profile = Profile::new(connection)?;
         let engine = self.engine.clone();
         let result = self.work(move || engine.save(profile, &cancel)).await;
@@ -284,9 +288,10 @@ impl Agent {
         connection: Settings,
         _connection_path: OwnedObjectPath,
         #[zbus(header)] header: Header<'_>,
+        #[zbus(connection)] bus: &zbus::Connection,
     ) -> Result<()> {
         let cancel = Cancel::within(SAVE_SECRETS_TIMEOUT);
-        self.authorize(&header).await?;
+        Self::authorize(bus, &header).await?;
         let profile = Profile::new(connection)?;
         let engine = self.engine.clone();
         self.work(move || engine.store.delete(&profile.uuid, &cancel)).await
@@ -305,16 +310,14 @@ pub fn serve() -> std::result::Result<(), Box<dyn std::error::Error>> {
         ui: Arc::new(prompt::Native),
         plugins: vpn::Plugins::default(),
     });
-    run(zbus::blocking::Connection::system()?, engine)
+    // Served as the connection is built, so that no call arrives before
+    // the agent listens: one would be lost, and its caller left waiting.
+    run(zbus::blocking::connection::Builder::system()?.serve_at(PATH, Agent::new(engine))?.build()?)
 }
 
-/// Serve on `connection` (the system bus) until it closes, so that
-/// systemd starts the agent again.
-pub fn run(
-    connection: zbus::blocking::Connection,
-    engine: Arc<Engine>,
-) -> std::result::Result<(), Box<dyn std::error::Error>> {
-    connection.object_server().at(PATH, Agent::new(connection.inner().clone(), engine))?;
+/// Follow NetworkManager on `connection` (the system bus, serving the
+/// agent at PATH) until it closes, so that systemd starts the agent again.
+pub fn run(connection: zbus::blocking::Connection) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let agent = connection.object_server().interface::<_, Agent>(PATH)?;
     let bus = zbus::blocking::fdo::DBusProxy::new(&connection)?;
     // Watch before asking, so that no change is missed. The signals end
