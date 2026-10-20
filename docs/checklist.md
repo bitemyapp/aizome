@@ -1,4 +1,4 @@
-| Apps' status items | done | live watcher on the desktop's own session bus (Steam registered, its menu read); headless session on a private bus with an item carrying Steam's icon and menu: drawn, left click opens the menu, a row reaches the app; `statusnotifier` tests on a private bus | No XEmbed; SVG icons don't read; `Scroll` isn't sent (no wheel on drawn elements) |
+| Apps' status items | done | live watcher on the desktop's own session bus (Steam registered, its menu read); headless session on a private bus with an item carrying Steam's icon and menu: drawn, left click opens the menu, a row reaches the app; `statusnotifier` tests on a private bus | SVG icons are drawn at 16pt (resvg), in the Deskbar too; the wheel sends `Scroll` in whole steps (`statusnotifier` test hears it). No XEmbed: it embeds X11 windows, which a Wayland bar can't; KDE's `xembedsniproxy` would bridge it, at the cost of Plasma's workspace |
 # Aizome against its design and brief
 
 What the end-to-end walkthrough of 17–18 October 2026 found: every element
@@ -232,12 +232,9 @@ Sidestep fork, with its compositor test `a5e8ce4`, then `d488677`).
 
 ## Still to do
 
-- Frost without blur: under a frosted face, text shows as a faint ghost.
-  Real frosted glass needs the compositor to blur what's behind the
-  shell's surfaces (GLES only; pixman would keep today's tint).
-- The Nix package pins the Sidestep fork by revision: `flake.lock` needs
-  `992e3dc` (pushed to GitHub) for the installed session to get
-  see-through windows.
+- *Done since*: frost with blur (`0f8319d`, GLES; pixman keeps the tint),
+  and the Sidestep pin carries see-through windows' alpha (`992e3dc`,
+  rebased as `9f56003`).
 - The systray panels' device lists, media controls and Night Light were
   not exercised for want of devices in this session; check them on the
   laptop.

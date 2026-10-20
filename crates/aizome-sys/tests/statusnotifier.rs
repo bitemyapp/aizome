@@ -53,6 +53,9 @@ impl Item {
     fn secondary_activate(&self, x: i32, y: i32) {
         self.heard.calls.lock().unwrap().push(format!("SecondaryActivate {x} {y}"));
     }
+    fn scroll(&self, delta: i32, orientation: String) {
+        self.heard.calls.lock().unwrap().push(format!("Scroll {delta} {orientation}"));
+    }
     #[zbus(property)]
     fn id(&self) -> String {
         self.id.clone()
@@ -242,6 +245,9 @@ fn items_register_change_click_and_leave() {
     sn.activate(&qt_key, 10, 20).wait().unwrap();
     sn.secondary_activate(&qt_key, 1, 2).wait().unwrap();
     assert!(qt_heard.has("Activate 10 20") && qt_heard.has("SecondaryActivate 1 2"));
+    sn.scroll(&qt_key, -2, true).wait().unwrap();
+    sn.scroll(&qt_key, 1, false).wait().unwrap();
+    assert!(qt_heard.has("Scroll -2 vertical") && qt_heard.has("Scroll 1 horizontal"));
 
     // Steam's menu, read whole, and a row picked.
     let menu = sn.menu(&steam_key).wait().unwrap();

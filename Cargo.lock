@@ -319,6 +319,7 @@ dependencies = [
  "jiff",
  "libc",
  "log",
+ "resvg",
  "serde",
  "serde_json",
  "zbus",

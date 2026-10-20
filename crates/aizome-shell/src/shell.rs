@@ -307,6 +307,8 @@ pub struct Shell {
     pub(crate) icons: HashMap<String, Option<aizome_kit::Image>>,
     /// Apps' status items' icons, read once per change.
     pub(crate) item_icons: crate::systray::items::IconCache,
+    /// What's left of the wheel over each status item, short of a step.
+    pub(crate) item_wheel: HashMap<u64, aizome_kit::layout::Vec2>,
     pub(crate) icon_lookup: Option<aizome_sys::apps::IconLookup>,
     /// The primary bar's Desks, by where they are across it.
     pub(crate) desk_strip: Vec<(u32, Rect)>,
@@ -422,6 +424,7 @@ impl Shell {
             deskbar_size: None,
             icons: HashMap::new(),
             item_icons: HashMap::new(),
+            item_wheel: HashMap::new(),
             icon_lookup: None,
             desk_strip: Vec::new(),
             bar_menu: None,
@@ -614,6 +617,7 @@ impl Shell {
                 }
             }
             BarMsg::Item(slot, click, rect) => self.item_click(win, slot, click, rect, cx),
+            BarMsg::ItemScroll(slot, delta) => self.item_scroll(slot, delta),
             BarMsg::Hover(slot) => self.hover_title(win, slot, cx),
             BarMsg::RenameText(t) => {
                 if let Some((_, s)) = &mut self.renaming {

@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::path::Path;
 
-use aizome_kit::layout::Rect;
+use aizome_kit::layout::{Rect, Vec2};
 use aizome_kit::prelude::*;
 use aizome_kit::{Image, MenuStyle};
 use aizome_sys::apps::IconLookup;
@@ -36,26 +36,43 @@ fn signature(item: &StatusItem) -> u64 {
 }
 
 /// The image for an item's icon now: by name from its own folder, then the
-/// icon theme (or the file, when the name is a path), else from the
-/// pixels it sent. SVGs don't read, so an item with pixels too shows those.
+/// icon theme (or the file, when the name is a path; SVGs drawn at 16pt),
+/// else from the pixels it sent.
 pub fn image_of(item: &StatusItem, lookup: Option<&IconLookup>) -> Option<Image> {
     let icon = item.current_icon();
     let name = icon.name.trim();
     if name.starts_with('/') {
-        if let Ok(image) = Image::open(name) {
+        if let Some(image) = crate::icons::read(Path::new(name), ICON_PX / 2, 2) {
             return Some(image);
         }
     } else if !name.is_empty() {
         let own = (!item.icon_theme_path.is_empty())
             .then(|| IconLookup::with_base_dirs(vec![Path::new(&item.icon_theme_path).to_path_buf()], "hicolor"));
-        let found =
-            own.iter().chain(lookup).filter_map(|l| l.lookup(name, ICON_PX / 2, 2)).find_map(|p| Image::open(p).ok());
+        let found = own
+            .iter()
+            .chain(lookup)
+            .filter_map(|l| l.lookup(name, ICON_PX / 2, 2))
+            .find_map(|p| crate::icons::read(&p, ICON_PX / 2, 2));
         if found.is_some() {
             return found;
         }
     }
     let p = best_pixmap(&icon.pixmaps, ICON_PX)?;
     Image::from_rgba(p.width, p.height, &p.rgba)
+}
+
+/// Whole wheel steps in what has come (`delta`, in points, added to what
+/// was left over in `left`), a step being a line as the kit counts a wheel
+/// notch: (across, up). What's less than a step waits for more, so a
+/// touchpad's small movements add up.
+pub fn wheel_steps(left: &mut Vec2, delta: Vec2) -> (i32, i32) {
+    *left += delta;
+    let take = |v: &mut f64| {
+        let n = (*v / aizome_kit::LINE).trunc();
+        *v -= n * aizome_kit::LINE;
+        n as i32
+    };
+    (take(&mut left.x), take(&mut left.y))
 }
 
 /// The systray's items from the watcher's: the ones that want to be seen,
@@ -128,6 +145,20 @@ impl Shell {
     fn screen_point(&self, bar: WindowKey, rect: Rect) -> (i32, i32) {
         let origin = self.screen_of(bar).map(|s| (s.output.frame.x0, s.output.frame.y0)).unwrap_or_default();
         ((origin.0 + rect.x0) as i32, (origin.1 + crate::menubar::HEIGHT) as i32)
+    }
+
+    /// The wheel over a status item: whole steps to the item, as `Scroll`
+    /// (a volume control turns its volume).
+    pub fn item_scroll(&mut self, slot: u64, delta: Vec2) {
+        let Some(item) = self.status_item(slot) else { return };
+        let Some(sn) = &self.sys.status else { return };
+        let (across, up) = wheel_steps(self.item_wheel.entry(slot).or_default(), delta);
+        if up != 0 {
+            let _ = sn.scroll(&item.key, up, true);
+        }
+        if across != 0 {
+            let _ = sn.scroll(&item.key, across, false);
+        }
     }
 
     /// A status item was clicked.
@@ -252,6 +283,40 @@ mod tests {
         let image = image_of(&i, None);
         std::fs::remove_dir_all(&dir).unwrap();
         assert_eq!(image.map(|i| i.pixel_size()), Some((4, 4)), "the file, not the 2×2 pixels");
+    }
+
+    #[test]
+    fn an_svg_icon_by_name_is_drawn_rather_than_the_pixels() {
+        // As many apps send it: a name whose only file is a scalable one,
+        // and small pixels besides.
+        let dir = std::env::temp_dir().join(format!("aizome-item-svg-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><rect width="16" height="16" fill="#e0a030"/></svg>"##;
+        std::fs::write(dir.join("indicator.svg"), svg).unwrap();
+        let mut i = item(":1.5/a", ItemStatus::Active);
+        i.icon.name = "indicator".into();
+        i.icon_theme_path = dir.display().to_string();
+        let image = image_of(&i, None);
+        i.icon.name = dir.join("indicator.svg").display().to_string();
+        let by_path = image_of(&i, None);
+        std::fs::remove_dir_all(&dir).unwrap();
+        assert_eq!(image.map(|i| i.pixel_size()), Some((ICON_PX, ICON_PX)), "drawn at 16pt on a 2× screen");
+        assert_eq!(by_path.map(|i| i.pixel_size()), Some((ICON_PX, ICON_PX)), "a path names the file");
+    }
+
+    #[test]
+    fn the_wheel_turns_into_whole_steps() {
+        let line = aizome_kit::LINE;
+        let mut left = Vec2::ZERO;
+        // A wheel notch is a step; up (positive) stays up.
+        assert_eq!(wheel_steps(&mut left, Vec2::new(0.0, line)), (0, 1));
+        assert_eq!(wheel_steps(&mut left, Vec2::new(0.0, -2.0 * line)), (0, -2));
+        // A touchpad's small movements add up to one.
+        for _ in 0..3 {
+            assert_eq!(wheel_steps(&mut left, Vec2::new(line / 4.0, 0.0)), (0, 0));
+        }
+        assert_eq!(wheel_steps(&mut left, Vec2::new(line / 4.0, 0.0)), (1, 0));
+        assert_eq!(left, Vec2::ZERO);
     }
 
     #[test]
