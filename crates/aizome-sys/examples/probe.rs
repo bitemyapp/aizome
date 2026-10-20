@@ -1,5 +1,5 @@
 //! Read-only probe of this machine's system services, through Aizome's own
-//! clients: what the systray panels and Shitsurae would see.
+//! clients: what the systray panels and Settei would see.
 //!
 //! ```text
 //! cargo run -p aizome-sys --example probe [-- SECTION…]

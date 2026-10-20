@@ -10,7 +10,7 @@ import time
 
 RUN = "/run/user/1000"
 INSPECT = RUN + "/inspect"
-APP = "org.aizome.Shitsurae"
+APP = "org.aizome.Settei"
 HOME = "/home/alice"
 
 
@@ -98,7 +98,7 @@ def select_all_and_type(text):
 
 
 class Settings:
-    """Settings (Shitsurae), as the kit's inspection files describe it."""
+    """Settings (Settei), as the kit's inspection files describe it."""
 
     CONTROLS = [
         "switch",
@@ -118,15 +118,15 @@ class Settings:
         self.pid = None
 
     def running(self):
-        return machine.execute("pgrep -u alice '^aizome-shitsura'")[0] == 0
+        return machine.execute("pgrep -u alice -x aizome-settei")[0] == 0
 
     def open(self, pane):
         """Open Settings at a pane, as the palette or a systray panel does."""
         assert not self.running(), "Settings is already open"
         alice(f"mkdir -p {INSPECT} && rm -f {INSPECT}/{APP}.*")
-        alice(f"aizomectl spawn env AIZOME_KIT_INSPECT={INSPECT} aizome-shitsurae --pane {pane}")
+        alice(f"aizomectl spawn env AIZOME_KIT_INSPECT={INSPECT} aizome-settei --pane {pane}")
         self.pid = int(
-            until("Settings to start", lambda: machine.succeed("pgrep -u alice '^aizome-shitsura' || true").strip())
+            until("Settings to start", lambda: machine.succeed("pgrep -u alice -x aizome-settei || true").strip())
         )
         until("Settings' window", lambda: self.window() and self.doc())
         # Its first frames settle while the pane reads the system.

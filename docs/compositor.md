@@ -29,7 +29,7 @@ aizome --build-info                      # how the core was built (what a logic 
 - Settings: `~/.config/aizome/settings.toml` (`--config PATH` for another),
   watched once a second and applied live (theme, focus colour, effects,
   keyboard, pointer and touchpad, outputs, Desks, key bindings, Night
-  Light). Keys Shitsurae keeps in the sections' extra tables are honoured
+  Light). Keys Settei keeps in the sections' extra tables are honoured
   too: `[windows] tab_double_click` (`fill`, `minimise`, `nothing`),
   `[input.pointer]` and `[input.touchpad]` `scroll_factor` (scales axis
   events, wheel and finger; `natural_scroll` turns them round in the

@@ -313,10 +313,10 @@ fn reset_input_ends_a_stuck_grab_and_frees_a_locked_pointer() {
 #[test]
 fn a_drag_ends_on_release_after_an_overlay_took_a_release() {
     let c = Compositor::start(Options::default());
-    let app = Probe::spawn(&c, ProbeSpec::new("org.aizome.Shitsurae", 0x2a2e44));
+    let app = Probe::spawn(&c, ProbeSpec::new("org.aizome.Settei", 0x2a2e44));
     let other = Probe::spawn(&c, ProbeSpec::new("org.example.Other", 0x22aa66));
     c.wait_windows("both", |ws| ws.len() == 2);
-    let w = c.window("org.aizome.Shitsurae").unwrap();
+    let w = c.window("org.aizome.Settei").unwrap();
     c.ok(Request::Focus { id: w.id });
     let (cx, cy) = (w.geometry.x + w.geometry.w / 2, w.geometry.y + w.geometry.h / 2);
 
@@ -330,18 +330,18 @@ fn a_drag_ends_on_release_after_an_overlay_took_a_release() {
     app.wait("its release", |s| s.buttons.last() == Some(&(0x111, false)));
 
     // Drag it by the tab: it follows while held and stops on release.
-    let before = c.window("org.aizome.Shitsurae").unwrap().geometry;
+    let before = c.window("org.aizome.Settei").unwrap().geometry;
     let (tx, ty) = tab_of(&w);
     motion(&c, tx, ty);
     button(&c, "left", true);
     for i in 1..=6 {
         motion(&c, tx + 20 * i, ty + 10 * i);
     }
-    let moved = c.window("org.aizome.Shitsurae").unwrap().geometry;
+    let moved = c.window("org.aizome.Settei").unwrap().geometry;
     assert_eq!((moved.x, moved.y), (before.x + 120, before.y + 60), "the tab didn't drag");
     button(&c, "left", false);
     motion(&c, tx + 400, ty + 300);
-    assert_eq!(c.window("org.aizome.Shitsurae").unwrap().geometry, moved, "it followed after the release");
+    assert_eq!(c.window("org.aizome.Settei").unwrap().geometry, moved, "it followed after the release");
     assert_eq!(input(&c).pointer_grab, None);
 
     // And a click goes where it's made.

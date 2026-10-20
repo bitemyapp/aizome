@@ -795,7 +795,7 @@ impl Shell {
         }
     }
 
-    /// Read (or build) the file index and Shitsurae's settings list, on
+    /// Read (or build) the file index and Settei's settings list, on
     /// threads.
     pub fn start_palette_threads(&mut self, cx: &mut Cx<Msg>) {
         // The index is rebuilt when stale, now and every ten minutes, and
@@ -839,7 +839,7 @@ impl Shell {
     fn settings_list_soon(&mut self, cx: &mut Cx<Msg>) {
         cx.spawn(|| {
             let cache = model::settings_cache_path();
-            let list = std::process::Command::new("aizome-shitsurae")
+            let list = std::process::Command::new("aizome-settei")
                 .args(["--list-settings", "--json"])
                 .stderr(std::process::Stdio::null())
                 .output()

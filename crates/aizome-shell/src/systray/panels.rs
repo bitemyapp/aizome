@@ -1,6 +1,6 @@
 //! The systray's panels: a popup under each widget (`raised`, a hard
 //! shadow, 320pt wide) of quick controls, its last row opening the
-//! matching pane of Shitsurae.
+//! matching pane of Settei.
 
 use aizome_kit::element::Element;
 use aizome_kit::layout::{Align, Point, Rect, Size};
@@ -54,7 +54,7 @@ pub enum PanelMsg {
     OpenDay(String),
     /// Open Tokei's world clocks.
     OpenClocks,
-    /// Open Shitsurae at a pane.
+    /// Open Settei at a pane.
     Settings(String),
     Close,
 }
@@ -287,7 +287,7 @@ fn item_row(
     }
 }
 
-/// The last row: Shitsurae's pane.
+/// The last row: Settei's pane.
 fn settings_row(label: &str, pane: &str) -> Element<PanelMsg> {
     item_row(
         None,

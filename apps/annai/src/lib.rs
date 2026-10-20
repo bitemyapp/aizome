@@ -1,7 +1,7 @@
 //! Annai 案内 (Welcome): Aizome's welcome. Seven short pages, each with a
 //! live illustration drawn in Aizome's own look: the name and the mark,
 //! tabs that stack, menus at the pointer, the palette, the Toolchest,
-//! Desks and the Deskbar, the command key, and Shitsurae's doors. Shown
+//! Desks and the Deskbar, the command key, and Settei's doors. Shown
 //! once at first login (`--first-run`), and from Help ▸ Aizome Tour.
 
 pub mod app;

@@ -7,6 +7,9 @@ through `aizomectl input …` as a person would drive it, and captured with
 is staged in an image editor or composited afterwards; the PNGs were only
 recompressed losslessly (oxipng, pixel-identical).
 
+Pictures taken before Settings was renamed from Shitsurae to Settei show
+the old name wherever Settings appears in them.
+
 | File | What |
 |---|---|
 | `01-desktop-night.png` | Night. Sumi focused on `architecture.md` with text selected; foot (fish) and Hako stacked as one tab group, slid along the top edge; Mail's three notifications filed under it in the Deskbar; README.md and docs/ parked on the Shelf; home, Trash and `~/Desktop` items as desktop icons |
@@ -14,7 +17,7 @@ recompressed losslessly (oxipng, pixel-identical).
 | `03-palette.png` | ❖Space over Sumi, "find": its menu commands with paths and keycaps, apps below, and the shortcut coach for Find and Replace (run three times from the palette earlier) |
 | `04-overview.png` | ⌃❖↑: four Desks with their windows, the current one outlined, a "new Desk" slot |
 | `05-switcher.png` | ❖Tab, then Tab to Hako and ↓: the apps row and Hako's windows with a live thumbnail |
-| `06-settings.png` | Shitsurae (Settings) on Appearance |
+| `06-settings.png` | Settings on Appearance, named Shitsurae when this was taken |
 | `07-day.png` | Day, switched live from Settings: the same session, the Toolchest's Applications open |
 | `08-yukimi.png` | Yukimi on this machine's own NixOS configuration (read-only, `AIZOME_YUKIMI_ETC=/.host-etc`, so it shows its hostname and generations) |
 | `09-kura.png` | Kura scanning the session's scratch home, with its suggestions |

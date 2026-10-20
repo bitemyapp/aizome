@@ -7,7 +7,7 @@ the Toolchest, the palette and the Deskbar show beside it and search by.
 
 | App | Generic name | Crate | Binary | App ID | What the name means |
 |---|---|---|---|---|---|
-| Shitsurae しつらえ | Settings | `apps/shitsurae` | `aizome-shitsurae` | `org.aizome.Shitsurae` | arranging a room for its season and guests |
+| Settei 設定 | Settings | `apps/settei` | `aizome-settei` | `org.aizome.Settei` | settings |
 | Yukimi 雪見 | Software | `apps/yukimi` | `aizome-yukimi` | `org.aizome.Yukimi` | snow-viewing, through a shōji's low pane of glass (Sekka's Nix software manager, made native) |
 | Hako 箱 | Files | `apps/hako` | `aizome-hako` | `org.aizome.Hako` | box |
 | Sumi 墨 | Text Editor | `apps/sumi` | `aizome-sumi` | `org.aizome.Sumi` | ink |
@@ -64,12 +64,12 @@ Tatami's GTK apps under `desktop/tatami/` and Yukimi under `apps/yukimi/`.
 They are MIT OR Apache-2.0 by the same author: copy what helps and rewrite
 the UI with the kit. Keep their behaviour and their care for edge cases.
 
-### Shitsurae (Settings)
+### Settei (Settings)
 
 The macOS System Settings model in Aizome's look: a sidebar (search field
 on top, then the user's card, then panes in groups with Lucide glyphs on
 small `focus`/dye-coloured tiles) and the pane on the right as forms.
-`aizome-shitsurae --pane <id>` opens a pane; `--list-settings --json`
+`aizome-settei --pane <id>` opens a pane; `--list-settings --json`
 prints every pane and searchable option (id, title, path, keywords) for the
 palette. Search filters the sidebar and highlights options.
 
@@ -127,7 +127,7 @@ palette. Search filters the sidebar and highlights options.
   Mac-style position, or the left-only swap to keep Right Alt for accents.
   Changes apply immediately to all keyboards and persist across logins;
   **Default** restores the modifier arrangement. Open this control directly
-  with `aizome-shitsurae --pane keyboard.modifiers`.
+  with `aizome-settei --pane keyboard.modifiers`.
 - **Mouse** and **Trackpad**: pointer speed and acceleration, natural
   scrolling, tap to click, two-finger or corner right-click, disable while
   typing, scroll speed.
@@ -461,7 +461,7 @@ illustration drawn with the kit's canvas in Aizome's look (no
 screenshots): Welcome (the mark, the name and 藍染), Tabs, the menu bar and
 the menu at the pointer, the palette, the Toolchest, Desks and the
 Deskbar, Super as the command key, and Make it yours (buttons that open
-Shitsurae's Appearance, Displays, Network and Keyboard). ←/→ and Return
+Settei's Appearance, Displays, Network and Keyboard). ←/→ and Return
 step; a "Show at login" checkbox.
 
 `aizome-annai --first-run` shows it only if it has never been shown (or

@@ -238,7 +238,7 @@ pub fn toolchest(input: &ToolchestInput) -> Menu {
     .map(|(l, s, g)| Entry::action(l, Action::Palette { scope: Some(s), query: String::new() }).glyph(g))
     .collect();
     let system = [
-        ("Shitsurae", "Settings", "org.aizome.Shitsurae", Icon::Settings),
+        ("Settei", "Settings", "org.aizome.Settei", Icon::Settings),
         ("Yukimi", "Software", "org.aizome.Yukimi", Icon::Package),
         ("Myaku", "Activity", "org.aizome.Myaku", Icon::Activity),
         ("Tansu", "Disks", "org.aizome.Tansu", Icon::HardDrive),

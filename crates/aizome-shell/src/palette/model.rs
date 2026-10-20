@@ -279,7 +279,7 @@ pub fn coach(count: u32, has_shortcut: bool) -> Option<String> {
     })
 }
 
-/// A setting from `aizome-shitsurae --list-settings --json`: one pane or
+/// A setting from `aizome-settei --list-settings --json`: one pane or
 /// option.
 #[derive(Clone, Debug, Default, PartialEq, serde::Deserialize, serde::Serialize)]
 pub struct SettingEntry {
@@ -295,7 +295,7 @@ pub struct SettingEntry {
     pub pane: Option<String>,
 }
 
-/// The panes when Shitsurae can't list its own.
+/// The panes when Settei can't list its own.
 pub fn builtin_settings() -> Vec<SettingEntry> {
     let p = |id: &str, title: &str, kw: &[&str]| SettingEntry {
         id: id.into(),
@@ -322,7 +322,7 @@ pub fn builtin_settings() -> Vec<SettingEntry> {
     ]
 }
 
-/// Settings rows from Shitsurae's list (JSON: an array of entries, or an
+/// Settings rows from Settei's list (JSON: an array of entries, or an
 /// object with `settings`).
 pub fn parse_settings(json: &str) -> Option<Vec<SettingEntry>> {
     let v: serde_json::Value = serde_json::from_str(json).ok()?;

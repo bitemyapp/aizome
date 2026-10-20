@@ -53,7 +53,7 @@ pub enum Action {
     OpenUrl {
         url: String,
     },
-    /// Open Shitsurae at a pane (and a place in it).
+    /// Open Settei at a pane (and a place in it).
     Settings {
         pane: String,
         anchor: Option<String>,

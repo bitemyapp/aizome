@@ -78,7 +78,7 @@ noise (`docs/reload.md`). Two kinds of number:
 | | A character typed in a 2,000-line editor | 0.29 | 0.51 | within |
 | | Scrolling a 10,000-row list a notch | 0.15 | 0.20 | within |
 | | Moving a 10,000-row list's selection | 0.11 | 0.14 | within |
-| Shitsurae | Flipping a switch | 0.20 | 0.23 | within |
+| Settei | Flipping a switch | 0.20 | 0.23 | within |
 | | A key in the sidebar's search | 0.22 | 0.94 | within |
 | | Another pane | 3.05 | 3.76 | within |
 | | Network: the Wi-Fi switch | 1.88 | 3.67 | within |
@@ -704,11 +704,11 @@ minutes, or when its folders or the ones it skips change.
   under load); it happens once per output size and theme, and the desktop
   redraws only an icon's rectangle after.
 
-## Shitsurae: Network, Bluetooth, Sound, Displays, Printers
+## Settei: Network, Bluetooth, Sound, Displays, Printers
 
 Each pane's typical interaction, over the sample, headlessly at 2× (the
 pane's update, the window's view, layout and diff, and rasterising the
-damage): `apps/shitsurae/tests/budget_hw.rs`, debug build, on a laptop
+damage): `apps/settei/tests/budget_hw.rs`, debug build, on a laptop
 busy with other builds (a second run's p95s were up to twice these).
 
 | Interaction | p50 | p95 | max | Redrawn |
@@ -725,7 +725,7 @@ instead of the whole well, 18%, which took 1.5/4.4 ms p50/p95). The
 input meter is one keyed element, so its tick redraws only itself.
 
 Live, under Aizome's headless compositor at 2× (`aizome --backend
-headless`), `aizome-shitsurae --sample --pane displays` with
+headless`), `aizome-settei --sample --pane displays` with
 `SIDESTEP_FRAME_STATS=1`, a display dragged with `aizomectl input`:
 total p50 2.2 ms, p95 3.5 ms, max 3.5 ms over the drag and the drop (the
 drop redraws the pane, 31% damage on average).
@@ -733,7 +733,7 @@ drop redraws the pane, 31% damage on average).
 No exceptions: the Wi-Fi switch and a device's options change much of
 the page, and still fit.
 
-## Shitsurae (Settings)
+## Settei (Settings)
 
 Three typical interactions, measured headlessly by `tests/budget.rs`
 (`typical_interactions_fit_the_frame_budget`) over the sample system: the
@@ -747,7 +747,7 @@ window, layout and diff, and rasterising the damage at 2×.
 | A key typed in the sidebar's search: the results, and the highlights in the pane | 0.24 ms | 1.16 ms | 1.92 ms | `--release`, 60 keys |
 | Another pane from the sidebar: a whole new form laid out and drawn | 1.79 ms | 2.67 ms | 3.58 ms | `--release`, 30 moves |
 
-Debug builds (Shitsurae and the kit unoptimised) take several times
+Debug builds (Settei and the kit unoptimised) take several times
 longer: a key in search p95 16 ms, another pane p95 27 ms.
 
 Writing `settings.toml` happens on a thread of its own, in order: replacing

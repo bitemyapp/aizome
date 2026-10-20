@@ -25,7 +25,7 @@ const APPS: [(&str, &str, &str, usize, f64, u64); 10] = [
     ("Visual Studio Code", "code", "code", 11, 7.5, 1_400_000_000),
     ("Tansu", "aizome-tansu", "org.aizome.Tansu", 1, 0.0, 38_000_000),
     ("Spotify", "spotify", "spotify", 5, 4.2, 520_000_000),
-    ("Shitsurae", "aizome-shitsurae", "org.aizome.Shitsurae", 1, 0.0, 54_000_000),
+    ("Settei", "aizome-settei", "org.aizome.Settei", 1, 0.0, 54_000_000),
     ("Myaku", "aizome-myaku", "org.aizome.Myaku", 1, 0.9, 24_000_000),
 ];
 

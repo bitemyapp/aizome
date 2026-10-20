@@ -43,7 +43,7 @@ def icon(app_id, title):
     return wrap
 
 
-@icon("org.aizome.Shitsurae", "Shitsurae (Settings)")
+@icon("org.aizome.Settei", "Settei (Settings)")
 def settings():
     g = ""
     for i, (y, knob_x, colour) in enumerate([(16, 30, AMBER), (30, 14, PALE), (44, 38, MID)]):

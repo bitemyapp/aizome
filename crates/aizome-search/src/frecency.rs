@@ -31,7 +31,7 @@ struct Entry {
     at: f64,
 }
 
-/// Picks by key: `"app:org.aizome.Shitsurae"`, `"file:/home/…/notes.md"`,
+/// Picks by key: `"app:org.aizome.Settei"`, `"file:/home/…/notes.md"`,
 /// `"cmd:org.aizome.Sumi:Edit/Find/Find and Replace…"`.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Frecency {

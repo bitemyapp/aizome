@@ -1,4 +1,4 @@
-# Changes something real in every pane of Settings (Shitsurae), the way a
+# Changes something real in every pane of Settings (Settei), the way a
 # person would, in a disposable VM: it opens a pane, clicks and types
 # through the compositor (`aizomectl input`), checks the change reached the
 # system (settings.toml, dconf, NetworkManager, PipeWire, BlueZ, CUPS,

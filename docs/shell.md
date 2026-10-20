@@ -86,7 +86,7 @@ Aizome's look.
 
 Each systray widget opens a panel (a popup under it, `raised`, hard 3pt
 shadow, 320pt wide) of quick controls, and its last row opens the matching
-Shitsurae pane (`aizome-shitsurae --pane <name>`):
+Settei pane (`aizome-settei --pane <name>`):
 
 - **Network**: Wi-Fi switch; networks by strength with lock and signal
   glyphs, the connected one checked; picking a secured one asks for the
@@ -150,7 +150,7 @@ pointer: title strip "Toolchest" with the mark, then:
 - **Desks ▸**: the desks (go to), New Desk, Desks Overview ⌃❖↑.
 - **Find ▸**: Commands, Windows, Files, Apps, Settings — each opens the
   palette in that scope.
-- **System ▸**: Shitsurae (Settings), Yukimi (Software), Myaku (Activity),
+- **System ▸**: Settei (Settings), Yukimi (Software), Myaku (Activity),
   Tansu (Disks), Kura (Disk Usage), Terminal.
 - **Session ▸**: Lock ⌃❖Q, Sleep, Restart…, Shut Down…, Log Out… (the last
   three confirm in a small dialog that counts down 60 s).
@@ -191,9 +191,9 @@ Results:
   than 10 minutes and at idle), recent files first when the query is empty,
   frecency boosts, folders open in Hako and files with their default app.
 - **Apps**: desktop entries by name, generic name and keywords.
-- **Settings**: every Shitsurae pane and its main options ("Keyboard ›
-  Remap Caps Lock"), opening Shitsurae at that place. The list comes from
-  `aizome-shitsurae --list-settings --json` (cached), so it stays in step.
+- **Settings**: every Settei pane and its main options ("Keyboard ›
+  Remap Caps Lock"), opening Settei at that place. The list comes from
+  `aizome-settei --list-settings --json` (cached), so it stays in step.
 - **Actions**: Lock, Sleep, Restart, Shut Down, Log Out, Night/Day,
   Do Not Disturb, Screenshot, New Desk, Empty Trash, Show Desktop; Record
   Screen and Record Area, each also with Desktop Audio, with Microphone,
@@ -313,7 +313,7 @@ time.
   and `/aizome/recording.json` notes it, so a shell that
   crashed and was restarted takes it back (indicator and Stop) instead of
   starting another.
-- **Settings**: `[recording]` in `settings.toml` (Shitsurae has no
+- **Settings**: `[recording]` in `settings.toml` (Settei has no
   capture pane yet): `format` (`mp4`, `mkv`), `framerate` (60), `quality`
   (`medium`, `high`, `very-high`, `ultra`), `cursor` (true),
   `desktop_audio` and `microphone` (the defaults for Record Screen and

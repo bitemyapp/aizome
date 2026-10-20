@@ -389,7 +389,7 @@ in
         isAllowed = true;
         isSystem = false;
       };
-      "org.aizome.Shitsurae" = {
+      "org.aizome.Settei" = {
         isAllowed = true;
         isSystem = false;
       };

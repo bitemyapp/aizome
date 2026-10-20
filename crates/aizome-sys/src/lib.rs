@@ -1,5 +1,5 @@
 //! Aizome's system services: what the shell (menu bar widgets, Deskbar, OSD,
-//! notifications, lock screen, polkit dialog) and the apps (Shitsurae,
+//! notifications, lock screen, polkit dialog) and the apps (Settei,
 //! Tansu, Kura, Myaku and the rest) ask of the system.
 //!
 //! # Services

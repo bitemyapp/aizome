@@ -9,7 +9,7 @@ use aizome_sys::apps::{App, AppIndex, LaunchOptions};
 
 /// Hako, Aizome's file manager.
 pub const HAKO: &str = "org.aizome.Hako";
-pub const SHITSURAE: &str = "org.aizome.Shitsurae";
+pub const SETTEI: &str = "org.aizome.Settei";
 pub const TANSU: &str = "org.aizome.Tansu";
 
 /// What to start once an activation token comes.
@@ -49,9 +49,9 @@ pub fn reveal_path(index: Option<&AppIndex>, path: &Path) -> Launch {
     Launch::Argv(vec!["xdg-open".into(), dir.to_string_lossy().into_owned()])
 }
 
-/// Shitsurae at a pane (and a place in it).
+/// Settei at a pane (and a place in it).
 pub fn settings(pane: &str, anchor: Option<&str>) -> Launch {
-    let mut argv = vec!["aizome-shitsurae".to_owned(), "--pane".to_owned(), pane.to_owned()];
+    let mut argv = vec!["aizome-settei".to_owned(), "--pane".to_owned(), pane.to_owned()];
     if let Some(a) = anchor {
         argv.push("--option".into());
         argv.push(a.to_owned());
@@ -233,7 +233,7 @@ mod tests {
         assert_eq!(
             settings("keyboard", Some("keyboard.caps")),
             Launch::Argv(vec![
-                "aizome-shitsurae".into(),
+                "aizome-settei".into(),
                 "--pane".into(),
                 "keyboard".into(),
                 "--option".into(),
