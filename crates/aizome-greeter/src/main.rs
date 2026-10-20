@@ -41,6 +41,17 @@ fn main() {
     if let Some(id) = session {
         std::process::exit(start_session(&cfg, &id));
     }
+    if !nested {
+        // The login screen needs no session bus: without one, nothing of the
+        // greeter user's session starts (the settings portal and the rest it
+        // would activate). Power goes to logind, on the system bus. It's
+        // Night, whatever a portal would say.
+        // Safety: no other thread is running yet.
+        unsafe {
+            std::env::set_var("DBUS_SESSION_BUS_ADDRESS", "disabled:");
+            std::env::set_var("SIDESTEP_APPEARANCE", "dark");
+        }
+    }
     let compositor = if nested {
         None
     } else {

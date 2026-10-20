@@ -173,9 +173,12 @@ impl Login {
                     _ => tidy(&description),
                 };
                 self.message = Some((text, Tone::Error));
-                // greetd's session is over (it cancels on any error): begin
-                // again for the same person, unless beginning is what failed.
-                self.open = false;
+                // greetd may still hold the session (it does after a wrong
+                // password, and refuses a new one: "a session is already
+                // being configured"), so beginning again cancels it first;
+                // cancelling one it already dropped is harmless. Begin again
+                // for the same person, unless beginning is what failed.
+                self.open = true;
                 match self.user.clone() {
                     Some(u) if asked != Some(Asked::Create) => self.begin(&u),
                     _ => {
@@ -255,9 +258,11 @@ mod tests {
             Response::Error { error_type: ErrorType::AuthError, description: "pam_authenticate: AUTH_ERR".into() },
             &launch(),
         );
-        assert_eq!(next, [Request::CreateSession { username: "alice".into() }]);
+        assert_eq!(next, [Request::CancelSession, Request::CreateSession { username: "alice".into() }]);
         assert_eq!(l.failed, 1);
         assert_eq!(l.message, Some(("That password didn't work. Try again.".into(), Tone::Error)));
+        // greetd answers the cancel, then asks again.
+        assert!(l.heard(Response::Success, &launch()).is_empty());
         l.heard(secret("Password: "), &launch());
         assert!(matches!(l.step, Step::Ask { .. }));
         // The message stays until they answer again.
@@ -309,7 +314,7 @@ mod tests {
         let next =
             l.heard(Response::Error { error_type: ErrorType::Error, description: "exec failed".into() }, &launch());
         assert_eq!(l.message, Some(("The session didn't start: Exec failed".into(), Tone::Error)));
-        assert_eq!(next, [Request::CreateSession { username: "kiosk".into() }]);
+        assert_eq!(next, [Request::CancelSession, Request::CreateSession { username: "kiosk".into() }]);
     }
 
     #[test]
@@ -321,6 +326,8 @@ mod tests {
         assert!(next.is_empty());
         assert_eq!(l.step, Step::Failed);
         assert_eq!(l.message, Some(("Unknown user".into(), Tone::Error)));
+        // Return tries again, cancelling whatever greetd kept first.
+        assert_eq!(l.begin("ghost"), [Request::CancelSession, Request::CreateSession { username: "ghost".into() }]);
     }
 
     #[test]
