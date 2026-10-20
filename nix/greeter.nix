@@ -97,14 +97,19 @@ in
     environment.etc."aizome/greeter.toml".source = greeterConfig;
     services.greetd = {
       enable = true;
+      # From the running system rather than by store path, as Sekka starts
+      # Tatami: an Aizome update then leaves greetd's configuration (and
+      # unit) as it was, so it applies live, and the next login screen is
+      # the new greeter. By store path, every update would change greetd's
+      # configuration, which waits for a restart.
       settings.default_session = {
-        command = "${cfg.package}/bin/aizome-greeter";
+        command = "/run/current-system/sw/bin/aizome-greeter";
         user = "greeter";
       };
       # Logging in by itself at boot: straight into the default session,
       # without the greeter (greetd's initial session).
       settings.initial_session = lib.mkIf (autoLogin.enable && autoLogin.user != null) {
-        command = "${cfg.package}/bin/aizome-greeter --session ${
+        command = "/run/current-system/sw/bin/aizome-greeter --session ${
           if g.defaultSession != null then g.defaultSession else "aizome"
         }";
         inherit (autoLogin) user;
