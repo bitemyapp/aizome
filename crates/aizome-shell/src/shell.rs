@@ -773,13 +773,12 @@ impl Shell {
                     self.ipc.send(Request::Close { id: Some(w.id) });
                 }
             }
-            Action::FocusApp { app_id } => match self.wm.app_windows_by_recency(&app_id).first() {
-                Some(w) => self.ipc.send(Request::Focus { id: w.id }),
-                None => self.launch(Launch::App { app_id, targets: vec![] }, cx),
-            },
-            Action::Launch { app_id } | Action::NewWindow { app_id } => {
-                self.launch(Launch::App { app_id, targets: vec![] }, cx)
+            Action::FocusApp { app_id } | Action::Launch { app_id } => {
+                if !self.focus_app_window(&app_id) {
+                    self.launch(Launch::App { app_id, targets: vec![] }, cx);
+                }
             }
+            Action::NewWindow { app_id } => self.launch(Launch::App { app_id, targets: vec![] }, cx),
             Action::Spawn { argv } => self.launch(Launch::Argv(argv), cx),
             Action::Open { path } => {
                 let l = crate::launch::open_path(self.apps.as_deref(), &path);
@@ -790,7 +789,13 @@ impl Shell {
                 self.launch(l, cx);
             }
             Action::OpenUrl { url } => self.launch(Launch::Argv(vec!["xdg-open".into(), url]), cx),
-            Action::Settings { pane, anchor } => self.launch(crate::launch::settings(&pane, anchor.as_deref()), cx),
+            Action::Settings { pane, anchor } => {
+                // The shell owns the user's activation. A second launch
+                // forwards the pane, but the running instance has no fresh
+                // input serial with which to raise itself across Desks.
+                self.focus_app_window(crate::launch::SETTEI);
+                self.launch(crate::launch::settings(&pane, anchor.as_deref()), cx);
+            }
             Action::Copy { text } => cx.set_clipboard_text(&text),
             Action::StatusMenuItem { key, id } => self.status_menu_item(&key, id),
             Action::NewDesk => {
@@ -870,6 +875,24 @@ impl Shell {
                     log::warn!("{}: {e}", path.display());
                 }
             }
+        }
+    }
+
+    /// Raise an app's most recent window, including hidden windows and
+    /// windows on another Desk. Desktop IDs can differ from window IDs
+    /// (for example code.desktop and Code), so use the app index's match.
+    pub(crate) fn focus_app_window(&self, app_id: &str) -> bool {
+        let index = self.apps.as_deref();
+        let entry = index.and_then(|i| i.match_window_identity(app_id));
+        let window = self.wm.most_recent_window_matching(|w| match (index, entry) {
+            (Some(index), Some(entry)) => index.match_window_identity(&w.app_id).is_some_and(|a| a.id == entry.id),
+            _ => crate::apps::same_app_id(&w.app_id, app_id),
+        });
+        if let Some(w) = window {
+            self.ipc.send(Request::Focus { id: w.id });
+            true
+        } else {
+            false
         }
     }
 
@@ -1864,6 +1887,90 @@ impl Shell {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn running_settings() -> (aizome_kit::testing::Harness<Shell>, std::sync::mpsc::Receiver<(Request, Option<u64>)>) {
+        let mut h = aizome_kit::testing::Harness::new(Shell::new(Options::default()));
+        let (ipc, requests) = Ipc::recording();
+        let s = h.program_mut();
+        s.ipc = ipc;
+        s.wm.reset(crate::wm::Snapshot {
+            windows: vec![aizome_ipc::WindowInfo {
+                id: 42,
+                app_id: crate::launch::SETTEI.into(),
+                desk: Some(2),
+                minimised: true,
+                ..Default::default()
+            }],
+            ..Default::default()
+        });
+        // Record launch requests without delivering activation tokens or
+        // starting any process in the user's session.
+        s.opts.live = true;
+        (h, requests)
+    }
+
+    #[test]
+    fn opening_a_settings_pane_raises_the_existing_window_and_forwards_the_pane() {
+        let (mut h, requests) = running_settings();
+        h.send(Msg::Run(Action::Settings { pane: "keyboard".into(), anchor: Some("keyboard.caps".into()) }));
+        assert_eq!(requests.try_recv().unwrap().0, Request::Focus { id: 42 });
+        assert!(
+            h.program()
+                .launches
+                .values()
+                .any(|(launch, _)| { *launch == crate::launch::settings("keyboard", Some("keyboard.caps")) })
+        );
+    }
+
+    #[test]
+    fn opening_a_running_app_focuses_it_but_new_window_still_launches() {
+        let (mut h, requests) = running_settings();
+        h.send(Msg::Run(Action::Launch { app_id: crate::launch::SETTEI.into() }));
+        assert_eq!(requests.try_recv().unwrap().0, Request::Focus { id: 42 });
+        assert!(h.program().launches.is_empty());
+        h.send(Msg::Run(Action::NewWindow { app_id: crate::launch::SETTEI.into() }));
+        assert!(requests.try_recv().is_err());
+        assert_eq!(h.program().launches.len(), 1);
+    }
+
+    #[test]
+    fn app_activation_uses_recency_across_desktop_id_and_wm_class_aliases() {
+        let (mut h, requests) = running_settings();
+        let s = h.program_mut();
+        s.apps = Some(crate::apps::test_index(&[("code", "StartupWMClass=EditorWindow")]));
+        s.wm.reset(crate::wm::Snapshot {
+            windows: ["code", "Code", "EditorWindow"]
+                .into_iter()
+                .enumerate()
+                .map(|(id, app_id)| aizome_ipc::WindowInfo {
+                    id: id as u64 + 10,
+                    app_id: app_id.into(),
+                    ..Default::default()
+                })
+                .collect(),
+            ..Default::default()
+        });
+        for (focused, requested) in [(11, "code"), (12, "Code.desktop"), (10, "EditorWindow")] {
+            h.program_mut().wm.apply(&aizome_ipc::Event::WindowFocused { id: Some(focused) });
+            h.send(Msg::Run(Action::Launch { app_id: requested.into() }));
+            assert_eq!(requests.try_recv().unwrap().0, Request::Focus { id: focused });
+            assert!(h.program().launches.is_empty());
+        }
+    }
+
+    #[test]
+    fn app_activation_does_not_confuse_reverse_dns_suffixes() {
+        let (mut h, requests) = running_settings();
+        let s = h.program_mut();
+        s.apps = Some(crate::apps::test_index(&[("com.spotify.Client", "")]));
+        s.wm.reset(crate::wm::Snapshot {
+            windows: vec![aizome_ipc::WindowInfo { id: 10, app_id: "org.other.Client".into(), ..Default::default() }],
+            ..Default::default()
+        });
+        h.send(Msg::Run(Action::Launch { app_id: "com.spotify.Client".into() }));
+        assert!(requests.try_recv().is_err());
+        assert_eq!(h.program().launches.len(), 1);
+    }
 
     #[test]
     fn the_compositor_says_whether_the_session_is_real() {

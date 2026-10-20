@@ -168,6 +168,12 @@ impl Wm {
         self.opened.iter().filter_map(|id| self.windows.get(id))
     }
 
+    /// The most recently focused matching window, falling back to opening
+    /// order for windows that have never received focus.
+    pub fn most_recent_window_matching(&self, mut matches: impl FnMut(&WindowInfo) -> bool) -> Option<&WindowInfo> {
+        self.recent.iter().filter_map(|id| self.windows.get(id)).chain(self.in_open_order()).find(|w| matches(w))
+    }
+
     /// The app's windows, most recently focused first.
     pub fn app_windows_by_recency(&self, app_id: &str) -> Vec<&WindowInfo> {
         let mut out: Vec<&WindowInfo> =

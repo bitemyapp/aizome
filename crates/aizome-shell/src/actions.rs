@@ -28,8 +28,8 @@ pub enum Action {
     FocusApp {
         app_id: String,
     },
-    /// Launch an app by its desktop entry's id (`org.aizome.Hako`), or its
-    /// app id.
+    /// Open an app by its desktop entry's id (`org.aizome.Hako`), or its
+    /// app id: raise its last window if running, otherwise launch it.
     Launch {
         app_id: String,
     },

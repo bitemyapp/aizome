@@ -291,8 +291,39 @@ impl AppIndex {
         Watcher::start(self.dirs.clone(), self.signature.clone(), wake, Duration::from_secs(2))
     }
 
-    /// The application a window belongs to, from its Wayland app ID or X11
-    /// `WM_CLASS`; see the module documentation for the rules.
+    /// Resolve an application identity for activation: an exact desktop
+    /// file ID (with or without `.desktop`, ignoring case), or an
+    /// unambiguous declared `StartupWMClass`. Unlike [`Self::match_window`],
+    /// this never guesses from reverse-DNS suffixes or executable names.
+    pub fn match_window_identity(&self, app_id_or_wm_class: &str) -> Option<&App> {
+        let wanted = app_id_or_wm_class.trim();
+        if wanted.is_empty() {
+            return None;
+        }
+        if let Some(i) = self.by_id.get(&format!("{wanted}.desktop")).or_else(|| self.by_id.get(wanted)) {
+            return self.entries.get(*i);
+        }
+        let lower = wanted.to_lowercase();
+        let steps: [&dyn Fn(&MatchKeys) -> bool; 3] = [
+            &|keys| keys.id == lower,
+            &|keys| lower.strip_suffix(".desktop").is_some_and(|id| keys.id == id),
+            &|keys| keys.wm_class.as_deref() == Some(lower.as_str()),
+        ];
+        for step in steps {
+            let mut matches = self.info.iter().enumerate().filter(|(_, info)| step(&info.keys));
+            if let Some((i, _)) = matches.next() {
+                // Multiple entries declaring the same class cannot
+                // establish which application owns this window.
+                return matches.next().is_none().then(|| &self.entries[i]);
+            }
+        }
+        None
+    }
+
+    /// A best-effort match for window names and icons. For activation use
+    /// [`Self::match_window_identity`]; these display heuristics can match
+    /// unrelated apps sharing a reverse-DNS suffix or executable name.
+    /// See the module documentation for the rules.
     pub fn match_window(&self, app_id_or_wm_class: &str) -> Option<&App> {
         let wanted = app_id_or_wm_class.trim();
         if wanted.is_empty() {
@@ -933,6 +964,27 @@ mod tests {
         assert_eq!(id("unknown-app"), None);
         assert_eq!(id(""), None);
         assert_eq!(id("   "), None);
+    }
+
+    #[test]
+    fn activation_matches_only_desktop_ids_and_declared_classes() {
+        let (tmp, _) = matcher();
+        tmp.write("usr/share/applications/com.spotify.Client.desktop", &app("Spotify", "StartupWMClass=Spotify\n"));
+        tmp.write("usr/share/applications/org.one.Client.desktop", &app("One", "StartupWMClass=SharedClient\n"));
+        tmp.write("usr/share/applications/org.two.Client.desktop", &app("Two", "StartupWMClass=SharedClient\n"));
+        let index = AppIndex::load_with(XdgDirs::rooted(tmp.path()), Locale::default());
+        let id = |window: &str| index.match_window_identity(window).map(|app| app.id.as_str());
+        for alias in ["code", "Code", "CODE.DESKTOP"] {
+            assert_eq!(id(alias), Some("code.desktop"));
+        }
+        assert_eq!(id("org.telegram.desktop"), Some("org.telegram.desktop.desktop"));
+        assert_eq!(id("ORG.TELEGRAM.DESKTOP"), Some("org.telegram.desktop.desktop"));
+        assert_eq!(id("Spotify"), Some("com.spotify.Client.desktop"));
+        assert_eq!(id("com.spotify.Client"), Some("com.spotify.Client.desktop"));
+        assert_eq!(id("org.one.Client"), Some("org.one.Client.desktop"));
+        for unknown in ["SharedClient", "org.other.Client", "Client", "nautilus", "zeditor", "com.example.Zed", ""] {
+            assert_eq!(id(unknown), None, "must not guess the identity of {unknown}");
+        }
     }
 
     #[test]
