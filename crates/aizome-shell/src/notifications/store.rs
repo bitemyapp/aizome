@@ -38,6 +38,50 @@ pub enum NoteImage {
     },
 }
 
+/// The most pixels a notification's image keeps on its longer side: a
+/// thumbnail 64pt on a 2× screen, as much as anything shows of it. Apps
+/// send whole screenshots as `image-data`; kept whole, one is megabytes
+/// the shell would write out (`carry.rs`) whenever notifications change.
+pub const IMAGE_PX: u32 = 128;
+
+impl NoteImage {
+    /// The image no larger than `max` pixels on its longer side, its
+    /// pixels averaged down (weighted by their alpha) when it's larger.
+    pub fn fit(self, max: u32) -> NoteImage {
+        let NoteImage::Pixels { width, height, rgba } = self else { return self };
+        let long = width.max(height);
+        if long <= max || max == 0 || rgba.len() != width as usize * height as usize * 4 {
+            return NoteImage::Pixels { width, height, rgba };
+        }
+        let scale = |n: u32| ((u64::from(n) * u64::from(max)).div_ceil(u64::from(long)) as u32).max(1);
+        let (w, h) = (scale(width), scale(height));
+        let mut out = Vec::with_capacity(w as usize * h as usize * 4);
+        for y in 0..h {
+            let (y0, y1) = (y * height / h, ((y + 1) * height).div_ceil(h).min(height));
+            for x in 0..w {
+                let (x0, x1) = (x * width / w, ((x + 1) * width).div_ceil(w).min(width));
+                let mut sum = [0u64; 4];
+                for sy in y0..y1 {
+                    let row = sy as usize * width as usize;
+                    for sx in x0..x1 {
+                        let p = &rgba[(row + sx as usize) * 4..][..4];
+                        let a = u64::from(p[3]);
+                        for c in 0..3 {
+                            sum[c] += u64::from(p[c]) * a;
+                        }
+                        sum[3] += a;
+                    }
+                }
+                let n = u64::from((y1 - y0) * (x1 - x0)).max(1);
+                let a = sum[3];
+                let colour = |c: usize| (sum[c] + a / 2).checked_div(a).unwrap_or(0) as u8;
+                out.extend_from_slice(&[colour(0), colour(1), colour(2), ((a + n / 2) / n) as u8]);
+            }
+        }
+        NoteImage::Pixels { width: w, height: h, rgba: out }
+    }
+}
+
 /// A sound a notification asks for.
 #[derive(Clone, Debug, PartialEq)]
 pub enum NoteSound {
@@ -321,6 +365,31 @@ pub fn strip_markup(body: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn images_are_kept_as_thumbnails() {
+        // A 2000 × 1000 screenshot: half opaque red, half see-through.
+        let (w, h) = (2000u32, 1000u32);
+        let mut rgba = Vec::with_capacity((w * h * 4) as usize);
+        for _ in 0..h {
+            for x in 0..w {
+                rgba.extend_from_slice(if x < w / 2 { &[200, 0, 0, 255] } else { &[0, 0, 255, 0] });
+            }
+        }
+        let NoteImage::Pixels { width, height, rgba } = NoteImage::Pixels { width: w, height: h, rgba }.fit(IMAGE_PX)
+        else {
+            panic!("pixels stay pixels")
+        };
+        assert_eq!((width, height), (128, 64), "the longer side at most 128, in proportion");
+        assert_eq!(rgba.len(), 128 * 64 * 4);
+        assert_eq!(&rgba[..4], [200, 0, 0, 255]);
+        // The see-through half's colour doesn't bleed in; at the seam, half.
+        assert_eq!(&rgba[127 * 4..128 * 4], [0, 0, 0, 0]);
+        let small = NoteImage::Pixels { width: 2, height: 1, rgba: vec![1, 2, 3, 4, 5, 6, 7, 8] };
+        assert_eq!(small.clone().fit(IMAGE_PX), small, "a small one is left as it is");
+        let file = NoteImage::File("/tmp/a.png".into());
+        assert_eq!(file.clone().fit(IMAGE_PX), file);
+    }
 
     fn note(app: &str, summary: &str) -> Incoming {
         Incoming {
