@@ -21,7 +21,7 @@ use std::time::{Duration, Instant};
 use aizome_ipc::{Client, Request, Response, WindowInfo};
 use wayland_client::globals::{GlobalListContents, registry_queue_init};
 use wayland_client::protocol::{
-    wl_buffer, wl_compositor, wl_keyboard, wl_output, wl_registry, wl_seat, wl_shm, wl_shm_pool,
+    wl_buffer, wl_callback, wl_compositor, wl_keyboard, wl_output, wl_registry, wl_seat, wl_shm, wl_shm_pool,
     wl_surface,
 };
 use wayland_client::{Connection, Dispatch, EventQueue, QueueHandle, WEnum};
@@ -309,6 +309,8 @@ pub struct Spec {
     /// Request fullscreen before the first surface commit, optionally on an output.
     pub fullscreen: bool,
     pub fullscreen_output: Option<usize>,
+    /// Draw whenever a frame callback arrives.
+    pub animated: bool,
     /// Hold the first buffer until `Cmd::Map`, even after acknowledging configure.
     pub defer_mapping: bool,
 }
@@ -325,8 +327,13 @@ impl Spec {
             configure_delay: Duration::ZERO,
             fullscreen: false,
             fullscreen_output: None,
+            animated: false,
             defer_mapping: false,
         }
+    }
+    pub fn animated(mut self) -> Spec {
+        self.animated = true;
+        self
     }
     pub fn defer_mapping(mut self) -> Spec {
         self.defer_mapping = true;
@@ -362,6 +369,7 @@ impl Spec {
 #[derive(Clone, Debug, Default)]
 pub struct Seen {
     pub configures: u32,
+    pub frames: u32,
     pub bounds: Option<(i32, i32)>,
     pub size: (i32, i32),
     pub activated: bool,
@@ -584,6 +592,13 @@ impl App {
         let buffer = pool.create_buffer(0, w, h, stride, wl_shm::Format::Argb8888, qh, ());
         pool.destroy();
         let s = self.surface.as_ref().unwrap();
+        let opaque = self.compositor.create_region(qh, ());
+        opaque.add(0, 0, w, h);
+        s.set_opaque_region(Some(&opaque));
+        opaque.destroy();
+        if self.spec.animated {
+            s.frame(qh, ());
+        }
         s.attach(Some(&buffer), 0, 0);
         s.damage_buffer(0, 0, w, h);
         s.commit();
@@ -612,12 +627,27 @@ macro_rules! ignore {
 ignore!(
     wl_compositor::WlCompositor,
     wl_output::WlOutput,
+    wayland_client::protocol::wl_region::WlRegion,
     wl_shm::WlShm,
     wl_shm_pool::WlShmPool,
     wl_surface::WlSurface,
     zxdg_decoration_manager_v1::ZxdgDecorationManagerV1,
     wl_seat::WlSeat
 );
+
+impl Dispatch<wl_callback::WlCallback, ()> for App {
+    fn event(
+        app: &mut Self,
+        _: &wl_callback::WlCallback,
+        _: wl_callback::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        app.seen.lock().unwrap().frames += 1;
+        app.needs_draw = true;
+    }
+}
 
 impl Dispatch<wl_keyboard::WlKeyboard, ()> for App {
     fn event(
