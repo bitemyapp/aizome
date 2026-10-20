@@ -130,6 +130,9 @@ noise (`docs/reload.md`). Two kinds of number:
 | | The next picture † | 2.48–3.25 | 2.70–3.73 | within |
 | Annai | A frame of a scene | 0.43 | 0.57 | within |
 | | Turning a page | 1.00 | 1.09 | within |
+| Greeter (login screen) | Typing a password | 0.06 | 0.07 | within |
+| | Moving through the people | 0.11 | 0.36 | within |
+| | A wrong password's shake | 0.10 | 0.23 | within |
 
 Ranges are over several runs or five-second summaries. A live p95 over a
 summary of six or seven frames is in effect its largest frame.
@@ -1028,3 +1031,29 @@ pixels, so the month's days fill no ground of their own (the window's is
 already the surface).
 
 No exceptions.
+
+## The login screen (aizome-greeter)
+
+Headlessly, `crates/aizome-greeter/tests/budget.rs` (`cargo test --release
+-p aizome-greeter --test budget -- --nocapture`): the login surface at 1440
+× 900 points over the design's night wallpaper at 2880 × 1800, three people
+and two sessions, from the key or the tick to its damage rasterised at 2×,
+release, on 20 October 2026:
+
+| Interaction | p50 | p95 | max | drawn |
+|---|---|---|---|---|
+| Moving through the people (→) | 0.11 ms | 0.36 ms | 15.9 ms | 2.4% |
+| Typing a password (and Backspace) | 0.06 ms | 0.07 ms | 0.24 ms | 0.8% |
+| A wrong password's shake (each 30 ms step) | 0.10 ms | 0.23 ms | 1.67 ms | 2.3% |
+| The clock's minute | 0.01 ms | 0.01 ms | 0.01 ms | 0.0% (same minute) |
+
+The wallpaper is decoded and scaled once per display, on a thread, and
+then only copied. A key redraws only what changed: the field, or the two
+tiles whose selection moved. The shake moves the field's row.
+
+### Exceptions
+
+1. **The first move through the people** (15.9 ms, once): the first frame
+   that draws the unselected names and pictures fills the kit's glyph and
+   path caches. Every later frame takes 0.1–0.4 ms. *Accepted*: it happens
+   once per greeter, and only with several people.
