@@ -153,7 +153,8 @@ the notice after a restart), `panel` (its rectangle while open).
 `pointer_grab` (`popup`, or the button and whose surface, or none),
 `pressed_buttons` and `pressed_keys` (evdev codes the seat holds),
 `keyboard_grab`, `pointer_constraint` (`locked`, `confined`),
-`cursor_hidden`, `pointer_focus` and `keyboard_focus` (app IDs).
+`cursor_hidden`, `cursor_name` (the effective named cursor, or null for a client
+surface/hidden cursor), `pointer_focus` and `keyboard_focus` (app IDs).
 
 ### WindowInfo
 

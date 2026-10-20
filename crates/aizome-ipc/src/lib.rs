@@ -635,6 +635,9 @@ pub struct InputState {
     /// `confined`.
     pub pointer_constraint: Option<String>,
     pub cursor_hidden: bool,
+    /// The effective named cursor, or `None` for a client surface or hidden cursor.
+    #[serde(default)]
+    pub cursor_name: Option<String>,
     /// The app whose surface has the pointer, and the keyboard.
     pub pointer_focus: Option<String>,
     pub keyboard_focus: Option<String>,
