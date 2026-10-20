@@ -38,7 +38,8 @@ let
   # window, with a banner saying why). The portal reads its config only
   # from ~/.config or its own package, not XDG_CONFIG_DIRS, so in Aizome
   # sessions it's started with /etc/xdg/aizome's, unless the person has
-  # configured it themselves; other desktops start it as before.
+  # configured it themselves; other desktops start it as before, with
+  # xdg.portal.wlr's settings if that's enabled.
   sharePickerConfig = ''
     [screencast]
     chooser_type=dmenu
@@ -53,6 +54,14 @@ let
   xdg-desktop-portal-wlr = pkgs.xdg-desktop-portal-wlr.overrideAttrs (old: {
     patches = (old.patches or [ ]) ++ [ ./xdg-desktop-portal-wlr-captures.patch ];
   });
+  # Only the drop-in runs the patched portal: the unit and the D-Bus
+  # activation file (which starts the unit) are the stock package's, so a
+  # system that also enables xdg.portal.wlr (as programs.sway does) has one
+  # of each. That module starts the stock portal with its settings through
+  # NixOS's drop-in, overrides.conf; Aizome's sorts after it, and passes
+  # those settings on outside Aizome sessions (the same file, from the
+  # same settings).
+  wlrSettings = (pkgs.formats.ini { }).generate "xdg-desktop-portal-wlr.ini" config.xdg.portal.wlr.settings;
   portalWlr = pkgs.writeShellScript "xdg-desktop-portal-wlr-aizome" ''
     own=''${XDG_CONFIG_HOME:-$HOME/.config}/xdg-desktop-portal-wlr
     case ":''${XDG_CURRENT_DESKTOP:-}:" in
@@ -61,10 +70,13 @@ let
           set -- -c /etc/xdg/aizome/xdg-desktop-portal-wlr/config "$@"
         fi
         ;;
+      *)
+        ${lib.optionalString config.xdg.portal.wlr.enable ''set -- --config=${wlrSettings} "$@"''}
+        ;;
     esac
     exec ${xdg-desktop-portal-wlr}/libexec/xdg-desktop-portal-wlr "$@"
   '';
-  portalWlrDropIn = pkgs.writeTextDir "lib/systemd/user/xdg-desktop-portal-wlr.service.d/aizome.conf" ''
+  portalWlrDropIn = pkgs.writeTextDir "lib/systemd/user/xdg-desktop-portal-wlr.service.d/zz-aizome.conf" ''
     [Service]
     ExecStart=
     ExecStart=${portalWlr}
@@ -337,7 +349,7 @@ in
     xdg.portal = {
       enable = true;
       extraPortals = [
-        xdg-desktop-portal-wlr
+        pkgs.xdg-desktop-portal-wlr
         pkgs.xdg-desktop-portal-gtk
       ];
       configPackages = [ cfg.package ];

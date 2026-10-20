@@ -162,6 +162,14 @@ pkgs.testers.runNixOSTest {
             "org.freedesktop.Secret.Collection Locked' | grep -x 'b false'",
             timeout=60,
         )
+        # With sway, xdg.portal.wlr sets the screen-sharing portal to start
+        # stock; Aizome's drop-in has the last word, so Aizome sessions get
+        # the patched portal with Aizome's picker.
+        portal = machine.succeed(
+            "su alice -c 'DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus "
+            "systemctl --user show -p ExecStart --value xdg-desktop-portal-wlr'"
+        )
+        assert "xdg-desktop-portal-wlr-aizome" in portal, portal
         time.sleep(5)
         machine.screenshot("04-alice-in-aizome")
         state = machine.succeed("cat /var/lib/aizome-greeter/state.toml")

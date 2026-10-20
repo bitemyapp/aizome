@@ -239,7 +239,12 @@ Notes for client authors:
   `~/.config` or its own package, not `XDG_CONFIG_DIRS`, so the module's
   drop-in for its user service starts it with
   `/etc/xdg/aizome/xdg-desktop-portal-wlr/config` in Aizome sessions,
-  unless the person has a config of their own.
+  unless the person has a config of their own. The drop-in is also what
+  runs the patched portal, in every session: the unit and its D-Bus
+  activation are the stock package's, so that a system that also enables
+  `xdg.portal.wlr` (as `programs.sway` does) has one of each. The drop-in
+  sorts after the one NixOS writes for `xdg.portal.wlr`, and passes that
+  module's settings on outside Aizome sessions.
 
 ## Displays
 
