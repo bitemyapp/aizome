@@ -235,8 +235,19 @@ Sidestep fork, with its compositor test `a5e8ce4`, then `d488677`).
 - *Done since*: frost with blur (`0f8319d`, GLES; pixman keeps the tint),
   and the Sidestep pin carries see-through windows' alpha (`992e3dc`,
   rebased as `9f56003`).
-- The systray panels' device lists, media controls and Night Light were
-  not exercised for want of devices in this session; check them on the
-  laptop.
-- Whole-window repaints of the apps at 2× still exceed 4 ms at p95 when a
-  window first shows or the theme changes.
+- The systray panels' sources on the laptop: *checked* 20 October with
+  `cargo run -p aizome-sys --example probe`, which reads through Aizome's
+  own clients and changes nothing. It found:
+  - **Network:** one Wi-Fi network as the panel lists it, five access
+    points across 2.4, 5 and 6 GHz, known and connected.
+  - **Bluetooth:** BlueZ's adapter is powered, with nothing paired.
+  - **Battery:** UPower's battery at 79%, with charge thresholds 75–80%
+    and health 100%. The power profiles and the keyboard light read too.
+  - **Night Light:** the internal display's CRTC takes 1024-entry gamma
+    tables.
+  - **Not covered:** sound and media need a device playing; the `media`
+    and `mpris` tests cover them on a private bus.
+- Whole-window repaints of the apps at 2×: *done since*. Sidestep
+  repaints a whole window at 2× in about a millisecond (5–7 ms before;
+  `docs/performance.md`, "The kit"). Once-per-session first frames stay
+  the budget's documented exceptions there.
