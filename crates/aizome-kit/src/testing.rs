@@ -548,7 +548,15 @@ impl<P: Program> Harness<P> {
 
     /// Send the program a message, as if a widget had.
     pub fn send(&mut self, msg: P::Msg) {
-        self.rt.core.queue.push_back(Box::new(msg));
+        self.send_all([msg]);
+    }
+
+    /// Queue messages together before handling them, as when an input
+    /// event and background replies arrive in the same event-loop turn.
+    pub fn send_all(&mut self, messages: impl IntoIterator<Item = P::Msg>) {
+        for msg in messages {
+            self.rt.core.queue.push_back(Box::new(msg));
+        }
         self.rt.flush(&mut self.platform);
     }
 

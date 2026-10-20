@@ -356,7 +356,15 @@ one scale, and tiles for feels-like, UV, wind (with a compass), humidity,
 the sun and precipitation. The first launch keeps the city of the
 machine's time zone and asks once whether to use the location; GeoClue is
 asked at city accuracy as `org.aizome.Tenki`, and positions go to
-Open-Meteo rounded to 0.01°. Forecasts are cached per place in
+Open-Meteo rounded to 0.01°. **Search for a City** leaves a pending or
+failed location search and focuses the sidebar. Disabling location or
+closing Tenki cancels its request; a late answer cannot change or save
+the position. The shared `aizome-sys` client gives connection setup,
+service calls and the position lookup one 20-second deadline in Tenki,
+then at most 250 ms to send cleanup without waiting for a service reply.
+The shell uses the same client with its existing 30-second deadline.
+The private-bus tests stall setup, property reads and cleanup separately;
+they never contact the host's location service. Forecasts are cached per place in
 `$XDG_CACHE_HOME/aizome/tenki/` (the window opens on the cache and says
 "Updated 12 min ago", or "Offline"), places are kept in
 `$XDG_DATA_HOME/aizome/tenki/places.json`, and units and the location
