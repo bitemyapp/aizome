@@ -2,7 +2,7 @@ use aizome_network_agent::{
     Agent, AgentError, Engine, NM, PATH, Result,
     keyring::Store,
     model::{self, Profile, Prompt, Settings, text_value},
-    process::Cancel,
+    process::{Cancel, run},
     prompt::Prompter,
     vpn::Plugins,
 };
@@ -368,19 +368,108 @@ fn legacy_vpn_plugin_can_supply_its_own_ui_and_unknown_plugins_fail_closed() {
     ));
 }
 
+/// Whether a process has ended. One killed may stay a zombie until
+/// something reaps it.
+fn gone(pid: &str) -> bool {
+    std::fs::read_to_string(format!("/proc/{pid}/stat"))
+        .map_or(true, |stat| stat.rsplit_once(") ").is_some_and(|(_, rest)| rest.starts_with('Z')))
+}
+
+fn child_of(dir: &Directory) -> String {
+    let file = dir.0.join("child");
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        if let Some(pid) = std::fs::read_to_string(&file).ok().filter(|s| s.ends_with('\n')) {
+            return pid.trim().into();
+        }
+        assert!(Instant::now() < deadline, "the helper started no child");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+}
+
+fn failed() -> AgentError {
+    AgentError::Failed("Worker failed".into())
+}
+
 #[test]
 fn cancellation_terminates_blocked_helpers_and_their_children() {
     let dir = Directory::new();
-    let helper = dir.script("blocked", "sleep 60 &\nwait\n");
+    let helper = dir.script("blocked", &format!("sleep 60 &\necho $! > {}\nwait\n", dir.0.join("child").display()));
     let cancel = Cancel::default();
     let token = cancel.clone();
-    let worker =
-        std::thread::spawn(move || aizome_network_agent::process::run(&mut Command::new(helper), Vec::new(), &token));
-    std::thread::sleep(Duration::from_millis(150));
+    let worker = std::thread::spawn(move || run(&mut Command::new(helper), Vec::new(), &token, failed()));
+    let child = child_of(&dir);
     let start = Instant::now();
     cancel.cancel();
     assert!(matches!(worker.join().unwrap(), Err(AgentError::AgentCanceled(_))));
     assert!(start.elapsed() < Duration::from_secs(2));
+    while !gone(&child) {
+        assert!(start.elapsed() < Duration::from_secs(2), "the helper's child survived cancellation");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+}
+
+#[test]
+fn a_finished_helper_returns_at_once_and_leaves_what_it_started() {
+    let dir = Directory::new();
+    // The child holds the helper's output open, as a browser opened for
+    // single sign-on would.
+    let helper = dir.script(
+        "sso",
+        &format!("sleep 60 &\necho $! > {}\nprintf 'password\\nvalue\\n\\n'\n", dir.0.join("child").display()),
+    );
+    let start = Instant::now();
+    let output = run(&mut Command::new(helper), Vec::new(), &Cancel::default(), failed()).unwrap();
+    assert!(start.elapsed() < Duration::from_secs(2));
+    assert_eq!(output, b"password\nvalue\n\n");
+    let child = child_of(&dir);
+    assert!(!gone(&child), "the helper's child was killed");
+    unsafe {
+        libc::kill(child.parse().unwrap(), libc::SIGKILL);
+    }
+}
+
+#[test]
+fn input_and_output_larger_than_a_pipe_pass_through() {
+    let dir = Directory::new();
+    let echo = dir.script("echo", "exec cat\n");
+    let input: Vec<u8> = (0..300_000u32).map(|i| (i % 251) as u8).collect();
+    assert_eq!(run(&mut Command::new(echo), input.clone(), &Cancel::default(), failed()).unwrap(), input);
+}
+
+#[test]
+fn only_a_vpn_helper_exiting_non_zero_counts_as_cancelled() {
+    let dir = Directory::new();
+    let failing = dir.script("failing", "cat >/dev/null\nexit 1\n");
+    // Aizome's own dialog and keyring workers: another agent may still ask.
+    assert!(matches!(
+        run(&mut Command::new(&failing), Vec::new(), &Cancel::default(), failed()),
+        Err(AgentError::Failed(_))
+    ));
+    std::fs::write(
+        dir.0.join("test.name"),
+        format!("[VPN Connection]\nservice=org.example.test-vpn\n[GNOME]\nauth-dialog={}\n", failing.display()),
+    )
+    .unwrap();
+    let plugins = Plugins { dirs: vec![dir.0.clone()] };
+    let (_, ui, _) = fixture(None, false);
+    assert!(matches!(
+        plugins.secrets(&vpn_profile(), &[], 1, HashMap::new(), ui.as_ref(), &Cancel::default()),
+        Err(AgentError::UserCanceled(_))
+    ));
+}
+
+#[test]
+fn one_deadline_covers_every_step_of_a_request() {
+    let dir = Directory::new();
+    let slow = dir.script("slow", "exec sleep 60\n");
+    let quick = dir.script("quick", "exit 0\n");
+    let cancel = Cancel::within(Duration::from_millis(300));
+    let start = Instant::now();
+    assert!(matches!(run(&mut Command::new(slow), Vec::new(), &cancel, failed()), Err(AgentError::AgentCanceled(_))));
+    assert!(start.elapsed() < Duration::from_secs(2));
+    // The next step has no time of its own left.
+    assert!(matches!(run(&mut Command::new(quick), Vec::new(), &cancel, failed()), Err(AgentError::AgentCanceled(_))));
 }
 
 #[test]

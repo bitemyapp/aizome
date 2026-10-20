@@ -1,9 +1,10 @@
 //! Bounded, cancellable workers. Credentials travel only through pipes,
 //! never arguments, environment variables, files or diagnostic output.
 use crate::{AgentError, Result};
-use std::io::{Read, Write};
+use std::io::{ErrorKind, Read, Write};
+use std::os::fd::AsRawFd;
 use std::os::unix::process::CommandExt;
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, Stdio};
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
@@ -11,24 +12,79 @@ use std::sync::{
 use std::time::{Duration, Instant};
 
 pub const MAX_BYTES: usize = 1024 * 1024;
+/// How long NetworkManager waits for GetSecrets, and for SaveSecrets and
+/// DeleteSecrets. It gives up after that without cancelling.
+pub const GET_SECRETS_TIMEOUT: Duration = Duration::from_secs(120);
+pub const SAVE_SECRETS_TIMEOUT: Duration = Duration::from_secs(60);
 
-#[derive(Clone, Default)]
-pub struct Cancel(pub Arc<AtomicBool>);
+/// One request's cancellation and deadline, shared by all of its steps.
+#[derive(Clone)]
+pub struct Cancel {
+    cancelled: Arc<AtomicBool>,
+    deadline: Instant,
+}
+
+impl Default for Cancel {
+    fn default() -> Self {
+        Self::within(GET_SECRETS_TIMEOUT)
+    }
+}
 
 impl Cancel {
+    pub fn within(timeout: Duration) -> Self {
+        Self { cancelled: Arc::default(), deadline: Instant::now() + timeout }
+    }
     pub fn cancel(&self) {
-        self.0.store(true, Ordering::Release);
+        self.cancelled.store(true, Ordering::Release);
+    }
+    pub fn same(&self, other: &Cancel) -> bool {
+        Arc::ptr_eq(&self.cancelled, &other.cancelled)
     }
     pub fn check(&self) -> Result<()> {
-        if self.0.load(Ordering::Acquire) {
+        if self.cancelled.load(Ordering::Acquire) {
             Err(AgentError::AgentCanceled("Network authentication was cancelled".into()))
+        } else if Instant::now() >= self.deadline {
+            Err(AgentError::AgentCanceled("Network authentication timed out".into()))
         } else {
             Ok(())
         }
     }
 }
 
-pub fn run(command: &mut Command, input: Vec<u8>, cancel: &Cancel) -> Result<Vec<u8>> {
+fn nonblocking(fd: &impl AsRawFd) {
+    unsafe {
+        let flags = libc::fcntl(fd.as_raw_fd(), libc::F_GETFL);
+        libc::fcntl(fd.as_raw_fd(), libc::F_SETFL, flags | libc::O_NONBLOCK);
+    }
+}
+
+/// Read what the pipe holds now; true once it is closed.
+fn drain(pipe: &mut impl Read, output: &mut Vec<u8>) -> bool {
+    let mut buffer = [0; 8192];
+    while output.len() <= MAX_BYTES {
+        match pipe.read(&mut buffer) {
+            Ok(0) => return true,
+            Ok(n) => output.extend_from_slice(&buffer[..n]),
+            Err(e) if e.kind() == ErrorKind::Interrupted => {}
+            Err(e) => return e.kind() != ErrorKind::WouldBlock,
+        }
+    }
+    false
+}
+
+/// Ends a worker and everything it started, then reaps it.
+fn abort(child: &mut Child) {
+    unsafe {
+        libc::kill(-(child.id() as i32), libc::SIGKILL);
+    }
+    let _ = child.wait();
+}
+
+/// Runs a worker with `input` on its standard input and returns its
+/// output. A non-zero exit is reported as `failed`: Aizome's own workers
+/// answer a cancelled dialog in their output, while VPN helpers exit
+/// non-zero when the person cancels.
+pub fn run(command: &mut Command, input: Vec<u8>, cancel: &Cancel, failed: AgentError) -> Result<Vec<u8>> {
     cancel.check()?;
     command.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null());
     // A plugin's descendants must not outlive cancellation either.
@@ -41,53 +97,68 @@ pub fn run(command: &mut Command, input: Vec<u8>, cancel: &Cancel) -> Result<Vec
         });
     }
     let mut child = command.spawn().map_err(|_| AgentError::Failed("Could not start credential helper".into()))?;
-    let mut stdin = child.stdin.take().unwrap();
-    let stdout = child.stdout.take().unwrap();
-    let write = std::thread::spawn(move || stdin.write_all(&input));
-    let read = std::thread::spawn(move || {
-        let mut bytes = Vec::new();
-        stdout.take((MAX_BYTES + 1) as u64).read_to_end(&mut bytes).map(|_| bytes)
-    });
-    let deadline = Instant::now() + Duration::from_secs(120);
+    let mut stdin = child.stdin.take();
+    let mut stdout = child.stdout.take();
+    stdin.iter().for_each(nonblocking);
+    stdout.iter().for_each(nonblocking);
+    let mut written = 0;
+    let mut output = Vec::new();
     let status = loop {
-        if cancel.check().is_err() || Instant::now() >= deadline {
-            unsafe {
-                libc::kill(-(child.id() as i32), libc::SIGKILL);
+        if let Err(e) = cancel.check() {
+            abort(&mut child);
+            return Err(e);
+        }
+        if let Some(pipe) = &mut stdin {
+            match pipe.write(&input[written..]) {
+                Ok(n) => written += n,
+                Err(e) if matches!(e.kind(), ErrorKind::WouldBlock | ErrorKind::Interrupted) => {}
+                // The worker closed its input.
+                Err(_) => written = input.len(),
             }
-            let _ = child.wait();
-            let _ = write.join();
-            let _ = read.join();
-            cancel.check()?;
-            return Err(AgentError::AgentCanceled("Network authentication timed out".into()));
+            if written == input.len() {
+                stdin = None;
+            }
+        }
+        if let Some(pipe) = &mut stdout
+            && drain(pipe, &mut output)
+        {
+            stdout = None;
+        }
+        if output.len() > MAX_BYTES {
+            abort(&mut child);
+            return Err(AgentError::Failed("Invalid credential helper response".into()));
         }
         match child.try_wait() {
             Ok(Some(status)) => break status,
-            Ok(None) => std::thread::sleep(Duration::from_millis(25)),
-            Err(_) => {
+            Ok(None) => {
+                let mut fds: Vec<_> = stdin
+                    .iter()
+                    .map(|p| libc::pollfd { fd: p.as_raw_fd(), events: libc::POLLOUT, revents: 0 })
+                    .chain(stdout.iter().map(|p| libc::pollfd { fd: p.as_raw_fd(), events: libc::POLLIN, revents: 0 }))
+                    .collect();
+                // Exits aren't polled: look again shortly.
                 unsafe {
-                    libc::kill(-(child.id() as i32), libc::SIGKILL);
+                    libc::poll(fds.as_mut_ptr(), fds.len() as libc::nfds_t, 25);
                 }
-                let _ = child.wait();
-                let _ = write.join();
-                let _ = read.join();
+            }
+            Err(_) => {
+                abort(&mut child);
                 return Err(AgentError::Failed("Credential helper failed".into()));
             }
         }
     };
-    // Helpers must not leave inherited pipe descriptors in descendants.
-    unsafe {
-        libc::kill(-(child.id() as i32), libc::SIGKILL);
+    // All the worker wrote is in the pipe now. What it started keeps
+    // running, and may hold the pipe open, so take only what is there:
+    // a VPN helper may have opened a browser for single sign-on.
+    if let Some(pipe) = &mut stdout {
+        drain(pipe, &mut output);
     }
-    let _ = write.join();
-    let output = read
-        .join()
-        .ok()
-        .and_then(|r| r.ok())
-        .filter(|b| b.len() <= MAX_BYTES)
-        .ok_or_else(|| AgentError::Failed("Invalid credential helper response".into()))?;
     cancel.check()?;
+    if output.len() > MAX_BYTES {
+        return Err(AgentError::Failed("Invalid credential helper response".into()));
+    }
     if !status.success() {
-        return Err(AgentError::UserCanceled("Authentication was cancelled or the helper could not complete".into()));
+        return Err(failed);
     }
     Ok(output)
 }

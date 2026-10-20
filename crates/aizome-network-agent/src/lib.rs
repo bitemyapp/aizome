@@ -8,7 +8,7 @@ pub mod vpn;
 
 use keyring::Store;
 use model::{AGENT_OWNED, ALLOW_INTERACTION, NOT_REQUIRED, NOT_SAVED, Profile, Prompt, REQUEST_NEW, Settings};
-use process::Cancel;
+use process::{Cancel, GET_SECRETS_TIMEOUT, SAVE_SECRETS_TIMEOUT};
 use prompt::Prompter;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -181,10 +181,12 @@ impl Agent {
         flags: u32,
         #[zbus(header)] header: Header<'_>,
     ) -> Result<Settings> {
+        // NetworkManager gives the whole request two minutes, every dialog
+        // and helper included, and then stops waiting without cancelling.
+        let cancel = Cancel::within(GET_SECRETS_TIMEOUT);
         self.authorize(&header).await?;
         let profile = Profile::new(connection)?;
         let key = (connection_path.to_string(), setting_name.clone());
-        let cancel = Cancel::default();
         {
             let mut pending = self.pending.lock().unwrap();
             if pending.len() >= 16 && !pending.contains_key(&key) {
@@ -198,7 +200,7 @@ impl Agent {
         let token = cancel.clone();
         let result = self.work(move || engine.get(profile, &setting_name, &hints, flags, &token)).await;
         let mut pending = self.pending.lock().unwrap();
-        if pending.get(&key).is_some_and(|t| Arc::ptr_eq(&t.0, &cancel.0)) {
+        if pending.get(&key).is_some_and(|t| t.same(&cancel)) {
             pending.remove(&key);
         }
         result
@@ -221,10 +223,11 @@ impl Agent {
         _connection_path: OwnedObjectPath,
         #[zbus(header)] header: Header<'_>,
     ) -> Result<()> {
+        let cancel = Cancel::within(SAVE_SECRETS_TIMEOUT);
         self.authorize(&header).await?;
         let profile = Profile::new(connection)?;
         let engine = self.engine.clone();
-        self.work(move || engine.save(profile, &Cancel::default())).await
+        self.work(move || engine.save(profile, &cancel)).await
     }
     async fn delete_secrets(
         &self,
@@ -232,10 +235,11 @@ impl Agent {
         _connection_path: OwnedObjectPath,
         #[zbus(header)] header: Header<'_>,
     ) -> Result<()> {
+        let cancel = Cancel::within(SAVE_SECRETS_TIMEOUT);
         self.authorize(&header).await?;
         let profile = Profile::new(connection)?;
         let engine = self.engine.clone();
-        self.work(move || engine.store.delete(&profile.uuid, &Cancel::default())).await
+        self.work(move || engine.store.delete(&profile.uuid, &cancel)).await
     }
 }
 

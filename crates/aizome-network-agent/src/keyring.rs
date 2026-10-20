@@ -37,6 +37,7 @@ impl Keyring {
             Command::new(exe).arg("--keyring"),
             serde_json::to_vec(&r).map_err(|_| AgentError::Failed("Invalid keyring request".into()))?,
             cancel,
+            AgentError::Failed("Cannot access the login keyring".into()),
         )?;
         serde_json::from_slice(&bytes).map_err(|_| AgentError::Failed("Cannot access the login keyring".into()))
     }

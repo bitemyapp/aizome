@@ -19,6 +19,9 @@ impl Prompter for Native {
             Command::new(exe).arg("--prompt"),
             serde_json::to_vec(&prompt).map_err(|_| AgentError::Failed("Invalid prompt".into()))?,
             cancel,
+            // A cancelled dialog answers `null`. This one couldn't open or
+            // stopped, so NetworkManager may still ask other agents.
+            AgentError::Failed("The authentication dialog failed".into()),
         )?;
         serde_json::from_slice::<Option<HashMap<String, String>>>(&bytes)
             .map_err(|_| AgentError::Failed("Invalid authentication response".into()))?

@@ -62,9 +62,15 @@ directly. The agent handles later requests: reconnects, changed passwords,
 ask-every-time profiles, enterprise credentials and VPN authentication.
 
 Credentials reach worker processes through pipes, not command arguments,
-environment variables or temporary files. Cancellation terminates pending
-dialogs/helpers and their process groups; workers have bounded input,
-output and a two-minute deadline. Core dumps are disabled for the service.
+environment variables or temporary files. Workers have bounded input and
+output. Cancellation, or the end of the two minutes NetworkManager allows
+for the whole request, terminates pending dialogs/helpers and their
+process groups. A helper that finishes is not signalled, so what it
+started (a browser opened for single sign-on, say) keeps running.
+Cancelling a dialog, or a VPN helper exiting unsuccessfully as nm-applet
+reads it, tells NetworkManager the person cancelled; a dialog that cannot
+open fails the request instead, so NetworkManager may ask another agent.
+Core dumps are disabled for the service.
 Password fields omit their contents from UI inspection and accessibility.
 
 ## Verification

@@ -116,7 +116,13 @@ impl Plugins {
             }
         }
         input.push_str("DONE\n\nQUIT\n\n");
-        let output = process::run(&mut command, input.into_bytes(), cancel)?;
+        // As in nm-applet, a helper that exits non-zero was cancelled.
+        let output = process::run(
+            &mut command,
+            input.into_bytes(),
+            cancel,
+            AgentError::UserCanceled("Authentication was cancelled or the helper could not complete".into()),
+        )?;
         let output = String::from_utf8(output).map_err(|_| AgentError::Failed("Invalid VPN helper encoding".into()))?;
         if external {
             external_reply(&output, flags, ui, cancel)
