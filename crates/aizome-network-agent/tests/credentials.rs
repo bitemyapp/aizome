@@ -392,10 +392,19 @@ impl Directory {
         Self(path)
     }
     fn script(&self, name: &str, source: &str) -> std::path::PathBuf {
-        use std::os::unix::fs::PermissionsExt;
+        use std::io::Write;
         let path = self.0.join(name);
-        std::fs::write(&path, format!("#!/bin/sh\n{source}")).unwrap();
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o700)).unwrap();
+        // Written by another process: while this one has the file open to
+        // write, a child another test forks inherits it, and running the
+        // script fails as busy (ETXTBSY) until that child execs.
+        let mut writer = Command::new("sh")
+            .args(["-c", "cat > \"$0\" && chmod 700 \"$0\""])
+            .arg(&path)
+            .stdin(Stdio::piped())
+            .spawn()
+            .unwrap();
+        writer.stdin.take().unwrap().write_all(format!("#!/bin/sh\n{source}").as_bytes()).unwrap();
+        assert!(writer.wait().unwrap().success());
         path
     }
 }
