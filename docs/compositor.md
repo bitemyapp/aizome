@@ -214,7 +214,12 @@ Notes for client authors:
   once. The portal can make a frame before destroying its last when its
   stream pauses and resumes as a consumer links: the newer frame takes
   over (and the older is never answered) instead of a `duplicate_frame`
-  error ending its connection. A session that has shown frames for a
+  error ending its connection. The NixOS module's portal is patched not
+  to (`nix/xdg-desktop-portal-wlr-captures.patch`): it cancels a capture
+  when its stream pauses and captures into the same buffer on resuming,
+  where 0.8.4 queued that buffer unfilled with a timestamp of zero, after
+  which a reader syncing to the timestamps (GStreamer's `pipewiresrc`)
+  stalled after one frame. A session that has shown frames for a
   second is a share (reported then, from a timer: an IPC event at the
   first frame, while the portal and the app's PipeWire stream were still
   starting, left the stream stuck after one frame in the VM): IPC `shares`
