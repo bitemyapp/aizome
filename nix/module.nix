@@ -44,6 +44,15 @@ let
     chooser_type=dmenu
     chooser_cmd=${cfg.package}/bin/aizome-share-picker
   '';
+  # The portal's captures, patched: one in flight when the stream pauses
+  # (as it does once while a consumer links) is cancelled and its buffer
+  # kept, rather than queued unfilled with a timestamp of zero, after which
+  # a consumer that syncs to the timestamps stalls; a frame's late events no
+  # longer land on the capture after it; and closing a stalled share no
+  # longer frees the retry timer twice.
+  xdg-desktop-portal-wlr = pkgs.xdg-desktop-portal-wlr.overrideAttrs (old: {
+    patches = (old.patches or [ ]) ++ [ ./xdg-desktop-portal-wlr-captures.patch ];
+  });
   portalWlr = pkgs.writeShellScript "xdg-desktop-portal-wlr-aizome" ''
     own=''${XDG_CONFIG_HOME:-$HOME/.config}/xdg-desktop-portal-wlr
     case ":''${XDG_CURRENT_DESKTOP:-}:" in
@@ -53,7 +62,7 @@ let
         fi
         ;;
     esac
-    exec ${pkgs.xdg-desktop-portal-wlr}/libexec/xdg-desktop-portal-wlr "$@"
+    exec ${xdg-desktop-portal-wlr}/libexec/xdg-desktop-portal-wlr "$@"
   '';
   portalWlrDropIn = pkgs.writeTextDir "lib/systemd/user/xdg-desktop-portal-wlr.service.d/aizome.conf" ''
     [Service]
@@ -328,7 +337,7 @@ in
     xdg.portal = {
       enable = true;
       extraPortals = [
-        pkgs.xdg-desktop-portal-wlr
+        xdg-desktop-portal-wlr
         pkgs.xdg-desktop-portal-gtk
       ];
       configPackages = [ cfg.package ];
