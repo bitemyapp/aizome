@@ -120,7 +120,12 @@ impl Shell {
                 }
             })
             .collect();
-        DeskbarModel { apps, shelf, hide_shelf: !self.deskbar_cfg.show_shelf }
+        DeskbarModel {
+            apps,
+            shelf,
+            hide_shelf: !self.deskbar_cfg.show_shelf,
+            max_height: self.primary().map(|s| (s.output.frame.height() - crate::menubar::HEIGHT).max(1.0)),
+        }
     }
 
     /// Open, size or close the Deskbar to match the settings and its

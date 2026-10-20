@@ -220,6 +220,10 @@ keys), so the palette learns.
 At the top right under the bar (C2-Desktop): `chrome`, 232pt, hard shadow,
 collapsible by its header (the `N apps ⌄` control).
 
+Its height is limited to the space below the menu bar on the owning
+output. Scroll to reach overflowing app groups, notifications and Shelf
+items.
+
 - Each running app (by app ID, in launch order, pinned apps first): its
   icon (Lucide glyph for Aizome's apps by kind, the app's own icon at 16pt
   for others), name in Archivo 650 and window count right-aligned. Click

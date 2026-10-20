@@ -103,11 +103,18 @@ pub struct DeskbarModel {
     pub shelf: Vec<ShelfRow>,
     /// `[deskbar] show_shelf = false`: no Shelf under the apps.
     pub hide_shelf: bool,
+    /// Room below the menu bar on the owning output, including the shadow.
+    pub max_height: Option<f64>,
 }
 
 impl DeskbarModel {
     /// Its height, shadow included: the surface's.
     pub fn height(&self) -> f64 {
+        self.max_height.map_or(self.content_height(), |h| self.content_height().min(h.max(SHADOW + 1.0)))
+    }
+
+    /// Unclipped height: overflowing content stays reachable by scrolling.
+    pub fn content_height(&self) -> f64 {
         let mut h = 4.0 + 2.0;
         for a in &self.apps {
             h += APP_ROW;
@@ -356,8 +363,8 @@ pub fn view(m: &DeskbarModel) -> Element<DeskbarMsg> {
         shelf.push(drop_row());
         rows.push(aizome_kit::container(column(shelf).spacing(SHELF_GAP)).padding([0.0, 10.0, 10.0, 10.0]).into());
     }
-    let content = column(rows).width(WIDTH);
     let h = m.height();
+    let content = aizome_kit::scroll(column(rows).width(WIDTH)).width(WIDTH).height((h - SHADOW).max(1.0));
     // The ground: `chrome`, its left and bottom edges, the shadow left and
     // down.
     let ground = drawn(WIDTH + SHADOW, h, ("deskbar-ground", h.to_bits()), |cx| {
@@ -415,6 +422,7 @@ mod tests {
             }],
             shelf: vec![],
             hide_shelf: false,
+            max_height: None,
         };
         assert_eq!(one.height(), base + APP_ROW + WINDOW_ROW);
         let mut folded = one.clone();

@@ -99,3 +99,23 @@ fn shelf_items_drag_out_to_other_programs() {
         "file:///home/u/My%20Notes/%C3%A4.md"
     );
 }
+
+#[test]
+fn overflowing_deskbar_scrolls_to_the_shelf_and_tracks_output_size() {
+    let mut h = scene(false);
+    with_mail_and_shelf(&mut h);
+    let mut small = output();
+    small.frame.y1 = 240.0;
+    h.set_outputs(vec![small]);
+    let db = window_titled(&h, "Deskbar");
+    let size = aizome_shell::deskbar::size(&h.program().deskbar_model());
+    assert_eq!(size.height, 240.0 - aizome_shell::menubar::HEIGHT);
+    h.resize(db, size);
+    assert!(h.find(db, "Drop to park").is_none(), "the fixture overflows");
+    h.scroll(db, Point::new(100.0, 100.0), Vec2::new(0.0, 2000.0));
+    let after = h.find(db, "Drop to park").expect("park row after scroll");
+    assert!(after.y0 >= 0.0 && after.y1 <= size.height, "shelf is reachable: {after:?}");
+    h.set_outputs(vec![output()]);
+    let expanded = aizome_shell::deskbar::size(&h.program().deskbar_model());
+    assert!(expanded.height > size.height && expanded.height < H);
+}
