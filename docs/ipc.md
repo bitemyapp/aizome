@@ -125,6 +125,7 @@ Chrome while the Deskbar grows, collapses and reopens:
 ```sh
 AIZOME_LAYOUT_TEST_SHELL="$(command -v aizome-shell)" \
 AIZOME_LAYOUT_TEST_CHROME="$(command -v google-chrome)" \
+AIZOME_LAYOUT_TEST_CALCULATOR="$(command -v aizome-soroban)" \
 cargo test -p aizome-comp --test layout_desktop -- --ignored --nocapture
 ```
 
@@ -133,6 +134,21 @@ temporary profile and a blank page. Both D-Bus addresses are isolated from
 the login session; no physical input or session services are changed.
 Screenshots are kept in the Cargo target's `tmp/aizome-shots/` directory.
 Use a separate `CARGO_TARGET_DIR` when another checkout is being built.
+
+To check activation through the real shell and Settings app, build both
+and run the notebook desktop regressions. They move Settings to another
+Desk, minimise it, then use the command palette and a notification to
+raise that same window. Pane selection is also checked through Settings'
+single-instance socket. All processes use the same isolation as above.
+
+```sh
+cargo build -p aizome-shell -p aizome-settei
+AIZOME_NOTEBOOK_SHELL="$PWD/target/debug/aizome-shell" \
+AIZOME_NOTEBOOK_SETTEI="$PWD/target/debug/aizome-settei" \
+cargo test -p aizome-comp --test notebook_desktop -- --ignored --test-threads=1 --nocapture
+```
+
+Adjust the executable paths when using a different Cargo target directory.
 
 ## Responses
 
