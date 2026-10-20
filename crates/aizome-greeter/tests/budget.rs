@@ -34,7 +34,8 @@ fn output() -> aizome_kit::Output {
 }
 
 fn wallpaper() -> Option<PathBuf> {
-    let p = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../aizome-design/reference/wallpapers/da-nang-at-night.jpg");
+    let p =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../aizome-design/reference/wallpapers/da-nang-at-night.jpg");
     p.exists().then_some(p)
 }
 
@@ -103,7 +104,12 @@ fn report(name: &str, mut v: Vec<Duration>, area: f64) -> f64 {
     p(0.95)
 }
 
-fn measure(h: &mut Harness<Greeter>, w: WindowKey, n: usize, mut step: impl FnMut(&mut Harness<Greeter>, usize)) -> (Vec<Duration>, f64) {
+fn measure(
+    h: &mut Harness<Greeter>,
+    w: WindowKey,
+    n: usize,
+    mut step: impl FnMut(&mut Harness<Greeter>, usize),
+) -> (Vec<Duration>, f64) {
     let mut v = Vec::with_capacity(n);
     let mut area = 0.0;
     for i in 0..n {

@@ -538,7 +538,7 @@ fn frame(h: &mut Harness<Kura>, act: impl FnOnce(&mut Harness<Kura>)) -> Option<
     act(h);
     // The damage's rectangles, as the window's renderer draws them.
     let damage = h.take_damage(w);
-    let _ = h.render_damage(w, &damage, 2.0)?;
+    h.render_damage(w, &damage, 2.0)?;
     Some(start.elapsed())
 }
 

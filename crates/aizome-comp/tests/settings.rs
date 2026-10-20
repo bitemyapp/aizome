@@ -122,7 +122,7 @@ fn modifier_swaps_apply_live_to_both_sides_and_can_be_undone() {
             key(&c, physical, false);
             count += 1;
             let s = a.wait_seen("modified a", |s| s.keys.iter().filter(|(k, _)| *k == KEY_A).count() == count);
-            let (_, mods) = s.keys.iter().filter(|(k, _)| *k == KEY_A).last().unwrap();
+            let (_, mods) = s.keys.iter().rfind(|(k, _)| *k == KEY_A).unwrap();
             assert_eq!(mods & (ALT | SUPER | CTRL), want, "physical key {physical}, options {options}");
         }
     }
