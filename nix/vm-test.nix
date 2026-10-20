@@ -369,6 +369,9 @@ pkgs.testers.runNixOSTest {
 
         text = share("window", 3, click_window)
         assert "exit 0" in text and "frames:" in text, text
+        # The click picked on its press; its release went to nobody, not
+        # to the terminal under it.
+        machine.fail("journalctl -b --no-pager -o cat | grep -F 'stray button release'")
 
         # Esc: the portal refuses the share, and nothing is shared.
         text = share("refused", 3, lambda: as_alice("aizomectl input key escape"))

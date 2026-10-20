@@ -120,6 +120,8 @@ fn window_at(state: &mut State, x: f64, y: f64) -> Option<WinId> {
 pub fn pointer_button(state: &mut State, pressed: bool, x: f64, y: f64) -> bool {
     let Some(a) = state.lg.m().overlays.area.as_mut() else { return false };
     if a.window_mode {
+        // A click picks on the press; its release, the picker gone, goes
+        // to nobody (`Interactive::overlay_presses`).
         if pressed {
             let reporting = a.report.is_some();
             let w = window_at(state, x, y);

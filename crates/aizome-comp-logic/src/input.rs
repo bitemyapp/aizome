@@ -7,7 +7,7 @@
 //! overlays, the binding table, then the command-key translation, then to
 //! the focused client.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::time::{Duration, Instant};
 
 use aizome_comp_core::focus::Focus;
@@ -34,6 +34,11 @@ pub struct Interactive {
     pub last_tab_click: Option<(Instant, WinId, (f64, f64))>,
     /// A tab being dragged: where it would stack.
     pub drag: Option<TabDrag>,
+    /// Buttons whose presses an overlay took. Their releases are the
+    /// overlay's too, and nobody's once the press has closed it (a window
+    /// pick ends on the press): a client given one would see a release
+    /// with no press.
+    pub overlay_presses: HashSet<u32>,
 }
 
 #[derive(Clone, Debug)]
@@ -119,9 +124,13 @@ impl InputExt for State {
             };
             self.press_outside_menus(under.as_ref(), serial, time);
         }
+        // Whether an overlay took this button's press (a new press starts
+        // afresh).
+        let overlay_press = self.lg.m().interactive.overlay_presses.remove(&button);
         if pressed && !pointer.is_grabbed() {
             let pos = pointer.current_location();
             if crate::overlays::pointer_button(self, button, true, pos) {
+                self.lg.m().interactive.overlay_presses.insert(button);
                 return;
             }
             if press_binding(self, button, pos, serial, time) {
@@ -160,11 +169,11 @@ impl InputExt for State {
         } else if !pressed
             && !self.az.forwarded_buttons.contains(&button)
             && !pointer.is_grabbed()
-            && crate::overlays::pointer_button(self, button, false, pointer.current_location())
+            && (crate::overlays::pointer_button(self, button, false, pointer.current_location()) || overlay_press)
         {
-            // A release for an overlay that took its press. One whose
-            // press the seat saw goes to the seat, or its grabs (and the
-            // pointer) stay stuck.
+            // A release for an overlay that took its press, up still or
+            // closed by it. One whose press the seat saw goes to the seat,
+            // or its grabs (and the pointer) stay stuck.
             return;
         }
         self.forward_button(button, pressed, serial, time);
