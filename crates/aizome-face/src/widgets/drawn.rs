@@ -8,7 +8,7 @@ use std::rc::Rc;
 
 use aizome_kit::element::{Element, MsgFn, MsgMap};
 use aizome_kit::hash::PaintHasher;
-use aizome_kit::layout::{Constraints, Point, Size};
+use aizome_kit::layout::{Constraints, Point, Size, Vec2};
 use aizome_kit::sidestep_ui::{Cursor, PointerButton};
 use aizome_kit::widget::{Event, EventCx, LayoutCx, PaintCx, SemanticRole, Semantics, Status, Widget};
 
@@ -58,6 +58,7 @@ pub fn drawn<Msg>(
             double: None,
             right: None,
             middle: None,
+            wheel: None,
             press: None,
             drag: None,
             hover: false,
@@ -94,6 +95,13 @@ impl<Msg: Clone + Send + 'static> Drawn<Msg> {
 
     pub fn on_middle_click(mut self, msg: Msg) -> Self {
         self.w.middle = Some(MsgFn::new(msg));
+        self
+    }
+
+    /// The wheel (or two fingers) over it: how far, in points, positive
+    /// away from the person and to the right.
+    pub fn on_scroll(mut self, f: impl Fn(Vec2) -> Msg + 'static) -> Self {
+        self.w.wheel = Some(MsgMap::new(f));
         self
     }
 
@@ -200,6 +208,7 @@ struct DrawnWidget {
     double: Option<MsgFn>,
     right: Option<MsgMap<Press>>,
     middle: Option<MsgFn>,
+    wheel: Option<MsgMap<Vec2>>,
     press: Option<MsgMap<Press>>,
     drag: Option<MsgMap<DragPhase>>,
     hover: bool,
@@ -270,7 +279,12 @@ impl Widget for DrawnWidget {
     }
 
     fn hit(&self) -> bool {
-        self.hover || self.drag.is_some() || self.middle.is_some() || self.drop.is_some() || self.drag_out.is_some()
+        self.hover
+            || self.drag.is_some()
+            || self.middle.is_some()
+            || self.wheel.is_some()
+            || self.drop.is_some()
+            || self.drag_out.is_some()
     }
 
     fn hover_paints(&self) -> bool {
@@ -378,6 +392,13 @@ impl Widget for DrawnWidget {
             Event::PointerDown { button: PointerButton::Middle, .. } => match &self.middle {
                 Some(m) => {
                     cx.emit(m);
+                    Status::Handled
+                }
+                None => Status::Ignored,
+            },
+            Event::Scroll { delta, .. } => match &self.wheel {
+                Some(m) => {
+                    cx.emit_map(m, *delta);
                     Status::Handled
                 }
                 None => Status::Ignored,

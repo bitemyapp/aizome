@@ -7,7 +7,7 @@ use aizome_ipc::DeskInfo;
 use aizome_kit::Icon;
 use aizome_kit::draw;
 use aizome_kit::element::Element;
-use aizome_kit::layout::{Align, Point, Rect};
+use aizome_kit::layout::{Align, Point, Rect, Vec2};
 use aizome_kit::widget::SemanticRole;
 use aizome_kit::{Layoutable, row, stack};
 use aizome_theme::typeface;
@@ -24,6 +24,8 @@ pub enum BarMsg {
     Press(Slot, Rect),
     /// An app's status item was clicked: which, how, and its rectangle.
     Item(u64, ItemClick, Rect),
+    /// The wheel over an app's status item: which, and how far in points.
+    ItemScroll(u64, Vec2),
     /// The pointer came over a title while a menu is open.
     Hover(Slot),
     /// The notification line was clicked.
@@ -607,7 +609,7 @@ fn awake(status: aizome_awake::Status, open: bool) -> Element<BarMsg> {
 
 /// An app's status item: its icon at 16pt (or a generic glyph until one
 /// reads); left click activates it, right click its menu, middle click its
-/// secondary action.
+/// secondary action, and the wheel scrolls it (a volume, say).
 fn status_item(item: &TrayItem, open: bool) -> Element<BarMsg> {
     let slot = item.slot;
     let image = item.image.clone();
@@ -632,6 +634,7 @@ fn status_item(item: &TrayItem, open: bool) -> Element<BarMsg> {
     .on_press(move |p: Press| BarMsg::Item(slot, ItemClick::Primary, p.rect))
     .on_right_click(move |p: Press| BarMsg::Item(slot, ItemClick::Menu, p.rect))
     .on_middle_click(BarMsg::Item(slot, ItemClick::Secondary, Rect::new(0.0, 0.0, 0.0, 0.0)))
+    .on_scroll(move |d| BarMsg::ItemScroll(slot, d))
     .overflow(3.0)
     .text(item.label.clone(), SemanticRole::Button)
     .key(("item", slot))
