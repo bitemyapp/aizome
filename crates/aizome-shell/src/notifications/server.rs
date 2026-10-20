@@ -154,7 +154,7 @@ fn image_data(v: &OwnedValue) -> Option<NoteImage> {
             rgba.extend_from_slice(&[px[0], px[1], px[2], if alpha && ch >= 4 { px[3] } else { 255 }]);
         }
     }
-    Some(NoteImage::Pixels { width: w as u32, height: h as u32, rgba })
+    Some(NoteImage::Pixels { width: w as u32, height: h as u32, rgba }.fit(crate::notifications::store::IMAGE_PX))
 }
 
 /// The server, while it holds the name.
