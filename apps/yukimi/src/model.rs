@@ -70,6 +70,10 @@ pub struct Configured {
     pub user: Vec<ListedPackage>,
     /// For each setting a system catalog installs through, the ids listed.
     pub settings: BTreeMap<String, Vec<String>>,
+    /// For each of the system's own choices (its desktops, its login
+    /// screen), what the configuration says now, or what the running
+    /// system has where it says nothing.
+    pub choices: BTreeMap<String, Vec<String>>,
 }
 
 /// The store as read from its database.
@@ -104,6 +108,8 @@ pub struct Model {
     pub catalog: Vec<Application>,
     /// A flake's inputs, from `flake.lock`.
     pub inputs: Vec<Input>,
+    /// Where `flake.nix` says Sekka comes from, when it does.
+    pub sekka_url: Option<String>,
     /// A channel system's channels.
     pub channels: Vec<Channel>,
     /// Store path of the system's Nixpkgs, for searching it.
@@ -129,6 +135,7 @@ impl Default for Model {
             allow_unfree: false,
             catalog: Vec::new(),
             inputs: Vec::new(),
+            sekka_url: None,
             channels: Vec::new(),
             nixpkgs: None,
             store: None,
@@ -156,6 +163,7 @@ impl Model {
             ..Model::default()
         };
         model.read_configuration();
+        model.read_choices();
         match model.setup.kind {
             Kind::Flake => model.read_lock(),
             Kind::Channels => model.channels = channels::root(),
@@ -211,7 +219,32 @@ impl Model {
         });
     }
 
+    /// What the configuration chooses of the system's own choices.
+    fn read_choices(&mut self) {
+        let text = self.setup.main.as_ref().and_then(|main| std::fs::read_to_string(main).ok());
+        for choice in &self.setup.facts.choices {
+            let path: Vec<&str> = choice.setting.split('.').collect();
+            let written = text.as_deref().and_then(|text| {
+                if choice.many {
+                    edit::string_list(text, &path).ok().flatten()
+                } else {
+                    edit::string_value(text, &path).ok().flatten().map(|v| vec![v])
+                }
+            });
+            self.configured.choices.insert(choice.setting.clone(), written.unwrap_or_else(|| choice.value.values()));
+        }
+    }
+
+    /// Whether Sekka updates early: from its main branch, as soon as
+    /// changes are merged, rather than from the nightly.
+    pub fn early(&self) -> bool {
+        self.sekka_url.as_deref().is_some_and(yukimi_config::sekka::early)
+    }
+
     fn read_lock(&mut self) {
+        if let Ok(text) = std::fs::read_to_string(self.setup.dir.join("flake.nix")) {
+            self.sekka_url = edit::string_value(&text, &["inputs", "sekka", "url"]).ok().flatten();
+        }
         match std::fs::read_to_string(self.setup.dir.join("flake.lock")).map(|t| FlakeLock::parse(&t)) {
             Ok(Ok(lock)) => self.inputs = lock.inputs(),
             Ok(Err(e)) => self.problems.push(e.to_string()),

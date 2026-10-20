@@ -37,6 +37,22 @@ fn pictures() {
                 settle(&mut h, |a| a.found.is_some());
             }
             h.save_png(w, dir.join(format!("{}-{name}.png", page.id())), 1.0);
+            if page == Page::Desktops {
+                let pick = |setting: &str, id: &str, on: bool| Msg::Pick { setting: setting.into(), id: id.into(), on };
+                h.send(pick("calamares.desktops", "gnome", false));
+                h.send(pick("calamares.desktops", "aizome", false));
+                h.save_png(w, dir.join(format!("desktops-problem-{name}.png")), 1.0);
+                h.send(pick("calamares.desktops", "aizome", true));
+                h.send(pick("calamares.loginScreen", "aizome", true));
+                h.save_png(w, dir.join(format!("desktops-changed-{name}.png")), 1.0);
+                h.send(Msg::ApplyChoices);
+                h.save_png(w, dir.join(format!("desktops-apply-{name}.png")), 1.0);
+                for key in h.windows() {
+                    if key != w {
+                        h.save_png(key, dir.join(format!("desktops-apply-alert-{name}.png")), 1.0);
+                    }
+                }
+            }
             if page == Page::Installed {
                 h.send(Msg::ShowAll);
                 h.scroll(w, aizome_kit::layout::Point::new(600.0, 400.0), aizome_kit::layout::Vec2::new(0.0, 4000.0));

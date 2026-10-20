@@ -7,7 +7,7 @@
 //! a thread of its own that answers only the newest query; an operation's
 //! steps run in a thread that sends its progress now and then. Answers
 //! from an older reading (its `epoch`) are dropped.
-use std::collections::{BTreeSet, HashMap, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::mpsc;
@@ -18,7 +18,7 @@ use yukimi_system::catalog::{self, Application};
 use yukimi_system::diff::Diff;
 use yukimi_system::generations::Generation;
 use yukimi_system::index::{Package, PackageIndex};
-use yukimi_system::setup::Kind;
+use yukimi_system::setup::{Choice, Kind};
 
 use crate::checks::{self, UpdateCheck};
 use crate::job::{Job, JobEvent, Outcome};
@@ -41,11 +41,13 @@ pub enum Page {
     Updates,
     History,
     Storage,
+    /// The system's own choices: its desktops and login screen.
+    Desktops,
 }
 
 impl Page {
-    pub const ALL: [Page; 6] =
-        [Page::Overview, Page::Installed, Page::Discover, Page::Updates, Page::History, Page::Storage];
+    pub const ALL: [Page; 7] =
+        [Page::Overview, Page::Installed, Page::Discover, Page::Updates, Page::History, Page::Storage, Page::Desktops];
 
     pub fn title(self) -> &'static str {
         match self {
@@ -55,6 +57,7 @@ impl Page {
             Page::Updates => "Updates",
             Page::History => "History",
             Page::Storage => "Storage",
+            Page::Desktops => "Desktops",
         }
     }
 
@@ -66,6 +69,7 @@ impl Page {
             Page::Updates => Icon::RefreshCw,
             Page::History => Icon::GitCommitHorizontal,
             Page::Storage => Icon::HardDrive,
+            Page::Desktops => Icon::Monitor,
         }
     }
 
@@ -78,6 +82,7 @@ impl Page {
             Page::Updates => "updates",
             Page::History => "history",
             Page::Storage => "storage",
+            Page::Desktops => "desktops",
         }
     }
 
@@ -209,6 +214,22 @@ pub enum Msg {
     Branches(Result<Vec<String>, String>),
     BranchTyped(String),
     Follow(String),
+    /// Update Sekka early (from its main branch), or from the nightly.
+    Early(bool),
+
+    // Desktops.
+    /// Choose `id` for `setting` (or, for a list, take it out).
+    Pick {
+        setting: String,
+        id: String,
+        on: bool,
+    },
+    /// Put the choices back as the configuration has them.
+    RevertChoices,
+    /// Put one choice back.
+    UndoChoice(String),
+    /// Build the system with the choices made.
+    ApplyChoices,
 
     // Discover.
     Search(String),
@@ -331,6 +352,15 @@ pub struct Yukimi {
 
     pub branch: Option<BranchChooser>,
 
+    /// Choices made on the Desktops page and not applied yet: each
+    /// setting's values in full.
+    pub draft: BTreeMap<String, Vec<String>>,
+    /// Choices Yukimi moved by itself (a default desktop whose desktop was
+    /// taken out), to put back if what they were comes back.
+    moved: BTreeSet<String>,
+    /// What the command line asked for, once the system is read.
+    pub launch: Option<Launch>,
+
     pub job: Option<Job>,
     pub job_sheet: Option<WindowKey>,
     jobs: u64,
@@ -396,6 +426,9 @@ impl Yukimi {
             older: 1,
             roots_open: false,
             branch: None,
+            draft: BTreeMap::new(),
+            moved: BTreeSet::new(),
+            launch: None,
             job: None,
             job_sheet: None,
             jobs: 0,
@@ -478,6 +511,14 @@ impl Yukimi {
         let store = model.store.clone();
         self.model = Arc::new(model);
         self.loading = false;
+        // What has been applied is no longer a change.
+        let configured = self.model.configured.choices.clone();
+        self.draft.retain(|setting, values| configured.get(setting) != Some(values));
+        let draft = &self.draft;
+        self.moved.retain(|setting| draft.contains_key(setting));
+        if let Some(launch) = self.launch.take() {
+            self.propose(launch, cx);
+        }
         self.ensure_index(false, cx);
         if self.page == Page::Updates {
             self.check_if_stale(cx);
@@ -617,7 +658,7 @@ impl Yukimi {
             Source::System(paths) if paths.elsewhere => {
                 Some(format!("Yukimi is only looking at {}, so it changes nothing", paths.etc.display()))
             }
-            _ if operation.is_system() && matches!(operation, Operation::ChangeSystem { .. }) => {
+            _ if matches!(operation, Operation::ChangeSystem { .. } | Operation::Choose { .. }) => {
                 self.model.cannot_change_system()
             }
             _ => None,
@@ -876,6 +917,252 @@ impl Yukimi {
         );
     }
 
+    /// Ask before updating Sekka early, or from the nightly again.
+    fn ask_early(&mut self, on: bool, cx: &mut Cx<Msg>) {
+        if !self.sekka() || self.model.setup.kind != Kind::Flake {
+            self.note("Only a Sekka system can update early", cx);
+            return;
+        }
+        if self.model.early() == on {
+            self.note(if on { "Sekka updates early already" } else { "Sekka updates from the nightly already" }, cx);
+            return;
+        }
+        let (heading, body, action) = if on {
+            (
+                "Turn on early updates?",
+                "Sekka's changes then reach this computer as soon as they are merged, before the nightly checks \
+                 run, so now and then something may not work. Whatever Sekka's binary cache doesn't have yet is \
+                 built here, which can take a long time. Yukimi updates now, which asks for an administrator \
+                 password; the version you have now stays in History.",
+                "Turn On",
+            )
+        } else {
+            (
+                "Go back to nightly updates?",
+                "Sekka then updates from the nightly again, once its checks pass. Yukimi moves to the newest \
+                 nightly now, which asks for an administrator password; it may be older than what you have, and \
+                 the version you have now stays in History.",
+                "Go Back",
+            )
+        };
+        self.confirm(heading.to_owned(), body.to_owned(), action.to_owned(), Operation::Early { on }, cx);
+    }
+
+    // Desktops.
+
+    /// The system's own choices, as its distribution declares them.
+    pub fn choices(&self) -> &[Choice] {
+        &self.model.setup.facts.choices
+    }
+
+    /// What `setting` is to be: the choice made here, else what the
+    /// configuration says.
+    pub fn chosen(&self, setting: &str) -> Vec<String> {
+        self.draft.get(setting).or_else(|| self.model.configured.choices.get(setting)).cloned().unwrap_or_default()
+    }
+
+    /// The choices made here that differ from the configuration, in the
+    /// order the system declares them.
+    pub fn choice_changes(&self) -> Vec<(String, Vec<String>)> {
+        self.choices()
+            .iter()
+            .filter_map(|c| {
+                let values = self.draft.get(&c.setting)?;
+                (self.model.configured.choices.get(&c.setting) != Some(values))
+                    .then(|| (c.setting.clone(), values.clone()))
+            })
+            .collect()
+    }
+
+    /// Why the choices as made can't be applied: one outside the choice it
+    /// must be within, or an option without what it needs.
+    pub fn choice_problems(&self) -> Vec<String> {
+        let title = |setting: &str| {
+            self.choices().iter().find(|c| c.setting == setting).map_or(setting.to_owned(), |c| c.title.clone())
+        };
+        let mut problems = Vec::new();
+        for choice in self.choices() {
+            let values = self.chosen(&choice.setting);
+            if let Err(e) = choice.allows(&values) {
+                problems.push(match (choice.many, values.is_empty()) {
+                    (true, true) => format!("Choose at least one of the {}", choice.title.to_lowercase()),
+                    _ => e,
+                });
+                continue;
+            }
+            if let Some(within) = &choice.within {
+                let among = self.chosen(within);
+                // With nothing to be among, that is the problem to say.
+                if !among.is_empty() && values.iter().any(|v| !among.contains(v)) {
+                    problems.push(format!(
+                        "The {} has to be one of the {}",
+                        choice.title.to_lowercase(),
+                        title(within).to_lowercase()
+                    ));
+                }
+            }
+            for option in choice.options.iter().filter(|o| values.contains(&o.id)) {
+                if let Some((setting, value)) = option.needs()
+                    && !self.chosen(setting).iter().any(|v| v == value)
+                {
+                    problems.push(format!(
+                        "{} as the {} needs {} among the {}",
+                        option.title,
+                        choice.title.to_lowercase(),
+                        option_title(self.choices(), setting, value),
+                        title(setting).to_lowercase()
+                    ));
+                }
+            }
+        }
+        problems
+    }
+
+    /// Choose `values` for `setting`, as a change unless that is what the
+    /// configuration says. A choice that must be within this one and no
+    /// longer is moves to its first value, and back when what it was
+    /// returns.
+    fn set_choice(&mut self, setting: &str, values: Vec<String>) {
+        if self.model.configured.choices.get(setting) == Some(&values) {
+            self.draft.remove(setting);
+        } else {
+            self.draft.insert(setting.to_owned(), values.clone());
+        }
+        let inside: Vec<(String, bool)> = self
+            .choices()
+            .iter()
+            .filter(|c| c.within.as_deref() == Some(setting))
+            .map(|c| (c.setting.clone(), c.many))
+            .collect();
+        for (dependent, many) in inside {
+            let configured = self.model.configured.choices.get(&dependent).cloned().unwrap_or_default();
+            if self.moved.contains(&dependent) && configured.iter().all(|v| values.contains(v)) {
+                self.moved.remove(&dependent);
+                self.draft.remove(&dependent);
+                continue;
+            }
+            let now = self.chosen(&dependent);
+            if now.iter().all(|v| values.contains(v)) {
+                continue;
+            }
+            let kept: Vec<String> = if many {
+                now.into_iter().filter(|v| values.contains(v)).collect()
+            } else {
+                values.first().cloned().into_iter().collect()
+            };
+            if !kept.is_empty() {
+                self.moved.insert(dependent.clone());
+                self.set_choice(&dependent, kept);
+            }
+        }
+    }
+
+    fn pick(&mut self, setting: String, id: String, on: bool) {
+        let Some(choice) = self.choices().iter().find(|c| c.setting == setting).cloned() else { return };
+        if !choice.options.iter().any(|o| o.id == id) {
+            return;
+        }
+        let values = if choice.many {
+            let mut values = self.chosen(&setting);
+            values.retain(|v| *v != id);
+            if on {
+                values.push(id);
+            }
+            // In the order the system offers them.
+            let order = |v: &String| choice.options.iter().position(|o| o.id == *v).unwrap_or(usize::MAX);
+            values.sort_by_key(order);
+            values
+        } else if on {
+            vec![id]
+        } else {
+            return;
+        };
+        // Chosen now, not moved.
+        self.moved.remove(&setting);
+        self.set_choice(&setting, values);
+    }
+
+    /// Ask before building the system with the choices made.
+    fn apply_choices(&mut self, cx: &mut Cx<Msg>) {
+        let changes = self.choice_changes();
+        if changes.is_empty() {
+            return;
+        }
+        if let Some(problem) = self.choice_problems().into_iter().next() {
+            self.note(problem, cx);
+            return;
+        }
+        let mut lines = Vec::new();
+        let mut names = Vec::new();
+        for (setting, values) in &changes {
+            let Some(choice) = self.choices().iter().find(|c| &c.setting == setting) else { continue };
+            names.push(format!("the {}", choice.title.to_lowercase()));
+            let was = self.model.configured.choices.get(setting).cloned().unwrap_or_default();
+            let name = |v: &String| option_title(self.choices(), setting, v);
+            if choice.many {
+                let added: Vec<String> = values.iter().filter(|v| !was.contains(v)).map(name).collect();
+                let removed: Vec<String> = was.iter().filter(|v| !values.contains(v)).map(name).collect();
+                let mut parts = Vec::new();
+                if !added.is_empty() {
+                    parts.push(format!("adding {}", words(&added)));
+                }
+                if !removed.is_empty() {
+                    parts.push(format!("removing {}", words(&removed)));
+                }
+                lines.push(format!("{}: {}.", choice.title, parts.join("; ")));
+            } else {
+                let to = values.first().map(name).unwrap_or_default();
+                let from = was.first().map(name).unwrap_or_default();
+                lines.push(format!("{}: {to}, instead of {from}.", choice.title));
+            }
+        }
+        let what = words(&names);
+        let main = self.model.setup.main.as_ref().map_or("the configuration".to_owned(), |m| m.display().to_string());
+        let body = format!(
+            "{}\n\nYukimi writes this into {main} and builds your system, which asks for an administrator password. \
+             A change the running system can't take now, such as another login screen, waits for a restart, and \
+             Yukimi offers one. The version you have now stays in History.",
+            lines.join("\n")
+        );
+        self.confirm(
+            "Apply these changes?".to_owned(),
+            body,
+            "Apply".to_owned(),
+            Operation::Choose { choices: changes, what },
+            cx,
+        );
+    }
+
+    /// Do what the command line asked: propose choices on the Desktops
+    /// page, or ask about early updates. Nothing changes until confirmed.
+    fn propose(&mut self, launch: Launch, cx: &mut Cx<Msg>) {
+        if let Some(page) = launch.page {
+            self.show(page, cx);
+        }
+        let mut proposed = false;
+        for (setting, values) in launch.choose {
+            match self.choices().iter().find(|c| c.setting == setting) {
+                None => self.note(format!("{setting} isn't one of this system's choices"), cx),
+                Some(choice) => match choice.allows(&values) {
+                    Ok(()) => {
+                        self.set_choice(&setting, values);
+                        proposed = true;
+                    }
+                    Err(e) => self.note(e, cx),
+                },
+            }
+        }
+        if proposed {
+            self.show(Page::Desktops, cx);
+        }
+        if let Some(on) = launch.early {
+            if launch.page.is_none() && !proposed {
+                self.show(Page::Updates, cx);
+            }
+            self.ask_early(on, cx);
+        }
+    }
+
     fn finish(&mut self, reboot: bool, cx: &mut Cx<Msg>) {
         if matches!(self.source, Source::Sample(_)) {
             self.note("The sample system doesn't restart", cx);
@@ -1036,6 +1323,18 @@ impl Program for Yukimi {
                 }
             }
             Msg::Follow(branch) => self.follow(branch, cx),
+            Msg::Early(on) => self.ask_early(on, cx),
+
+            Msg::Pick { setting, id, on } => self.pick(setting, id, on),
+            Msg::RevertChoices => {
+                self.draft.clear();
+                self.moved.clear();
+            }
+            Msg::UndoChoice(setting) => {
+                self.draft.remove(&setting);
+                self.moved.remove(&setting);
+            }
+            Msg::ApplyChoices => self.apply_choices(cx),
 
             Msg::Search(text) => {
                 self.query = text;
@@ -1188,8 +1487,10 @@ impl Program for Yukimi {
             Msg::Note(text) => self.note(text, cx),
             Msg::NoteGone(id) => self.notes.retain(|(n, _)| *n != id),
             Msg::Launched(args) => {
-                if let Ok(Some(page)) = page_from_args(&args) {
-                    self.show(page, cx);
+                match launch_from_args(&args) {
+                    Ok(launch) if self.loading => self.launch = Some(launch),
+                    Ok(launch) => self.propose(launch, cx),
+                    Err(e) => self.note(e, cx),
                 }
                 cx.activate(self.window);
             }
@@ -1242,22 +1543,75 @@ impl Program for Yukimi {
     }
 }
 
-/// The page asked for on the command line (`--page updates`), if any.
-pub fn page_from_args(args: &[String]) -> Result<Option<Page>, String> {
-    let mut page = None;
+/// What a launch asks for: a page, choices to propose, early updates on or
+/// off. Proposing changes nothing: each change still waits for a click
+/// and an administrator password.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Launch {
+    pub page: Option<Page>,
+    /// `--choose calamares.loginScreen=aizome`: each setting's values in
+    /// full, checked against the system's choices once it is read.
+    pub choose: Vec<(String, Vec<String>)>,
+    /// `--early` (true) or `--nightly` (false).
+    pub early: Option<bool>,
+}
+
+/// What the command line asks for.
+pub fn launch_from_args(args: &[String]) -> Result<Launch, String> {
+    let mut launch = Launch::default();
     let mut it = args.iter();
     while let Some(a) = it.next() {
         match a.as_str() {
             "--page" => match it.next().and_then(|p| Page::from_id(p)) {
-                Some(p) => page = Some(p),
+                Some(p) => launch.page = Some(p),
                 None => {
-                    return Err("--page takes one of overview, installed, discover, updates, history, storage".into());
+                    let ids: Vec<&str> = Page::ALL.iter().map(|p| p.id()).collect();
+                    return Err(format!("--page takes one of {}", ids.join(", ")));
                 }
             },
+            "--choose" => {
+                let value = it.next().ok_or("--choose takes SETTING=VALUE[,VALUE]")?;
+                let (setting, values) = value.split_once('=').ok_or("--choose takes SETTING=VALUE[,VALUE]")?;
+                let values: Vec<String> =
+                    values.split(',').map(str::trim).filter(|v| !v.is_empty()).map(str::to_owned).collect();
+                let named = |s: &str| {
+                    !s.is_empty()
+                        && s.split('.')
+                            .all(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_alphanumeric() || c == '-'))
+                };
+                if !named(setting) || values.is_empty() || launch.choose.iter().any(|(s, _)| s == setting) {
+                    return Err(format!("--choose {value:?} isn't SETTING=VALUE[,VALUE]"));
+                }
+                launch.choose.push((setting.to_owned(), values));
+            }
+            "--early" | "--nightly" if launch.early.is_none() => launch.early = Some(a == "--early"),
             "--sample" => {}
             other if other.starts_with('-') => return Err(format!("unknown option {other}")),
             _ => {}
         }
     }
-    Ok(page)
+    Ok(launch)
+}
+
+/// The page asked for on the command line (`--page updates`), if any.
+pub fn page_from_args(args: &[String]) -> Result<Option<Page>, String> {
+    launch_from_args(args).map(|l| l.page)
+}
+
+/// What an option of a choice is called: "Aizome" for `aizome`.
+pub fn option_title(choices: &[Choice], setting: &str, id: &str) -> String {
+    choices
+        .iter()
+        .find(|c| c.setting == setting)
+        .and_then(|c| c.options.iter().find(|o| o.id == id))
+        .map_or_else(|| id.to_owned(), |o| o.title.clone())
+}
+
+/// `a`, `a and b`, `a, b and c`.
+pub fn words(items: &[String]) -> String {
+    match items {
+        [] => String::new(),
+        [one] => one.clone(),
+        [rest @ .., last] => format!("{} and {last}", rest.join(", ")),
+    }
 }

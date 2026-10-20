@@ -14,6 +14,7 @@ use aizome_kit::{column, row};
 
 use crate::app::{Msg, Page, Yukimi};
 
+mod desktops;
 mod discover;
 mod history;
 mod installed;
@@ -51,6 +52,7 @@ pub fn view(app: &Yukimi, window: WindowKey) -> Element<Msg> {
         Page::Updates => updates::page(app),
         Page::History => history::page(app),
         Page::Storage => storage::page(app),
+        Page::Desktops => desktops::page(app),
     };
     let content = container(page.max_width(PAGE_WIDTH).width(Fill))
         .align_x(Align::Center)
@@ -63,7 +65,7 @@ pub fn view(app: &Yukimi, window: WindowKey) -> Element<Msg> {
 }
 
 pub fn menus(app: &Yukimi) -> MenuBar<Msg> {
-    let go = Page::ALL.iter().enumerate().fold(Menu::new("Go"), |menu, (i, page)| {
+    let go = Page::ALL.iter().enumerate().filter(|(_, p)| offers(app, **p)).fold(Menu::new("Go"), |menu, (i, page)| {
         menu.item(
             MenuItem::new(page.title(), Msg::Show(*page))
                 .shortcut(Shortcut::cmd(char::from_digit(i as u32 + 1, 10).unwrap_or('1')))
@@ -81,6 +83,12 @@ pub fn menus(app: &Yukimi) -> MenuBar<Msg> {
 }
 
 // The frame.
+
+/// Whether the sidebar offers `page`: Desktops only on a system that
+/// declares choices Yukimi may change (or while it is shown).
+pub fn offers(app: &Yukimi, page: Page) -> bool {
+    page != Page::Desktops || !app.choices().is_empty() || app.page == page
+}
 
 /// How many packages are installed, for the sidebar and the Overview:
 /// (chosen for everyone, just for you).
@@ -119,6 +127,7 @@ fn place(app: &Yukimi, page: Page) -> Element<Msg> {
         }
         Page::History => (!app.model.generations.is_empty()).then(|| app.model.generations.len().to_string()),
         Page::Storage => app.model.store.as_ref().map(|s| short_size(s.composition.total)),
+        Page::Desktops => (!app.choice_changes().is_empty()).then(|| "changed".to_owned()),
         _ => None,
     };
     let mut item = sidebar_item(page.icon(), page.title(), app.page == page).on_press(Msg::Show(page));
@@ -139,8 +148,10 @@ fn sidebar(app: &Yukimi) -> Element<Msg> {
     ]
     .spacing(10.0)
     .padding([14.0, 12.0, 12.0, 12.0]);
-    let places =
-        column(Page::ALL.iter().map(|p| place(app, *p)).collect()).spacing(1.0).padding([0.0, 6.0]).width(Fill);
+    let places = column(Page::ALL.iter().filter(|p| offers(app, **p)).map(|p| place(app, *p)).collect())
+        .spacing(1.0)
+        .padding([0.0, 6.0])
+        .width(Fill);
     column![brand, divider().edge(Edge::Line), aizome_kit::caption("Places"), places, spacer(), system_card(app)]
         .width(Fill)
         .height(Fill)
@@ -206,6 +217,7 @@ fn subtitle(app: &Yukimi) -> Option<String> {
         Page::History if !model.generations.is_empty() => Some(format!("{} generations", model.generations.len())),
         Page::Updates => app.check.as_ref().map(|c| format!("checked {}", yukimi_system::human_age(c.when, app.now()))),
         Page::Storage => model.store.as_ref().map(|s| format!("{} paths", group_digits(s.composition.paths))),
+        Page::Desktops if !app.choice_changes().is_empty() => Some("not applied yet".to_owned()),
         _ => None,
     }
 }
@@ -222,6 +234,7 @@ fn page_tools(app: &Yukimi) -> Vec<Element<Msg>> {
                 .into(),
         ],
         Page::Updates => updates::tools(app),
+        Page::Desktops => desktops::tools(app),
         Page::Storage => vec![
             button("Clean Up…")
                 .toolbar()

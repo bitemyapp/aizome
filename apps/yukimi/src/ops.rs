@@ -49,6 +49,12 @@ pub enum Operation {
     /// Make a flake input follow another branch of its repository, and
     /// update it to that branch's newest commit.
     FollowBranch { input: String, branch: String },
+    /// Update Sekka early (from its main branch, as soon as changes are
+    /// merged) or, `on: false`, from the nightly again.
+    Early { on: bool },
+    /// Change some of the system's own choices (its desktops, its login
+    /// screen) to these values, each in full; `what` names them.
+    Choose { choices: Vec<(String, Vec<String>)>, what: String },
     /// Return the system to an earlier generation.
     Rollback { generation: u32 },
     /// Delete old system generations and collect garbage.
@@ -80,6 +86,9 @@ impl Operation {
             Operation::UpdateFlake { .. } | Operation::UpdateChannels => "Updating your system".to_owned(),
             Operation::UpdateSekka { .. } => "Updating Sekka".to_owned(),
             Operation::FollowBranch { input, branch } => format!("Following {branch} for {input}"),
+            Operation::Early { on: true } => "Turning on early updates".to_owned(),
+            Operation::Early { on: false } => "Going back to nightly updates".to_owned(),
+            Operation::Choose { what, .. } => format!("Changing {what}"),
             Operation::Rollback { generation } => format!("Returning to generation {generation}"),
             Operation::Clean { .. } => "Cleaning up the store".to_owned(),
         }
@@ -97,6 +106,9 @@ impl Operation {
                 "Update prepared; checking completion".to_owned()
             }
             Operation::FollowBranch { input, branch } => format!("{input} follows {branch} now"),
+            Operation::Early { on: true } => "Sekka updates early now".to_owned(),
+            Operation::Early { on: false } => "Sekka updates from the nightly now".to_owned(),
+            Operation::Choose { what, .. } => format!("{} changed", capitalized(what)),
             Operation::Rollback { generation } => format!("Generation {generation} is running"),
             Operation::Clean { .. } => "The store is tidy".to_owned(),
         }
@@ -142,7 +154,13 @@ impl Operation {
     }
 
     pub fn is_update(&self) -> bool {
-        matches!(self, Operation::UpdateSekka { .. } | Operation::UpdateFlake { .. } | Operation::UpdateChannels)
+        matches!(
+            self,
+            Operation::UpdateSekka { .. }
+                | Operation::UpdateFlake { .. }
+                | Operation::UpdateChannels
+                | Operation::Early { .. }
+        )
     }
 
     /// What the helper is asked to do, after `pkexec yukimi-helper`: the
@@ -188,6 +206,17 @@ impl Operation {
             Operation::FollowBranch { input, branch } => {
                 push(&["change", "--follow", &format!("{input}={branch}"), "--mode", "auto"]);
             }
+            Operation::Early { on } => {
+                let branch = if *on { "sekka=main" } else { "sekka=nightly" };
+                push(&["change", "--sekka", "--follow", branch, "--mode", "auto"]);
+            }
+            Operation::Choose { choices, .. } => {
+                push(&["change"]);
+                for (setting, values) in choices {
+                    push(&["--choose", &format!("{setting}={}", values.join(","))]);
+                }
+                push(&["--mode", "auto"]);
+            }
             Operation::Rollback { generation } => push(&["rollback", &generation.to_string()]),
             Operation::Clean { older_than_days } => {
                 push(&["clean"]);
@@ -220,6 +249,12 @@ impl Operation {
             _ => vec![root_step(self.helper_args(None))],
         }
     }
+}
+
+/// `what` with its first letter a capital: "The login screen".
+fn capitalized(what: &str) -> String {
+    let mut chars = what.chars();
+    chars.next().map(|c| c.to_uppercase().chain(chars).collect()).unwrap_or_default()
 }
 
 /// A step that runs the helper as root with `args`, once it is found.
@@ -437,6 +472,33 @@ mod tests {
             Operation::FollowBranch { input: "sekka".into(), branch: "nightly".into() }.helper_args(None),
             ["change", "--follow", "sekka=nightly", "--mode", "auto"]
         );
+        assert_eq!(
+            Operation::Early { on: true }.helper_args(None),
+            ["change", "--sekka", "--follow", "sekka=main", "--mode", "auto"]
+        );
+        assert_eq!(Operation::Early { on: false }.helper_args(None)[3], "sekka=nightly");
+        assert!(Operation::Early { on: true }.is_update());
+        let choose = Operation::Choose {
+            choices: vec![
+                ("calamares.desktops".into(), vec!["aizome".into(), "tatami".into()]),
+                ("calamares.loginScreen".into(), vec!["aizome".into()]),
+            ],
+            what: "the desktops and the login screen".into(),
+        };
+        assert_eq!(
+            choose.helper_args(None),
+            [
+                "change",
+                "--choose",
+                "calamares.desktops=aizome,tatami",
+                "--choose",
+                "calamares.loginScreen=aizome",
+                "--mode",
+                "auto"
+            ]
+        );
+        assert!(choose.is_system() && !choose.is_update());
+        assert_eq!(choose.done(), "The desktops and the login screen changed");
         let try_it = try_command("nixpkgs", "cowsay", "cowsay", false);
         assert_eq!(try_it, ["env", "nix", "shell", "nixpkgs#cowsay", "--command", "cowsay"]);
     }

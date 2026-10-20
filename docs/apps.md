@@ -231,6 +231,28 @@ its own. `aizome-yukimi --sample` shows a sample system;
 `AIZOME_YUKIMI_ETC=/some/etc` looks at another system's configuration
 without changing anything.
 
+Beyond the GTK Yukimi, it changes what used to take typing `sudo` commands:
+
+- **Early updates** (Updates): a switch to update Sekka from its `main`
+  branch as soon as changes are merged, before the nightly checks
+  (`change --sekka --follow sekka=main`; off goes back to `nightly`).
+  Sekka keeps that choice through later updates.
+- **Desktops**: the system's own choices, as Sekka declares them
+  (`programs.yukimi.choices` in `/etc/yukimi/system.json`): which
+  desktops are installed, which starts by default, and the login screen.
+  - Picking changes nothing. Apply asks, then builds once
+    (`change --choose SETTING=VALUE[,VALUE]… --mode auto`).
+  - A change the running system can't take now, such as another login
+    screen, waits for a restart, and the page offers Restart Now.
+  - A default desktop stays among the desktops. An option that needs
+    another choice (Aizome's login screen needs Aizome) is offered only
+    with it.
+  - The helper refuses any setting or value the system doesn't declare.
+- **Proposing from the command line**: `aizome-yukimi --choose
+  calamares.loginScreen=aizome --early` opens Yukimi with that change
+  proposed. A running Yukimi takes it over. Nothing changes until it's
+  confirmed and an administrator password is entered.
+
 ### Hako (Files)
 
 A file manager in NeXT's spirit: Miller columns as the main view (with list

@@ -18,7 +18,7 @@ use yukimi_system::generations::Generation;
 use yukimi_system::index::{Package, PackageIndex};
 use yukimi_system::info::SystemInfo;
 use yukimi_system::profile::Element;
-use yukimi_system::setup::{Facts, Kind, Setup};
+use yukimi_system::setup::{Choice, ChoiceOption, ChoiceValue, Facts, Kind, Setup};
 use yukimi_system::updates::Release;
 
 use crate::checks::{self, UpdateCheck};
@@ -372,6 +372,66 @@ pub fn store(generations: &[Generation], graph: Graph) -> Store {
     }
 }
 
+/// Sekka's choices, as the sample system declares them: three desktops,
+/// Aizome by default, and the login screen chosen for it.
+pub fn choices() -> Vec<Choice> {
+    let option = |id: &str, title: &str, detail: Option<&str>, needs: Option<&str>| ChoiceOption {
+        id: id.into(),
+        title: title.into(),
+        detail: detail.map(Into::into),
+        needs: needs.map(Into::into),
+    };
+    let desktops: Vec<ChoiceOption> =
+        [("aizome", "Aizome"), ("tatami", "Tatami"), ("plasma", "Plasma"), ("gnome", "GNOME"), ("xfce", "Xfce")]
+            .into_iter()
+            .map(|(id, title)| option(id, title, None, None))
+            .collect();
+    vec![
+        Choice {
+            setting: "calamares.desktops".into(),
+            title: "Desktops".into(),
+            many: true,
+            value: ChoiceValue::Many(vec!["aizome".into(), "tatami".into(), "gnome".into()]),
+            options: desktops.clone(),
+            within: None,
+        },
+        Choice {
+            setting: "calamares.defaultDesktop".into(),
+            title: "Default desktop".into(),
+            many: false,
+            value: ChoiceValue::One("aizome".into()),
+            options: desktops,
+            within: Some("calamares.desktops".into()),
+        },
+        Choice {
+            setting: "calamares.loginScreen".into(),
+            title: "Login screen".into(),
+            many: false,
+            value: ChoiceValue::One("auto".into()),
+            options: vec![
+                option(
+                    "auto",
+                    "Automatic",
+                    Some(
+                        "GDM when GNOME is installed (GNOME locks its screen only under GDM), else Aizome's own when \
+                         Aizome is, else Plasma Login.",
+                    ),
+                    None,
+                ),
+                option(
+                    "aizome",
+                    "Aizome",
+                    Some("Aizome's own, listing every desktop. GNOME sessions have no lock screen under it."),
+                    Some("calamares.desktops=aizome"),
+                ),
+                option("gdm", "GDM", Some("GNOME's."), None),
+                option("plasma-login", "Plasma Login", Some("KDE's."), None),
+            ],
+            within: None,
+        },
+    ]
+}
+
 /// The sample system, read in full.
 pub fn model() -> Model {
     let (graph, systems) = graph();
@@ -390,6 +450,7 @@ pub fn model() -> Model {
                 allow_unfree: Some(true),
                 configuration: None,
                 catalogs: Vec::new(),
+                choices: choices(),
             },
         },
         info: SystemInfo {
@@ -398,6 +459,7 @@ pub fn model() -> Model {
             kernel: "7.2.9".into(),
         },
         completion: Default::default(),
+        sekka_url: Some(yukimi_config::sekka::NIGHTLY.into()),
         generations,
         user_packages: vec![
             Element {
@@ -428,6 +490,7 @@ pub fn model() -> Model {
             ],
             user: vec![ListedPackage { attr: Some("thunderbird".into()), text: "thunderbird".into() }],
             settings: BTreeMap::new(),
+            choices: choices().into_iter().map(|c| (c.setting, c.value.values())).collect(),
         },
         user: "callen".into(),
         allow_unfree: true,
