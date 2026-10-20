@@ -135,10 +135,19 @@ fn set(on: bool) -> Result<()> {
             break;
         }
         if Instant::now() > until {
-            return Err(if on {
-                "Keep Awake started, but logind doesn't list its sleep inhibitor".into()
+            if !on {
+                return Err("Keep Awake stopped, but logind still lists its sleep inhibitor".into());
+            }
+            // A start whose condition failed succeeds too, and leaves
+            // nothing running.
+            let running = Command::new("systemctl")
+                .args(["--user", "--quiet", "is-active", UNIT])
+                .status()
+                .is_ok_and(|s| s.success());
+            return Err(if running {
+                "Keep Awake is running, but logind doesn't list its sleep inhibitor".into()
             } else {
-                "Keep Awake stopped, but logind still lists its sleep inhibitor".into()
+                format!("Keep Awake's service didn't start; see `systemctl --user status {UNIT}`")
             });
         }
         std::thread::sleep(Duration::from_millis(100));

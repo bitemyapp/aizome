@@ -18,9 +18,10 @@ Slice=session.slice
 # inhibitor.
 Type=notify
 NotifyAccess=main
-# Found on the manager's PATH, so a restart after an update runs the new one.
-ExecCondition=/usr/bin/env aizome-awake requested
-ExecStart=/usr/bin/env aizome-awake hold
+# The package's own (NixOS gives units it configures a PATH of its own,
+# without the system's programs).
+ExecCondition=@bindir@/aizome-awake requested
+ExecStart=@bindir@/aizome-awake hold
 Restart=always
 RestartSec=1
 TimeoutStartSec=15
