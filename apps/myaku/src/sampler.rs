@@ -129,9 +129,8 @@ pub struct Sampler {
     /// The processor's temperature sensor's file, found once (reading every
     /// sensor wakes slow ones, such as an NVMe drive's).
     sensor: Option<Option<PathBuf>>,
-    /// Groups' names and kinds, by their first process, its member count
-    /// and its windows: matching launcher entries costs.
-    identities: HashMap<(Key, usize, u64), group::Identity>,
+    /// Names and kinds by process identity and every membership/label input.
+    identities: HashMap<(Key, u64), group::Identity>,
 }
 
 impl Default for Sampler {
@@ -490,6 +489,7 @@ impl Sampler {
                 kernel: p.kernel,
                 name: p.name.clone(),
                 comm: raw.name.clone(),
+                role: p.role.clone(),
                 exe: p.exe.clone(),
                 cgroup: p.cgroup.clone(),
                 app_id: raw.unit.as_ref().and_then(|u| u.app_id()),
@@ -500,18 +500,10 @@ impl Sampler {
         if tick.is_multiple_of(30) {
             self.identities.clear();
         }
-        let mut used: HashSet<(Key, usize, u64)> = HashSet::new();
-        for members in group::group(&nodes) {
+        let mut used: HashSet<(Key, u64)> = HashSet::new();
+        for members in group::group(&nodes, &windows, self.apps.as_ref()) {
             let first = processes[members[0]].key();
-            let shown: u64 = {
-                use std::hash::{Hash, Hasher};
-                let mut h = std::collections::hash_map::DefaultHasher::new();
-                for w in windows.iter().filter(|w| members.iter().any(|&m| processes[m].pid == w.pid)) {
-                    (&w.app_id, &w.title, w.focused).hash(&mut h);
-                }
-                h.finish()
-            };
-            let cache = (first, members.len(), shown);
+            let cache = (first, group::fingerprint(&nodes, &members, &windows));
             used.insert(cache);
             let id = match self.identities.get(&cache) {
                 Some(id) => id.clone(),
@@ -535,6 +527,7 @@ impl Sampler {
                 name: id.name,
                 app_id: id.app_id,
                 detail: id.detail,
+                attribution: id.attribution,
                 windows: id.windows,
                 focused: id.focused,
                 own: members.iter().all(|&i| processes[i].uid == self.uid || self.uid == 0),

@@ -446,6 +446,22 @@ and processes with CPU, memory, energy, disk and GPU use; sorting, search,
 quit and force quit; graphs of CPU, memory, disk and network over time; the
 inspector for a process. Through `aizome-sys::sysinfo`.
 
+Application groups follow identified windows and their process trees: helpers
+and commands belong with the app that started them, while a separately
+identified app launched from a terminal starts its own group. The desktop
+shell and session managers are boundaries. A dedicated application/service
+unit can reunite orphaned workers only when its ownership is unambiguous;
+sharing a login session or a slice is insufficient. Without compositor window
+information, grouping falls back to parentage and explicit application units.
+Labels use explicit identities or an unambiguous executable match, never a
+generic interpreter name or whichever window happened to be focused.
+
+The inspector's **Grouping** section explains the evidence separately from
+each process's **Parent** link. Shared unit membership does not imply direct
+parenthood. To inspect the same attribution without opening a window, run
+`cargo run -p aizome-myaku --example groups -- NAME` inside `nix develop`;
+omit `NAME` to include every group. This probe only reads the system.
+
 ### Shashin (Images)
 
 The image viewer the desktop opens pictures with: PNG, JPEG, GIF

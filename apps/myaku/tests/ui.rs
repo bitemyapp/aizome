@@ -10,7 +10,7 @@ use aizome_kit::testing::Harness;
 use aizome_sys::sysinfo::Signal;
 use myaku::app::{Msg, Myaku, Request, RowRef, Sel, Show};
 use myaku::fixture;
-use myaku::model::{Frame, Lens, Meter};
+use myaku::model::{Frame, Kind, Lens, Meter};
 
 type Sent = std::rc::Rc<std::cell::RefCell<Vec<(u32, Signal)>>>;
 
@@ -184,4 +184,46 @@ fn processes_can_be_listed_flat() {
     assert!(m.rows.iter().all(|r| matches!(r, RowRef::Process(p, false) if m.frame.processes[*p].uid == 1000)));
     h.send(Msg::Show(Show::All));
     assert_eq!(h.program().rows.len(), h.program().frame.processes.len());
+}
+
+#[test]
+fn the_inspector_explains_group_membership_separately_from_parenthood() {
+    let (mut h, _) = start();
+    let w = h.window();
+    let mut frame = (*h.program().frame).clone();
+    let g = frame.groups.iter().position(|g| g.name == "Firefox").unwrap();
+    let group = frame.groups[g].clone();
+    let parent = frame.processes[group.members[0]].clone();
+    let member = group.members[1];
+    frame.processes[member].ppid = parent.pid;
+    let process = frame.processes[member].key();
+    h.send(Msg::Frame(Arc::new(frame.clone())));
+    h.send(Msg::Inspector(true));
+    h.send(Msg::Select(Sel::Group(group.key)));
+    assert!(h.texts(w).iter().any(|t| t == "GROUPING"));
+    let explanation = h.find(w, &group.attribution).expect("the full explanation is visible without scrolling");
+    let inspector = h.find_id(w, "inspector").unwrap();
+    assert!(explanation.x0 >= inspector.x0 && explanation.x1 <= inspector.x1, "the explanation fits the inspector");
+
+    h.send(Msg::Select(Sel::Process(process)));
+    assert!(h.find(w, &group.attribution).is_some(), "members show the same explanation");
+    let texts = h.texts(w);
+    assert!(texts.iter().any(|t| t == "Application"));
+    assert!(texts.iter().any(|t| t == "Parent"));
+    assert!(texts.iter().any(|t| t == &format!("{} · {}", parent.name, parent.pid)));
+    let link = h.find_id(w, "inspector-group").expect("a separate group link");
+    h.click(w, link.center());
+    assert_eq!(h.program().sel, Some(Sel::Group(group.key)));
+
+    let background = frame.groups.iter().find(|g| g.kind == Some(Kind::Service)).unwrap();
+    let process = frame.processes[background.members[0]].key();
+    h.send(Msg::Select(Sel::Process(process)));
+    assert!(h.find(w, &background.attribution).is_some());
+    assert!(h.texts(w).iter().any(|t| t == "Group"));
+    assert!(!h.texts(w).iter().any(|t| t == "Application"), "background groups are not labelled applications");
+
+    frame.groups[g].attribution.clear();
+    h.send(Msg::Frame(Arc::new(frame)));
+    h.send(Msg::Select(Sel::Group(group.key)));
+    assert!(!h.texts(w).iter().any(|t| t == "GROUPING"), "no empty explanation section");
 }

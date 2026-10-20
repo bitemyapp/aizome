@@ -113,3 +113,49 @@ There is no new hardware scanout measurement or Apple Silicon/UTM installation
 claim. ARM64 UTM and duplicate Wi-Fi-agent work remain in the existing PRs
 linked above; the domain and optional Wasm notes remain design reminders
 without a specified implementation contract.
+
+## Follow-up: Myaku application attribution
+
+The later screenshot and report add an issue outside the 28 handwritten
+notes: Fusen (and sometimes Claude) incorrectly includes unrelated browser,
+editor, terminal and build processes. This was not fixed in the audited main
+branches or existing PRs.
+
+The cause is reproducible: the old grouping joins every non-manager parent
+edge, but does not recognize `aizome-shell` as a manager. Its applications
+become one group; whichever window is encountered first supplies the label.
+The old identity cache also misses same-size membership/metadata changes.
+A regression using the actual shell/app/worker topology fails on that code.
+
+The fix makes windows and dedicated application/service units explicit
+boundaries in process trees, preserves genuine helpers and commands, and
+uses unit evidence to reunite orphaned workers only when ownership is
+unambiguous. Both sides of an application boundary remain separate even
+when the parent has no open window. Session scopes, slices, manager units,
+generic runtimes and ambiguous executable matches cannot claim unrelated
+applications. Labels are independent of window focus/order, and the cache
+tracks all membership and naming inputs.
+
+The inspector explains each group's evidence and links a member to its
+group separately from its actual Parent. Unit-derived labels say where the
+name came from. The `groups` example in `apps/myaku/examples` reads the same
+sampler without opening a window or sending signals, providing a repeatable
+probe for attribution on a real desktop.
+
+Validation includes negative controls for the shell merge and the
+windowless-parent/shared-scope case, process and identity regressions,
+inspector navigation/layout tests, and both day/night inspector goldens.
+The live probe on the affected desktop separates Fusen into its one process
+(about 5.7 MiB in the initial fixed sample), with Claude and ChatGPT in their
+own groups. Real helper and command descendants remain grouped with their
+owning application. No process was signalled and the installed Myaku was
+not replaced.
+
+The final targeted run passed 39 Myaku tests (26 library, nine interaction,
+three visual and one frame/memory check) and 11 application-index tests;
+one existing live-launcher test remained ignored. Strict Clippy for all
+Myaku/sys targets, formatting and diff checks passed. The memory check
+stayed at 228416 KiB over 200 additional readings. Under the shared benchmark
+lock, test-build frame medians were 3.81 ms per reading, 0.65 ms per row
+click and 0.84 ms per scroll at 2× with 600 fixture processes; this is not
+a release-build budget measurement.

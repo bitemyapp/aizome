@@ -230,6 +230,9 @@ pub struct Group {
     pub app_id: Option<String>,
     /// A window's title, or the service's unit.
     pub detail: String,
+    /// A plain-language explanation of how the sampler determined membership.
+    /// This describes the group, independently of each process's parent.
+    pub attribution: String,
     pub windows: usize,
     pub focused: bool,
     /// Indices into [`Frame::processes`], the first process first.
