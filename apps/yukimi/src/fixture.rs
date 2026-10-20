@@ -492,6 +492,7 @@ pub fn model() -> Model {
             settings: BTreeMap::new(),
             choices: choices().into_iter().map(|c| (c.setting, c.value.values())).collect(),
         },
+        installer_applications: Default::default(),
         user: "callen".into(),
         allow_unfree: true,
         catalog: catalog::own(),
