@@ -54,9 +54,10 @@ the machine overheats.
 1. takes logind's inhibitor (the descriptor logind's `Inhibit` returns);
 2. checks that logind lists it, held by its own process;
 3. connects to the compositor and creates an idle inhibitor on a surface
-   it never shows. Aizome holds off idleness while any surface has one;
-   `crates/aizome-comp/tests/idle_inhibit.rs` checks that it does for a
-   surface never shown;
+   it never shows. Aizome holds off idleness while any surface has one,
+   and lets go when the surface goes, with its client if it dies, so a
+   killed holder doesn't keep the screen awake after Keep Awake is off;
+   `crates/aizome-comp/tests/idle_inhibit.rs` checks both;
 4. tells systemd it's ready (`Type=notify`). `aizome-awake on` then
    confirms with logind before it says Keep Awake is on.
 
@@ -85,7 +86,7 @@ Awake. A headless or nested Aizome, or a test, leaves it alone.
   "protected" are never confused.
 - `cargo test -p aizome-comp --test idle_inhibit`: an inhibitor on a
   surface never shown holds off idleness, and idleness comes once it's
-  gone.
+  gone, or once its client goes without destroying it.
 - `cargo test -p aizome-shell --test panels`: the cup, its panel, the
   Battery panel's switch and the palette's command.
 - `nix build .#checks.x86_64-linux.settings` (*Keep Awake* part), against

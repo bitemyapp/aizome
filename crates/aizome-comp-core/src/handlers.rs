@@ -223,9 +223,7 @@ impl IdleInhibitHandler for State {
     }
 
     fn uninhibit(&mut self, surface: WlSurface) {
-        self.az.idle_inhibitors.remove(&surface);
-        let any = !self.az.idle_inhibitors.is_empty();
-        self.az.idle_notifier.set_is_inhibited(any);
+        self.drop_idle_inhibitor(&surface);
     }
 }
 

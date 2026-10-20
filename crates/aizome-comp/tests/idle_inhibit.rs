@@ -2,10 +2,12 @@
 //! shown. Keep Awake (`aizome-awake hold`) relies on that: it has no
 //! window, only a bare surface with an inhibitor. Watched through
 //! ext-idle-notify, as idle daemons see it: with the inhibitor there's no
-//! `idled`, and once it's gone idleness comes as usual.
+//! `idled`, and once it's gone idleness comes as usual. It's gone too when
+//! its client goes without destroying it, as a killed holder does.
 
 mod common;
 
+use std::net::Shutdown;
 use std::os::unix::net::UnixStream;
 use std::time::{Duration, Instant};
 
@@ -85,6 +87,46 @@ fn an_unshown_surfaces_inhibitor_holds_off_idleness() {
     a.run_for(Duration::from_millis(1500));
     assert_eq!(a.heard.idled, idled, "idle again while an inhibitor was held");
     again.destroy();
+}
+
+#[test]
+fn an_inhibitor_goes_with_its_client() {
+    let c = Compositor::start(Options { outputs: &["1280x800@1"], ..Default::default() });
+
+    // The holder, as Keep Awake's: a bare surface with an inhibitor.
+    let stream = UnixStream::connect(c.dir.join(&c.socket)).unwrap();
+    let socket = stream.try_clone().unwrap();
+    let conn = Connection::from_socket(stream).unwrap();
+    let (globals, queue) = registry_queue_init::<Heard>(&conn).unwrap();
+    let qh = queue.handle();
+    let compositor: wl_compositor::WlCompositor = globals.bind(&qh, 1..=6, ()).unwrap();
+    let inhibit: zwp_idle_inhibit_manager_v1::ZwpIdleInhibitManagerV1 =
+        globals.bind(&qh, 1..=1, ()).expect("zwp_idle_inhibit_manager_v1");
+    let surface = compositor.create_surface(&qh, ());
+    let _inhibitor = inhibit.create_inhibitor(&surface, &qh, ());
+    let mut holder = Client { conn, queue, heard: Heard::default() };
+    holder.roundtrip();
+
+    // Another client watches for idleness, as an idle daemon would.
+    let conn = Connection::from_socket(UnixStream::connect(c.dir.join(&c.socket)).unwrap()).unwrap();
+    let (globals, queue) = registry_queue_init::<Heard>(&conn).unwrap();
+    let qh = queue.handle();
+    let seat: wl_seat::WlSeat = globals.bind(&qh, 1..=7, ()).unwrap();
+    let notifier: ext_idle_notifier_v1::ExtIdleNotifierV1 = globals.bind(&qh, 1..=1, ()).expect("ext_idle_notifier_v1");
+    let _note = notifier.get_idle_notification(300, &seat, &qh, ());
+    let mut watcher = Client { conn, queue, heard: Heard::default() };
+    watcher.run_for(Duration::from_millis(1500));
+    assert_eq!(watcher.heard.idled, 0, "idle while the holder held its inhibitor");
+
+    // The holder dies without destroying anything (`kill -9`): idleness
+    // comes at once, not never.
+    socket.shutdown(Shutdown::Both).unwrap();
+    drop(holder);
+    let until = Instant::now() + Duration::from_secs(3);
+    while watcher.heard.idled == 0 {
+        assert!(Instant::now() < until, "never idle after the inhibitor's client went");
+        watcher.run_for(Duration::from_millis(100));
+    }
 }
 
 impl Dispatch<wl_registry::WlRegistry, GlobalListContents> for Heard {
