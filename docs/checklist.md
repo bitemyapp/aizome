@@ -217,6 +217,51 @@ final screenshot run (GLES, 2880 × 1800 @ 2):
   4.5 ms with the machine loaded (load average 14, three builds running)
   and passed three times when quiet.
 
+## On the laptop, from the installed build (20 October)
+
+`scripts/validate-installed` runs a second, headless session from the
+binaries installed in `/run/current-system` (Aizome `35f3015`, generation
+33 on ganymede). It uses its own runtime directory, home and session bus,
+and reads the system bus without changing it, so the menu bar shows the
+laptop's own Wi-Fi, Bluetooth and battery. It drives that session through
+`aizomectl` and photographs only its output:
+
+```sh
+dbus-run-session -- scripts/validate-installed /tmp/out gles
+dbus-run-session -- scripts/validate-installed /tmp/out-pixman pixman
+```
+
+It checked:
+
+- **Tab groups:** Hako and foot are stacked as one tab group (`stack 1`),
+  and switching tabs works.
+- **The palette:** over Sumi it lists Sumi's own menu commands with their
+  paths and keycaps, scopes, apps and the shortcut coach.
+- **The rest of the session:** the Desks overview, the switcher, desktop
+  icons, the Deskbar and the Shelf.
+- **Every app of the suite:** each opens a window (Soroban, Koyomi, Tokei,
+  Tenki, Fusen, Kura, Tansu, Settei, Yukimi, Myaku, Shashin, Annai, with
+  Hako and Sumi). Yukimi reads the laptop's own generations.
+- **Both renderers:** the same scene draws under GLES and under pixman.
+
+Compositor frame times at 2880 × 1800, scale 2:
+
+| Renderer | Frames | p50 | p95 | p99 | Max |
+|---|---|---|---|---|---|
+| GLES (CPU) | 223 | 0.51 ms | 0.90 ms | 2.5 ms | 4.1 ms |
+| GLES (GPU) | 223 | 0.78 ms | 2.4 ms | 3.0 ms | 4.4 ms |
+| pixman | 216 | 0.89 ms | 4.7 ms | 8.3 ms | 12 ms |
+
+Pixman's tail is its documented exception (`docs/performance.md`:
+whole-output frames at this size, as when twelve apps open at once).
+
+The person's own session, checked read only:
+
+- they log in through greetd and Aizome's greeter;
+- foot runs fish;
+- Keep Awake holds logind's block;
+- the panels' sources read on the real devices (below).
+
 ## Fixes made during the walkthrough
 
 `5ea3273`, `7744b6e`, `9a2bc77`, `4b3fd67`, `130ca23`, `45f1e85`,
