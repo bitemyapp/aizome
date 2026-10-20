@@ -599,29 +599,12 @@ impl Model {
     /// area, beside anything to avoid (the Deskbar), cascading off windows
     /// already there; dialogs centre on their parent.
     pub fn place(&self, size: (i32, i32), usable: Rect, avoid: &[Rect], insets: Insets, parent: Option<WinId>) -> Rect {
-        let (w, h) = size;
+        let area = avoid.iter().fold(usable, |area, a| beside(area, Some(*a)));
+        let bounds = area.inset(insets);
+        let (w, h) = (size.0.clamp(1, bounds.w), size.1.clamp(1, bounds.h));
         if let Some(p) = parent.and_then(|p| self.wins.get(&p)) {
             let c = p.rect.center();
-            let mut r = Rect::new(c.0 - w / 2, c.1 - h / 2, w, h);
-            r = clamp_into(r, usable, insets);
-            return r;
-        }
-        let mut area = usable;
-        for a in avoid {
-            if !a.intersects(area) {
-                continue;
-            }
-            // Something along the right edge narrows the area from the right;
-            // along the left, from the left.
-            let room_left = a.x - area.x;
-            let room_right = area.right() - a.right();
-            if room_left >= room_right {
-                area.w = (a.x - area.x).max(area.w / 2);
-            } else {
-                let nx = a.right().min(area.x + area.w / 2);
-                area.w -= nx - area.x;
-                area.x = nx;
-            }
+            return clamp_into(Rect::new(c.0 - w / 2, c.1 - h / 2, w, h), area, insets);
         }
         let fw = w + insets.left + insets.right;
         let fh = h + insets.top + insets.bottom;
@@ -642,7 +625,9 @@ impl Model {
             }
             tries += 1;
         }
-        Rect::new(x, y, w, h)
+        // Even a crowded cascade, or a window as wide as the available
+        // area, must keep its entire frame out of the shell's space.
+        clamp_into(Rect::new(x, y, w, h), area, insets)
     }
 
     // ---- tab groups ----------------------------------------------------
@@ -986,4 +971,13 @@ pub fn clamp_into(mut r: Rect, area: Rect, insets: Insets) -> Rect {
     r.x = r.x.min(max_x).max(min_x);
     r.y = r.y.min(max_y).max(min_y);
     r
+}
+
+/// Automatic placement may shrink an oversized client as well as move it.
+/// Explicit user moves keep using `clamp_into` where only position is wanted.
+pub fn fit_into(mut r: Rect, area: Rect, insets: Insets) -> Rect {
+    let bounds = area.inset(insets);
+    r.w = r.w.clamp(1, bounds.w);
+    r.h = r.h.clamp(1, bounds.h);
+    clamp_into(r, area, insets)
 }

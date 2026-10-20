@@ -33,11 +33,22 @@ pub struct LayerSpec {
     /// A side of 0 is the output's (with both its edges anchored).
     pub size: (u32, u32),
     pub color: u32,
+    pub exclusive_zone: i32,
+    pub margin_top: i32,
 }
 
 impl LayerSpec {
     pub fn new(name: &'static str, layer: Layer, keyboard: KeyboardInteractivity) -> LayerSpec {
-        LayerSpec { name, layer, keyboard, anchor: Anchor::Top, size: (400, 100), color: 0x40a040 }
+        LayerSpec {
+            name,
+            layer,
+            keyboard,
+            anchor: Anchor::Top,
+            size: (400, 100),
+            color: 0x40a040,
+            exclusive_zone: 0,
+            margin_top: 0,
+        }
     }
 
     pub fn anchor(mut self, anchor: Anchor, size: (u32, u32)) -> LayerSpec {
@@ -50,10 +61,24 @@ impl LayerSpec {
         self.color = color;
         self
     }
+
+    pub fn zone(mut self, zone: i32) -> LayerSpec {
+        self.exclusive_zone = zone;
+        self
+    }
+
+    pub fn top_margin(mut self, margin: i32) -> LayerSpec {
+        self.margin_top = margin;
+        self
+    }
 }
 
 pub enum ShellCmd {
     Layer(LayerSpec),
+    Resize {
+        name: &'static str,
+        size: (u32, u32),
+    },
     /// A menu on a layer surface, at a place relative to it; `grab` asks
     /// for an explicit grab with the latest input serial (0 without one,
     /// as after a shortcut that came over IPC).
@@ -220,6 +245,11 @@ fn run(stream: UnixStream, rx: Receiver<ShellCmd>, seen: Arc<Mutex<ShellSeen>>) 
     while !quit {
         for cmd in rx.try_iter() {
             match cmd {
+                ShellCmd::Resize { name, size } => {
+                    let s = shell.surfaces.get(name).expect("layer to resize");
+                    s.layer.as_ref().unwrap().set_size(size.0, size.1);
+                    s.surface.commit();
+                }
                 ShellCmd::Layer(spec) => {
                     let surface = compositor.create_surface(&qh, ());
                     let l = layer_shell.get_layer_surface(
@@ -233,6 +263,8 @@ fn run(stream: UnixStream, rx: Receiver<ShellCmd>, seen: Arc<Mutex<ShellSeen>>) 
                     l.set_anchor(spec.anchor);
                     l.set_size(spec.size.0, spec.size.1);
                     l.set_keyboard_interactivity(spec.keyboard);
+                    l.set_exclusive_zone(spec.exclusive_zone);
+                    l.set_margin(spec.margin_top, 0, 0, 0);
                     surface.commit();
                     shell.surfaces.insert(
                         spec.name.to_string(),

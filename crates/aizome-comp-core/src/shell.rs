@@ -270,6 +270,7 @@ impl State {
         {
             self.shell_handover_layer(&output, surface);
         }
+        let deskbar_before = self.az.out.get(&output).and_then(|o| o.deskbar_geometry);
         let mut map = layer_map_for_output(&output);
         let before = map.non_exclusive_zone();
         map.arrange();
@@ -278,8 +279,13 @@ impl State {
             layer.layer_surface().send_configure();
         }
         drop(map);
-        if before != after {
-            // The usable area changed: windows filling it follow.
+        let deskbar_after = self.az.deskbar_rect(&output);
+        if let Some(o) = self.az.out.get_mut(&output) {
+            o.deskbar_geometry = deskbar_after;
+        }
+        if before != after || deskbar_before != deskbar_after {
+            // The Deskbar reserves no exclusive zone, but its arrival or
+            // size change also changes where windows can fit.
             self.az.window_outputs_dirty = true;
             crate::outputs::outputs_changed(&mut self.az);
             if !self.shell_restart_holds_layout() {
@@ -635,15 +641,24 @@ impl WlrLayerShellHandler for State {
             if !self.shell_restart_holds_layout() {
                 self.keep_ghost(&output, &layer);
             }
+            let deskbar_before = self.az.out.get(&output).and_then(|o| o.deskbar_geometry);
             let mut map = layer_map_for_output(&output);
+            let before = map.non_exclusive_zone();
             map.unmap_layer(&layer);
+            let after = map.non_exclusive_zone();
             drop(map);
             if self.az.layer_focus.as_ref() == Some(surface.wl_surface()) {
                 self.az.layer_focus = None;
             }
-            crate::outputs::outputs_changed(&mut self.az);
-            if !self.shell_restart_holds_layout() {
-                self.lg_call((), |vt, st| (vt.usable_area_changed)(st, &output));
+            let deskbar_after = self.az.deskbar_rect(&output);
+            if let Some(o) = self.az.out.get_mut(&output) {
+                o.deskbar_geometry = deskbar_after;
+            }
+            if before != after || deskbar_before != deskbar_after {
+                crate::outputs::outputs_changed(&mut self.az);
+                if !self.shell_restart_holds_layout() {
+                    self.lg_call((), |vt, st| (vt.usable_area_changed)(st, &output));
+                }
             }
             self.update_keyboard_focus();
             self.az.queue_redraw(&output);
