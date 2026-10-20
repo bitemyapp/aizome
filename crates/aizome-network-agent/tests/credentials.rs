@@ -261,6 +261,15 @@ fn only_networkmanager_can_call_and_cancellation_interrupts_pending_prompt() {
         assert!(Instant::now() < deadline);
         std::thread::sleep(Duration::from_millis(10));
     }
+    // Another caller's request for the same setting neither displaces nor
+    // cancels NetworkManager's.
+    let denied = proxy.call::<_, _, Settings>("GetSecrets", &args()).unwrap_err().to_string();
+    assert!(denied.contains("NotAuthorized"), "{denied}");
+    let target = (OwnedObjectPath::try_from("/test/connection").unwrap(), "802-11-wireless-security");
+    assert!(proxy.call::<_, _, ()>("CancelGetSecrets", &target).is_err());
+    std::thread::sleep(Duration::from_millis(100));
+    assert!(!pending.is_finished());
+    assert_eq!(ui.asked.lock().unwrap().len(), 1);
     let proxy =
         zbus::blocking::Proxy::new(&nm, dest.as_str(), PATH, "org.freedesktop.NetworkManager.SecretAgent").unwrap();
     proxy

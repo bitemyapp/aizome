@@ -37,9 +37,6 @@ impl Cancel {
     pub fn cancel(&self) {
         self.cancelled.store(true, Ordering::Release);
     }
-    pub fn same(&self, other: &Cancel) -> bool {
-        Arc::ptr_eq(&self.cancelled, &other.cancelled)
-    }
     pub fn check(&self) -> Result<()> {
         if self.cancelled.load(Ordering::Acquire) {
             Err(AgentError::AgentCanceled("Network authentication was cancelled".into()))

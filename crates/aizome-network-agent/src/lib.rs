@@ -142,15 +142,43 @@ impl Engine {
     }
 }
 
-type Pending = Arc<Mutex<HashMap<(String, String), Cancel>>>;
+type Key = (String, String);
+/// A GetSecrets in progress, numbered in the order calls arrived.
+struct Request {
+    key: Key,
+    number: u64,
+    cancel: Cancel,
+    authorized: bool,
+}
+#[derive(Default)]
+struct Requests {
+    arrived: u64,
+    list: Vec<Request>,
+}
+impl Requests {
+    fn arrive(&mut self) -> u64 {
+        self.arrived += 1;
+        self.arrived
+    }
+    /// Cancels the requests for `key` that arrived before `number`.
+    fn cancel_before(&mut self, key: &Key, number: u64) {
+        self.list.retain(|r| {
+            let earlier = r.key == *key && r.number < number;
+            if earlier {
+                r.cancel.cancel();
+            }
+            !earlier
+        });
+    }
+}
 pub struct Agent {
     connection: zbus::Connection,
     engine: Arc<Engine>,
-    pending: Pending,
+    requests: Arc<Mutex<Requests>>,
 }
 impl Agent {
     pub fn new(connection: zbus::Connection, engine: Arc<Engine>) -> Self {
-        Self { connection, engine, pending: Arc::default() }
+        Self { connection, engine, requests: Arc::default() }
     }
     async fn authorize(&self, header: &Header<'_>) -> Result<()> {
         let proxy = zbus::fdo::DBusProxy::new(&self.connection)
@@ -166,8 +194,8 @@ impl Agent {
         Ok(())
     }
     pub fn cancel_all(&self) {
-        for token in self.pending.lock().unwrap().drain().map(|(_, v)| v) {
-            token.cancel();
+        for request in self.requests.lock().unwrap().list.drain(..) {
+            request.cancel.cancel();
         }
     }
     async fn work<T: Send + 'static>(&self, f: impl FnOnce() -> Result<T> + Send + 'static) -> Result<T> {
@@ -192,25 +220,35 @@ impl Agent {
         // NetworkManager gives the whole request two minutes, every dialog
         // and helper included, and then stops waiting without cancelling.
         let cancel = Cancel::within(GET_SECRETS_TIMEOUT);
-        self.authorize(&header).await?;
-        let profile = Profile::new(connection)?;
         let key = (connection_path.to_string(), setting_name.clone());
-        {
-            let mut pending = self.pending.lock().unwrap();
-            if pending.len() >= 16 && !pending.contains_key(&key) {
-                return Err(AgentError::Failed("Too many outstanding authentication requests".into()));
+        // Listed before authorizing, so that a CancelGetSecrets arriving
+        // meanwhile finds it; it displaces an earlier request for the same
+        // setting only once authorized.
+        let number = {
+            let mut requests = self.requests.lock().unwrap();
+            let number = requests.arrive();
+            requests.list.push(Request { key: key.clone(), number, cancel: cancel.clone(), authorized: false });
+            number
+        };
+        let result = async {
+            self.authorize(&header).await?;
+            let profile = Profile::new(connection)?;
+            {
+                let mut requests = self.requests.lock().unwrap();
+                if requests.list.iter().filter(|r| r.authorized && r.key != key).count() >= 16 {
+                    return Err(AgentError::Failed("Too many outstanding authentication requests".into()));
+                }
+                requests.cancel_before(&key, number);
+                if let Some(request) = requests.list.iter_mut().find(|r| r.number == number) {
+                    request.authorized = true;
+                }
             }
-            if let Some(old) = pending.insert(key.clone(), cancel.clone()) {
-                old.cancel();
-            }
+            let engine = self.engine.clone();
+            let token = cancel.clone();
+            self.work(move || engine.get(profile, &setting_name, &hints, flags, &token)).await
         }
-        let engine = self.engine.clone();
-        let token = cancel.clone();
-        let result = self.work(move || engine.get(profile, &setting_name, &hints, flags, &token)).await;
-        let mut pending = self.pending.lock().unwrap();
-        if pending.get(&key).is_some_and(|t| t.same(&cancel)) {
-            pending.remove(&key);
-        }
+        .await;
+        self.requests.lock().unwrap().list.retain(|r| r.number != number);
         result
     }
     async fn cancel_get_secrets(
@@ -219,10 +257,10 @@ impl Agent {
         setting_name: String,
         #[zbus(header)] header: Header<'_>,
     ) -> Result<()> {
+        // Only requests that arrived before this.
+        let number = self.requests.lock().unwrap().arrive();
         self.authorize(&header).await?;
-        if let Some(token) = self.pending.lock().unwrap().remove(&(connection_path.to_string(), setting_name)) {
-            token.cancel();
-        }
+        self.requests.lock().unwrap().cancel_before(&(connection_path.to_string(), setting_name), number);
         Ok(())
     }
     async fn save_secrets(
