@@ -36,13 +36,32 @@ impl Store for Memory {
             .map(|((_, _, k), v)| (k.clone(), v.clone()))
             .collect())
     }
+    fn saved(&self, uuid: &str, _: &Cancel) -> Result<Vec<(String, String)>> {
+        Ok(self
+            .values
+            .lock()
+            .unwrap()
+            .keys()
+            .filter(|(u, _, _)| u == uuid)
+            .map(|(_, s, k)| (s.clone(), k.clone()))
+            .collect())
+    }
     fn store(&self, uuid: &str, setting: &str, key: &str, value: &str, _: &str, _: &Cancel) -> Result<()> {
         self.values.lock().unwrap().insert((uuid.into(), setting.into(), key.into()), value.into());
+        Ok(())
+    }
+    fn forget(&self, uuid: &str, setting: &str, key: &str, _: &Cancel) -> Result<()> {
+        self.values.lock().unwrap().remove(&(uuid.into(), setting.into(), key.into()));
         Ok(())
     }
     fn delete(&self, uuid: &str, _: &Cancel) -> Result<()> {
         self.values.lock().unwrap().retain(|(u, _, _), _| u != uuid);
         Ok(())
+    }
+}
+impl Memory {
+    fn get(&self, setting: &str, key: &str) -> Option<String> {
+        self.values.lock().unwrap().get(&(UUID.into(), setting.into(), key.into())).cloned()
     }
 }
 struct Ui {
@@ -480,6 +499,59 @@ fn changing_to_ask_every_time_clears_previously_saved_secrets() {
     assert!(store.values.lock().unwrap().is_empty());
 }
 
+/// A Wi-Fi profile with an enterprise password too, as NetworkManager
+/// sends it with SaveSecrets after an update that carried no secrets, for
+/// a connection it hasn't activated since it started: flags, no secrets.
+fn enterprise_profile(psk_flags: u32, password_flags: u32) -> Settings {
+    let mut p = profile(psk_flags);
+    p.insert("802-1x".into(), HashMap::from([("password-flags".into(), password_flags.into())]));
+    p
+}
+
+fn saved_twice(store: &Memory) {
+    let c = Cancel::default();
+    // Perhaps by another desktop.
+    store.store(UUID, "802-11-wireless-security", "psk", "saved-psk", "", &c).unwrap();
+    store.store(UUID, "802-1x", "password", "saved-password", "", &c).unwrap();
+}
+
+#[test]
+fn saving_a_profile_update_without_secrets_keeps_the_saved_ones() {
+    let (store, _, engine) = fixture(None, false);
+    saved_twice(&store);
+    // Settei turning "Connect automatically" off, say.
+    engine.save(Profile::new(enterprise_profile(1, 1)).unwrap(), &Cancel::default()).unwrap();
+    assert_eq!(store.get("802-11-wireless-security", "psk").as_deref(), Some("saved-psk"));
+    assert_eq!(store.get("802-1x", "password").as_deref(), Some("saved-password"));
+    // A secret the update carries replaces only its own entry.
+    let mut p = enterprise_profile(1, 1);
+    p.get_mut("802-11-wireless-security").unwrap().insert("psk".into(), text_value("new-psk".into()));
+    engine.save(Profile::new(p).unwrap(), &Cancel::default()).unwrap();
+    assert_eq!(store.get("802-11-wireless-security", "psk").as_deref(), Some("new-psk"));
+    assert_eq!(store.get("802-1x", "password").as_deref(), Some("saved-password"));
+}
+
+#[test]
+fn saving_forgets_only_the_secrets_a_profile_stops_keeping() {
+    // Agent-owned; then system-owned, ask every time (alone and with
+    // agent-owned) and not required.
+    for (flags, kept) in [(1, true), (0, false), (2, false), (3, false), (4, false)] {
+        let (store, _, engine) = fixture(None, false);
+        saved_twice(&store);
+        engine.save(Profile::new(enterprise_profile(flags, 1)).unwrap(), &Cancel::default()).unwrap();
+        assert_eq!(store.get("802-11-wireless-security", "psk").is_some(), kept, "flags {flags}");
+        assert_eq!(store.get("802-1x", "password").as_deref(), Some("saved-password"), "flags {flags}");
+    }
+    // NetworkManager leaves out flags at their default, system-owned, and
+    // a setting the profile no longer has keeps nothing.
+    let (store, _, engine) = fixture(None, false);
+    saved_twice(&store);
+    let mut p = profile(1);
+    p.get_mut("802-11-wireless-security").unwrap().remove("psk-flags");
+    engine.save(Profile::new(p).unwrap(), &Cancel::default()).unwrap();
+    assert!(store.values.lock().unwrap().is_empty());
+}
+
 #[test]
 fn wireguard_peer_secrets_use_nm_keys_and_nested_reply() {
     let public = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
@@ -518,8 +590,14 @@ impl Store for UnavailableKeyring {
     fn lookup(&self, _: &str, _: &str, _: bool, _: &Cancel) -> Result<HashMap<String, String>> {
         Err(AgentError::Failed("Keyring unavailable".into()))
     }
+    fn saved(&self, _: &str, _: &Cancel) -> Result<Vec<(String, String)>> {
+        Err(AgentError::Failed("Keyring unavailable".into()))
+    }
     fn store(&self, _: &str, _: &str, _: &str, _: &str, _: &str, _: &Cancel) -> Result<()> {
         Err(AgentError::Failed("Keyring unavailable".into()))
+    }
+    fn forget(&self, _: &str, _: &str, _: &str, _: &Cancel) -> Result<()> {
+        Ok(())
     }
     fn delete(&self, _: &str, _: &Cancel) -> Result<()> {
         Ok(())

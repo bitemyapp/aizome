@@ -51,8 +51,13 @@ Existing profile policies are preserved:
 
 The keyring uses NetworkManager's established `connection-uuid`,
 `setting-name` and `setting-key` attributes, so credentials saved by other
-desktops remain usable. Saving an edited profile replaces its saved
-credentials; deleting a profile removes them. A keyring save failure is
+desktops remain usable. NetworkManager asks agents to save after every
+profile update but sends only the secrets the update carried or that it
+holds in memory, often none. So saving replaces only the credentials
+supplied and keeps the rest; it forgets a saved credential once the
+profile no longer keeps it in the keyring (changed to "ask every time",
+to be stored for all users, or to not required). Deleting a profile
+removes them all. A keyring save failure is
 reported in the service journal without preventing use of the supplied
 password. A locked keyring may request its own unlock password during an
 interactive request.

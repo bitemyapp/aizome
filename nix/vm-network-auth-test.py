@@ -292,6 +292,33 @@ with subtest(
     finished()
     down("ask")
 
+
+def saves():
+    return alice("journalctl --user -u " + AGENT + " --no-pager").count(
+        "Saved network credentials follow a profile update"
+    )
+
+
+def modify(name, change):
+    before = saves()
+    alice(f"nmcli connection modify {name} {change}")
+    # NetworkManager asks agents to save after every update.
+    until("the agent saves after the update", lambda: saves() > before)
+
+
+with subtest("Updating a profile without its password keeps the saved one"):
+    # NetworkManager has restarted and not activated "existing" since, so
+    # an update that changes no secret has none to send the agent.
+    modify("existing", "connection.autoconnect-priority 1")
+    assert saved("existing")[1].strip() == WIFI_PASSWORD
+    activate("existing")
+    finished()
+    assert not prompt()
+    down("existing")
+    # Asking every time forgets it.
+    modify("existing", "wifi-sec.psk-flags 2")
+    assert saved("existing")[0] != 0
+
 with subtest("OpenVPN plugin authenticates, retries, saves and reuses passwords"):
     machine.succeed(
         "cat > /tmp/test.ovpn <<'EOF'\nclient\ndev tun\nproto udp\nremote 127.0.0.1 1194\n"

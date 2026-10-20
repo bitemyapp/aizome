@@ -91,6 +91,10 @@ impl Profile {
             number(&self.settings, setting, &format!("{key}-flags"))
         }
     }
+    /// Whether the profile keeps this secret in the person's keyring.
+    pub fn saves(&self, setting: &str, key: &str) -> bool {
+        self.flags(setting, key) & (AGENT_OWNED | NOT_SAVED | NOT_REQUIRED) == AGENT_OWNED
+    }
     pub fn supplied(&self, setting: &str) -> HashMap<String, String> {
         if setting == "vpn" {
             return dict(&self.settings, setting, "secrets");

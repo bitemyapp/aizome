@@ -25,13 +25,17 @@ pub struct Request {
 
 pub trait Store: Send + Sync {
     fn lookup(&self, uuid: &str, setting: &str, unlock: bool, cancel: &Cancel) -> Result<HashMap<String, String>>;
+    /// Each saved credential's setting and key, read without its secret
+    /// and without unlocking.
+    fn saved(&self, uuid: &str, cancel: &Cancel) -> Result<Vec<(String, String)>>;
     fn store(&self, uuid: &str, setting: &str, key: &str, value: &str, label: &str, cancel: &Cancel) -> Result<()>;
+    fn forget(&self, uuid: &str, setting: &str, key: &str, cancel: &Cancel) -> Result<()>;
     fn delete(&self, uuid: &str, cancel: &Cancel) -> Result<()>;
 }
 
 pub struct Keyring;
 impl Keyring {
-    fn call(&self, r: Request, cancel: &Cancel) -> Result<HashMap<String, String>> {
+    fn call(&self, r: Request, cancel: &Cancel) -> Result<Vec<(String, String)>> {
         let exe = std::env::current_exe().map_err(|_| AgentError::Failed("Cannot locate keyring worker".into()))?;
         let bytes = process::run(
             Command::new(exe).arg("--keyring"),
@@ -41,51 +45,40 @@ impl Keyring {
         )?;
         serde_json::from_slice(&bytes).map_err(|_| AgentError::Failed("Cannot access the login keyring".into()))
     }
+    fn request(action: &str, uuid: &str, setting: &str, key: &str) -> Request {
+        Request {
+            action: action.into(),
+            uuid: uuid.into(),
+            setting: setting.into(),
+            key: key.into(),
+            value: String::new(),
+            label: String::new(),
+            unlock: false,
+        }
+    }
 }
 impl Store for Keyring {
     fn lookup(&self, uuid: &str, setting: &str, unlock: bool, c: &Cancel) -> Result<HashMap<String, String>> {
-        self.call(
-            Request {
-                action: "lookup".into(),
-                uuid: uuid.into(),
-                setting: setting.into(),
-                key: String::new(),
-                value: String::new(),
-                label: String::new(),
-                unlock,
-            },
-            c,
-        )
+        let r = Request { unlock, ..Self::request("lookup", uuid, setting, "") };
+        self.call(r, c).map(|values| values.into_iter().collect())
+    }
+    fn saved(&self, uuid: &str, c: &Cancel) -> Result<Vec<(String, String)>> {
+        self.call(Self::request("list", uuid, "", ""), c)
     }
     fn store(&self, uuid: &str, setting: &str, key: &str, value: &str, label: &str, c: &Cancel) -> Result<()> {
-        self.call(
-            Request {
-                action: "store".into(),
-                uuid: uuid.into(),
-                setting: setting.into(),
-                key: key.into(),
-                value: value.into(),
-                label: label.into(),
-                unlock: true,
-            },
-            c,
-        )
-        .map(drop)
+        let r = Request {
+            value: value.into(),
+            label: label.into(),
+            unlock: true,
+            ..Self::request("store", uuid, setting, key)
+        };
+        self.call(r, c).map(drop)
+    }
+    fn forget(&self, uuid: &str, setting: &str, key: &str, c: &Cancel) -> Result<()> {
+        self.call(Self::request("delete", uuid, setting, key), c).map(drop)
     }
     fn delete(&self, uuid: &str, c: &Cancel) -> Result<()> {
-        self.call(
-            Request {
-                action: "delete".into(),
-                uuid: uuid.into(),
-                setting: String::new(),
-                key: String::new(),
-                value: String::new(),
-                label: String::new(),
-                unlock: false,
-            },
-            c,
-        )
-        .map(drop)
+        self.call(Self::request("delete", uuid, "", ""), c).map(drop)
     }
 }
 
@@ -102,15 +95,15 @@ unsafe extern "C" {
         context: *mut c_void,
     ) -> i32;
 }
-extern "C" fn collect(context: *mut c_void, key: *const c_char, value: *const c_char) {
+extern "C" fn collect(context: *mut c_void, first: *const c_char, second: *const c_char) {
     // Pointers are owned by libsecret and valid for the duration of this callback.
     unsafe {
-        let map = &mut *context.cast::<HashMap<String, String>>();
-        map.insert(CStr::from_ptr(key).to_string_lossy().into(), CStr::from_ptr(value).to_string_lossy().into());
+        let pairs = &mut *context.cast::<Vec<(String, String)>>();
+        pairs.push((CStr::from_ptr(first).to_string_lossy().into(), CStr::from_ptr(second).to_string_lossy().into()));
     }
 }
-pub fn worker(r: Request) -> Result<HashMap<String, String>> {
-    if !matches!(r.action.as_str(), "lookup" | "store" | "delete") || r.uuid.is_empty() {
+pub fn worker(r: Request) -> Result<Vec<(String, String)>> {
+    if !matches!(r.action.as_str(), "lookup" | "list" | "store" | "delete") || r.uuid.is_empty() {
         return Err(AgentError::InvalidConnection("Invalid keyring operation".into()));
     }
     let args: Vec<_> = [&r.action, &r.uuid, &r.setting, &r.key, &r.value, &r.label]
@@ -118,7 +111,7 @@ pub fn worker(r: Request) -> Result<HashMap<String, String>> {
         .map(|s| CString::new(s.as_str()))
         .collect::<std::result::Result<_, _>>()
         .map_err(|_| AgentError::InvalidConnection("Invalid credential encoding".into()))?;
-    let mut values = HashMap::<String, String>::new();
+    let mut values = Vec::<(String, String)>::new();
     let result = unsafe {
         aizome_keyring(
             args[0].as_ptr(),
@@ -129,7 +122,7 @@ pub fn worker(r: Request) -> Result<HashMap<String, String>> {
             args[5].as_ptr(),
             r.unlock.into(),
             collect,
-            (&mut values as *mut HashMap<String, String>).cast(),
+            (&mut values as *mut Vec<(String, String)>).cast(),
         )
     };
     if result != 0 {

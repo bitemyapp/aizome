@@ -119,13 +119,20 @@ impl Engine {
         Ok(p.reply(setting, response))
     }
     pub fn save(&self, p: Profile, cancel: &Cancel) -> Result<()> {
-        // SaveSecrets replaces a profile's saved secrets, including when
-        // an editor changes a password to "ask every time".
-        self.store.delete(&p.uuid, cancel)?;
+        // NetworkManager sends SaveSecrets after every profile update, with
+        // the agent-owned secrets the update carried or, failing that, those
+        // it holds in memory: none for a connection not activated since it
+        // started. So replace only the secrets supplied, and forget a saved
+        // one only once the profile stops keeping it in the keyring (an
+        // editor changing it to "ask every time", say).
+        for (setting, key) in self.store.saved(&p.uuid, cancel)? {
+            if !p.saves(&setting, &key) {
+                self.store.forget(&p.uuid, &setting, &key, cancel)?;
+            }
+        }
         for setting in p.settings.keys() {
-            let values = p.supplied(setting);
-            for (key, value) in values {
-                if p.flags(setting, &key) & (AGENT_OWNED | NOT_SAVED | NOT_REQUIRED) == AGENT_OWNED {
+            for (key, value) in p.supplied(setting) {
+                if p.saves(setting, &key) {
                     self.store.store(&p.uuid, setting, &key, &value, &format!("{} — {setting}", p.name), cancel)?;
                 }
             }
@@ -227,7 +234,11 @@ impl Agent {
         self.authorize(&header).await?;
         let profile = Profile::new(connection)?;
         let engine = self.engine.clone();
-        self.work(move || engine.save(profile, &cancel)).await
+        let result = self.work(move || engine.save(profile, &cancel)).await;
+        if result.is_ok() {
+            log::info!("Saved network credentials follow a profile update");
+        }
+        result
     }
     async fn delete_secrets(
         &self,
