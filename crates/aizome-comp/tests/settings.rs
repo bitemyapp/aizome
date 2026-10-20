@@ -86,6 +86,49 @@ fn natural_scrolling_turns_the_scroll_round_once() {
 }
 
 #[test]
+fn modifier_swaps_apply_live_to_both_sides_and_can_be_undone() {
+    const CTRL: u32 = 1 << 2;
+    const ALT: u32 = 1 << 3;
+    const SUPER: u32 = 1 << 6;
+    let c = Compositor::start(Options::default());
+    // Kit apps receive Super directly, without compatibility translation to Ctrl.
+    let a = c.client(Spec::new("org.aizome.modifier-test", 0x2222cc));
+    c.wait_window("org.aizome.modifier-test");
+    a.wait_seen("keyboard focus", |s| s.keyboard_focus);
+    let mut count = 0;
+    for (options, expected) in [
+        ("", [ALT, SUPER, CTRL, ALT, SUPER, CTRL]),
+        ("altwin:swap_alt_win", [SUPER, ALT, CTRL, SUPER, ALT, CTRL]),
+        ("altwin:swap_lalt_lwin", [SUPER, ALT, CTRL, ALT, SUPER, CTRL]),
+        ("altwin:swap_ralt_rwin", [ALT, SUPER, CTRL, SUPER, ALT, CTRL]),
+        ("ctrl:swap_lwin_lctl,ctrl:swap_rwin_rctl", [ALT, CTRL, SUPER, ALT, CTRL, SUPER]),
+        ("ctrl:swap_lwin_lctl", [ALT, CTRL, SUPER, ALT, SUPER, CTRL]),
+        ("ctrl:swap_rwin_rctl", [ALT, SUPER, CTRL, ALT, CTRL, SUPER]),
+        ("ctrl:swap_lalt_lctl,ctrl:swap_ralt_rctl", [CTRL, SUPER, ALT, CTRL, SUPER, ALT]),
+        ("ctrl:swap_lalt_lctl", [CTRL, SUPER, ALT, ALT, SUPER, CTRL]),
+        ("ctrl:swap_ralt_rctl", [ALT, SUPER, CTRL, CTRL, SUPER, ALT]),
+        ("", [ALT, SUPER, CTRL, ALT, SUPER, CTRL]),
+    ] {
+        std::fs::write(
+            c.dir.join("config/aizome/settings.toml"),
+            format!("[input.keyboard]\noptions = \"{options}\"\n"),
+        )
+        .unwrap();
+        c.ok(Request::ReloadConfig);
+        // Physical Alt, Super, Control on the left, then the right (evdev codes).
+        for (physical, want) in ["56", "125", "29", "100", "126", "97"].into_iter().zip(expected) {
+            key(&c, physical, true);
+            tap(&c, "a");
+            key(&c, physical, false);
+            count += 1;
+            let s = a.wait_seen("modified a", |s| s.keys.iter().filter(|(k, _)| *k == KEY_A).count() == count);
+            let (_, mods) = s.keys.iter().filter(|(k, _)| *k == KEY_A).last().unwrap();
+            assert_eq!(mods & (ALT | SUPER | CTRL), want, "physical key {physical}, options {options}");
+        }
+    }
+}
+
+#[test]
 fn sticky_keys_latch_a_modifier_for_the_next_key() {
     let c = Compositor::start(Options { settings: "[input.keyboard]\nsticky_keys = true\n", ..Default::default() });
     let a = c.client(Spec::new("org.example.editor", 0x2222cc));

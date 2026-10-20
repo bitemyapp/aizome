@@ -119,9 +119,15 @@ palette. Search filters the sidebar and highlights options.
   accounts (AccountsService), admin or standard, add and remove, automatic
   login.
 - **Keyboard**: layouts (searchable list from `aizome-sys`'s xkb data, with
-  variants), switching shortcut, key repeat delay and rate, Caps Lock as
-  (Caps Lock, Control, Escape, Compose), compose key, and the list of
-  Aizome's shortcuts (from the compositor's `keys` config, editable).
+  variants), switching shortcut, key repeat delay and rate, modifier keys
+  (swap Alt/Super, Control/Super or Control/Alt on both sides or just one),
+  Caps Lock as (Caps Lock, Control, Escape, Compose), compose key, and the
+  list of Aizome's shortcuts (from the compositor's `keys` config, editable).
+  In Typing → Keys → Modifier keys, choose **Swap Alt and Super** for a
+  Mac-style position, or the left-only swap to keep Right Alt for accents.
+  Changes apply immediately to all keyboards and persist across logins;
+  **Default** restores the modifier arrangement. Open this control directly
+  with `aizome-shitsurae --pane keyboard.modifiers`.
 - **Mouse** and **Trackpad**: pointer speed and acceleration, natural
   scrolling, tap to click, two-finger or corner right-click, disable while
   typing, scroll speed.

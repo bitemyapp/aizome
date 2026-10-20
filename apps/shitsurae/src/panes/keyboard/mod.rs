@@ -1,10 +1,11 @@
 //! Keyboard: layouts (searched from xkeyboard-config's registry, with
 //! variants) and the keys that switch them; key repeat with a place to try
-//! it; Caps Lock as Control, Escape or Compose and the Compose key; and
-//! the editor for the system's shortcuts (the compositor's `[keys]`).
+//! it; modifier swaps, Caps Lock as Control, Escape or Compose and the
+//! Compose key; and the editor for the system's shortcuts (the compositor's `[keys]`).
 //! `[input.keyboard]` and `[keys.bindings]`, applied by the compositor.
 
 pub mod keys;
+mod modifiers;
 mod record;
 
 use std::collections::BTreeMap;
@@ -120,6 +121,7 @@ pub enum Msg {
     Delay(f64),
     Rate(f64),
     Trial(String),
+    Modifiers(usize),
     Caps(usize),
     Compose(usize),
     NumLock(bool),
@@ -285,6 +287,11 @@ impl Keyboard {
 
         let caps_i = CAPS.iter().position(|(_, o)| o.is_some_and(has)).unwrap_or(0);
         let compose_i = COMPOSE.iter().position(|(_, o)| o.is_some_and(has)).unwrap_or(0);
+        let modifiers_i = modifiers::selected(&k.options);
+        let mut modifier_labels: Vec<String> = modifiers::CHOICES.iter().map(|(label, _)| (*label).into()).collect();
+        if modifiers_i == modifiers::CHOICES.len() {
+            modifier_labels.push("Custom".into());
+        }
         let delay = f64::from(k.repeat_delay);
         let rate = f64::from(k.repeat_rate);
         vec![
@@ -315,6 +322,16 @@ impl Keyboard {
             vcx.section(
                 "Keys",
                 vec![
+                    form::row(
+                        "Modifier keys",
+                        dropdown(modifier_labels, modifiers_i).on_select(Msg::Modifiers).min_width(240.0),
+                    )
+                    .entry("modifiers")
+                    .help(
+                        "Super (❖) is the Windows or Command key. Swap Alt and Super for a Mac-style position. \
+                         Applies to all keyboards immediately; choose Default to undo. \
+                         Use a left-only swap to keep Right Alt for accents.",
+                    ),
                     form::row("Caps Lock key", form::choice(&CAPS.map(|c| c.0), caps_i, Msg::Caps))
                         .entry("caps-lock")
                         .help(match caps_i {
@@ -572,6 +589,9 @@ impl Pane for Keyboard {
             SettingEntry::new("switch-layout", "Switch layouts with").keywords(&["input source", "toggle", "grp"]),
             SettingEntry::new("repeat-delay", "Delay until repeat").keywords(&["key repeat", "hold"]),
             SettingEntry::new("repeat-rate", "Repeat rate").keywords(&["key repeat", "speed"]),
+            SettingEntry::new("modifiers", "Modifier keys").keywords(&[
+                "swap", "remap", "super", "alt", "control", "ctrl", "windows", "command", "option", "mac", "macOS",
+            ]),
             SettingEntry::new("caps-lock", "Caps Lock key").keywords(&[
                 "remap caps lock",
                 "control",
@@ -684,6 +704,10 @@ impl Pane for Keyboard {
             }
             Msg::Rate(v) => cx.change(|s| s.input.keyboard.repeat_rate = v.round().clamp(5.0, 60.0) as u32),
             Msg::Trial(t) => self.trial = t,
+            Msg::Modifiers(i) => cx.change(|s| {
+                let k = &mut s.input.keyboard;
+                k.options = modifiers::set(&k.options, i);
+            }),
             Msg::Caps(i) => cx.change(|s| {
                 let k = &mut s.input.keyboard;
                 k.options = replace_options(&k.options, is_caps_option, CAPS.get(i).and_then(|c| c.1));
