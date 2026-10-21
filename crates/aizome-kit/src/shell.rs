@@ -241,7 +241,7 @@ pub(crate) fn published(core: &Core) -> Vec<proto::Menu> {
         .enumerate()
         .map(|(i, m)| {
             let mut m = m.clone();
-            core.settle_menu(&mut m);
+            core.settle_app_menu(&mut m, None);
             let path = if i == 0 { "app".to_owned() } else { m.title.clone() };
             proto::Menu { id: menu_id(&path), title: m.title.clone(), items: items(&m, &path) }
         })
@@ -266,7 +266,7 @@ pub(crate) fn find(core: &Core, id: u32) -> Option<ActionSpec> {
     }
     core.menubar.iter().enumerate().find_map(|(i, m)| {
         let mut m = m.clone();
-        core.settle_menu(&mut m);
+        core.settle_app_menu(&mut m, None);
         let path = if i == 0 { "app".to_owned() } else { m.title.clone() };
         walk(&m, &path, id)
     })
