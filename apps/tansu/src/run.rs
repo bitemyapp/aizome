@@ -145,7 +145,7 @@ impl Run {
                     OpKind::NewTable { .. } => Some(Token::Table(Confirm::new(b))),
                     OpKind::Delete => Some(Token::Delete(Confirm::new(b))),
                     OpKind::Format(_) => Some(Token::Format(Confirm::new(b))),
-                    OpKind::Resize { from, to } if to < from && fs::check_before_shrink(&b.id_type) => {
+                    OpKind::Resize { .. } if fs::check_before_resize(&b.id_type) => {
                         Some(Token::Repair(Confirm::new(b)))
                     }
                     OpKind::Resize { .. } => Some(Token::Resize(Confirm::new(b))),
@@ -375,17 +375,32 @@ impl Run {
                     Ok(Confirm::new(b))
                 };
                 if to > from {
-                    // Grow: the partition's end, then the filesystem.
-                    match step {
-                        0 => {
-                            let Some(Token::Resize(c)) = item.token.take() else { return Err(no_token(&item.op)) };
+                    // Check ext before changing either size, then grow the
+                    // partition and the filesystem into the added space.
+                    let steps: &[&str] = if fs::check_before_resize(&fs_type) {
+                        &["repair", "part", "fs"]
+                    } else if has_fs {
+                        &["part", "fs"]
+                    } else {
+                        &["part"]
+                    };
+                    match steps.get(step).copied() {
+                        Some("repair") => {
+                            let Some(Token::Repair(c)) = item.token.take() else { return Err(no_token(&item.op)) };
+                            Ok(Step::Start(InFlight::Bool(backend.repair(c)), None, "Checking the filesystem…".into()))
+                        }
+                        Some("part") => {
+                            let c = match item.token.take() {
+                                Some(Token::Resize(c)) => c,
+                                _ => again(&state)?,
+                            };
                             unit(
                                 backend.resize_partition(c, to),
                                 Some(Expect::Size { block: target, size: to }),
                                 "Moving the partition's end…",
                             )
                         }
-                        1 if has_fs => {
+                        Some("fs") => {
                             unit(backend.resize_filesystem(again(&state)?, 0), None, "Growing the filesystem…")
                         }
                         _ => Ok(Step::Finished),
@@ -393,7 +408,7 @@ impl Run {
                 } else {
                     // Shrink: check (ext), the filesystem to a MiB under the
                     // new end, the partition, then the filesystem to fill it.
-                    let check = fs::check_before_shrink(&fs_type);
+                    let check = fs::check_before_resize(&fs_type);
                     let steps: Vec<&str> = match (has_fs, check) {
                         (false, _) => vec!["part"],
                         (true, true) => vec!["repair", "fs", "part", "fill"],

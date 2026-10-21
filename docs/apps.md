@@ -410,9 +410,15 @@ partition sizes stay in the create or resize dialog with an explanation;
 they cannot queue the last valid size. Correct the text or choose a size with
 the slider to continue. `checks.x86_64-linux.tansu-size` exercises the packaged
 interface on its in-memory sample disks; it does not test real storage.
-Everything through UDisks2
-(`aizome-sys::disks`). It never touches a disk in tests: use mocks, and
-loop devices only inside the VM test.
+Ext2/3/4 resizing checks and repairs the unmounted filesystem before either
+growing or shrinking it. A failed check stops before changing the partition
+size; a failure in a later step is reported with any earlier changes retained.
+`nix build .#checks.x86_64-linux.tansu-resize` exercises normal packaged Tansu
+mount, unmount, grow and shrink controls on a disposable VM disk, checking the
+actual filesystem size and preservation of ten files after each resize.
+Everything goes through UDisks2 (`aizome-sys::disks`). Tests never use host
+disks: unit tests use mocks, and storage integration tests use disposable disks
+and loop images inside VMs.
 
 ### Kura (Disk Usage)
 

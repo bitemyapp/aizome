@@ -106,6 +106,7 @@
         loop-images = import ./nix/vm-loop-images-test.nix { inherit pkgs self; };
         myaku-grouping = import ./nix/vm-myaku-grouping-test.nix { inherit pkgs self; };
         tansu-size = import ./nix/vm-tansu-size-test.nix { inherit pkgs self; };
+        tansu-resize = import ./nix/vm-tansu-resize-test.nix { inherit pkgs self; };
         wallpaper-choice = import ./nix/vm-wallpaper-choice-test.nix { inherit pkgs self; };
         network-auth = import ./nix/vm-network-auth-test.nix { inherit pkgs self; };
       });
