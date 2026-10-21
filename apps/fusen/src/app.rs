@@ -67,6 +67,8 @@ pub struct Open {
     pub highlight: Arc<Mutex<Highlight>>,
     pub styles: u64,
     pub dirty: bool,
+    /// Last write failure; cleared only after a successful save.
+    pub save_error: Option<String>,
     pub seq: u64,
 }
 
@@ -74,7 +76,14 @@ impl Open {
     fn new(text: &str) -> Open {
         let mut h = Highlight::new(Language::Markdown);
         h.budget = Duration::from_millis(3);
-        Open { content: EditorContent::new(text), highlight: Arc::new(Mutex::new(h)), styles: 0, dirty: false, seq: 0 }
+        Open {
+            content: EditorContent::new(text),
+            highlight: Arc::new(Mutex::new(h)),
+            styles: 0,
+            dirty: false,
+            save_error: None,
+            seq: 0,
+        }
     }
 
     /// The text changed under it (another program wrote the file).
@@ -176,6 +185,8 @@ pub enum Msg {
     ShowMain,
     CloseKey,
     Save(u64, u64),
+    RetrySave,
+    Close(WindowKey),
     Rescan,
     Track,
     Placed(Vec<(String, Place, bool)>),
@@ -298,9 +309,13 @@ impl Fusen {
                 scanned.push(n.clone());
             } else if let Some(o) = self.open.get(&n.id)
                 && o.dirty
-                && let Some(s) = scanned.iter_mut().find(|s| s.id == n.id)
             {
-                *s = n.clone();
+                if let Some(s) = scanned.iter_mut().find(|s| s.id == n.id) {
+                    *s = n.clone();
+                } else {
+                    // An unreadable/missing directory must not erase a draft.
+                    scanned.push(n.clone());
+                }
             }
         }
         for s in &scanned {
@@ -407,21 +422,21 @@ impl Fusen {
 
     /// Write a note's file (making the folder on first use), renaming it
     /// with its title if Fusen named it.
-    fn write(&mut self, id: u64) {
-        let Some(o) = self.open.get_mut(&id) else { return };
+    fn write(&mut self, id: u64) -> bool {
+        let Some(o) = self.open.get_mut(&id) else { return true };
         if !o.dirty {
-            return;
+            return true;
         }
         let text = o.content.text();
-        o.dirty = false;
-        let Some(n) = self.notes.iter().find(|n| n.id == id).cloned() else { return };
+        let Some(n) = self.notes.iter().find(|n| n.id == id).cloned() else { return true };
         if !Self::on_disk(&n) && text.trim().is_empty() {
-            return;
+            o.dirty = false;
+            o.save_error = None;
+            return true;
         }
         let dir = if n.folder.is_empty() { self.store.root.clone() } else { self.store.root.join(&n.folder) };
         if let Err(e) = std::fs::create_dir_all(&dir) {
-            log::warn!("{}: {e}", dir.display());
-            return;
+            return self.save_failed(id, &dir, e);
         }
         let title = notes::title_of(&text);
         let stem = notes::file_stem(&title);
@@ -434,6 +449,11 @@ impl Fusen {
             let to = notes::free_path(&dir, &stem, Some(&n.path));
             if std::fs::rename(&n.path, &to).is_ok() {
                 self.store.moved(&n.path, &to);
+                // The old bytes now live at `to`, even if writing new bytes fails.
+                // Keep that identity so rescan/retry cannot forget this draft.
+                if let Some(m) = self.note_mut(id) {
+                    m.path = to.clone();
+                }
                 to
             } else {
                 n.path.clone()
@@ -442,11 +462,7 @@ impl Fusen {
             n.path.clone()
         };
         if let Err(e) = aizome_sumi::files::save_atomic(&path, text.as_bytes()) {
-            log::warn!("{}: {e}", path.display());
-            if let Some(o) = self.open.get_mut(&id) {
-                o.dirty = true;
-            }
-            return;
+            return self.save_failed(id, &path, e);
         }
         if !Self::on_disk(&n) || n.meta != self.store.meta(&path) {
             self.store.set_meta(&path, n.meta);
@@ -458,15 +474,44 @@ impl Fusen {
             m.text = text.into();
             m.modified = SystemTime::now();
         }
+        if let Some(o) = self.open.get_mut(&id) {
+            o.dirty = false;
+            o.save_error = None;
+        }
         self.folders = self.store.folders();
+        true
     }
 
-    fn save_all(&mut self) {
+    fn save_failed(&mut self, id: u64, path: &Path, error: std::io::Error) -> bool {
+        log::warn!("{}: {error}", path.display());
+        if let Some(o) = self.open.get_mut(&id) {
+            o.save_error = Some(format!("{}: {error}", path.display()));
+        }
+        false
+    }
+
+    fn save_all(&mut self) -> bool {
         let ids: Vec<u64> = self.open.iter().filter(|(_, o)| o.dirty).map(|(id, _)| *id).collect();
+        let mut saved = true;
         for id in ids {
-            self.write(id);
+            // Try every draft, even when another note failed.
+            saved &= self.write(id);
         }
         self.save_stickies();
+        saved
+    }
+
+    fn save_alert(&self, window: WindowKey, retry: Msg, cx: &mut Cx<Msg>) {
+        let errors = self
+            .notes
+            .iter()
+            .filter_map(|n| self.open.get(&n.id)?.save_error.as_ref().map(|e| format!("{}: {e}", n.title)))
+            .collect::<Vec<_>>()
+            .join("\n");
+        cx.alert(window, Alert::new("Some notes couldn't be saved",
+            format!("{errors}\n\nKeep Fusen open to preserve your changes. Restore access to the notes folder, then retry."))
+            .cancel_button("Keep Open")
+            .default_button("Retry", retry));
     }
 
     /// The note the key window is about: a sticky's, else the selected one.
@@ -622,14 +667,33 @@ impl Fusen {
         self.edited(id, cx);
     }
 
-    fn close_sticky(&mut self, k: WindowKey) {
-        if let Some(s) = self.stickies.remove(&k)
-            && let Some(o) = self.open.get(&s.note)
-            && o.dirty
+    fn close_sticky(&mut self, k: WindowKey) -> bool {
+        if let Some(s) = self.stickies.get(&k)
+            && !self.write(s.note)
         {
-            self.write(s.note);
+            return false;
         }
+        self.stickies.remove(&k);
         self.save_stickies();
+        true
+    }
+
+    fn close(&mut self, window: WindowKey, cx: &mut Cx<Msg>) -> bool {
+        if self.folder_sheet.as_ref().is_some_and(|(k, _)| *k == window) {
+            self.folder_sheet = None;
+        } else if self.stickies.contains_key(&window) {
+            if !self.close_sticky(window) {
+                self.save_alert(window, Msg::Close(window), cx);
+                return false;
+            }
+        } else if self.main == Some(window) {
+            if !self.save_all() {
+                self.save_alert(window, Msg::Close(window), cx);
+                return false;
+            }
+            self.main = None;
+        }
+        true
     }
 }
 
@@ -650,16 +714,8 @@ impl Program for Fusen {
         cx.send(Msg::LaunchDone);
     }
 
-    fn close_requested(&mut self, window: WindowKey, _cx: &mut Cx<Msg>) -> bool {
-        if self.folder_sheet.as_ref().is_some_and(|(k, _)| *k == window) {
-            self.folder_sheet = None;
-        } else if self.stickies.contains_key(&window) {
-            self.close_sticky(window);
-        } else if self.main == Some(window) {
-            self.save_all();
-            self.main = None;
-        }
-        true
+    fn close_requested(&mut self, window: WindowKey, cx: &mut Cx<Msg>) -> bool {
+        self.close(window, cx)
     }
 
     fn update(&mut self, msg: Msg, cx: &mut Cx<Msg>) {
@@ -884,15 +940,19 @@ impl Program for Fusen {
                 self.show_main(cx);
             }
             Msg::CloseKey => {
-                if let Some(k) = cx.key_window() {
-                    if self.stickies.contains_key(&k) {
-                        self.close_sticky(k);
-                    } else if self.main == Some(k) {
-                        self.save_all();
-                        self.main = None;
-                    }
+                if let Some(k) = cx.key_window()
+                    && self.close(k, cx)
+                {
                     cx.close_window(k);
                 }
+            }
+            Msg::Close(k) => {
+                if self.close(k, cx) {
+                    cx.close_window(k);
+                }
+            }
+            Msg::RetrySave => {
+                self.save_all();
             }
             Msg::Save(id, seq) => {
                 if self.open.get(&id).is_some_and(|o| o.seq == seq) {
@@ -956,8 +1016,16 @@ impl Program for Fusen {
             }
             Msg::Quit => {
                 // Stickies stay stickies: they come back next time.
-                self.save_all();
-                cx.quit();
+                if self.save_all() {
+                    cx.quit();
+                } else {
+                    let w = self
+                        .main
+                        .or_else(|| self.stickies.keys().next().copied())
+                        .unwrap_or_else(|| self.show_main(cx));
+                    cx.activate(w);
+                    self.save_alert(w, Msg::Quit, cx);
+                }
             }
             Msg::Nothing => {}
         }

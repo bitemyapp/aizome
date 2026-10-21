@@ -313,17 +313,62 @@ fn toolbar(app: &Fusen) -> Element<Msg> {
     ])
 }
 
+/// Persistent autosave failures stay visible even when another note is selected.
+fn save_notice(app: &Fusen, note: Option<u64>) -> Option<Element<Msg>> {
+    let error = app
+        .notes
+        .iter()
+        .filter(|n| note.is_none_or(|id| id == n.id))
+        .find_map(|n| app.open.get(&n.id)?.save_error.as_ref().map(|e| format!("{}: {e}", n.title)))?;
+    if note.is_some() {
+        // A sticky can be only 160×100. Keep its editor and recovery button
+        // usable; the complete error is in the tooltip and close alert.
+        return Some(
+            row![
+                text("Not saved")
+                    .semibold()
+                    .size(11.0)
+                    .role(Role::Danger)
+                    .wrap()
+                    .tooltip(format!("{error}\nKeep Fusen open to preserve your changes."))
+                    .width(Length::Fill),
+                button("Retry").on_press(Msg::RetrySave),
+            ]
+            .spacing(4.0)
+            .padding(8.0)
+            .width(Length::Fill)
+            .into(),
+        );
+    }
+    Some(
+        column![
+            text("Note couldn't be saved").semibold().role(Role::Danger),
+            text(error).wrap().size(11.0).width(Length::Fill),
+            row![
+                text("Keep Fusen open to preserve your changes.").wrap().size(11.0).width(Length::Fill),
+                button("Retry").on_press(Msg::RetrySave)
+            ]
+            .spacing(8.0)
+            .width(Length::Fill),
+        ]
+        .spacing(4.0)
+        .padding(10.0)
+        .width(Length::Fill)
+        .into(),
+    )
+}
+
 /// The main window.
 pub fn main_window(app: &Fusen) -> Element<Msg> {
     let shown = app.shown();
     let content = split(note_list(app, &shown), editor(app)).first_size(280.0).min_sizes(200.0, 260.0);
-    column![
-        toolbar(app),
-        sidebar_layout(sidebar(app), content).first_size(180.0).width(Length::Fill).height(Length::Fill),
-    ]
-    .width(Length::Fill)
-    .height(Length::Fill)
-    .into()
+    let mut children = vec![toolbar(app)];
+    if let Some(notice) = save_notice(app, None) {
+        children.push(notice);
+    }
+    children
+        .push(sidebar_layout(sidebar(app), content).first_size(180.0).width(Length::Fill).height(Length::Fill).into());
+    aizome_kit::column(children).width(Length::Fill).height(Length::Fill).into()
 }
 
 /// A sticky: the note on its paper.
@@ -333,5 +378,11 @@ pub fn sticky_window(app: &Fusen, note: u64) -> Element<Msg> {
         Some(open) => note_editor(note, open, Some(color)).id("sticky-editor").into(),
         None => text("").into(),
     };
-    container(body).fill(Tone::Color(rgb(color.paper()))).width(Length::Fill).height(Length::Fill).into()
+    let paper: Element<Msg> =
+        container(body).fill(Tone::Color(rgb(color.paper()))).width(Length::Fill).height(Length::Fill).into();
+    if let Some(notice) = save_notice(app, Some(note)) {
+        column![notice, paper].width(Length::Fill).height(Length::Fill).into()
+    } else {
+        paper
+    }
 }
