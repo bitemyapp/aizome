@@ -51,6 +51,10 @@ tests, which were run after each fix.
 | Overview (⌃❖↑): Desks with thumbnails, counts, "here", new Desk slot | done | live, `04` | |
 | Drag a window to another Desk in the overview | done | live (Tokei to Write) | |
 | Type to filter, 1–9 to go, Esc | done | live | |
+| Park a Desk (p): its windows suspended, "parked 3 days · draws nothing", woken on arrival | done | `overlays` test (a client told it's suspended, then woken), `wm` tests | Added 20 October after comparing the installed build with C4-Overview |
+| What each Desk is doing: here, "12 min ago", "● 3 new" (windows asking for attention), "audio playing" | done | `wm`, `overview` and logic tests; laptop's build (`scripts/validate-installed`) | "audio playing" from the shell's sound streams (`set-audible`), matched to windows through parent processes |
+| ❖-scroll zooms, "zoom 28%" in the heading | done | laptop's build | |
+| A dragged window's label: "Notes → Mail" | done | | |
 
 ## The switcher (C1-Switcher)
 
