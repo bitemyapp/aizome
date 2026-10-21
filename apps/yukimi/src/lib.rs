@@ -10,6 +10,7 @@
 
 pub mod app;
 pub mod checks;
+pub mod comparison;
 pub mod fixture;
 pub mod instance;
 pub mod job;
@@ -17,3 +18,4 @@ pub mod model;
 pub mod ops;
 pub mod paths;
 pub mod ui;
+pub mod update_history;

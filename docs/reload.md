@@ -42,6 +42,24 @@ them.
 
 ## Hacking on Aizome live
 
+From any checkout or worktree, replace one app in your current session:
+
+```sh
+just replace yukimi
+```
+
+The recipe passes the directory containing its `justfile` to `aizome-dev`,
+so it also works from a subdirectory and does not use another checkout
+named by `AIZOME_CHECKOUT`. Recipes automatically enter `nix develop`
+unless `IN_NIX_SHELL` already identifies a Nix shell. The shared recipe
+shell in `scripts/just-shell` handles this for all ordinary recipes.
+`just` must itself be on your PATH; if it is not installed yet, bootstrap
+with `nix develop -c just replace yukimi`.
+Use any app name (`hako`, `sumi`, …). It builds before asking the old app
+to close, respects save prompts, and starts the result even if the app
+was not already running. It changes this running instance; subsequent
+desktop launches use the installed version. Run it again after more edits.
+
 `aizome-dev` (in the package) builds a checkout the way the running
 session was built and hands the result to the session:
 

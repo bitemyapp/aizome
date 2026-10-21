@@ -99,6 +99,7 @@
       devShells = forAll (pkgs: {
         default = pkgs.mkShell {
           nativeBuildInputs = with pkgs; [
+            just
             rustc
             cargo
             clippy
