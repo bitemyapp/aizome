@@ -246,6 +246,10 @@ in
     # link while time.timeZone was set), saved before /etc is rebuilt and
     # put back if the rebuild removed it; after that timedated keeps it.
     time.timeZone = lib.mkIf cfg.mutableTimeZone (lib.mkOverride 90 null);
+    # timedated and NixOS can both write absolute /etc/zoneinfo links.
+    # Tell Settings the effective policy instead of guessing from that link.
+    systemd.services.systemd-timedated.environment.AIZOME_TIMEZONE_MANAGED =
+      if config.time.timeZone == null then "0" else "1";
     system.activationScripts = lib.mkIf cfg.mutableTimeZone {
       aizomeTimeZoneSave.text = ''
         if zone=$(readlink -f /etc/localtime 2>/dev/null) && [ -f "$zone" ]; then
@@ -258,10 +262,9 @@ in
         fi
       '';
       etc.deps = [ "aizomeTimeZoneSave" ];
-      # The link is written as timedated writes it, relative. An absolute
-      # link to /etc/zoneinfo is NixOS's own for time.timeZone, which
-      # Settings reads as the configuration's; one left behind from before
-      # (time.timeZone is null here) is turned into Settings' kind.
+      # Preserve the selected zone through activation, including a link
+      # left by an earlier configuration that pinned time.timeZone.
+      # Settings uses the explicit policy above, not the link's spelling.
       aizomeTimeZoneRestore = {
         deps = [ "etc" ];
         text = ''
