@@ -327,7 +327,15 @@ runs `aizome-fusen --stickies` at login (the stickies only). `aizome-fusen
 --new TEXT`, `--new-from-stdin` and a file (the shell's Services hand
 selected text over in one) make new notes; a second launch hands its
 request to the running Fusen. Quit keeps the stickies; closing one puts
-it away.
+it away. A failed note write keeps the draft dirty and shows a persistent error
+with Retry. Close (including a sticky's decoration) and Quit retry saving first;
+if that fails, Keep Open preserves the draft and Retry saves before finishing
+the requested exit. Restoring folder access allows recovery without retyping.
+Rescans retain dirty notes even when their backing directory is unreadable.
+Force termination and session shutdown are not a durable draft-recovery system.
+`checks.fusen-save` exercises permission loss, visible errors, cancelled exits,
+restored-access retry, sticky close and exact-byte persistence in a packaged VM;
+these diagnostic fault injections are component evidence, not ISO qualification.
 
 ### Koyomi (Calendar)
 
