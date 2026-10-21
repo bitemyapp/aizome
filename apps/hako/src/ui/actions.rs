@@ -371,23 +371,59 @@ impl Hako {
         if let Some(d) = &self.disks {
             self.volumes = d.snapshot().volumes();
         }
-        let mut done = Vec::new();
-        self.mount_tasks.retain(|(block, go, task)| match task.try_result() {
-            Some(r) => {
-                done.push((block.clone(), *go, r));
+        let mut unlocked = Vec::new();
+        self.unlock_tasks.retain(|(sheet, block, task)| match task.try_result() {
+            Some(result) => {
+                unlocked.push((*sheet, block.clone(), result));
                 false
             }
             None => true,
         });
-        for (block, go, r) in done {
+        for (sheet, block, result) in unlocked {
+            self.mounting.remove(&block);
+            match result {
+                Ok(cleartext) => {
+                    if let Some(Sheet::Unlock { window, .. }) = self.sheets.remove(&sheet) {
+                        cx.close_window(sheet);
+                        if self.windows.contains_key(&window) {
+                            cx.activate(window);
+                            self.mount(cx, cleartext, window);
+                        }
+                    }
+                }
+                Err(e) => {
+                    if let Some(Sheet::Unlock { error, busy, .. }) = self.sheets.get_mut(&sheet) {
+                        *busy = false;
+                        *error = e.to_string();
+                        cx.activate(sheet);
+                        cx.focus("unlock-pass");
+                    }
+                }
+            }
+        }
+        let mut done = Vec::new();
+        self.mount_tasks.retain(|(block, window, task)| match task.try_result() {
+            Some(r) => {
+                done.push((block.clone(), *window, r));
+                false
+            }
+            None => true,
+        });
+        for (block, window, r) in done {
             self.mounting.remove(&block);
             match r {
-                Ok(point) if go => {
-                    let w = self.any_window();
-                    self.go(cx, w, Loc::Folder(PathBuf::from(point)), None, true);
+                Ok(point) if self.windows.contains_key(&window) => {
+                    self.go(cx, window, Loc::Folder(PathBuf::from(point)), None, true);
                 }
                 Ok(_) => {}
-                Err(e) => self.message(cx, "The disk couldn't be mounted.", &e.to_string()),
+                Err(e) if self.windows.contains_key(&window) => {
+                    self.open_sheet(
+                        cx,
+                        window,
+                        Sheet::Message { title: "The disk couldn't be mounted.".into(), body: e.to_string() },
+                    );
+                }
+                Err(_) => {}
             }
         }
         let mut ejected = Vec::new();
@@ -418,7 +454,26 @@ impl Hako {
         }
     }
 
-    pub(crate) fn mount(&mut self, block: String, go: bool) {
+    pub(crate) fn mount(&mut self, cx: &mut Cx<Msg>, block: String, window: WindowKey) {
+        if self.mounting.contains(&block) {
+            return;
+        }
+        if let Some(v) = self.volumes.iter().find(|v| v.block == block && v.locked) {
+            if let Some((&sheet, _)) =
+                self.sheets.iter().find(|(_, s)| matches!(s, Sheet::Unlock { block: b, .. } if *b == block))
+            {
+                cx.activate(sheet);
+                return;
+            }
+            let name = v.name.clone();
+            self.open_sheet(
+                cx,
+                window,
+                Sheet::Unlock { window, block, name, pass: String::new(), error: String::new(), busy: false },
+            );
+            cx.focus("unlock-pass");
+            return;
+        }
         let Some(d) = &self.disks else { return };
         if let Some(v) = self.volumes.iter().find(|v| v.block == block)
             && let Some(m) = &v.mount_point
@@ -428,7 +483,21 @@ impl Hako {
         }
         self.mounting.insert(block.clone());
         let task = d.mount(&block);
-        self.mount_tasks.push((block, go, task));
+        self.mount_tasks.push((block, window, task));
+    }
+
+    pub(crate) fn unlock(&mut self, sheet: WindowKey) {
+        let Some(d) = &self.disks else { return };
+        let Some(Sheet::Unlock { block, pass, error, busy, .. }) = self.sheets.get_mut(&sheet) else { return };
+        if *busy || pass.is_empty() {
+            return;
+        }
+        *busy = true;
+        error.clear();
+        let passphrase = std::mem::take(pass);
+        let task = d.unlock(block, &passphrase);
+        self.mounting.insert(block.clone());
+        self.unlock_tasks.push((sheet, block.clone(), task));
     }
 
     pub(crate) fn eject(&mut self, block: String) {
@@ -618,6 +687,17 @@ impl Hako {
     /// over another window (or the operations window), or, with none
     /// left, stop their jobs.
     pub(crate) fn reparent_questions(&mut self, cx: &mut Cx<Msg>, gone: WindowKey) {
+        // A completed unlock must not navigate a different browser, or leave
+        // a stale prompt blocking a later request after its owner closes.
+        let unlocks: Vec<_> = self
+            .sheets
+            .iter()
+            .filter_map(|(key, sheet)| matches!(sheet, Sheet::Unlock { window, .. } if *window == gone).then_some(*key))
+            .collect();
+        for sheet in unlocks {
+            self.sheets.remove(&sheet);
+            cx.close_window(sheet);
+        }
         let asking: Vec<(u64, WindowKey)> =
             self.jobs.iter().filter(|j| j.window == gone).filter_map(|j| j.sheet.map(|s| (j.id, s))).collect();
         for (id, sheet) in asking {
@@ -642,5 +722,66 @@ impl Hako {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod encrypted_tests {
+    use super::*;
+    use aizome_kit::testing::Harness;
+    use aizome_sys::Task;
+
+    #[test]
+    fn mount_completion_keeps_its_original_window_and_does_not_reopen_a_closed_one() {
+        let root = std::env::temp_dir().join(format!("hako-mount-target-{}", std::process::id()));
+        std::fs::create_dir_all(root.join("home")).unwrap();
+        std::fs::create_dir_all(root.join("mounted")).unwrap();
+        let mut h = Harness::new(Hako::new(super::super::app::Options::sandbox(&root)));
+        let first = h.window();
+        h.send(Msg::NewWindow);
+        let second = *h.program().windows.keys().find(|w| **w != first).unwrap();
+        h.focus_window(second, true);
+        h.program_mut().mount_tasks.push((
+            "cleartext".into(),
+            first,
+            Task::ready(Ok(root.join("mounted").display().to_string())),
+        ));
+        h.send(Msg::DisksChanged);
+        assert_eq!(h.program().windows[&first].location(), Some(&Loc::Folder(root.join("mounted"))));
+        assert_eq!(h.program().windows[&second].location(), Some(&Loc::Folder(root.join("home"))));
+        h.send(Msg::CloseWindow(first));
+        h.program_mut().mount_tasks.push((
+            "cleartext".into(),
+            first,
+            Task::ready(Ok(root.join("mounted").display().to_string())),
+        ));
+        h.send(Msg::DisksChanged);
+        assert_eq!(h.program().windows.len(), 1);
+        assert_eq!(h.program().windows[&second].location(), Some(&Loc::Folder(root.join("home"))));
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn unlock_result_after_owner_closes_does_not_start_a_mount() {
+        let root = std::env::temp_dir().join(format!("hako-unlock-target-{}", std::process::id()));
+        std::fs::create_dir_all(root.join("home")).unwrap();
+        let mut h = Harness::new(Hako::new(super::super::app::Options::sandbox(&root)));
+        let owner = h.window();
+        h.program_mut().volumes.push(aizome_sys::disks::Volume {
+            block: "locked".into(),
+            locked: true,
+            ..Default::default()
+        });
+        h.send(Msg::Mount("locked".into()));
+        let sheet = *h.program().sheets.keys().next().unwrap();
+        h.send(Msg::CloseWindow(owner));
+        assert!(h.program().sheets.is_empty());
+        h.program_mut().unlock_tasks.push((sheet, "locked".into(), Task::ready(Ok("cleartext".into()))));
+        h.send(Msg::DisksChanged);
+        assert!(h.program().windows.is_empty());
+        assert!(h.program().sheets.is_empty());
+        assert!(h.program().mount_tasks.is_empty());
+        assert!(h.program().mounting.is_empty());
+        std::fs::remove_dir_all(root).unwrap();
     }
 }

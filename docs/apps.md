@@ -273,6 +273,8 @@ open. If that folder leaves the listing (including Put Back from Trash),
 its obsolete columns close and keyboard focus returns to the surviving
 parent when needed.
 
+Encrypted removable volumes stay in the file sidebar after unlocking. Hako asks for a volume passphrase before mounting a locked one; Cancel leaves it locked, and an incorrect passphrase can be retried. While unlocking, the prompt waits for the device operation to finish. System volumes and devices hidden by UDisks policy stay excluded from the removable list.
+
 ### Sumi (Text Editor)
 
 The board's editor: a toolbar with the language pop-up ("Markdown ⌄"), B,
