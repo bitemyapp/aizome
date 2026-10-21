@@ -53,6 +53,14 @@ let
   xdg-desktop-portal-wlr = pkgs.xdg-desktop-portal-wlr.overrideAttrs (old: {
     patches = (old.patches or [ ]) ++ [ ./xdg-desktop-portal-wlr-captures.patch ];
   });
+  # Another desktop on the system (sway, say) may enable NixOS's own
+  # xdg.portal.wlr, which installs nixpkgs' portal and sets its ExecStart.
+  # Then that package provides the unit and the portal files (installing
+  # Aizome's as well would collide), and Aizome's ExecStart, set through
+  # the same option, still runs the patched portal: in Aizome with
+  # Aizome's picker, elsewhere with the configuration NixOS writes.
+  wlr = config.xdg.portal.wlr;
+  wlrConfig = (pkgs.formats.ini { }).generate "xdg-desktop-portal-wlr.ini" wlr.settings;
   portalWlr = pkgs.writeShellScript "xdg-desktop-portal-wlr-aizome" ''
     own=''${XDG_CONFIG_HOME:-$HOME/.config}/xdg-desktop-portal-wlr
     case ":''${XDG_CURRENT_DESKTOP:-}:" in
@@ -61,13 +69,36 @@ let
           set -- -c /etc/xdg/aizome/xdg-desktop-portal-wlr/config "$@"
         fi
         ;;
+      ${lib.optionalString wlr.enable ''
+        *)
+          set -- --config=${wlrConfig} "$@"
+          ;;
+      ''}
     esac
     exec ${xdg-desktop-portal-wlr}/libexec/xdg-desktop-portal-wlr "$@"
   '';
-  portalWlrDropIn = pkgs.writeTextDir "lib/systemd/user/xdg-desktop-portal-wlr.service.d/aizome.conf" ''
+  # Other installed desktops keep their network applet; Aizome has network
+  # controls and a credential agent of its own. This condition is what keeps
+  # the applet out of Aizome, for programs.nm-applet's service and the unit
+  # systemd generates from its XDG autostart entry alike: the generator
+  # reads only the user manager's own environment, not the session's
+  # imported variables, so an autostart override for Aizome alone can't
+  # work. aizome-session always sets XDG_SESSION_DESKTOP, which, unlike
+  # XDG_CURRENT_DESKTOP, ~/.config/aizome/environment can't change.
+  otherDesktop = pkgs.writeShellScript "nm-applet-outside-aizome" ''
+    if [ "''${XDG_SESSION_DESKTOP:-}" = aizome ]; then
+      echo "nm-applet is not started in Aizome, whose network agent asks for credentials" >&2
+      exit 1
+    fi
+  '';
+  nmAppletDropIns = pkgs.runCommand "aizome-nm-applet-session-policy" { } ''
+    for unit in 'nm-applet.service' 'app-nm\x2dapplet@autostart.service'; do
+      mkdir -p "$out/lib/systemd/user/$unit.d"
+      cat > "$out/lib/systemd/user/$unit.d/aizome.conf" <<EOF
     [Service]
-    ExecStart=
-    ExecStart=${portalWlr}
+    ExecCondition=${otherDesktop}
+    EOF
+    done
   '';
   # wf-recorder (the fallback recorder) puts its wl_shm buffers in files in
   # /tmp, which on most NixOS systems is on disk: every frame the compositor
@@ -189,8 +220,15 @@ in
     services.displayManager.sessionPackages = [ session ];
     systemd.packages = [
       cfg.package
-      portalWlrDropIn
+      nmAppletDropIns
     ];
+    systemd.user.services.xdg-desktop-portal-wlr = {
+      overrideStrategy = "asDropin";
+      serviceConfig.ExecStart = lib.mkForce [
+        ""
+        "${portalWlr}"
+      ];
+    };
 
     # Under load, the session (the compositor, which also weighs 1000 within
     # it, pipewire, the portals) runs before apps, so the desktop keeps
@@ -243,7 +281,8 @@ in
     };
     # The pretty name ("The studio laptop") in a file hostnamed can write;
     # the host name itself stays networking.hostName.
-    systemd.services.systemd-hostnamed.environment.SYSTEMD_ETC_MACHINE_INFO = lib.mkForce "/etc/machine-info";
+    systemd.services.systemd-hostnamed.environment.SYSTEMD_ETC_MACHINE_INFO =
+      lib.mkForce "/etc/machine-info";
 
     # Tokei's alarms are transient systemd timers, which end with the user
     # manager: schedule them again at each login, in any desktop.
@@ -336,10 +375,7 @@ in
     # and the rest through GTK's portal.
     xdg.portal = {
       enable = true;
-      extraPortals = [
-        xdg-desktop-portal-wlr
-        pkgs.xdg-desktop-portal-gtk
-      ];
+      extraPortals = lib.optional (!wlr.enable) xdg-desktop-portal-wlr ++ [ pkgs.xdg-desktop-portal-gtk ];
       configPackages = [ cfg.package ];
     };
     # Terminal applications open in foot in Aizome sessions.

@@ -99,6 +99,9 @@ Grabs end on release: the compositor gives the seat the release of every
 press it gave it, whatever overlay came up between, and its own grabs
 (moves, resizes, tab slides, the boxes) end when their button comes up or
 is pressed again, whatever else is held and whatever any client does.
+The release of a press an overlay took is the overlay's, and nobody's
+once that press has closed it (a window pick ends on the press), not
+the client's under the pointer, which never saw the press.
 
 ## What clients get
 
@@ -362,7 +365,8 @@ nix develop --command cargo test -p aizome-comp
   a click for the display, Space for a window, Esc; and for sharing,
   displays and windows only (a drag is the display, a window comes with
   its ext-foreign-toplevel identifier, a click on no window keeps
-  picking, windows alone start at windows).
+  picking, windows alone start at windows); and a window pick, for a
+  share or ❖⇧4, keeps its release from the window under it.
 - `tests/keys.rs`: ❖ as Ctrl, Ctrl+Shift in terminals, ❖ for kit apps,
   system and shell chords.
 - `tests/settings.rs`: tab double-click, scroll factor, sticky and slow

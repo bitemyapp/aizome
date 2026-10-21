@@ -1,4 +1,4 @@
-| Apps' status items | done | live watcher on the desktop's own session bus (Steam registered, its menu read); headless session on a private bus with an item carrying Steam's icon and menu: drawn, left click opens the menu, a row reaches the app; `statusnotifier` tests on a private bus | No XEmbed; SVG icons don't read; `Scroll` isn't sent (no wheel on drawn elements) |
+| Apps' status items | done | live watcher on the desktop's own session bus (Steam registered, its menu read); headless session on a private bus with an item carrying Steam's icon and menu: drawn, left click opens the menu, a row reaches the app; `statusnotifier` tests on a private bus | SVG icons are drawn at 16pt (resvg), in the Deskbar too; the wheel sends `Scroll` in whole steps (`statusnotifier` test hears it). No XEmbed: it embeds X11 windows, which a Wayland bar can't; KDE's `xembedsniproxy` would bridge it, at the cost of Plasma's workspace |
 # Aizome against its design and brief
 
 What the end-to-end walkthrough of 17–18 October 2026 found: every element
@@ -217,6 +217,56 @@ final screenshot run (GLES, 2880 × 1800 @ 2):
   4.5 ms with the machine loaded (load average 14, three builds running)
   and passed three times when quiet.
 
+## On the laptop, from the installed build (20 October)
+
+`scripts/validate-installed` runs a second, headless session from the
+binaries installed in `/run/current-system` (Aizome `35f3015`, generation
+33 on ganymede). It uses its own runtime directory, home and session bus,
+and reads the system bus without changing it, so the menu bar shows the
+laptop's own Wi-Fi, Bluetooth and battery. It drives that session through
+`aizomectl` and photographs only its output:
+
+```sh
+dbus-run-session -- scripts/validate-installed /tmp/out gles
+dbus-run-session -- scripts/validate-installed /tmp/out-pixman pixman
+```
+
+It checked:
+
+- **Tab groups:** Hako and foot are stacked as one tab group (`stack 1`),
+  and switching tabs works.
+- **The palette:** over Sumi it lists Sumi's own menu commands with their
+  paths and keycaps, scopes, apps and the shortcut coach.
+- **The rest of the session:** the Desks overview, the switcher, desktop
+  icons, the Deskbar and the Shelf.
+- **Every app of the suite:** each opens a window (Soroban, Koyomi, Tokei,
+  Tenki, Fusen, Kura, Tansu, Settei, Yukimi, Myaku, Shashin, Annai, with
+  Hako and Sumi). Yukimi reads the laptop's own generations.
+- **Both renderers:** the same scene draws under GLES and under pixman.
+- **The systray:** every widget the brief names (network, sound,
+  Bluetooth, display, battery and power) next to the CPU and memory
+  meters and the clock, as on the desktop board. Sound comes from a
+  PipeWire of the session's own: a null sink, with WirePlumber's hardware
+  monitors off.
+
+Compositor frame times at 2880 × 1800, scale 2:
+
+| Renderer | Frames | p50 | p95 | p99 | Max |
+|---|---|---|---|---|---|
+| GLES (CPU) | 223 | 0.51 ms | 0.90 ms | 2.5 ms | 4.1 ms |
+| GLES (GPU) | 223 | 0.78 ms | 2.4 ms | 3.0 ms | 4.4 ms |
+| pixman | 216 | 0.89 ms | 4.7 ms | 8.3 ms | 12 ms |
+
+Pixman's tail is its documented exception (`docs/performance.md`:
+whole-output frames at this size, as when twelve apps open at once).
+
+The person's own session, checked read only:
+
+- they log in through greetd and Aizome's greeter;
+- foot runs fish;
+- Keep Awake holds logind's block;
+- the panels' sources read on the real devices (below).
+
 ## Fixes made during the walkthrough
 
 `5ea3273`, `7744b6e`, `9a2bc77`, `4b3fd67`, `130ca23`, `45f1e85`,
@@ -232,14 +282,22 @@ Sidestep fork, with its compositor test `a5e8ce4`, then `d488677`).
 
 ## Still to do
 
-- Frost without blur: under a frosted face, text shows as a faint ghost.
-  Real frosted glass needs the compositor to blur what's behind the
-  shell's surfaces (GLES only; pixman would keep today's tint).
-- The Nix package pins the Sidestep fork by revision: `flake.lock` needs
-  `992e3dc` (pushed to GitHub) for the installed session to get
-  see-through windows.
-- The systray panels' device lists, media controls and Night Light were
-  not exercised for want of devices in this session; check them on the
-  laptop.
-- Whole-window repaints of the apps at 2× still exceed 4 ms at p95 when a
-  window first shows or the theme changes.
+- *Done since*: frost with blur (`0f8319d`, GLES; pixman keeps the tint),
+  and the Sidestep pin carries see-through windows' alpha (`992e3dc`,
+  rebased as `9f56003`).
+- The systray panels' sources on the laptop: *checked* 20 October with
+  `cargo run -p aizome-sys --example probe`, which reads through Aizome's
+  own clients and changes nothing. It found:
+  - **Network:** one Wi-Fi network as the panel lists it, five access
+    points across 2.4, 5 and 6 GHz, known and connected.
+  - **Bluetooth:** BlueZ's adapter is powered, with nothing paired.
+  - **Battery:** UPower's battery at 79%, with charge thresholds 75–80%
+    and health 100%. The power profiles and the keyboard light read too.
+  - **Night Light:** the internal display's CRTC takes 1024-entry gamma
+    tables.
+  - **Not covered:** sound and media need a device playing; the `media`
+    and `mpris` tests cover them on a private bus.
+- Whole-window repaints of the apps at 2×: *done since*. Sidestep
+  repaints a whole window at 2× in about a millisecond (5–7 ms before;
+  `docs/performance.md`, "The kit"). Once-per-session first frames stay
+  the budget's documented exceptions there.

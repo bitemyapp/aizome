@@ -305,7 +305,7 @@ impl Shell {
 
 impl Shell {
     /// Look up the icons of apps in the Deskbar the shell has no glyph
-    /// for (once each; PNGs only, at 16pt on a 2× screen).
+    /// for (once each, at 16pt on a 2× screen; SVGs drawn at that size).
     pub fn find_icons(&mut self) {
         let Some(lookup) = &self.icon_lookup else { return };
         let wanted: Vec<String> = self
@@ -322,10 +322,7 @@ impl Shell {
                 .and_then(|i| i.match_window(&app))
                 .and_then(|e| e.icon.clone())
                 .unwrap_or_else(|| app.clone());
-            let image = lookup
-                .lookup(&name, 16, 2)
-                .filter(|p| p.extension().is_some_and(|e| e.eq_ignore_ascii_case("png")))
-                .and_then(|p| aizome_kit::Image::open(p).ok());
+            let image = lookup.lookup(&name, 16, 2).and_then(|p| crate::icons::read(&p, 16, 2));
             self.icons.insert(app, image);
         }
     }

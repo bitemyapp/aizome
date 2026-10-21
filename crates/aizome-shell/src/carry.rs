@@ -45,13 +45,22 @@ pub fn path() -> PathBuf {
 
 pub fn load() -> Option<Carried> {
     let text = std::fs::read_to_string(path()).ok()?;
-    match serde_json::from_str(&text) {
-        Ok(c) => Some(c),
+    match serde_json::from_str::<Carried>(&text) {
+        Ok(c) => Some(fitted(c)),
         Err(e) => {
             log::warn!("{}: {e}", path().display());
             None
         }
     }
+}
+
+/// Its notifications' images no larger than the shell keeps them: a shell
+/// from before they were kept small may have kept one whole.
+fn fitted(mut c: Carried) -> Carried {
+    for n in &mut c.notes {
+        n.image = n.image.take().map(|i| i.fit(crate::notifications::store::IMAGE_PX));
+    }
+    c
 }
 
 /// Writes it (whole, through a temporary file).
@@ -108,6 +117,29 @@ pub fn mark(notes: &[Notification], folded: &[(String, bool)], open: &[String]) 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_big_image_kept_whole_before_is_made_small_when_read() {
+        let dir = std::env::temp_dir().join(format!("aizome-carry-big-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("state.json");
+        let image = crate::notifications::store::NoteImage::Pixels {
+            width: 1000,
+            height: 1000,
+            rgba: vec![255; 1000 * 1000 * 4],
+        };
+        let note = Notification { id: 9, summary: "a screenshot".into(), image: Some(image), ..Default::default() };
+        let old = Carried { pid: 1, notes: vec![note], ..Default::default() };
+        std::fs::write(&file, serde_json::to_vec(&old).unwrap()).unwrap();
+        let c = fitted(serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap());
+        let Some(crate::notifications::store::NoteImage::Pixels { width, height, .. }) = &c.notes[0].image else {
+            panic!("an image")
+        };
+        assert_eq!((*width, *height), (128, 128));
+        // What the shell then writes is small.
+        assert!(serde_json::to_vec(&c).unwrap().len() < 300_000);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn it_round_trips_through_its_file() {

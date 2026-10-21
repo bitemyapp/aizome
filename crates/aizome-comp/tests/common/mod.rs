@@ -356,6 +356,8 @@ pub struct Seen {
     pub keyboard_focus: bool,
     /// Vertical scrolling received, summed.
     pub scrolled: f64,
+    /// Buttons: (code, pressed).
+    pub buttons: Vec<(u32, bool)>,
 }
 
 pub enum Cmd {
@@ -609,8 +611,14 @@ impl Dispatch<wayland_client::protocol::wl_pointer::WlPointer, ()> for App {
         _: &QueueHandle<Self>,
     ) {
         use wayland_client::protocol::wl_pointer;
-        if let wl_pointer::Event::Axis { axis: WEnum::Value(wl_pointer::Axis::VerticalScroll), value, .. } = event {
-            app.seen.lock().unwrap().scrolled += value;
+        match event {
+            wl_pointer::Event::Axis { axis: WEnum::Value(wl_pointer::Axis::VerticalScroll), value, .. } => {
+                app.seen.lock().unwrap().scrolled += value;
+            }
+            wl_pointer::Event::Button { button, state: WEnum::Value(state), .. } => {
+                app.seen.lock().unwrap().buttons.push((button, state == wl_pointer::ButtonState::Pressed));
+            }
+            _ => {}
         }
     }
 }

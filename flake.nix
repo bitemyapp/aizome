@@ -47,6 +47,7 @@
           pam
           # aizome-sys talks to PipeWire through pipewire-pulse.
           libpulseaudio
+          libsecret
         ];
       # Only what the build reads: the workspace and the files the package
       # installs.
@@ -95,6 +96,7 @@
         # The login screen: people, sessions (another Wayland one, an X11
         # one), a wrong password, logging out and back (nix/vm-greeter-test.nix).
         greeter = import ./nix/vm-greeter-test.nix { inherit pkgs self; };
+        network-auth = import ./nix/vm-network-auth-test.nix { inherit pkgs self; };
       });
 
       devShells = forAll (pkgs: rec {
