@@ -231,6 +231,11 @@ its own. `aizome-yukimi --sample` shows a sample system;
 `AIZOME_YUKIMI_ETC=/some/etc` looks at another system's configuration
 without changing anything.
 
+Yukimi passes `--disable-internal-agent` to `pkexec`: administrator access
+uses the desktop's graphical password prompt. If that prompt is unavailable,
+Yukimi asks the user to retry and reports that nothing changed, instead of
+attempting a terminal prompt or claiming a configuration rollback occurred.
+
 Beyond the GTK Yukimi, it changes what used to take typing `sudo` commands:
 
 - **Early updates** (Updates): a switch to update Sekka from its `main`

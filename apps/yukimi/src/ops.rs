@@ -363,7 +363,9 @@ fn helper() -> Result<Command, String> {
     let helper = find_helper()?;
     let wrapper = Path::new("/run/wrappers/bin/pkexec");
     let mut c = Command::new(if wrapper.exists() { wrapper } else { Path::new("pkexec") });
-    c.arg(helper);
+    // A desktop app has no controlling terminal. Let the session's
+    // graphical agent authenticate; never fall back to a terminal prompt.
+    c.arg("--disable-internal-agent").arg(helper);
     Ok(c)
 }
 
