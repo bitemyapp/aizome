@@ -396,6 +396,9 @@ impl PanelState {
         if self.selected.is_empty() {
             return self.dialog.directories.then(|| vec![self.dir.clone()]);
         }
+        if self.invalid_file_selection() {
+            return None;
+        }
         if let [i] = self.selected[..]
             && self.entries[i].dir
             && !self.dialog.directories
@@ -405,6 +408,13 @@ impl PanelState {
             return None;
         }
         Some(self.selected.iter().map(|&i| self.dir.join(&self.entries[i].name)).collect())
+    }
+
+    fn invalid_file_selection(&self) -> bool {
+        !self.save
+            && !self.dialog.directories
+            && self.selected.len() > 1
+            && self.selected.iter().any(|&i| self.entries[i].dir)
     }
 }
 
@@ -475,7 +485,12 @@ pub(crate) fn panel_message(core: &mut Core, panel: u64, msg: PanelMsg, platform
             }
         }
         PanelMsg::Activate(i) => {
-            p.selected = vec![i];
+            // Return activates the list cursor, which can be a row just
+            // toggled off. Multiple-open must use the selection, even empty.
+            // A pointer activation sends Select before Activate when needed.
+            if !p.dialog.multiple || p.save {
+                p.selected = vec![i];
+            }
             result = p.chosen().map(Some);
         }
         PanelMsg::Name(n) => p.name = n,
@@ -546,7 +561,7 @@ pub(crate) fn panel_element(core: &Core, id: u64) -> Option<RawElement> {
         container(text(e.clone()).role(Role::Danger).wrap()).padding(12.0).width(Length::Fill).into()
     } else {
         let names = p.entries.clone();
-        virtual_list(entries.len(), core.theme.metrics.row, move |i| {
+        let mut list = virtual_list(entries.len(), core.theme.metrics.row, move |i| {
             let e = &entries[i];
             let icon = if e.dir { Icon::Folder } else { Icon::File };
             let size = if e.dir { String::new() } else { human(e.size) };
@@ -558,16 +573,23 @@ pub(crate) fn panel_element(core: &Core, id: u64) -> Option<RawElement> {
             ]
             .spacing(8.0)
             .padding([0.0, 10.0])
-        })
-        .selected(p.selected.iter().copied())
-        .on_select(move |s| m(PanelMsg::Select(s)))
-        .on_activate(move |i| KitMsg::Panel { panel: id, msg: PanelMsg::Activate(i) })
-        .type_select(move |i| names[i].name.clone())
-        .id("panel-files")
-        .into()
+        });
+        if p.dialog.multiple && !p.save {
+            list = list.multiple();
+        }
+        list.selected(p.selected.iter().copied())
+            .on_select(move |s| m(PanelMsg::Select(s)))
+            .on_activate(move |i| KitMsg::Panel { panel: id, msg: PanelMsg::Activate(i) })
+            .type_select(move |i| names[i].name.clone())
+            .id("panel-files")
+            .into()
     };
-    let multi_files = files;
-    let can = if p.save { !p.name.trim().is_empty() } else { !p.selected.is_empty() || p.dialog.directories };
+    let invalid_files = p.invalid_file_selection();
+    let can = if p.save {
+        !p.name.trim().is_empty()
+    } else {
+        (!p.selected.is_empty() || p.dialog.directories) && !invalid_files
+    };
     let confirm = if p.save { "Save" } else { "Open" };
     let mut bottom: Vec<Element<KitMsg>> = Vec::new();
     if p.save {
@@ -589,12 +611,12 @@ pub(crate) fn panel_element(core: &Core, id: u64) -> Option<RawElement> {
     bottom.push(spacer().into());
     bottom.push(button("Cancel").cancel().on_press(m(PanelMsg::Cancel)).into());
     bottom.push(button(confirm).default().enabled(can).on_press(m(PanelMsg::Confirm)).into());
-    let body: Element<KitMsg> = column(vec![
+    let mut contents: Vec<Element<KitMsg>> = vec![
         row(vec![text(title).weight(aizome_theme::typeface::WEIGHT_SEMIBOLD).size(core.theme.metrics.title).into()])
             .padding([12.0, 16.0, 8.0, 16.0])
             .into(),
         container(row(crumbs).spacing(2.0)).padding([0.0, 12.0, 8.0, 12.0]).width(Length::Fill).into(),
-        container(sidebar_layout(column(side), multi_files).first_size(170.0))
+        container(sidebar_layout(column(side), files).first_size(170.0))
             .edges(
                 crate::widgets::layout::Edge::Line,
                 crate::widgets::layout::Sides { top: true, right: false, bottom: true, left: false },
@@ -602,10 +624,16 @@ pub(crate) fn panel_element(core: &Core, id: u64) -> Option<RawElement> {
             .width(Length::Fill)
             .height(Length::Fill)
             .into(),
-        row(bottom).spacing(10.0).padding([10.0, 16.0, 12.0, 16.0]).width(Length::Fill).into(),
-    ])
-    .width(Length::Fixed(640.0))
-    .height(Length::Fixed(420.0))
-    .into();
+    ];
+    if invalid_files {
+        contents.push(
+            container(text("Select files, or open one folder.").role(Role::Danger).wrap())
+                .padding([6.0, 16.0, 0.0, 16.0])
+                .width(Length::Fill)
+                .into(),
+        );
+    }
+    contents.push(row(bottom).spacing(10.0).padding([10.0, 16.0, 12.0, 16.0]).width(Length::Fill).into());
+    let body: Element<KitMsg> = column(contents).width(Length::Fixed(640.0)).height(Length::Fixed(420.0)).into();
     Some(body.into_raw())
 }
