@@ -20,6 +20,8 @@ struct Doc {
 #[derive(Clone, Debug)]
 enum Msg {
     Open,
+    OpenMultiple,
+    OpenDirectories,
     Save,
     Opened(Option<Vec<PathBuf>>),
     Saved(Option<PathBuf>),
@@ -42,7 +44,21 @@ impl Program for Doc {
         match msg {
             Msg::Open => cx.open_panel(
                 w,
-                FileDialog::new().directory(self.dir.clone()).filter("Text", &["txt", "md"]),
+                FileDialog::new().title("Choose documents").directory(self.dir.clone()).filter("Text", &["txt", "md"]),
+                Msg::Opened,
+            ),
+            Msg::OpenMultiple => cx.open_panel(
+                w,
+                FileDialog::new()
+                    .title("Choose documents")
+                    .directory(self.dir.clone())
+                    .filter("Text", &["txt", "md"])
+                    .multiple(),
+                Msg::Opened,
+            ),
+            Msg::OpenDirectories => cx.open_panel(
+                w,
+                FileDialog::new().title("Choose folders").directory(self.dir.clone()).directories().multiple(),
                 Msg::Opened,
             ),
             Msg::Save => {
@@ -140,6 +156,114 @@ fn save_panels_take_a_name_and_escape_cancels() {
     h.send(Msg::Open);
     h.named(w, NamedKey::Escape, Modifiers::NONE);
     assert_eq!(h.program().opened, [None]);
+}
+
+#[test]
+fn multiple_open_keeps_the_range_when_confirming_or_pressing_return() {
+    for (name, keyboard) in [("panel-multiple-button", false), ("panel-multiple-return", true)] {
+        let dir = fixture(name);
+        let (mut h, w) = harness(dir.clone());
+        h.send(Msg::OpenMultiple);
+        assert!(h.click_text(w, "notes.md"));
+        h.named(w, NamedKey::ArrowDown, Modifiers::SHIFT);
+        h.save_png(w, std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("{name}.png")), 1.0);
+        if keyboard {
+            h.named(w, NamedKey::Enter, Modifiers::NONE);
+        } else {
+            assert!(h.click_text(w, "Open"));
+        }
+        assert_eq!(h.program().opened, [Some(vec![dir.join("notes.md"), dir.join("todo.txt")])]);
+    }
+}
+
+#[test]
+fn multiple_open_navigates_one_folder_and_can_choose_several_folders() {
+    let dir = fixture("panel-multiple-folders");
+    std::fs::create_dir(dir.join("zebra")).unwrap();
+    let (mut h, w) = harness(dir.clone());
+    h.send(Msg::OpenMultiple);
+    assert!(h.click_text(w, "projects"));
+    h.named(w, NamedKey::Enter, Modifiers::NONE);
+    assert!(h.program().opened.is_empty());
+    assert!(h.texts(w).iter().any(|t| t == "plan.md"));
+    h.named(w, NamedKey::Escape, Modifiers::NONE);
+    h.send(Msg::OpenDirectories);
+    assert!(!h.texts(w).iter().any(|t| t == "notes.md"));
+    assert!(h.click_text(w, "projects"));
+    h.named(w, NamedKey::ArrowDown, Modifiers::SHIFT);
+    h.named(w, NamedKey::Enter, Modifiers::NONE);
+    assert_eq!(h.program().opened.last(), Some(&Some(vec![dir.join("projects"), dir.join("zebra")])));
+}
+
+#[test]
+fn single_open_still_selects_one_and_multiple_cancel_returns_nothing() {
+    let dir = fixture("panel-selection-modes");
+    let (mut h, w) = harness(dir.clone());
+    h.send(Msg::Open);
+    assert!(h.click_text(w, "notes.md"));
+    h.named(w, NamedKey::ArrowDown, Modifiers::SHIFT);
+    h.save_png(w, std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("panel-single.png"), 1.0);
+    assert!(h.click_text(w, "Open"));
+    assert_eq!(h.program().opened, [Some(vec![dir.join("todo.txt")])]);
+    h.send(Msg::OpenMultiple);
+    assert!(h.click_text(w, "notes.md"));
+    h.named(w, NamedKey::ArrowDown, Modifiers::SHIFT);
+    h.named(w, NamedKey::Escape, Modifiers::NONE);
+    assert_eq!(h.program().opened.last(), Some(&None));
+}
+
+#[test]
+fn multiple_open_rejects_mixed_or_multiple_folders_and_recovers() {
+    let dir = fixture("panel-mixed-folders");
+    std::fs::create_dir(dir.join("archive")).unwrap();
+    let (mut h, w) = harness(dir.clone());
+    h.send(Msg::OpenMultiple);
+    assert!(h.click_text(w, "archive"));
+    h.named(w, NamedKey::ArrowDown, Modifiers::SHIFT);
+    for mixed in [false, true] {
+        if mixed {
+            h.named(w, NamedKey::ArrowDown, Modifiers::SHIFT);
+        }
+        assert!(h.texts(w).iter().any(|t| t == "Select files, or open one folder."));
+        h.named(w, NamedKey::Enter, Modifiers::NONE);
+        assert!(h.program().opened.is_empty());
+        assert!(h.click_text(w, "Open"));
+        assert!(h.program().opened.is_empty(), "disabled Open cannot return folders as files");
+        // Clicking the disabled button moves focus; restore it to the list.
+        if !mixed {
+            assert!(h.click_text(w, "projects"));
+        }
+    }
+    assert!(h.click_text(w, "notes.md"));
+    assert!(!h.texts(w).iter().any(|t| t == "Select files, or open one folder."));
+    h.named(w, NamedKey::Enter, Modifiers::NONE);
+    assert_eq!(h.program().opened, [Some(vec![dir.join("notes.md")])]);
+}
+
+#[test]
+fn return_uses_selection_after_command_click_toggles_the_cursor_off() {
+    let dir = fixture("panel-toggle-return");
+    let (mut h, w) = harness(dir.clone());
+    h.send(Msg::OpenMultiple);
+    assert!(h.click_text(w, "notes.md"));
+    h.named(w, NamedKey::ArrowDown, Modifiers::SHIFT);
+    // An unmapped key updates the held modifier flags for the pointer event.
+    h.named(w, NamedKey::F(35), Modifiers::SUPER);
+    assert!(h.click_text(w, "todo.txt"));
+    h.named(w, NamedKey::Enter, Modifiers::NONE);
+    assert_eq!(h.program().opened, [Some(vec![dir.join("notes.md")])]);
+
+    h.send(Msg::OpenMultiple);
+    assert!(h.click_text(w, "notes.md"));
+    h.named(w, NamedKey::F(35), Modifiers::SUPER);
+    assert!(h.click_text(w, "notes.md"));
+    h.named(w, NamedKey::Enter, Modifiers::NONE);
+    assert_eq!(h.program().opened.len(), 1, "an empty selection must stay empty");
+    // A double click on an unselected file still selects and activates it.
+    let at = h.find(w, "todo.txt").unwrap().center();
+    h.press(w, at, PointerButton::Left, 2);
+    h.release(w, at, PointerButton::Left);
+    assert_eq!(h.program().opened.last(), Some(&Some(vec![dir.join("todo.txt")])));
 }
 
 #[test]

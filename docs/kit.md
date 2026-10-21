@@ -335,7 +335,11 @@ to here, Places (Home, and Desktop, Documents, Downloads, Pictures, Music
 and Videos where they exist, then Computer), the folder as a virtual list
 (folders first, files by the filters; Return or a double click opens a
 folder or chooses), a name field when saving, a "Show hidden files" box,
-and `.directories()` to choose folders. The About role shows an alert with
+and `.directories()` to choose folders. With `.multiple()`, Shift selects a
+range and Command-click toggles individual rows; both Open and Return keep
+the full selection. File panels ask you to select files or open one folder
+when folders are mixed into a range. Save panels still choose one name.
+The About role shows an alert with
 the app's name, kind and version.
 
 ### Writing a widget
