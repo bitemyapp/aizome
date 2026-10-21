@@ -37,6 +37,11 @@ pkgs.testers.runNixOSTest {
         return machine.succeed("su demo -c " + shlex.quote(
             "XDG_RUNTIME_DIR=/run/user/1000 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus " + command))
 
+    def active(*units):
+        for unit in units:
+            state = user("systemctl --user show -p ActiveState --value " + unit).strip()
+            assert state == "active", (unit, state)
+
     def greeter():
         machine.wait_until_succeeds("pgrep -u greeter -x aizome-greeter", timeout=120)
         machine.wait_until_succeeds("test -n \"$(find /run/greeter-inspect -name '*.json' -print -quit)\"")
@@ -59,9 +64,9 @@ pkgs.testers.runNixOSTest {
     time.sleep(8)
 
     with subtest("Xfce starts the graphical target and the GTK file chooser portal"):
-        user("systemctl --user is-active graphical-session.target nixos-fake-graphical-session.target")
+        active("graphical-session.target", "nixos-fake-graphical-session.target")
         user("busctl --user get-property org.freedesktop.portal.Desktop /org/freedesktop/portal/desktop org.freedesktop.portal.FileChooser version")
-        user("systemctl --user is-active xdg-desktop-portal.service xdg-desktop-portal-gtk.service")
+        active("xdg-desktop-portal.service", "xdg-desktop-portal-gtk.service")
         env = user("systemctl --user show-environment")
         assert "XDG_CURRENT_DESKTOP=XFCE" in env, env
         assert "XDG_SESSION_TYPE=x11" in env, env
@@ -85,8 +90,9 @@ pkgs.testers.runNixOSTest {
     with subtest("the next Wayland session has its own environment and working portals"):
         choose("aizome")
         machine.wait_until_succeeds("pgrep -u demo -x aizome-shell", timeout=120)
-        user("systemctl --user is-active aizome-session.target graphical-session.target")
+        active("aizome-session.target", "graphical-session.target")
         user("busctl --user get-property org.freedesktop.portal.Desktop /org/freedesktop/portal/desktop org.freedesktop.portal.FileChooser version")
+        active("xdg-desktop-portal.service", "xdg-desktop-portal-gtk.service")
         env = user("systemctl --user show-environment")
         assert "XDG_CURRENT_DESKTOP=Aizome" in env, env
         assert "XDG_SESSION_TYPE=wayland" in env, env
