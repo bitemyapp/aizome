@@ -774,10 +774,13 @@ impl Plan {
                 );
                 let how = match (grow, fs_now.is_empty()) {
                     (_, true) => "Its end moves; its start stays where it is.".to_owned(),
+                    (true, false) if fs::check_before_resize(&fs_now) => {
+                        "The filesystem is checked and repaired, the partition's end moves into the free space after it, then the filesystem grows to fill it.".to_owned()
+                    }
                     (true, false) => {
                         "Its end moves into the free space after it, then the filesystem grows to fill it.".to_owned()
                     }
-                    (false, false) if fs::check_before_shrink(&fs_now) => {
+                    (false, false) if fs::check_before_resize(&fs_now) => {
                         "The filesystem is checked and repaired, shrunk, and then the partition's end moves in."
                             .to_owned()
                     }

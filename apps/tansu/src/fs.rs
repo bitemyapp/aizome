@@ -102,9 +102,9 @@ pub fn resizable(fs: &str) -> Resizable {
     }
 }
 
-/// Whether shrinking `fs` needs a forced check first (resize2fs refuses
-/// to shrink a filesystem that wasn't checked since it was last mounted).
-pub fn check_before_shrink(fs: &str) -> bool {
+/// Whether resizing `fs` needs a forced check first (resize2fs refuses
+/// an offline resize when it wasn't checked since it was last mounted).
+pub fn check_before_resize(fs: &str) -> bool {
     matches!(fs, "ext2" | "ext3" | "ext4")
 }
 
@@ -155,7 +155,7 @@ mod tests {
         assert!(!resizable("xfs").grow, "xfs_growfs needs it mounted");
         assert!(resizable("btrfs").why_not.is_some());
         assert!(resizable("").shrink, "an empty partition resizes freely");
-        assert!(check_before_shrink("ext4") && !check_before_shrink("vfat"));
+        assert!(check_before_resize("ext4") && !check_before_resize("vfat"));
     }
 
     #[test]
