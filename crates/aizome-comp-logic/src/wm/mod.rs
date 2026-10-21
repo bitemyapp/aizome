@@ -94,6 +94,11 @@ pub struct Desk {
     pub id: DeskId,
     pub name: String,
     pub folder: Option<String>,
+    /// When it was parked (seconds since the epoch): its windows are told
+    /// they're suspended, so they draw nothing until it's visited again.
+    pub parked: Option<u64>,
+    /// When it was last left (seconds since the epoch).
+    pub left: Option<u64>,
 }
 
 /// What a change did to focus: the window that should now have it.
@@ -166,7 +171,7 @@ impl Model {
         self.generation += 1;
         let id = self.next_desk;
         self.next_desk += 1;
-        self.desks.push(Desk { id, name, folder });
+        self.desks.push(Desk { id, name, folder, ..Desk::default() });
         id
     }
 
@@ -799,16 +804,59 @@ impl Model {
         self.wins.values().filter(|w| w.desk == desk && !w.sticky).count()
     }
 
-    /// Switches Desks. Returns where focus goes, or `None` if nothing
-    /// changed.
+    /// Switches Desks, unparking the one arrived at. Returns where focus
+    /// goes, or `None` if nothing changed.
     pub fn switch_desk(&mut self, desk: DeskId) -> Option<Refocus> {
         self.generation += 1;
         if desk == self.current || self.desk(desk).is_none() {
             return None;
         }
         self.current = desk;
+        if let Some(d) = self.desks.iter_mut().find(|d| d.id == desk) {
+            d.parked = None;
+        }
         let keep = self.focused.filter(|f| self.is_shown(*f));
         Some(Refocus::To(keep.or_else(|| self.next_focus(None))))
+    }
+
+    /// Parks a Desk (`at`, when) or unparks it (`None`). The current Desk
+    /// isn't parked. True if that changed it.
+    pub fn set_parked(&mut self, id: DeskId, at: Option<u64>) -> bool {
+        if at.is_some() && id == self.current {
+            return false;
+        }
+        let Some(d) = self.desks.iter_mut().find(|d| d.id == id) else { return false };
+        if d.parked.is_some() == at.is_some() {
+            return false;
+        }
+        d.parked = at;
+        self.generation += 1;
+        true
+    }
+
+    /// Whether a window's Desk is parked (sticky windows show on every
+    /// Desk, so aren't).
+    pub fn is_parked_window(&self, id: WinId) -> bool {
+        self.get(id).is_some_and(|w| !w.sticky && self.desk(w.desk).is_some_and(|d| d.parked.is_some()))
+    }
+
+    /// Notes when a Desk was left.
+    pub fn mark_left(&mut self, id: DeskId, at: u64) {
+        if let Some(d) = self.desks.iter_mut().find(|d| d.id == id) {
+            d.left = Some(at);
+        }
+    }
+
+    /// A Desk's windows (not counting sticky ones).
+    pub fn desk_windows(&self, desk: DeskId) -> Vec<WinId> {
+        let mut ids: Vec<WinId> = self.wins.values().filter(|w| w.desk == desk && !w.sticky).map(|w| w.id).collect();
+        ids.sort();
+        ids
+    }
+
+    /// How many of a Desk's windows ask for attention.
+    pub fn desk_urgent_count(&self, desk: DeskId) -> usize {
+        self.wins.values().filter(|w| w.desk == desk && !w.sticky && w.urgent).count()
     }
 
     /// The Desk before or after the current one (wrapping).

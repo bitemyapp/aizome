@@ -348,6 +348,8 @@ pub struct Seen {
     pub activated: bool,
     pub maximized: bool,
     pub fullscreen: bool,
+    /// Told it's suspended (xdg-shell 6): it needn't draw.
+    pub suspended: bool,
     pub close_requested: bool,
     pub decoration_server_side: Option<bool>,
     /// Keys pressed (evdev codes) with the modifiers held then.
@@ -712,6 +714,7 @@ impl Dispatch<xdg_toplevel::XdgToplevel, ()> for App {
                 seen.activated = states.contains(&(xdg_toplevel::State::Activated as u32));
                 seen.maximized = states.contains(&(xdg_toplevel::State::Maximized as u32));
                 seen.fullscreen = states.contains(&(xdg_toplevel::State::Fullscreen as u32));
+                seen.suspended = states.contains(&(xdg_toplevel::State::Suspended as u32));
             }
             xdg_toplevel::Event::Close => {
                 app.seen.lock().unwrap().close_requested = true;

@@ -394,3 +394,46 @@ fn desks_sync_from_settings() {
     assert_eq!(m.desks()[1].folder.as_deref(), Some("~/work"));
     assert_eq!(m.get(a).unwrap().desk, m.desks()[1].id);
 }
+
+#[test]
+fn a_parked_desk_sleeps_until_it_is_visited() {
+    let mut m = model();
+    let d1 = m.desks()[0].id;
+    let d2 = m.desks()[1].id;
+    let a = add(&mut m, "a");
+    let b = add(&mut m, "b");
+    m.move_to_desk(b, d2);
+    // The current Desk isn't parked; another is, once.
+    assert!(!m.set_parked(d1, Some(100)));
+    assert!(m.set_parked(d2, Some(100)));
+    assert!(!m.set_parked(d2, Some(200)), "already parked");
+    assert_eq!(m.desk(d2).unwrap().parked, Some(100));
+    assert!(m.is_parked_window(b) && !m.is_parked_window(a));
+    // A sticky window shows everywhere, so isn't parked with it.
+    m.set_sticky(b, true);
+    assert!(!m.is_parked_window(b));
+    m.set_sticky(b, false);
+    m.move_to_desk(b, d2);
+    assert!(m.is_parked_window(b));
+    assert_eq!(m.desk_windows(d2), vec![b]);
+    // Going there wakes it, and the Desk left says when.
+    m.switch_desk(d2);
+    m.mark_left(d1, 300);
+    assert_eq!(m.desk(d2).unwrap().parked, None);
+    assert!(!m.is_parked_window(b));
+    assert_eq!(m.desk(d1).unwrap().left, Some(300));
+    // Unparking what isn't parked changes nothing.
+    assert!(!m.set_parked(d1, None));
+}
+
+#[test]
+fn a_desk_counts_the_windows_asking_for_attention() {
+    let mut m = model();
+    let d2 = m.desks()[1].id;
+    let a = add(&mut m, "a");
+    let b = add(&mut m, "b");
+    m.move_to_desk(a, d2);
+    m.move_to_desk(b, d2);
+    m.get_mut(a).unwrap().urgent = true;
+    assert_eq!(m.desk_urgent_count(d2), 1);
+}
