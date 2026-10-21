@@ -1206,18 +1206,24 @@ impl Core {
         }
     }
 
-    /// Enabled states the kit knows: Edit items by the focused widget,
-    /// the Window menu's list of windows.
+    /// Enabled states the kit knows: supported roles, Edit items by the
+    /// focused widget, and the Window menu's list of windows.
     pub fn settle_menu(&self, spec: &mut MenuSpec) {
         let focused = self.key_window.and_then(|w| self.wins.get(&w)).and_then(|w| {
             let idx = w.input_node(w.focused?)?;
             Some((w, idx))
         });
         spec.settle(&|a: &ActionSpec| {
-            let cmd = a.role?.edit_command()?;
+            let role = a.role?;
             if a.msg.is_some() {
                 return None;
             }
+            // These roles need an app's own action. The kit has no generic
+            // preferences window or app-help destination to open.
+            if matches!(role, MenuRole::Settings | MenuRole::Help) {
+                return Some(false);
+            }
+            let cmd = role.edit_command()?;
             Some(focused.is_some_and(|(w, idx)| {
                 let n = &w.tree.nodes[idx];
                 n.widget.can(crate::widget::StateView::new(&w.states, n.id), cmd)

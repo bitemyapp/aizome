@@ -170,6 +170,7 @@ impl Shortcut {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum MenuRole {
     About,
+    /// App-specific preferences: provide a message; a role-only item is disabled.
     Settings,
     Services,
     Hide,
@@ -198,6 +199,7 @@ pub enum MenuRole {
     WindowList,
     /// Help ▸ Search: the shell's palette, searching the app's commands.
     HelpSearch,
+    /// App-specific help: provide a message; a role-only item is disabled.
     Help,
     /// Help ▸ Aizome Tour: Annai's welcome and tour of the desktop.
     Tour,

@@ -416,6 +416,13 @@ too gets it only when no widget takes the command); Quit asks each window's
 compositor; Hide, Hide Others, Fill, Stack with… and Bring All to Front go
 through `Cx::set_window_manager` (the compositor's IPC).
 
+Settings and app-specific Help have no generic kit handler. Their role-only
+standard entries are disabled, including their shortcuts. Apps with preferences
+or help replace those entries with `MenuItem::new(label, msg)`; a message-backed
+item may keep the role, and the kit preserves its declared enabled state.
+Koyomi and Tenki use their own Settings sheets. Help Search and Aizome Tour
+remain available through their implemented roles.
+
 Where `$AIZOME_SHELL_SOCKET` is set, the menus are published to the shell
 (`docs/shell-protocol.md`) whenever they change; elsewhere the kit draws a
 menu bar along each normal window's top. An app that starts before the
