@@ -24,6 +24,10 @@ pub enum Action {
     QuitApp {
         app_id: String,
     },
+    /// Hide an app's windows, resolving desktop-entry and window IDs.
+    HideApp {
+        app_id: String,
+    },
     /// Reveal and raise an app's last window on this Desk, or another Desk
     /// if it has none here. Launch it when it has no windows.
     FocusApp {

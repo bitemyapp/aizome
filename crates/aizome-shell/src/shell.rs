@@ -773,6 +773,17 @@ impl Shell {
                     self.ipc.send(Request::Close { id: Some(w.id) });
                 }
             }
+            Action::HideApp { app_id } => {
+                let ids: std::collections::BTreeSet<_> = self
+                    .wm
+                    .app_windows_by_recency(&app_id, self.apps.as_deref())
+                    .into_iter()
+                    .map(|w| w.app_id.as_str())
+                    .collect();
+                for id in ids {
+                    self.ipc.send(Request::HideApp { app: app_sel(id) });
+                }
+            }
             Action::Launch { app_id } | Action::FocusApp { app_id } => {
                 match self.wm.app_window_to_activate(&app_id, self.apps.as_deref()) {
                     Some(w) => self.ipc.send(Request::Focus { id: w.id }),
@@ -1926,6 +1937,56 @@ mod tests {
             assert_eq!(requests.try_recv().unwrap(), (Request::Close { id: Some(id) }, None));
             assert!(requests.try_recv().is_err(), "unindexed apps still match their own exact ID");
         }
+    }
+
+    #[test]
+    fn deskbar_hide_resolves_aliases_and_deduplicates_window_app_ids() {
+        use crate::deskbar::DeskbarMsg;
+        use aizome_kit::sidestep_ui::{Modifiers, NamedKey};
+        let (mut h, requests) = app_identity_fixture();
+        // Only the StartupWMClass alias is running; the pinned desktop ID
+        // must still offer Hide and send the ID the compositor recognizes.
+        h.program_mut().wm.apply(&Event::WindowClosed { id: 1 });
+        h.program_mut().deskbar_cfg.pinned = vec!["org.example.Editor".into()];
+        h.set_outputs(vec![Output {
+            id: 1,
+            name: "test".into(),
+            frame: Rect::new(0.0, 0.0, 1280.0, 800.0),
+            scale: 1.0,
+            integer_scale: 1,
+            ..Default::default()
+        }]);
+        h.send(Msg::Nothing);
+        let deskbar = h.program().deskbar.expect("Deskbar open");
+        requests.try_iter().for_each(drop);
+        h.send(Msg::Deskbar(DeskbarMsg::AppMenu("org.example.Editor".into(), Point::new(10.0, 10.0))));
+        assert_eq!(h.popups(deskbar).len(), 1);
+        h.type_text(deskbar, "Hide");
+        h.named(deskbar, NamedKey::Enter, Modifiers::NONE);
+        assert!(h.popups(deskbar).is_empty());
+        assert_eq!(requests.try_recv().unwrap(), (Request::HideApp { app: app_sel("EditorWindow") }, None));
+        assert!(requests.try_recv().is_err(), "two alias windows need one HideApp; unrelated apps are excluded");
+
+        // An app may have windows using both its desktop ID and its alias.
+        h.program_mut().wm.apply(&Event::WindowOpened {
+            window: aizome_ipc::WindowInfo {
+                id: 1,
+                app_id: "org.example.Editor".into(),
+                desk: Some(1),
+                ..Default::default()
+            },
+        });
+        h.send(Msg::Run(Action::HideApp { app_id: "org.example.Editor.desktop".into() }));
+        let sent: Vec<_> = requests.try_iter().collect();
+        assert_eq!(
+            sent,
+            [
+                (Request::HideApp { app: app_sel("EditorWindow") }, None),
+                (Request::HideApp { app: app_sel("org.example.Editor") }, None),
+            ]
+        );
+        h.send(Msg::Run(Action::HideApp { app_id: "not-running".into() }));
+        assert!(requests.try_recv().is_err(), "an app with no windows has nothing to hide");
     }
 
     #[test]

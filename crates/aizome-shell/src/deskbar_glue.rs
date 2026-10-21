@@ -176,8 +176,7 @@ impl Shell {
                     self.app_look(&app_id).0,
                     vec![
                         Entry::action("New Window", Action::NewWindow { app_id: app_id.clone() }),
-                        Entry::action("Hide", Action::Wm(Request::HideApp { app: crate::shell::app_sel(&app_id) }))
-                            .enabled(running),
+                        Entry::action("Hide", Action::HideApp { app_id: app_id.clone() }).enabled(running),
                         Entry::action("Quit", Action::QuitApp { app_id: app_id.clone() }).enabled(running),
                         Entry::separator(),
                         Entry::action("Keep in Deskbar", Action::Pin { app_id: app_id.clone(), on: !pinned })
