@@ -552,3 +552,43 @@ fn a_system_without_choices_offers_no_desktops_page() {
     let w = h.window();
     assert!(!has(&h, w, "Desktops"));
 }
+
+#[test]
+fn comparisons_open_a_sheet_drill_into_inputs_and_filter_packages() {
+    let (mut h, w, ran) = sample(WORKS);
+    h.resize(w, aizome_kit::layout::Size::new(760.0, 520.0));
+    h.send(Msg::Show(Page::Updates));
+    h.scroll(w, Point::new(600.0, 400.0), Vec2::new(0.0, 400.0));
+    assert!(h.click_text(w, "Changes"));
+    settle(&mut h, |a| a.comparison.as_ref().is_some_and(|c| c.details.is_some()));
+    let sheet = h.program().comparison.as_ref().unwrap().sheet;
+    // Input reads can fail without taking away the direct link.
+    assert!(has(&h, sheet, "Open commit diff"));
+    h.send(Msg::ComparisonLoaded(sheet, Arc::new(aizome_yukimi::fixture::comparison())));
+    assert!(has(&h, sheet, "aizome"));
+    assert!(h.click_text(sheet, "Inspect"));
+    assert_eq!(h.program().comparison.as_ref().unwrap().node().unwrap().name, "aizome");
+    assert!(has(&h, sheet, "nixpkgs"));
+    assert!(h.click_text(sheet, "Inspect"));
+    assert!(h.texts(sheet).iter().any(|t| t.contains("No changed inputs")));
+    assert!(h.click_text(sheet, "Back"));
+    assert_eq!(h.program().comparison.as_ref().unwrap().node().unwrap().name, "aizome");
+    assert!(h.click_text(sheet, "Package changes"));
+    h.send(Msg::ComparisonQuery("firefox".into()));
+    assert!(has(&h, sheet, "firefox"));
+    assert!(!has(&h, sheet, "htop"));
+    assert!(h.click_text(sheet, "Source changes"));
+    assert_eq!(h.program().comparison.as_ref().unwrap().node().unwrap().name, "aizome");
+    assert!(h.click_text(sheet, "Done"));
+    assert!(h.program().comparison.is_none());
+    // Closing/reopening cannot accept a late result from the old sheet.
+    h.send(Msg::InspectChanges("sekka".into()));
+    settle(&mut h, |a| a.comparison.as_ref().is_some_and(|c| c.details.is_some()));
+    let new_sheet = h.program().comparison.as_ref().unwrap().sheet;
+    assert_ne!(sheet, new_sheet);
+    h.send(Msg::ComparisonLoaded(sheet, Arc::new(aizome_yukimi::fixture::comparison())));
+    assert!(h.program().comparison.as_ref().unwrap().details.as_ref().unwrap().source_error.is_some());
+    h.named(new_sheet, aizome_kit::sidestep_ui::NamedKey::Escape, aizome_kit::sidestep_ui::Modifiers::default());
+    assert!(h.program().comparison.is_none());
+    assert!(ran.lock().unwrap().is_empty(), "inspecting must not run update operations");
+}

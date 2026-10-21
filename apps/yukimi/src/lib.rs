@@ -10,6 +10,7 @@
 
 pub mod app;
 pub mod checks;
+pub mod comparison;
 pub mod fixture;
 pub mod instance;
 pub mod job;

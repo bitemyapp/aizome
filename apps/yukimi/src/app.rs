@@ -161,6 +161,26 @@ pub struct BranchChooser {
     pub branches: Option<Result<Vec<String>, String>>,
 }
 
+pub struct ComparisonSheet {
+    pub sheet: WindowKey,
+    pub input: String,
+    pub link: crate::update_history::Link,
+    pub details: Option<Arc<crate::comparison::Details>>,
+    pub path: Vec<usize>,
+    pub packages: bool,
+    pub query: String,
+}
+
+impl ComparisonSheet {
+    pub fn node(&self) -> Option<&crate::comparison::Delta> {
+        let mut node = &self.details.as_ref()?.root;
+        for &index in &self.path {
+            node = node.children.get(index)?;
+        }
+        Some(node)
+    }
+}
+
 /// Something to take out of the system's packages.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Removal {
@@ -211,6 +231,12 @@ pub enum Msg {
     /// Update these sources.
     Update(Vec<String>),
     ChooseBranch(String),
+    InspectChanges(String),
+    ComparisonLoaded(WindowKey, Arc<crate::comparison::Details>),
+    ComparisonInto(usize),
+    ComparisonBack,
+    ComparisonPackages(bool),
+    ComparisonQuery(String),
     Branches(Result<Vec<String>, String>),
     BranchTyped(String),
     Follow(String),
@@ -351,6 +377,7 @@ pub struct Yukimi {
     pub roots_open: bool,
 
     pub branch: Option<BranchChooser>,
+    pub comparison: Option<ComparisonSheet>,
 
     /// Choices made on the Desktops page and not applied yet: each
     /// setting's values in full.
@@ -426,6 +453,7 @@ impl Yukimi {
             older: 1,
             roots_open: false,
             branch: None,
+            comparison: None,
             draft: BTreeMap::new(),
             moved: BTreeSet::new(),
             launch: None,
@@ -1312,6 +1340,61 @@ impl Program for Yukimi {
                 self.run(operation, cx);
             }
             Msg::ChooseBranch(input) => self.choose_branch(input, cx),
+            Msg::InspectChanges(input) => {
+                let moves = self.movements();
+                let Some(found) = self.model.inputs.iter().find(|i| i.name == input) else { return };
+                let Some(link) = self.model.update_history.link(found, moves.as_ref().and_then(|m| m.get(&input)))
+                else {
+                    return;
+                };
+                if let Some(old) = self.comparison.take() {
+                    cx.close_window(old.sheet);
+                }
+                let sheet = cx.show_sheet(self.window);
+                self.comparison = Some(ComparisonSheet {
+                    sheet,
+                    input: input.clone(),
+                    link: link.clone(),
+                    details: None,
+                    path: vec![],
+                    packages: false,
+                    query: String::new(),
+                });
+                let model = self.model.clone();
+                let remote = matches!(self.source, Source::System(_));
+                cx.spawn(move || {
+                    Msg::ComparisonLoaded(sheet, Arc::new(crate::comparison::load(&model, &input, &link, remote)))
+                });
+            }
+            Msg::ComparisonLoaded(sheet, details) => {
+                if let Some(comparison) = &mut self.comparison
+                    && comparison.sheet == sheet
+                {
+                    comparison.details = Some(details);
+                }
+            }
+            Msg::ComparisonInto(index) => {
+                if let Some(comparison) = &mut self.comparison
+                    && comparison.node().is_some_and(|n| index < n.children.len())
+                {
+                    comparison.path.push(index);
+                }
+            }
+            Msg::ComparisonBack => {
+                if let Some(comparison) = &mut self.comparison {
+                    comparison.path.pop();
+                }
+            }
+            Msg::ComparisonPackages(packages) => {
+                if let Some(comparison) = &mut self.comparison {
+                    comparison.packages = packages;
+                }
+            }
+            Msg::ComparisonQuery(query) => {
+                if let Some(comparison) = &mut self.comparison {
+                    comparison.query = query;
+                }
+            }
             Msg::Branches(result) => {
                 if let Some(chooser) = &mut self.branch {
                     chooser.branches = Some(result);
@@ -1471,6 +1554,9 @@ impl Program for Yukimi {
             }
 
             Msg::CloseSheet(sheet) => {
+                if self.comparison.as_ref().is_some_and(|c| c.sheet == sheet) {
+                    self.comparison = None;
+                }
                 if self.details.as_ref().is_some_and(|(s, _)| *s == sheet) {
                     self.details = None;
                 }
@@ -1524,6 +1610,9 @@ impl Program for Yukimi {
         }
         if self.details.as_ref().is_some_and(|(s, _)| *s == window) {
             self.details = None;
+        }
+        if self.comparison.as_ref().is_some_and(|c| c.sheet == window) {
+            self.comparison = None;
         }
         if self.branch.as_ref().is_some_and(|b| b.sheet == window) {
             self.branch = None;

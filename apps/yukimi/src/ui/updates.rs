@@ -159,9 +159,13 @@ fn inputs(app: &Yukimi, moves: Option<&BTreeMap<String, Movement>>) -> Vec<Eleme
                         title,
                         button(link.label)
                             .compact()
-                            .icon(Icon::ExternalLink)
+                            .icon(if link.before.is_some() { Icon::GitCommitHorizontal } else { Icon::ExternalLink })
                             .plain()
-                            .on_press(Msg::OpenUrl(link.url))
+                            .on_press(if link.before.is_some() {
+                                Msg::InspectChanges(input.name.clone())
+                            } else {
+                                Msg::OpenUrl(link.url)
+                            })
                             .tooltip(link.tooltip),
                     ]
                     .spacing(8.0)

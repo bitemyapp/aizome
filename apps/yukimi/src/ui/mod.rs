@@ -14,6 +14,7 @@ use aizome_kit::{column, row};
 
 use crate::app::{Msg, Page, Yukimi};
 
+mod comparison;
 mod desktops;
 mod discover;
 mod history;
@@ -32,6 +33,11 @@ pub const SIDEBAR: f64 = 212.0;
 pub const PAGE_WIDTH: f64 = 920.0;
 
 pub fn view(app: &Yukimi, window: WindowKey) -> Element<Msg> {
+    if let Some(comparison) = &app.comparison
+        && comparison.sheet == window
+    {
+        return comparison::sheet(comparison);
+    }
     if app.job_sheet == Some(window) {
         return job::sheet(app);
     }

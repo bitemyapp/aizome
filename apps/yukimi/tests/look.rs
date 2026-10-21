@@ -163,6 +163,21 @@ fn this_computer() {
         h.send(Msg::Show(page));
         settle(&mut h, |a| !a.indexing);
         h.save_png(w, dir.join(format!("real-{}.png", page.id())), 1.0);
+        if page == Page::Updates && h.program().model.inputs.iter().any(|i| i.name == "sekka") {
+            h.send(Msg::InspectChanges("sekka".into()));
+            settle(&mut h, |a| a.comparison.as_ref().is_some_and(|c| c.details.is_some()));
+            if let Some(comparison) = &h.program().comparison {
+                let sheet = comparison.sheet;
+                h.save_png(sheet, dir.join("real-comparison.png"), 1.0);
+                if h.program().comparison.as_ref().unwrap().node().is_some_and(|n| !n.children.is_empty()) {
+                    h.send(Msg::ComparisonInto(0));
+                    h.save_png(sheet, dir.join("real-comparison-input.png"), 1.0);
+                }
+                h.send(Msg::ComparisonPackages(true));
+                h.save_png(sheet, dir.join("real-comparison-packages.png"), 1.0);
+                h.send(Msg::CloseSheet(sheet));
+            }
+        }
     }
 }
 

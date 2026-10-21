@@ -530,6 +530,29 @@ pub fn check(model: &Model) -> UpdateCheck {
     checks::gather(model, NOW - 3_600, answers).expect("answers")
 }
 
+/// A source update whose substantive changes are inside a nested input.
+pub fn comparison() -> crate::comparison::Details {
+    use crate::comparison::{Delta, Details};
+    let model = model();
+    let source = |name: &str| model.inputs.iter().find(|i| i.name == name).unwrap().locked.clone().unwrap();
+    let changed = |name: &str| {
+        let after = source(name);
+        let mut before = after.clone();
+        before.rev = Some("1111111111111111111111111111111111111111".into());
+        Delta { name: name.into(), before: Some(before), after: Some(after), children: vec![] }
+    };
+    let mut root = changed("sekka");
+    let mut aizome = changed("aizome");
+    aizome.children.push(changed("nixpkgs"));
+    root.children = vec![aizome];
+    Details {
+        root,
+        source_note: "Inputs: generation 27 → generation 28.".into(),
+        source_error: None,
+        packages: Ok(model.store.as_ref().unwrap().latest.as_ref().unwrap().changes.clone()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

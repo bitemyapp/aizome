@@ -90,13 +90,14 @@ impl History {
         }
         if let Some((number, prepared)) = self.prepared(input)
             && let Some(running) = running
-            && let Some(link) = comparison(
+            && let Some(mut link) = comparison(
                 "Prepared changes",
                 &format!("Running generation {} → selected generation {number}", self.active?),
                 running,
                 prepared,
             )
         {
+            link.generations = Some((self.active?, number));
             return Some(link);
         }
         if let Some(running) = running
@@ -114,12 +115,13 @@ impl History {
             for (&before_number, _) in self.snapshots.range(..number).rev() {
                 let Some(before) = self.revision(before_number, input) else { break };
                 if before.rev != running.rev {
-                    if let Some(link) = comparison(
+                    if let Some(mut link) = comparison(
                         "Last update",
                         &format!("Saved generations {before_number} → {after_number}"),
                         before,
                         running,
                     ) {
+                        link.generations = Some((before_number, after_number));
                         return Some(link);
                     }
                     break;
@@ -136,11 +138,14 @@ impl History {
             label,
             tooltip: format!("{description}: {}. No saved comparison available.", baseline.rev.as_deref()?),
             url: baseline.web_url()?,
+            before: None,
+            after: baseline.clone(),
+            generations: None,
         })
     }
 }
 
-fn same_repo(a: &Locked, b: &Locked) -> bool {
+pub(crate) fn same_repo(a: &Locked, b: &Locked) -> bool {
     a.kind == b.kind
         && a.host.as_deref().unwrap_or("github.com") == b.host.as_deref().unwrap_or("github.com")
         && a.owner == b.owner
@@ -149,10 +154,14 @@ fn same_repo(a: &Locked, b: &Locked) -> bool {
 }
 
 /// A visible label and a tooltip that name both endpoints of the jump.
+#[derive(Clone, Debug)]
 pub struct Link {
     pub label: &'static str,
     pub tooltip: String,
     pub url: String,
+    pub before: Option<Locked>,
+    pub after: Locked,
+    pub generations: Option<(u32, u32)>,
 }
 
 fn comparison(label: &'static str, description: &str, before: &Locked, after: &Locked) -> Option<Link> {
@@ -161,6 +170,9 @@ fn comparison(label: &'static str, description: &str, before: &Locked, after: &L
         label,
         url: before.compare_url(after.rev.as_deref()?)?,
         tooltip: format!("{description}: {} → {}", before.rev.as_deref()?, after.rev.as_deref()?),
+        before: Some(before.clone()),
+        after: after.clone(),
+        generations: None,
     })
 }
 
