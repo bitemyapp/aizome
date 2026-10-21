@@ -301,6 +301,18 @@ nested_modals` checks stacked layers and focus restoration;
 drives the packaged calendar's recurring-event save/delete confirmations
 in a disposable VM.
 
+Application menu commands and their keyboard shortcuts cannot change the
+document behind a sheet, alert or file panel. Edit roles act only on the
+focused control in the top layer, without falling back to application-level
+Undo or Find. Window navigation remains available, and another uncovered
+window can still use its own commands. Quit waits for all dialogs to close;
+Close and the title-bar close request wait for that window's Cancel or default
+action. Dialog-owned dropdown/context menus keep working. Published menu
+states update when the dialog closes, and stale shell actions are checked
+again on arrival. `cargo test -p aizome-kit --test modal_commands` covers these
+routes; `checks.x86_64-linux.shashin-modal` checks a real unsaved-picture alert,
+blocked Save, cancellation, default Save and reopening in a disposable VM.
+
 Alert actions stay in a trailing row when all their measured labels fit.
 Otherwise they stack at the sheet's width, wrapping long labels without
 ellipsis. Short windows scroll the alert, and Tab reveals each focused
