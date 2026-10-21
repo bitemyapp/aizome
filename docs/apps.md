@@ -399,7 +399,13 @@ partition table (name, filesystem, label, mount point, size, used, flags);
 operations queued and listed (create, delete, format, resize, label, flags,
 check, mount, unmount, create a partition table, unlock LUKS) and applied
 only after a confirmation that lists them in plain words; SMART health;
-images (attach `.iso`/`.img` as loop devices). Everything through UDisks2
+images (attach `.iso`/`.img` as loop devices). Manual attachments stay until
+Detach, including blank images opened for partitioning; read-only attachments
+cannot be written. The system image-mount helper enables automatic detach only
+after mounting succeeds, and releases its own loop if probing or mounting fails.
+`nix build .#checks.x86_64-linux.loop-images` checks these lifetimes against real
+UDisks2 and kernel loop devices in a disposable VM, including error recovery.
+Everything through UDisks2
 (`aizome-sys::disks`). It never touches a disk in tests: use mocks, and
 loop devices only inside the VM test.
 
