@@ -465,8 +465,13 @@ reads with, and SVG through resvg, rendered at the zoom.
   re-encoded; other kinds are decoded, turned and written again in their
   format (not SVG, nor animated WebP and PNG). Closing with turns unsaved
   asks. Copy (❖C) offers the picture as `image/png`; Set as Wallpaper ▸
-  Night, Day or Both writes `appearance.wallpaper_night`/`_day` and asks
-  the compositor to `reload-config`; Show in Hako (⌥❖R) runs
+  Night, Day or Both first decodes the file with the desktop's renderer,
+  then writes `appearance.wallpaper_night`/`_day` and asks the compositor
+  to `reload-config`. Wallpapers support PNG, JPEG, GIF (the first frame),
+  WebP, BMP, TIFF and ICO; SVG viewing works, but SVG wallpapers are not
+  supported. Unreadable, corrupt or unsupported files leave both existing
+  wallpapers unchanged and show an error. The setting keeps the source
+  path, so the image must remain there. Show in Hako (⌥❖R) runs
   `aizome-hako --select`; Move to Trash (❖⌫) follows the freedesktop
   Trash, and Undo (❖Z) puts the picture back. Get Info (❖I): kind,
   dimensions, size, dates, where, and the camera, lens and settings from
