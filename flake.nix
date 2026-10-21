@@ -96,6 +96,7 @@
         greeter = import ./nix/vm-greeter-test.nix { inherit pkgs self; };
         greeter-x11 = import ./nix/vm-greeter-x11-test.nix { inherit pkgs self; };
         koyomi-session = import ./nix/vm-koyomi-session-test.nix { inherit pkgs self; };
+        koyomi-modal = import ./nix/vm-koyomi-modal-test.nix { inherit pkgs self; };
         network-auth = import ./nix/vm-network-auth-test.nix { inherit pkgs self; };
       });
 

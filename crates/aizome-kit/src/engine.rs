@@ -122,6 +122,9 @@ pub(crate) struct Win {
     pub hot: Option<NodeId>,
     pub active: Option<NodeId>,
     pub focused: Option<NodeId>,
+    /// Focus suspended by a modal, restored when that layer is uncovered.
+    modal_focus: HashMap<Option<NodeId>, (Option<NodeId>, bool)>,
+    focus_modal: Option<NodeId>,
     pub focus_visible: bool,
     pub has_keyboard: bool,
     pub pointer: Option<Point>,
@@ -171,6 +174,8 @@ impl Win {
             hot: None,
             active: None,
             focused: None,
+            modal_focus: HashMap::new(),
+            focus_modal: None,
             focus_visible: false,
             has_keyboard: false,
             pointer: None,
@@ -209,12 +214,21 @@ impl Win {
 
     /// The focused widget, while this window has the keyboard.
     pub fn active_focus(&self) -> Option<NodeId> {
-        if self.has_keyboard || self.is_popup() { self.focused } else { None }
+        if self.has_keyboard || self.is_popup() {
+            self.focused.filter(|id| self.input_node(*id).is_some())
+        } else {
+            None
+        }
     }
 
     /// Where input stays while a sheet is up.
     fn modal(&self) -> Option<usize> {
         self.tree.root.and(self.tree.modal())
+    }
+
+    /// A live node that may receive input in the current modal scope.
+    fn input_node(&self, id: NodeId) -> Option<usize> {
+        self.tree.get(id).filter(|&i| self.modal().is_none_or(|m| m == i || self.tree.is_ancestor(m, i)))
     }
 }
 
@@ -691,6 +705,8 @@ impl Core {
                 platform.set_text_input(win, false, None);
             }
         }
+        self.restore_modal_focus(win, platform);
+        let Some(w) = self.wins.get_mut(&win) else { return };
         let ahead = w.hidden && w.ahead.is_some();
         if let Some(p) = w.pointer {
             self.update_hot(win, p, platform);
@@ -1518,6 +1534,7 @@ impl Core {
     /// Give `id` the focus (or none).
     pub fn set_focus(&mut self, win: WinId, id: Option<NodeId>, visible: bool, platform: &mut dyn Platform) {
         let Some(w) = self.wins.get_mut(&win) else { return };
+        let id = id.filter(|id| w.input_node(*id).is_some());
         if w.focused == id {
             w.focus_visible = visible || w.focus_visible;
             return;
@@ -1551,6 +1568,22 @@ impl Core {
         if self.wins.get(&win).is_some_and(|w| w.hidden && w.ahead.is_some()) {
             self.restart_ahead(win, platform);
         }
+    }
+
+    /// A new sheet/alert suspends the covered field, including its IME.
+    /// Keep each layer's focus so dismissing an alert returns to the draft.
+    fn restore_modal_focus(&mut self, win: WinId, platform: &mut dyn Platform) {
+        let Some(w) = self.wins.get_mut(&win) else { return };
+        let modal = w.modal().map(|i| w.tree.nodes[i].id);
+        if modal == w.focus_modal {
+            return;
+        }
+        w.modal_focus.insert(w.focus_modal, (w.focused, w.focus_visible));
+        w.focus_modal = modal;
+        let (focus, visible) = w.modal_focus.remove(&modal).unwrap_or((None, false));
+        w.modal_focus.retain(|id, _| id.is_none_or(|id| w.tree.get(id).is_some()));
+        w.active = w.active.filter(|id| w.input_node(*id).is_some());
+        self.set_focus(win, focus, visible, platform);
     }
 
     /// Tab and Shift-Tab.
@@ -1845,7 +1878,7 @@ impl Core {
 
     pub fn ime(&mut self, win: WinId, ime: Ime, platform: &mut dyn Platform) {
         let Some(w) = self.wins.get(&win) else { return };
-        if let Some(i) = w.focused.and_then(|f| w.tree.get(f)) {
+        if let Some(i) = w.focused.and_then(|f| w.input_node(f)) {
             self.send(win, i, &Event::Ime(ime), platform);
         }
     }
@@ -1878,7 +1911,7 @@ impl Core {
             }
         }
         let w = &self.wins[&win];
-        let focused = w.focused.and_then(|f| w.tree.get(f));
+        let focused = w.focused.and_then(|f| w.input_node(f));
         // With nothing focused, keys go to what's under the pointer.
         let under = || w.pointer.and_then(|p| w.tree.path_at(p, w.modal()).last().copied());
         let target = focused.or_else(|| if w.is_popup() { w.tree.root } else { under() });

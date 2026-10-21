@@ -292,6 +292,15 @@ content, under a dimming veil and at the top under the in-window menu bar:
 pointer or keys; Tab stays in the sheet, Return presses its `.default()`
 button and Escape its `.cancel()` one.
 
+When an alert or panel covers an editor sheet, the last layer painted owns
+pointer input, Tab, Return and Escape. The covered field's text/IME focus
+is suspended, then restored when that layer is uncovered, so cancelling
+a confirmation returns to the same draft. `cargo test -p aizome-kit --test
+nested_modals` checks stacked layers and focus restoration;
+`checks.x86_64-linux.koyomi-modal`
+drives the packaged calendar's recurring-event save/delete confirmations
+in a disposable VM.
+
 ```rust
 cx.alert(window, Alert::new("Delete “notes.md”?", "It goes to the Trash.")
     .destructive_button("Delete", Msg::Delete)
