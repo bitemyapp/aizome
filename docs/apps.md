@@ -96,7 +96,9 @@ palette. Search filters the sidebar and highlights options.
   previews; focus colour (amber, cyan, rose, lime); effects tier (Full,
   Lean, Austere) with a description of each; Size (small, medium, large);
   wallpaper for Night and Day (a grid of `/run/current-system/sw/share/backgrounds`
-  and `~/Pictures`); reduced motion.
+  and `~/Pictures`); reduced motion. Wallpaper choices distinguish System
+  default (the session's picture) from No picture (a plain background).
+  Each theme remembers its own choice, including after logout.
 - **Desktop & Deskbar**: Desks (names, folders, add/remove), Deskbar
   (collapsed, pinned apps, show the Shelf), desktop icons (show disks,
   Home, Trash), windows (stack new windows of the same app, double-click on a

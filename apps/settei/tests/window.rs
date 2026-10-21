@@ -24,6 +24,58 @@ fn appearance_shows_previews() {
     h.save_png(w, common::shots_dir().join("appearance-night.png"), 1.0);
 }
 
+#[test]
+fn no_picture_is_explicit_and_each_theme_can_return_to_the_system_default() {
+    use aizome_kit::layout::{Point, Size};
+    let (mut h, path) = common::open("wallpaper-choice", "appearance.wallpaper");
+    let w = h.window();
+    h.resize(w, Size::new(1000.0, 1400.0));
+    h.save_png(w, common::shots_dir().join("wallpaper-initial.png"), 1.0);
+    std::fs::write(
+        common::shots_dir().join("wallpaper-initial.json"),
+        serde_json::to_vec_pretty(&h.inspected(w)).unwrap(),
+    )
+    .unwrap();
+    let tile = |h: &aizome_kit::testing::Harness<settei::Settei>, label: &str| {
+        let item = h
+            .inspected(w)
+            .into_iter()
+            .find(|e| e["role"] == "button" && e["label"] == label && e["visible"] == true)
+            .expect(label);
+        let r = item["rect"].as_array().unwrap();
+        Point::new(
+            r[0].as_f64().unwrap() + r[2].as_f64().unwrap() / 2.0,
+            r[1].as_f64().unwrap() + r[3].as_f64().unwrap() / 2.0,
+        )
+    };
+    let at = tile(&h, "No picture");
+    h.click(w, at);
+    h.program().shared.flush();
+    let saved = aizome_config::Settings::load_from(&path).unwrap();
+    assert_eq!(saved.appearance.wallpaper_night.as_deref(), Some(""));
+    assert_eq!(saved.appearance.wallpaper_day, None, "the other theme is unchanged");
+    assert_eq!(saved.appearance.wallpaper_path(false), None);
+    h.save_png(w, common::shots_dir().join("wallpaper-no-picture-night.png"), 1.0);
+
+    let row = h.find_id(w, "entry:appearance.wallpaper").unwrap();
+    h.click(w, Point::new(row.x1 - 25.0, row.center().y));
+    assert!(h.texts(w).iter().any(|t| t == "Wallpaper for Day"));
+    let at = tile(&h, "No picture");
+    h.click(w, at);
+    h.program().shared.flush();
+    let saved = aizome_config::Settings::load_from(&path).unwrap();
+    assert_eq!(saved.appearance.wallpaper_night.as_deref(), Some(""));
+    assert_eq!(saved.appearance.wallpaper_day.as_deref(), Some(""));
+    assert_eq!(saved.appearance.wallpaper_path(true), None);
+    let at = tile(&h, "System default");
+    h.click(w, at);
+    h.program().shared.flush();
+    let saved = aizome_config::Settings::load_from(&path).unwrap();
+    assert_eq!(saved.appearance.wallpaper_day, None);
+    assert_eq!(saved.appearance.wallpaper_night.as_deref(), Some(""));
+    h.save_png(w, common::shots_dir().join("wallpaper-system-default-day.png"), 1.0);
+}
+
 /// The panes this test holds to their entries (the hardware panes have
 /// tests of their own).
 const MINE: [&str; 15] = [

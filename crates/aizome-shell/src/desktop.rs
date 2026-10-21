@@ -337,16 +337,9 @@ pub fn icon_at(icons: &[DeskIcon], positions: &HashMap<String, Point>, height: f
 }
 
 /// The wallpaper for a theme: the settings', else `AIZOME_WALLPAPER_NIGHT`
-/// or `_DAY`.
+/// or `_DAY`. An explicit empty setting means no picture.
 pub fn wallpaper_path(settings: &aizome_config::Settings, day: bool) -> Option<PathBuf> {
-    let configured =
-        if day { settings.appearance.wallpaper_day.clone() } else { settings.appearance.wallpaper_night.clone() };
-    configured
-        .map(|p| aizome_config::expand_home(&p))
-        .or_else(|| {
-            std::env::var_os(if day { "AIZOME_WALLPAPER_DAY" } else { "AIZOME_WALLPAPER_NIGHT" }).map(PathBuf::from)
-        })
-        .filter(|p| p.is_file())
+    settings.appearance.wallpaper_path(day).filter(|p| p.is_file())
 }
 
 #[cfg(test)]
