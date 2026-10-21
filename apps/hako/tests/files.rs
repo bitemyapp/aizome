@@ -281,6 +281,106 @@ fn the_trash_takes_and_gives_back() {
 }
 
 #[test]
+fn putting_back_a_folder_closes_its_trash_column() {
+    let s = Sandbox::new("restore-folder-column");
+    s.file("home/parent/child.txt", "restored content\n");
+    let (mut h, w) = open(&s, "parent", Layout::Column);
+    // Select the folder in its parent, then send it to the Trash.
+    h.send(Msg::GoPath(w, s.home()));
+    settle(&mut h);
+    click_name(&mut h, w, 0, "parent");
+    h.key(w, Key::Named(NamedKey::Backspace), Modifiers::SUPER);
+    settle(&mut h);
+    assert!(!s.home().join("parent").exists());
+    h.send(Msg::Go(w, Loc::Trash));
+    settle(&mut h);
+    click_name(&mut h, w, 0, "parent");
+    settle(&mut h);
+    assert_eq!(names(&h, w, 1), ["child.txt"]);
+    h.save_png(w, out("trash-folder-before-restore.png"), 2.0);
+    h.key(w, Key::Named(NamedKey::Backspace), Modifiers::SUPER);
+    settle(&mut h);
+    assert_eq!(std::fs::read_to_string(s.home().join("parent/child.txt")).unwrap(), "restored content\n");
+    assert!(!s.path().join("data/Trash/files/parent").exists());
+    assert!(names(&h, w, 0).is_empty());
+    h.save_png(w, out("trash-folder-after-restore.png"), 2.0);
+    let b = h.program().browser(w).unwrap();
+    assert_eq!(b.columns.len(), 1, "the restored folder no longer belongs to Trash");
+    assert_eq!(b.focus, 0);
+    assert!(!h.texts(w).iter().any(|t| t.contains("can't be read")));
+}
+
+#[test]
+fn an_explicit_path_can_open_through_a_hidden_ancestor() {
+    let s = Sandbox::new("hidden-ancestor");
+    s.file("home/.private/deep/note.txt", "reachable\n");
+    let (mut h, w) = open(&s, ".private/deep", Layout::Column);
+    assert!(!names(&h, w, 0).contains(&".private".to_owned()));
+    assert_eq!(h.program().browser(w).unwrap().location(), Some(&Loc::Folder(s.home().join(".private/deep"))));
+    assert_eq!(names(&h, w, 2), ["note.txt"]);
+    // The chosen location remains usable even though its ancestor's
+    // row was intentionally hidden in the initial Home listing.
+    h.named(w, NamedKey::Home, Modifiers::NONE);
+    assert_eq!(selected(&h, w), ["note.txt"]);
+    s.file("home/new.txt", "unrelated\n");
+    h.send(Msg::DirChanged(s.home()));
+    assert!(wait_for(&mut h, |p| p.browser(w).unwrap().columns[0].rows.iter().any(|e| e.display == "new.txt")));
+    assert_eq!(h.program().browser(w).unwrap().location(), Some(&Loc::Folder(s.home().join(".private/deep"))));
+    assert_eq!(selected(&h, w), ["note.txt"]);
+}
+
+#[test]
+fn an_explicit_path_can_open_through_an_unlistable_ancestor() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let s = Sandbox::new("unlistable-ancestor");
+    s.file("home/private/deep/note.txt", "reachable\n");
+    let private = s.home().join("private");
+    std::fs::set_permissions(&private, std::fs::Permissions::from_mode(0o111)).unwrap();
+    let (h, w) = open(&s, "private/deep", Layout::Column);
+    // Restore permissions before assertions so sandbox cleanup can run.
+    std::fs::set_permissions(&private, std::fs::Permissions::from_mode(0o700)).unwrap();
+    let b = h.program().browser(w).unwrap();
+    assert!(matches!(b.columns[1].load, hako::ui::browser::Load::Failed(_)));
+    assert_eq!(b.location(), Some(&Loc::Folder(private.join("deep"))));
+    assert_eq!(names(&h, w, 2), ["note.txt"]);
+}
+
+#[test]
+fn refreshing_an_ancestor_preserves_or_closes_the_path_and_keyboard_focus() {
+    for layout in [Layout::Column, Layout::List, Layout::Icons] {
+        let s = Sandbox::new("refresh-ancestor");
+        populate(&s);
+        let (mut h, w) = open(&s, "work/sidestep/crates", layout);
+        let before: Vec<_> = h.program().browser(w).unwrap().columns.iter().map(|c| c.loc.clone()).collect();
+        assert_eq!(before.len(), 4);
+        assert_eq!(h.program().browser(w).unwrap().focus, 3);
+        // An unrelated addition refreshes Home but must not collapse
+        // the selected work/sidestep/crates path or steal its focus.
+        s.file("home/new.txt", "unrelated\n");
+        h.send(Msg::DirChanged(s.home()));
+        assert!(wait_for(&mut h, |p| p.browser(w).unwrap().columns[0].rows.iter().any(|e| e.display == "new.txt")));
+        settle(&mut h);
+        let b = h.program().browser(w).unwrap();
+        assert_eq!(b.columns.iter().map(|c| c.loc.clone()).collect::<Vec<_>>(), before);
+        assert_eq!(b.focus, 3);
+        // Another program moves the ancestor out. Home survives; the
+        // obsolete descendants must close, and keyboard input goes Home.
+        std::fs::rename(s.home().join("work"), s.path().join("moved-work")).unwrap();
+        h.send(Msg::DirChanged(s.home()));
+        assert!(wait_for(&mut h, |p| !p.browser(w).unwrap().columns[0].rows.iter().any(|e| e.display == "work")));
+        settle(&mut h);
+        let b = h.program().browser(w).unwrap();
+        assert_eq!(b.columns.len(), 1, "{layout:?}: no obsolete descendants");
+        assert_eq!(b.focus, 0);
+        assert_eq!(h.focused_name(w).as_deref(), Some("col-0"));
+        h.named(w, NamedKey::Home, Modifiers::NONE);
+        assert_eq!(selected(&h, w), ["Desktop"]);
+        assert!(s.path().join("moved-work/sidestep/crates/sidestep-ui/src/lib.rs").is_file());
+    }
+}
+
+#[test]
 fn drags_move_within_a_disk_and_drops_copy_in() {
     let s = Sandbox::new("drag");
     populate(&s);
