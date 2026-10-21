@@ -14,6 +14,8 @@ struct Sumi {
     finds: Vec<FindRequest>,
     clicked: Vec<usize>,
     numbers: bool,
+    marks: Arc<Vec<std::ops::Range<usize>>>,
+    current_mark: Option<usize>,
 }
 
 #[derive(Clone, Debug)]
@@ -24,11 +26,19 @@ enum Msg {
     Goto(usize),
     /// A click on a `[` (a task's box).
     Clicked(usize),
+    Marks(Vec<std::ops::Range<usize>>, Option<usize>),
 }
 
 impl Sumi {
     fn new(text: &str) -> Sumi {
-        Sumi { content: EditorContent::new(text), finds: Vec::new(), clicked: Vec::new(), numbers: true }
+        Sumi {
+            content: EditorContent::new(text),
+            finds: Vec::new(),
+            clicked: Vec::new(),
+            numbers: true,
+            marks: Arc::new(Vec::new()),
+            current_mark: None,
+        }
     }
 }
 
@@ -66,6 +76,10 @@ impl Program for Sumi {
             Msg::Find(f) => self.finds.push(f),
             Msg::Goto(at) => self.content.set_selection(aizome_kit::Selection::caret(at)),
             Msg::Clicked(at) => self.clicked.push(at),
+            Msg::Marks(marks, current) => {
+                self.marks = Arc::new(marks);
+                self.current_mark = current;
+            }
         }
     }
     fn view(&self, _w: WindowKey) -> Element<Msg> {
@@ -77,6 +91,7 @@ impl Program for Sumi {
                 .on_find(Msg::Find)
                 .line_numbers(self.numbers)
                 .highlighter(markdown(), 0)
+                .marks(self.marks.clone(), self.current_mark)
                 .id("editor")
         ]
         .into()
@@ -185,6 +200,51 @@ fn typing_redraws_its_line_not_the_editor() {
     assert!(!damage.is_empty());
     let tall: f64 = damage.iter().map(|d| d.height()).fold(0.0, f64::max);
     assert!(tall <= 2.0 * 21.0 + 2.0, "one line (and the caret): {damage:?}");
+}
+
+#[test]
+fn search_marks_add_move_and_clear_without_changing_text_or_selection() {
+    let (mut h, w) = open("cat Cat caterpillar\nnumber:12 number:34\nplain line");
+    let selection = h.program().content.selection();
+    h.check_frame(w);
+    for marks in [vec![0..3, 4..7, 8..11], vec![4..7], vec![19..28], vec![]] {
+        h.send(Msg::Marks(marks, None));
+        let frame = h.check_frame(w);
+        assert_eq!(frame.differs, 0.0, "updated marks must match a full redraw: {frame:?}");
+        assert!(frame.damaged > 0.0 && frame.damaged <= 560.0 * 42.0, "only affected lines: {frame:?}");
+        assert_eq!(h.program().content.selection(), selection);
+        assert_eq!(h.program().content.text(), "cat Cat caterpillar\nnumber:12 number:34\nplain line");
+    }
+}
+
+#[test]
+fn current_search_mark_repaints_without_moving_the_selection() {
+    let (mut h, w) = open("雪 cat 雪 cat\nunchanged");
+    let selection = h.program().content.selection();
+    let marks = vec![2..5, 8..11];
+    h.send(Msg::Marks(marks.clone(), None));
+    h.check_frame(w);
+    for current in [Some(0), Some(1), None] {
+        h.send(Msg::Marks(marks.clone(), current));
+        let frame = h.check_frame(w);
+        assert_eq!(frame.differs, 0.0, "current mark must repaint: {frame:?}");
+        // The Unicode fallback font can make this line taller than 21pt.
+        assert!(frame.damaged > 0.0 && frame.damaged <= 560.0 * 30.0, "one line: {frame:?}");
+        assert_eq!(h.program().content.selection(), selection);
+    }
+}
+
+#[test]
+fn offscreen_search_mark_changes_do_not_redraw_visible_lines() {
+    let text: String = (0..100).map(|i| format!("line {i}\n")).collect();
+    let mut h = Harness::new(Sumi::new(&text));
+    let w = h.window();
+    h.check_frame(w);
+    let at = h.program().content.rope().line_to_char(90);
+    h.send(Msg::Marks(vec![at..at + 4], Some(0)));
+    let frame = h.check_frame(w);
+    assert_eq!(frame.differs, 0.0);
+    assert_eq!(frame.damaged, 0.0, "offscreen marks leave the visible buffer alone: {frame:?}");
 }
 
 #[test]
