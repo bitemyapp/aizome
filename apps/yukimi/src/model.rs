@@ -278,8 +278,9 @@ impl Model {
     }
 
     fn read_lock(&mut self) {
-        if let Some(state) = crate::paths::state_dir() {
-            self.update_history = crate::update_history::History::load(&state);
+        if !self.paths.elsewhere {
+            self.update_history =
+                crate::update_history::History::load(Path::new(yukimi_system::SAVED_CONFIGURATIONS), &self.generations);
         }
         if let Ok(text) = std::fs::read_to_string(self.setup.dir.join("flake.nix")) {
             self.sekka_url = edit::string_value(&text, &["inputs", "sekka", "url"]).ok().flatten();

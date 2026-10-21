@@ -128,18 +128,11 @@ fn inputs(app: &Yukimi, moves: Option<&BTreeMap<String, Movement>>) -> Vec<Eleme
             (Some(locked), None) => {
                 let source = input.original.as_ref().unwrap_or(locked).describe();
                 let mut subtitle = source.clone();
-                if let Some(rev) = locked.short_rev() {
-                    revisions = format!("Pinned: {rev}");
-                }
                 if !input.follows_inputs.is_empty() {
                     subtitle.push_str(&format!("  ·  uses this system's {}", input.follows_inputs.join(", ")));
                 }
                 let movement = moves.and_then(|m| m.get(&input.name));
-                if let Some(Movement::Newer(target)) = movement
-                    && let Some(rev) = target.short_rev()
-                {
-                    revisions.push_str(&format!(" → Target: {rev}"));
-                }
+                revisions = model.update_history.revisions(input, movement);
                 let status = status(
                     app,
                     &source,
@@ -161,8 +154,7 @@ fn inputs(app: &Yukimi, moves: Option<&BTreeMap<String, Movement>>) -> Vec<Eleme
                             .into(),
                     );
                 }
-                let last = model.update_history.last(&checks::subject(model), input);
-                if let Some(link) = crate::update_history::link(input, movement, last) {
+                if let Some(link) = model.update_history.link(input, movement) {
                     title = row![
                         title,
                         button(link.label)
@@ -344,8 +336,8 @@ pub fn page(app: &Yukimi) -> Element<Msg> {
         Kind::Flake => (
             "Sources",
             format!(
-                "Pinned revisions come from {} and may differ from the running system. Target is the version found \
-                 by the last update check. Last update shows the most recent successful change to that source.",
+                "Running and prepared revisions come from saved generations. Pinned is from {}. Target is from \
+                 the last update check. Last update compares the last saved change to each source.",
                 model.setup.dir.join("flake.lock").display()
             ),
         ),

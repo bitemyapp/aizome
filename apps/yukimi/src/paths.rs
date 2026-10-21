@@ -68,15 +68,6 @@ pub fn cache_dir() -> Option<PathBuf> {
     Some(cache_home()?.join("aizome/yukimi"))
 }
 
-/// Persistent update history, independent of disposable update checks.
-pub fn state_dir() -> Option<PathBuf> {
-    let home = std::env::var_os("XDG_STATE_HOME")
-        .filter(|v| !v.is_empty())
-        .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".local/state")))?;
-    Some(home.join("aizome/yukimi"))
-}
-
 /// The GTK Yukimi's cache, `~/.cache/yukimi`: its package index and last
 /// check serve until Yukimi has its own, so a system that already has one
 /// needn't spend a minute (and gigabytes) making it again.
