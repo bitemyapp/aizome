@@ -516,6 +516,7 @@ fn cpu_meter(m: &Reading) -> Element<BarMsg> {
             cx.canvas.fill_rect(Rect::new(x, top + TRACK - *h as f64, x + 3.0, top + TRACK), c);
         }
     })
+    .on_click(BarMsg::Run(Action::FocusApp { app_id: "org.aizome.Myaku".into() }))
     .text(format!("CPU {:.0}%", m.total), SemanticRole::Meter)
     .key("cpu")
     .into()
@@ -530,6 +531,7 @@ fn memory_meter(m: &Reading) -> Element<BarMsg> {
         cx.canvas.fill_rect(Rect::new(0.0, top, 4.0, top + TRACK), t.line2());
         cx.canvas.fill_rect(Rect::new(0.0, top + TRACK - h as f64, 4.0, top + TRACK), Hue::Blue.color(t));
     })
+    .on_click(BarMsg::Run(Action::FocusApp { app_id: "org.aizome.Myaku".into() }))
     .text(format!("Memory {:.0}%", m.memory), SemanticRole::Meter)
     .key("memory")
     .into()
