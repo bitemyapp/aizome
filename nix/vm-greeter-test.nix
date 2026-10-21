@@ -124,6 +124,16 @@ pkgs.testers.runNixOSTest {
     machine.start()
     machine.wait_for_unit("greetd.service")
 
+    with subtest("with sway's wlr portal enabled too, the portal is Aizome's patched one"):
+        # programs.sway enables NixOS's xdg.portal.wlr: its package gives the
+        # unit, and Aizome's ExecStart (one override, not two drop-ins) runs
+        # Aizome's portal, with NixOS's configuration outside Aizome.
+        unit = machine.succeed("cat /etc/systemd/user/xdg-desktop-portal-wlr.service.d/*.conf")
+        assert "xdg-desktop-portal-wlr-aizome" in unit, unit
+        wrapper = unit.split("ExecStart=")[-1].strip()
+        script = machine.succeed(f"cat {wrapper}")
+        assert "--config=" in script and "Aizome" in script, script
+
     with subtest("the greeter starts on its own compositor and lists both people"):
         greeter_up()
         shows("Alice Kimura")
