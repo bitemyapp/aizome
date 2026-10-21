@@ -31,15 +31,17 @@ pkgs.testers.runNixOSTest {
       python
       pkgs.wl-clipboard
     ];
-    environment.sessionVariables.GI_TYPELIB_PATH = lib.makeSearchPath "lib/girepository-1.0" [
-      pkgs.gtk3
-      pkgs.pango
-      pkgs.gdk-pixbuf
-      pkgs.atk
-      pkgs.harfbuzz
-      pkgs.glib
-      pkgs.gobject-introspection
-    ];
+    environment.sessionVariables.GI_TYPELIB_PATH = lib.makeSearchPath "lib/girepository-1.0" (
+      map lib.getLib [
+        pkgs.gtk3
+        pkgs.pango
+        pkgs.gdk-pixbuf
+        pkgs.atk
+        pkgs.harfbuzz
+        pkgs.glib
+        pkgs.gobject-introspection
+      ]
+    );
     environment.etc."shortcut-probe.py".text = ''
       import gi
       gi.require_version("Gtk", "3.0")
