@@ -143,7 +143,19 @@ impl Hostnamed {
 
 /// Serve everything; `timezone_env` is timedated's `SYSTEMD_ETC_LOCALTIME`.
 fn serve(bus: &common::TestBus, timezone_env: &str) -> (Vec<zbus::blocking::Connection>, Arc<Mutex<Vec<String>>>) {
+    serve_with_policy(bus, timezone_env, None)
+}
+
+fn serve_with_policy(
+    bus: &common::TestBus,
+    timezone_env: &str,
+    managed: Option<bool>,
+) -> (Vec<zbus::blocking::Connection>, Arc<Mutex<Vec<String>>>) {
     let calls = Arc::new(Mutex::new(Vec::new()));
+    let mut timezone_environment = vec![format!("SYSTEMD_ETC_LOCALTIME={timezone_env}"), "TZDIR=/etc/zoneinfo".into()];
+    if let Some(managed) = managed {
+        timezone_environment.push(format!("AIZOME_TIMEZONE_MANAGED={}", u8::from(managed)));
+    }
     let units = HashMap::from([
         ("systemd-timedated.service".to_owned(), "/org/freedesktop/systemd1/unit/timedated".to_owned()),
         ("systemd-localed.service".to_owned(), "/org/freedesktop/systemd1/unit/localed".to_owned()),
@@ -155,10 +167,7 @@ fn serve(bus: &common::TestBus, timezone_env: &str) -> (Vec<zbus::blocking::Conn
         .unwrap()
         .serve_at("/org/freedesktop/systemd1", Systemd { units })
         .unwrap()
-        .serve_at(
-            "/org/freedesktop/systemd1/unit/timedated",
-            Unit { environment: vec![format!("SYSTEMD_ETC_LOCALTIME={timezone_env}"), "TZDIR=/etc/zoneinfo".into()] },
-        )
+        .serve_at("/org/freedesktop/systemd1/unit/timedated", Unit { environment: timezone_environment })
         .unwrap()
         .serve_at(
             "/org/freedesktop/systemd1/unit/localed",
@@ -227,6 +236,39 @@ fn a_pinned_timezone_is_reported_and_not_tried() {
     assert!(time.snapshot().timezone_managed);
     assert!(matches!(time.set_timezone("Europe/Berlin").wait(), Err(Error::ManagedBySystem(_))));
     assert!(calls.lock().unwrap().iter().all(|c| !c.starts_with("SetTimezone")));
+}
+
+#[test]
+fn a_mutable_zone_stays_editable_after_timedated_writes_an_absolute_link() {
+    let bus = test_bus!();
+    let path = std::env::temp_dir().join(format!("aizome-mutable-localtime-{}", std::process::id()));
+    std::os::unix::fs::symlink("../etc/zoneinfo/America/Chicago", &path).unwrap();
+    let (_fakes, calls) = serve_with_policy(&bus, path.to_str().unwrap(), Some(false));
+    let time = TimeDate::with_bus(Some(bus.bus()), Wake::none());
+    assert!(eventually(|| time.snapshot().available));
+    assert!(!time.snapshot().timezone_managed);
+    // The real NixOS timedated writes this spelling on SetTimezone.
+    std::fs::remove_file(&path).unwrap();
+    std::os::unix::fs::symlink("/etc/zoneinfo/Asia/Tokyo", &path).unwrap();
+    time.set_timezone("Asia/Tokyo").wait().unwrap();
+    assert!(eventually(|| time.snapshot().timezone == "Asia/Tokyo"));
+    assert!(!time.snapshot().timezone_managed);
+    time.set_timezone("America/Chicago").wait().unwrap();
+    assert!(eventually(|| time.snapshot().timezone == "America/Chicago"));
+    assert!(!time.snapshot().timezone_managed);
+    assert_eq!(calls.lock().unwrap().iter().filter(|c| c.starts_with("SetTimezone")).count(), 2);
+    std::fs::remove_file(path).unwrap();
+}
+
+#[test]
+fn an_explicitly_managed_zone_is_not_tried_even_with_a_writable_path() {
+    let bus = test_bus!();
+    let (_fakes, calls) = serve_with_policy(&bus, "/var/lib/localtime", Some(true));
+    let time = TimeDate::with_bus(Some(bus.bus()), Wake::none());
+    assert!(eventually(|| time.snapshot().available));
+    assert!(time.snapshot().timezone_managed);
+    assert!(matches!(time.set_timezone("Asia/Tokyo").wait(), Err(Error::ManagedBySystem(_))));
+    assert!(calls.lock().unwrap().is_empty());
 }
 
 #[test]

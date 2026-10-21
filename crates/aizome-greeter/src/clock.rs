@@ -34,8 +34,14 @@ const MONTHS: [&str; 12] = [
 
 impl Now {
     pub fn local() -> Now {
-        // Safety: time(NULL) and localtime_r into a zeroed tm are sound.
+        // SAFETY: tzset rereads TZ and /etc/localtime; localtime_r writes
+        // only into the supplied tm. Refresh before converting: localtime_r
+        // alone may keep the time zone cached across a Settings change.
+        unsafe extern "C" {
+            fn tzset();
+        }
         unsafe {
+            tzset();
             let t = libc::time(std::ptr::null_mut());
             let mut tm: libc::tm = std::mem::zeroed();
             if libc::localtime_r(&t, &mut tm).is_null() {

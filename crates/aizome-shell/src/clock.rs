@@ -44,8 +44,14 @@ impl Local {
 
     pub fn at(t: SystemTime) -> Local {
         let secs = t.duration_since(UNIX_EPOCH).map(|d| d.as_secs() as libc::time_t).unwrap_or(0);
-        // SAFETY: `localtime_r` writes only into the `tm` given.
+        // SAFETY: tzset rereads TZ and /etc/localtime; localtime_r writes
+        // only into the supplied tm. Refresh before converting: localtime_r
+        // alone may keep the time zone cached across a Settings change.
+        unsafe extern "C" {
+            fn tzset();
+        }
         unsafe {
+            tzset();
             let mut tm: libc::tm = std::mem::zeroed();
             if libc::localtime_r(&secs, &mut tm).is_null() {
                 return Local::default();

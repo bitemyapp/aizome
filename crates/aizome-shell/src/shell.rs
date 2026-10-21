@@ -49,6 +49,7 @@ pub enum Msg {
     AwakeSet(Result<bool, String>),
     /// The clock's label turned.
     Tick,
+    TimeChanged,
     /// The settings file changed.
     SettingsChanged,
     Run(Action),
@@ -348,6 +349,7 @@ pub struct Shell {
     stream: Option<MsgSender<Msg>>,
     _settings_watch: Option<aizome_config::Watcher>,
     _apps_watch: Option<aizome_sys::apps::Watcher>,
+    _timedate: Option<aizome_sys::datetime::TimeDate>,
 }
 
 impl Shell {
@@ -451,6 +453,7 @@ impl Shell {
             stream: None,
             _settings_watch: None,
             _apps_watch: None,
+            _timedate: None,
         };
         s.read_settings();
         s.theme_day = s.settings.theme_now() == aizome_theme::ThemeName::Day;
@@ -1036,6 +1039,10 @@ impl Shell {
         self.sys = crate::sys::Sys::start(move || {
             tx2.send(Msg::Sys);
         });
+        let time_tx = tx.clone();
+        self._timedate = Some(aizome_sys::datetime::TimeDate::new(aizome_sys::Wake::new(move || {
+            time_tx.send(Msg::TimeChanged);
+        })));
         self.watch_desktop();
         self.icon_lookup = Some(aizome_sys::apps::IconLookup::from_env());
         self.start_lock();
@@ -1310,6 +1317,15 @@ impl Shell {
         .to_string()
     }
 
+    fn refresh_clock(&mut self, cx: &mut Cx<Msg>) {
+        self.now = Local::now();
+        let day = self.settings.theme_now() == aizome_theme::ThemeName::Day;
+        self.theme_changed(day);
+        if self.panel.as_ref().is_some_and(|p| p.widget == TrayWidget::Clock) {
+            self.refresh_agenda(cx);
+        }
+    }
+
     fn arm_clock(&mut self, cx: &mut Cx<Msg>) {
         cx.after(crate::clock::until_next_tick(self.bar_cfg.clock_seconds), Msg::Tick);
     }
@@ -1376,15 +1392,12 @@ impl Program for Shell {
             Msg::Awake(s) => self.keep_awake_status(s, cx),
             Msg::AwakeSet(r) => self.keep_awake_set(r, cx),
             Msg::Tick => {
-                self.now = Local::now();
+                self.refresh_clock(cx);
                 self.arm_clock(cx);
-                // Auto turns at its hours.
-                let day = self.settings.theme_now() == aizome_theme::ThemeName::Day;
-                self.theme_changed(day);
-                if self.panel.as_ref().is_some_and(|p| p.widget == TrayWidget::Clock) {
-                    self.refresh_agenda(cx);
-                }
             }
+            // A timezone change should reach the bar and lock screen now,
+            // without waiting for the next minute or starting another timer.
+            Msg::TimeChanged => self.refresh_clock(cx),
             Msg::SettingsChanged => {
                 self.reload_settings();
                 self.locate_if_wanted(cx);
