@@ -301,7 +301,9 @@ impl InputExt for State {
                     .filter(|w| l.wm.is_shown(*w))
                     .and_then(|w| l.wm.get(w))
                     .is_some_and(|w| !crate::cmdkey::is_kit_app(&w.app_id));
-            let keep_for_app = f10 && other_app && matches!(&action, Action::Shell(a) if a == "menu-bar");
+            let terminal_command = matches!(action, Action::TerminalClose | Action::TerminalQuit);
+            let keep_for_app = (f10 && other_app && matches!(&action, Action::Shell(a) if a == "menu-bar"))
+                || (terminal_command && !terminal_commands(self));
             // Inhibitors (VMs, remote desktops) take everything but the
             // core's keys.
             if !inhibited && !keep_for_app {
@@ -409,6 +411,25 @@ impl InputExt for State {
                 let cwd = self.desk_folder();
                 if let Err(e) = self.spawn(&argv, cwd) {
                     tracing::warn!("{e}");
+                }
+            }
+            Action::TerminalClose | Action::TerminalQuit => {
+                // Match the shell's fallback Close/Quit: a polite close
+                // request, for one window or every window with its app id.
+                // Recheck focus if this action came through IPC/settings.
+                if terminal_commands(self)
+                    && let Some(id) = focused
+                {
+                    let l = self.lg.r();
+                    let ids = if action == Action::TerminalQuit {
+                        let app = &l.wm.get(id).expect("focused terminal").app_id;
+                        l.wm.windows().filter(|w| &w.app_id == app).map(|w| w.id).collect()
+                    } else {
+                        vec![id]
+                    };
+                    for id in ids {
+                        self.close_window(id);
+                    }
                 }
             }
             Action::Spawn(argv) => {
@@ -644,6 +665,26 @@ fn sticky_key(st: &mut State, code: u32, pressed: bool, time: u32) {
         return;
     }
     st.key_through(code, pressed, time);
+}
+
+/// Only the terminal client itself may receive fallback window commands;
+/// an open shell layer or popup keeps its own keyboard decisions.
+fn terminal_commands(st: &State) -> bool {
+    let l = st.lg.r();
+    let Some(id) = l.wm.focused() else { return false };
+    let Some(w) = l.wm.get(id) else { return false };
+    let client_has_focus = st
+        .az
+        .seat
+        .get_keyboard()
+        .and_then(|k| k.current_focus())
+        .is_some_and(|f| st.az.window_for_root(&f.0) == Some(id));
+    crate::cmdkey::terminal_commands(
+        &w.app_id,
+        &st.az.settings.keys.terminals,
+        st.az.settings.keys.command_key_for_all_apps,
+        client_has_focus,
+    )
 }
 
 /// The modifiers a non-kit client sees for a ❖ chord: Ctrl (and Shift in
