@@ -20,6 +20,19 @@ let
       inherit (xkb) variant options model;
     };
   };
+  # The desktop Exec alone skips NixOS's environment/session setup. Keep a
+  # parent around too: upstream X11 entries such as startxfce4 do not stop
+  # the fake graphical target on exit, and the user manager may outlive them.
+  x11Session = pkgs.writeShellScript "aizome-x11-session" ''
+    cleanup() {
+      # A portal's Requisite can keep graphical-session.target needed even
+      # after the fake target stops. End the graphical session explicitly.
+      ${config.systemd.package}/bin/systemctl --user stop nixos-fake-graphical-session.target graphical-session.target
+      ${config.systemd.package}/bin/systemctl --user unset-environment DISPLAY XAUTHORITY XDG_SESSION_ID XDG_CURRENT_DESKTOP XDG_SESSION_DESKTOP XDG_SESSION_TYPE
+    }
+    trap cleanup EXIT
+    ${config.services.displayManager.sessionData.wrapper} "$@"
+  '';
   greeterConfig = toml.generate "aizome-greeter.toml" (
     {
       sessions = g.sessionDirs;
@@ -28,7 +41,7 @@ let
       # own VT.
       x11_prefix = lib.optionals g.x11 [
         "startx"
-        "/usr/bin/env"
+        "${x11Session}"
       ];
       hidden_users = config.services.displayManager.hiddenUsers;
       inherit (g) power;
