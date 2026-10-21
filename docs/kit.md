@@ -301,6 +301,13 @@ nested_modals` checks stacked layers and focus restoration;
 drives the packaged calendar's recurring-event save/delete confirmations
 in a disposable VM.
 
+Alert actions stay in a trailing row when all their measured labels fit.
+Otherwise they stack at the sheet's width, wrapping long labels without
+ellipsis. Short windows scroll the alert, and Tab reveals each focused
+action. Resizing preserves button order, focus, and default/cancel behavior.
+`cargo test -p aizome-kit --test alert_layout` covers four actions, a long
+two-action prompt, narrow/resized windows, and scrolling to actions.
+
 ```rust
 cx.alert(window, Alert::new("Delete “notes.md”?", "It goes to the Trash.")
     .destructive_button("Delete", Msg::Delete)
