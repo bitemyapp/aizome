@@ -85,6 +85,7 @@ aizomectl screenshot desktop.png
 - [docs/performance.md](docs/performance.md): the frame budget and its measurements.
 - [docs/profiling.md](docs/profiling.md): process memory, heap traces and optional debug symbols.
 - [docs/memory.md](docs/memory.md): measured memory interventions and their tradeoffs.
+- [docs/memory-handoff.md](docs/memory-handoff.md): resume the investigation on another machine and prioritize follow-up experiments.
 
 ## Licence
 

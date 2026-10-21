@@ -1,5 +1,7 @@
 # Memory experiments — 20 October 2026
 
+For continuation on another machine, see the [handoff and next experiments](memory-handoff.md).
+
 This investigation separates live allocations, allocator-retained pages,
 shared buffers, and shared executable code. Reducing one does not necessarily
 reduce the others. The most useful source changes were a prepared-image
