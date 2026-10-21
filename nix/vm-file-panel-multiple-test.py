@@ -164,9 +164,9 @@ for method in ["button", "return"]:
 
 with subtest("Return ignores a cursor row toggled off with Command-click"):
     choose_range()
-    user("aizomectl input key Super_L down")
+    user("aizomectl input key super down")
     click(text="second.png")
-    user("aizomectl input key Super_L up")
+    user("aizomectl input key super up")
     machine.screenshot("toggle-selected")
     key("Return")
     until(
@@ -180,9 +180,9 @@ with subtest("Return ignores a cursor row toggled off with Command-click"):
     chord("super+o")
     until("open panel", lambda: find(text="Open a Picture"))
     click(text="first.png")
-    user("aizomectl input key Super_L down")
+    user("aizomectl input key super down")
     click(text="first.png")
-    user("aizomectl input key Super_L up")
+    user("aizomectl input key super up")
     key("Return")
     assert find(text="Open a Picture") is not None
     machine.screenshot("toggle-empty")
