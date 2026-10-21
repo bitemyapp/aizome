@@ -3,7 +3,7 @@
 //! reduced motion. `[appearance]`, applied by the compositor, the shell and
 //! every app at once.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use aizome_config::{ThemeChoice, UiSize};
 use aizome_kit::prelude::*;
@@ -89,10 +89,10 @@ pub fn focus_name(f: FocusColor) -> &'static str {
 
 impl Appearance {
     /// The thumbnail of the wallpaper at `path`, once it's made, and an id.
-    fn thumb_for(&self, path: Option<&str>) -> Option<(Image, u64)> {
+    fn thumb_for(&self, path: Option<&Path>) -> Option<(Image, u64)> {
         let path = path?;
         let list = self.wallpapers.as_ref()?;
-        let (_, thumb) = list.iter().find(|(p, _)| p.as_os_str() == path)?;
+        let (_, thumb) = list.iter().find(|(p, _)| p == path)?;
         thumb.clone().map(|t| (t, aizome_kit::hash::hash_of(path)))
     }
 
@@ -109,7 +109,7 @@ impl Appearance {
         let walls = if choice == ThemeChoice::HighContrast {
             [None, None]
         } else {
-            [self.thumb_for(a.wallpaper_night.as_deref()), self.thumb_for(a.wallpaper_day.as_deref())]
+            [self.thumb_for(a.wallpaper_path(false).as_deref()), self.thumb_for(a.wallpaper_path(true).as_deref())]
         };
         let pic = press(preview::with_wallpapers(look, a.focus, a.effects, PREVIEW.0, PREVIEW.1, walls))
             .style(PressStyle::Card)
@@ -130,15 +130,29 @@ impl Appearance {
         let current = if self.day_tab { a.wallpaper_day.clone() } else { a.wallpaper_night.clone() };
         let (tw, th) = (wallpaper::THUMB.width, wallpaper::THUMB.height);
         let mut tiles: Vec<Element<Msg>> = Vec::new();
-        // None: the desktop's own colour.
+        // The explicit blank choice uses the desktop's own colour.
         let theme = if self.day_tab { ThemeName::Day } else { ThemeName::Night };
         let p = Palette::new(theme, a.focus);
-        let plain = container(crate::widgets::mark::<Msg>(6.0))
-            .center()
-            .width(tw)
-            .height(th)
-            .fill(Tone::Color(crate::widgets::c(p.desktop)));
-        tiles.push(self.tile(plain.into(), "No picture", current.is_none(), Msg::Wallpaper(None)));
+        let plain = || {
+            container(crate::widgets::mark::<Msg>(6.0))
+                .center()
+                .width(tw)
+                .height(th)
+                .fill(Tone::Color(crate::widgets::c(p.desktop)))
+        };
+        let default = aizome_config::Appearance::system_wallpaper(self.day_tab);
+        let default_content = if let Some(path) = default.as_deref() {
+            picture(self.thumb_for(Some(path)).map(|(image, _)| image), aizome_kit::hash::hash_of(path), tw, th)
+        } else {
+            plain().into()
+        };
+        tiles.push(self.tile(default_content, "System default", current.is_none(), Msg::Wallpaper(None)));
+        tiles.push(self.tile(
+            plain().into(),
+            "No picture",
+            current.as_deref() == Some(""),
+            Msg::Wallpaper(Some(String::new())),
+        ));
         if let Some(list) = &self.wallpapers {
             for (path, thumb) in list {
                 let s = path.display().to_string();
@@ -153,6 +167,7 @@ impl Appearance {
             }
             // A picture chosen from elsewhere.
             if let Some(c) = &current
+                && !c.is_empty()
                 && !list.iter().any(|(p, _)| p.display().to_string() == *c)
             {
                 let path = PathBuf::from(c);
@@ -221,8 +236,15 @@ impl Appearance {
         }
         let tx = cx.stream();
         let a = &cx.settings().appearance;
-        let chosen: Vec<PathBuf> =
-            [a.wallpaper_night.clone(), a.wallpaper_day.clone()].into_iter().flatten().map(PathBuf::from).collect();
+        let chosen: Vec<PathBuf> = [
+            a.wallpaper_path(false),
+            a.wallpaper_path(true),
+            aizome_config::Appearance::system_wallpaper(false),
+            aizome_config::Appearance::system_wallpaper(true),
+        ]
+        .into_iter()
+        .flatten()
+        .collect();
         let _ = std::thread::Builder::new().name("settei-wallpapers".into()).spawn(move || {
             let mut found = wallpaper::find(&wallpaper::dirs(), 48);
             // Pictures chosen from elsewhere, so the previews show them too.
@@ -327,7 +349,7 @@ impl Pane for Appearance {
             Msg::WallpaperTab(day) => self.day_tab = day,
             Msg::Wallpaper(w) => {
                 // A picture from elsewhere joins the grid, with a thumbnail.
-                if let (Some(p), Some(list)) = (&w, &mut self.wallpapers) {
+                if let (Some(p), Some(list)) = (w.as_ref().filter(|p| !p.is_empty()), &mut self.wallpapers) {
                     let path = PathBuf::from(p);
                     if !list.iter().any(|(x, _)| *x == path) {
                         list.push((path.clone(), None));
