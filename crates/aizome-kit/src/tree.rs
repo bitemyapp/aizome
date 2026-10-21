@@ -308,7 +308,7 @@ impl Tree {
     }
 
     /// Whether `a` is an ancestor of `b`.
-    fn is_ancestor(&self, a: usize, b: usize) -> bool {
+    pub(crate) fn is_ancestor(&self, a: usize, b: usize) -> bool {
         let mut at = self.nodes[b].parent;
         while let Some(p) = at {
             if p == a {
@@ -520,7 +520,9 @@ impl Tree {
             if n.widget.modal() {
                 found = Some(i);
             }
-            stack.extend(n.children.iter().copied());
+            // Visit in paint order: the last modal painted owns input.
+            // The stack pops its last item, so push children backwards.
+            stack.extend(n.children.iter().rev().copied());
         }
         found
     }
