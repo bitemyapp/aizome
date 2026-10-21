@@ -1865,6 +1865,69 @@ impl Shell {
 mod tests {
     use super::*;
 
+    fn app_identity_fixture() -> (aizome_kit::testing::Harness<Shell>, std::sync::mpsc::Receiver<(Request, Option<u64>)>)
+    {
+        use aizome_ipc::WindowInfo;
+        use aizome_sys::apps::{Locale, XdgDirs};
+        static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let root = std::env::temp_dir().join(format!("aizome-shell-identity-{}-{n}", std::process::id()));
+        let dirs = XdgDirs::rooted(&root);
+        let apps = dirs.data_home.join("applications");
+        std::fs::create_dir_all(&apps).unwrap();
+        std::fs::write(
+            apps.join("org.example.Editor.desktop"),
+            "[Desktop Entry]\nType=Application\nName=Editor\nExec=example-editor\nStartupWMClass=EditorWindow\n",
+        )
+        .unwrap();
+        let mut shell = Shell::new(Options::default());
+        shell.apps = Some(Arc::new(AppIndex::load_with(dirs, Locale::default())));
+        std::fs::remove_dir_all(root).unwrap();
+        shell.wm.reset(crate::wm::Snapshot {
+            current_desk: 1,
+            windows: ["org.example.Editor", "EditorWindow", "org.unrelated.Editor", "EditorWindow", "example-editor"]
+                .into_iter()
+                .enumerate()
+                .map(|(i, app)| WindowInfo {
+                    id: i as u64 + 1,
+                    app_id: app.into(),
+                    desk: Some(1),
+                    ..Default::default()
+                })
+                .collect(),
+            ..Default::default()
+        });
+        shell.wm.apply(&Event::WindowFocused { id: Some(2) });
+        shell.wm.apply(&Event::WindowFocused { id: Some(3) });
+        let (ipc, requests) = Ipc::recording();
+        shell.ipc = ipc;
+        (aizome_kit::testing::Harness::new(shell), requests)
+    }
+
+    #[test]
+    fn activation_and_quit_do_not_target_apps_with_similar_names() {
+        let (mut h, requests) = app_identity_fixture();
+        for app_id in ["org.example.Editor", "org.example.Editor.desktop", "editorwindow"] {
+            h.send(Msg::Run(Action::FocusApp { app_id: app_id.into() }));
+            assert_eq!(requests.try_recv().unwrap(), (Request::Focus { id: 2 }, None));
+            h.send(Msg::Run(Action::QuitApp { app_id: app_id.into() }));
+            let mut ids: Vec<_> = requests
+                .try_iter()
+                .map(|(req, _)| match req {
+                    Request::Close { id: Some(id) } => id,
+                    other => panic!("unexpected request: {other:?}"),
+                })
+                .collect();
+            ids.sort();
+            assert_eq!(ids, [1, 2, 4], "only the desktop ID and its explicit alias may be closed");
+        }
+        for (app_id, id) in [("org.unrelated.Editor", 3), ("example-editor", 5)] {
+            h.send(Msg::Run(Action::QuitApp { app_id: app_id.into() }));
+            assert_eq!(requests.try_recv().unwrap(), (Request::Close { id: Some(id) }, None));
+            assert!(requests.try_recv().is_err(), "unindexed apps still match their own exact ID");
+        }
+    }
+
     #[test]
     fn launchers_and_deskbar_activate_the_local_window_while_new_window_launches() {
         use crate::deskbar::DeskbarMsg;

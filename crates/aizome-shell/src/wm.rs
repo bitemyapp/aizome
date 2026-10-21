@@ -170,12 +170,15 @@ impl Wm {
     }
 
     /// The app's windows, most recently focused first. Resolve desktop
-    /// entry IDs and window app IDs through the same application index.
+    /// entry IDs and explicit window aliases through the application index,
+    /// without the display matcher's suffix or executable-name guesses.
     pub fn app_windows_by_recency(&self, app_id: &str, index: Option<&AppIndex>) -> Vec<&WindowInfo> {
-        let entry = index.and_then(|i| i.get(app_id).or_else(|| i.match_window(app_id)));
+        let entry = index.and_then(|i| i.match_window_identity(app_id));
         let matches = |w: &&WindowInfo| {
             w.app_id == app_id
-                || entry.is_some_and(|a| index.and_then(|i| i.match_window(&w.app_id)).is_some_and(|b| a.id == b.id))
+                || entry.is_some_and(|a| {
+                    index.and_then(|i| i.match_window_identity(&w.app_id)).is_some_and(|b| a.id == b.id)
+                })
         };
         let mut out: Vec<&WindowInfo> =
             self.recent.iter().filter_map(|id| self.windows.get(id)).filter(matches).collect();
