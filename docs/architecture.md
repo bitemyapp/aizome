@@ -115,7 +115,12 @@ the NeXT menu.
 For apps that don't use Aizome's kit, the compositor translates ❖ shortcuts
 into the Ctrl ones they expect (❖C → Ctrl+C; in terminals Ctrl+Shift+C), so
 the command key works everywhere. The setting is "Command key for all apps"
-(on by default).
+(on by default). In configured terminals, ❖W and ❖Q instead perform the
+fallback menu's Close and Quit: a polite close request to the current window
+or every window of that terminal app. Other terminal keys keep their normal
+translation; native and GTK apps keep their own Close/Quit handling. The
+`terminal-close` / `terminal-quit` bindings can be overridden or unbound in
+`keys.bindings`, and shortcut inhibitors still take precedence.
 
 ## IPC
 

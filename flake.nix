@@ -99,6 +99,7 @@
         koyomi-modal = import ./nix/vm-koyomi-modal-test.nix { inherit pkgs self; };
         shashin-modal = import ./nix/vm-shashin-modal-test.nix { inherit pkgs self; };
         file-panel-multiple = import ./nix/vm-file-panel-multiple-test.nix { inherit pkgs self; };
+        terminal-shortcuts = import ./nix/vm-terminal-shortcuts-test.nix { inherit pkgs self; };
         network-auth = import ./nix/vm-network-auth-test.nix { inherit pkgs self; };
       });
 
