@@ -213,6 +213,57 @@ fn cities_are_found_added_and_removed() {
 }
 
 #[test]
+fn city_reorder_shortcuts_move_selection_and_respect_boundaries() {
+    use aizome_kit::Program;
+    use aizome_kit::menu::{ItemSpec, Shortcut, ShortcutKey};
+
+    let mut r = rig("reorder-keys", ThemeChoice::Night, &CITIES, &[]);
+    let w = r.h.window();
+    r.h.click_text(w, "Kolkata");
+    let names = |h: &Harness<Tokei>| h.program().places.iter().map(|p| p.name.clone()).collect::<Vec<_>>();
+    let action = |h: &Harness<Tokei>, label: &str| {
+        h.program()
+            .menus()
+            .menus()
+            .iter()
+            .find(|m| m.title == "Clock")
+            .unwrap()
+            .items
+            .iter()
+            .find_map(|i| match i {
+                ItemSpec::Action(a) if a.label == label => Some(a.clone()),
+                _ => None,
+            })
+            .unwrap()
+    };
+    let reorder = Modifiers::SUPER | Modifiers::SHIFT;
+    r.h.named(w, NamedKey::ArrowUp, reorder);
+    assert_eq!(names(&r.h), ["Tokyo", "Kolkata", "New York", "Reykjavík"]);
+    assert_eq!(r.h.program().selected_place, Some(1));
+    assert_eq!(action(&r.h, "Move Up").shortcut, Some(Shortcut::cmd_key(ShortcutKey::Up).shift()));
+    assert_eq!(action(&r.h, "Move Down").shortcut, Some(Shortcut::cmd_key(ShortcutKey::Down).shift()));
+    r.h.named(w, NamedKey::ArrowUp, reorder);
+    let first = names(&r.h);
+    assert_eq!(first[0], "Kolkata");
+    assert!(!action(&r.h, "Move Up").enabled);
+    r.h.named(w, NamedKey::ArrowUp, reorder);
+    assert_eq!(names(&r.h), first);
+    for _ in 0..3 {
+        r.h.named(w, NamedKey::ArrowDown, reorder);
+    }
+    let last = names(&r.h);
+    assert_eq!(last, ["Tokyo", "New York", "Reykjavík", "Kolkata"]);
+    assert_eq!(r.h.program().selected_place, Some(3));
+    assert!(!action(&r.h, "Move Down").enabled);
+    r.h.named(w, NamedKey::ArrowDown, reorder);
+    assert_eq!(names(&r.h), last);
+    // These belong to the compositor (Fill / Minimise), not city ordering.
+    r.h.named(w, NamedKey::ArrowUp, Modifiers::SUPER | Modifiers::ALT);
+    r.h.named(w, NamedKey::ArrowDown, Modifiers::SUPER | Modifiers::ALT);
+    assert_eq!(names(&r.h), last);
+}
+
+#[test]
 fn alarms_are_made_scheduled_and_turned_off() {
     let mut r = rig("alarms", ThemeChoice::Night, &[], &[alarm("00000001", 6, 45, &[1, 2, 3, 4, 5], "Work")]);
     let w = r.h.window();
