@@ -462,6 +462,14 @@ the store.
 
 ### Myaku (Activity)
 
+Independent Aizome application scopes bound process groups, including an editor
+opened by Hako. The desktop shell is a launcher, not one application containing
+everything it starts. Ordinary descendants and browser helper scopes remain
+grouped. `nix build .#checks.x86_64-linux.myaku-grouping` exercises actual Hako,
+Sumi, Firefox and Myaku launches, independent inspectors, pause/resume and Quit
+cancel/confirm without signaling unrelated applications. It is a component test,
+not an ISO qualification result.
+
 Port Tatami's Activity (`desktop/tatami/activity` on Sekka's main): apps
 and processes with CPU, memory, energy, disk and GPU use; sorting, search,
 quit and force quit; graphs of CPU, memory, disk and network over time; the

@@ -2,9 +2,10 @@
 //!
 //! A process belongs with its parent, unless the parent is a process
 //! manager (init, a systemd instance, the kernel's thread spawner, the
-//! compositor), and with every other process in its systemd unit, unless
+//! compositor or desktop shell), and with every other process in its systemd unit, unless
 //! the unit is a manager's own. Aizome starts applications as units of
-//! their own (`app-aizome-ID-RANDOM.scope`), and Chromium and Electron move
+//! their own (`app-aizome-ID-RANDOM.scope`): entering a different such scope
+//! starts a new group, even when another application opened it. Chromium and Electron move
 //! their helpers into scopes of their own, so an application's processes
 //! come together however it was started.
 //!
@@ -141,6 +142,7 @@ fn manager(pid: u32, name: &str, kernel: bool) -> bool {
             "systemd"
                 | "init"
                 | "aizome"
+                | "aizome-shell"
                 | "Hyprland"
                 | "sway"
                 | "niri"
@@ -174,6 +176,12 @@ pub struct Node {
 impl Node {
     fn unit(&self) -> &str {
         self.cgroup.rsplit('/').next().unwrap_or("")
+    }
+
+    /// A deliberate desktop launch, not an application's private helper scope.
+    fn launch_scope(&self) -> bool {
+        let unit = self.unit();
+        unit.starts_with("app-aizome-") && unit.ends_with(".scope")
     }
 }
 
@@ -219,6 +227,10 @@ pub fn group(nodes: &[Node]) -> Vec<Vec<usize>> {
         }
         if let Some(&parent) = index.get(&node.ppid)
             && !managers[parent]
+            // Opening another app does not make it part of the opener. Do
+            // keep ordinary descendants and Chromium/Electron's own helper
+            // scopes together: a changed cgroup alone is not an app boundary.
+            && !(node.launch_scope() && node.cgroup != nodes[parent].cgroup)
         {
             sets.join(i, parent);
         }
@@ -399,5 +411,44 @@ mod tests {
         assert_eq!(theirs.kind, Kind::System, "another user's, seen by root");
         let mine = identify(&nodes, &groups[0], &[], None, 1000);
         assert_eq!(mine.kind, Kind::Service, "your own, without a window or launcher entry");
+    }
+
+    #[test]
+    fn shell_launches_and_opened_applications_keep_their_own_groups() {
+        let nodes = vec![
+            node(1, 0, "systemd", "/init.scope"),
+            node(10, 1, "aizome", "/user.slice/aizome.service"),
+            node(11, 10, "aizome-shell", "/user.slice/aizome.service"),
+            // The shell starts Settings directly, without a scope.
+            node(12, 11, "aizome-settei", "/user.slice/aizome.service"),
+            node(20, 11, "aizome-hako", "/user.slice/app-aizome-org.aizome.Hako-a.scope"),
+            // Opening a document starts Sumi as Hako's child in its own scope.
+            node(21, 20, "aizome-sumi", "/user.slice/app-aizome-org.aizome.Sumi-b.scope"),
+            node(22, 21, "helper", "/user.slice/app-aizome-org.aizome.Sumi-b.scope"),
+            node(30, 11, "firefox", "/user.slice/app-aizome-firefox-c.scope"),
+            node(31, 30, "firefox", "/user.slice/app-aizome-firefox-c.scope"),
+            node(40, 11, "aizome-myaku", "/user.slice/app-aizome-org.aizome.Myaku-d.scope"),
+        ];
+        let pids: Vec<Vec<u32>> = group(&nodes).iter().map(|g| g.iter().map(|&i| nodes[i].pid).collect()).collect();
+        assert_eq!(pids, [vec![1], vec![10], vec![11], vec![12], vec![20], vec![21, 22], vec![30, 31], vec![40]]);
+    }
+
+    #[test]
+    fn explicit_app_scopes_bound_parent_edges_but_helpers_still_follow() {
+        let nodes = vec![
+            node(1, 0, "systemd", "/init.scope"),
+            node(20, 1, "foot", "/user.slice/app-aizome-foot-a.scope"),
+            node(21, 20, "fish", "/user.slice/app-aizome-foot-a.scope"),
+            // An independently scoped launch is a new instance, even for the same app.
+            node(22, 21, "foot", "/user.slice/app-aizome-foot-b.scope"),
+            // An ordinary unscoped child remains part of the terminal's work.
+            node(23, 21, "sleep", "/user.slice/app-aizome-foot-a.scope"),
+            node(30, 1, "chrome", "/user.slice/app-aizome-chrome-c.scope"),
+            // Browsers move their helpers into non-launcher scopes of their own.
+            node(31, 30, "chrome", "/user.slice/app-chrome-helper-d.scope"),
+            node(32, 31, "chrome", "/user.slice/app-chrome-helper-d.scope"),
+        ];
+        let pids: Vec<Vec<u32>> = group(&nodes).iter().map(|g| g.iter().map(|&i| nodes[i].pid).collect()).collect();
+        assert_eq!(pids, [vec![1], vec![20, 21, 23], vec![22], vec![30, 31, 32]]);
     }
 }
