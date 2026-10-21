@@ -245,7 +245,21 @@ It checked:
   icons, the Deskbar and the Shelf.
 - **Every app of the suite:** each opens a window (Soroban, Koyomi, Tokei,
   Tenki, Fusen, Kura, Tansu, Settei, Yukimi, Myaku, Shashin, Annai, with
-  Hako and Sumi). Yukimi reads the laptop's own generations.
+  Hako and Sumi). Yukimi reads the laptop's own generations. Each is also
+  photographed filled on its own (`app-*.png`). On the build pinned as
+  Sekka `99bda5d` they showed:
+  - Tansu: the laptop's NVMe drive and its partitions.
+  - Myaku: the processes, with live graphs.
+  - Tenki: Chicago's forecast.
+  - Tokei: the world clocks.
+  - Kura: the disks and the Nix store, ready to scan.
+  - Koyomi: the month.
+  - Fusen: a note.
+  - Soroban: the keypad and its tape.
+  - Shashin: its empty state.
+  - Annai: the welcome.
+  - Settei: Network.
+  - Yukimi: the Overview.
 - **Both renderers:** the same scene draws under GLES and under pixman.
 - **The systray:** every widget the brief names (network, sound,
   Bluetooth, display, battery and power) next to the CPU and memory
