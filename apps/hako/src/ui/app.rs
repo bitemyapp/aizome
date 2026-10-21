@@ -554,12 +554,11 @@ impl Hako {
                 c.selected = Rc::new(Vec::new());
             }
         }
-        // A folder selected (revealed on the way down) opens the next.
-        let last = i + 1 == b.columns.len();
-        if last && b.open_after(i, fresh) {
-            if b.focus == i && b.columns[i].pending.is_none() && b.layout == Layout::Column {
-                // The focus stays where the selection is.
-            }
+        // Keep valid descendants on refresh, and close those whose
+        // selected parent moved out of this listing (including Put Back).
+        // A failed read does not prove that a known child disappeared:
+        // an explicit path may pass through an unlistable directory.
+        if result.is_ok() && b.refresh_after(i, fresh) {
             self.start_loads(cx, w);
         }
         // A rename asked for (a new folder) starts once it's there.

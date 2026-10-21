@@ -266,6 +266,11 @@ Desktop and the Shelf, image thumbnails cached in
 `$XDG_CACHE_HOME/thumbnails` (the freedesktop spec), hidden files toggle,
 sorting. Tabs are Aizome's own tab groups, so no tabs inside.
 
+Refreshing a listing keeps a still-selected folder's deeper columns
+open. If that folder leaves the listing (including Put Back from Trash),
+its obsolete columns close and keyboard focus returns to the surviving
+parent when needed.
+
 ### Sumi (Text Editor)
 
 The board's editor: a toolbar with the language pop-up ("Markdown ⌄"), B,
