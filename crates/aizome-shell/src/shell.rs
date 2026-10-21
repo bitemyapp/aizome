@@ -1593,6 +1593,22 @@ impl Program for Shell {
         }
     }
 
+    fn drag_started(&mut self, window: WindowKey, drag: DragId, _cx: &mut Cx<Msg>) {
+        if self.deskbar == Some(window) {
+            let v = &mut self.deskbar_visibility;
+            v.native_drag = Some(drag);
+            v.generation = v.generation.wrapping_add(1);
+        }
+    }
+
+    fn drag_ended(&mut self, drag: DragId, _action: DropAction, cx: &mut Cx<Msg>) {
+        if self.deskbar_visibility.native_drag == Some(drag) {
+            self.deskbar_visibility.native_drag = None;
+            self.arm_deskbar_hide(cx);
+            self.after_update(cx);
+        }
+    }
+
     fn activation_token(&mut self, request: ActivationRequest, token: Option<String>, _cx: &mut Cx<Msg>) {
         if let Some((l, cwd)) = self.launches.remove(&request) {
             crate::launch::start(self.apps.as_deref(), &l, token, cwd);

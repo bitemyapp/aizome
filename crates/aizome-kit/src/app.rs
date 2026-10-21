@@ -217,6 +217,11 @@ impl<P: Program> Runtime<P> {
                     self.core.close_key(key, platform);
                 }
             }
+            KitMsg::DragStarted { window, drag } => {
+                let mut cx = Cx { core: &mut self.core, platform, pool: &mut self.pool, _m: PhantomData };
+                self.program.drag_started(window, drag, &mut cx);
+                self.core.mark_all_dirty();
+            }
             KitMsg::AskShell(request) => match &mut self.shell {
                 Some(s) => s.send(&aizome_shell_proto::AppMessage::Request { request }),
                 None => log::debug!("no shell to ask {request:?}"),
@@ -339,6 +344,7 @@ impl<P: Program> Runtime<P> {
     pub fn drag_ended(&mut self, drag: u64, action: sidestep_ui::DropAction, platform: &mut dyn Platform) {
         let mut cx = Cx { core: &mut self.core, platform, pool: &mut self.pool, _m: PhantomData };
         self.program.drag_ended(crate::program::DragId(drag), action, &mut cx);
+        self.core.mark_all_dirty();
         self.flush(platform);
     }
 

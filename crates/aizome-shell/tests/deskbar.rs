@@ -246,6 +246,68 @@ fn auto_hide_keeps_context_menus_usable() {
 }
 
 #[test]
+fn auto_hide_waits_for_a_native_shelf_drag_to_finish_or_cancel() {
+    use aizome_kit::sidestep_ui::{DropAction, PointerButton};
+    use aizome_shell::actions::Action;
+    use std::time::Duration;
+
+    for action in [DropAction::Copy, DropAction::None] {
+        let mut h = scene(false);
+        with_mail_and_shelf(&mut h);
+        h.program_mut().deskbar_cfg.auto_hide = true;
+        h.send(Msg::Run(Action::SetDeskbarCollapsed(false)));
+        let db = window_titled(&h, "Deskbar");
+        h.resize(db, aizome_shell::deskbar::size(&h.program().deskbar_model()));
+        let from = h.find(db, "wallpaper-draft.png").unwrap().center();
+        h.enter(db, from);
+        h.press(db, from, PointerButton::Left, 1);
+        h.move_to(db, from + Vec2::new(-50.0, 0.0));
+        assert_eq!(h.drags().len(), 1, "a native drag started");
+        let drag = h.drags()[0].0;
+        h.leave(db);
+        h.advance(Duration::from_secs(1));
+        assert_eq!(h.program().deskbar, Some(db), "the native drag holds its source open");
+        h.end_drag(drag, action);
+        h.advance(Duration::from_millis(200));
+        assert_eq!(h.program().deskbar, Some(db), "completion retains the hide grace period");
+        h.advance(Duration::from_millis(200));
+        assert!(h.program().deskbar.is_none(), "auto-hide resumes after {action:?}");
+        assert_eq!(h.program().shelf.items.len(), 3, "a copy or cancellation keeps the Shelf item");
+    }
+}
+
+#[test]
+fn a_native_drag_keeps_its_hold_when_its_shelf_row_disappears() {
+    use aizome_kit::sidestep_ui::{DropAction, PointerButton};
+    use aizome_shell::actions::Action;
+    use std::time::Duration;
+
+    let mut h = scene(false);
+    with_mail_and_shelf(&mut h);
+    h.program_mut().deskbar_cfg.auto_hide = true;
+    h.send(Msg::Run(Action::SetDeskbarCollapsed(false)));
+    let db = window_titled(&h, "Deskbar");
+    h.resize(db, aizome_shell::deskbar::size(&h.program().deskbar_model()));
+    let from = h.find(db, "wallpaper-draft.png").unwrap().center();
+    h.enter(db, from);
+    h.press(db, from, PointerButton::Left, 1);
+    h.move_to(db, from + Vec2::new(-50.0, 0.0));
+    let drag = h.drags()[0].0;
+    h.leave(db);
+    h.program_mut().shelf.items.clear();
+    h.send(Msg::Nothing);
+    h.advance(Duration::from_secs(1));
+    assert_eq!(h.program().deskbar, Some(db), "the native lifecycle outlasts its source row");
+    h.enter(db, Point::new(60.0, 40.0));
+    h.end_drag(drag, DropAction::Copy);
+    h.advance(Duration::from_secs(1));
+    assert_eq!(h.program().deskbar, Some(db), "returning to the Deskbar prevents hiding after the drop");
+    h.leave(db);
+    h.advance(Duration::from_millis(400));
+    assert!(h.program().deskbar.is_none());
+}
+
+#[test]
 fn auto_hide_waits_for_a_window_drag_to_end() {
     use aizome_shell::widgets::drawn::DragPhase;
     use std::time::Duration;

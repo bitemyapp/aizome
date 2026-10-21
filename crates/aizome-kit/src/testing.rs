@@ -73,6 +73,8 @@ pub struct TestPlatform {
     /// Drags started out of the windows, in order (the drag's number is
     /// its place plus one).
     pub drags: Vec<(WinId, sidestep_ui::DragSource)>,
+    /// Simulate a platform that cannot start native drags.
+    pub reject_drags: bool,
     /// Each window's last frame as [`Harness::check_frame`] composed it.
     frames: HashMap<WinId, (u32, u32, Vec<u8>)>,
     /// Each window's pixels as [`Harness::render_damage`] keeps them.
@@ -113,6 +115,7 @@ impl TestPlatform {
             fullscreen: HashMap::new(),
             scrolls: HashMap::new(),
             drags: Vec::new(),
+            reject_drags: false,
             frames: HashMap::new(),
             kept: HashMap::new(),
             hidden: Default::default(),
@@ -277,6 +280,9 @@ impl Platform for TestPlatform {
     }
 
     fn start_drag(&mut self, id: WinId, source: sidestep_ui::DragSource) -> Option<u64> {
+        if self.reject_drags {
+            return None;
+        }
         self.drags.push((id, source));
         Some(self.drags.len() as u64)
     }

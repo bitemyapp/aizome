@@ -22,6 +22,9 @@ pub(crate) struct Visibility {
     pub control_inside: bool,
     pub menu: Option<u64>,
     pub dragging: Option<DragTarget>,
+    /// The platform owns this drag until drop or cancellation, even if its
+    /// Shelf row disappears or stops receiving pointer events.
+    pub native_drag: Option<DragId>,
     pub generation: u64,
 }
 
@@ -52,7 +55,7 @@ impl Shell {
         }
     }
 
-    fn arm_deskbar_hide(&mut self, cx: &mut Cx<Msg>) {
+    pub(crate) fn arm_deskbar_hide(&mut self, cx: &mut Cx<Msg>) {
         let v = &mut self.deskbar_visibility;
         if self.deskbar_cfg.auto_hide && v.revealed && !v.inside && !v.control_inside && v.menu.is_none() {
             v.generation = v.generation.wrapping_add(1);
@@ -207,6 +210,7 @@ impl Shell {
             self.deskbar_size = None;
             self.deskbar_visibility.inside = false;
             self.deskbar_visibility.dragging = None;
+            self.deskbar_visibility.native_drag = None;
             self.deskbar_visibility.menu = None;
             self.deskbar_drag = None;
         }
@@ -220,6 +224,7 @@ impl Shell {
                 self.deskbar_visibility.inside = false;
                 self.deskbar_visibility.menu = None;
                 self.deskbar_visibility.dragging = None;
+                self.deskbar_visibility.native_drag = None;
                 self.deskbar_drag = None;
             }
             (true, None) => {
@@ -401,6 +406,7 @@ impl Shell {
                     && !v.control_inside
                     && v.menu.is_none()
                     && v.dragging.is_none()
+                    && v.native_drag.is_none()
                 {
                     v.revealed = false;
                 }

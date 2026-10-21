@@ -122,6 +122,13 @@ pub trait Program: Sized + 'static {
         let _ = (window, state, cx);
     }
 
+    /// A native drag successfully started from `window` (or one of its
+    /// popups). Its matching [`Program::drag_ended`] reports completion or
+    /// cancellation; a rejected start does not call this hook.
+    fn drag_started(&mut self, window: WindowKey, drag: DragId, cx: &mut Cx<Self::Msg>) {
+        let _ = (window, drag, cx);
+    }
+
     /// A destination asks for the data of drag `drag` promised as `mime`
     /// ([`DragSource::promise`](sidestep_ui::DragSource::promise)): it, or
     /// none (the default).
