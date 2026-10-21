@@ -143,7 +143,7 @@ impl DisksState {
         let mut volumes: Vec<Volume> = self
             .blocks
             .iter()
-            .filter(|b| !b.hint_ignore && !b.hint_system)
+            .filter(|b| self.visible_volume(b))
             .filter(|b| {
                 let mountable = b.filesystem.is_some();
                 let locked = b.encrypted.as_ref().is_some_and(|e| e.cleartext_device.is_none());
@@ -170,6 +170,37 @@ impl DisksState {
             .collect();
         volumes.sort_by(|a, b| a.name.cmp(&b.name));
         volumes
+    }
+
+    fn visible_volume(&self, block: &BlockDevice) -> bool {
+        // A dm-crypt cleartext device has no Drive and UDisks can mark it
+        // HintSystem even when its encrypted backing volume is removable.
+        // Inherit that volume's policy, including nested cleartext mappings.
+        // Ordinary partition hints stay authoritative; a hidden partition
+        // must not become visible just because its whole disk is external.
+        let mut current = block;
+        let mut system = block.hint_system;
+        let mut inherit_system = true;
+        for _ in 0..=self.blocks.len() {
+            if current.hint_ignore {
+                return false;
+            }
+            if let Some(backing) = current.crypto_backing_device.as_deref() {
+                let Some(parent) = self.block(backing) else { return false };
+                current = parent;
+                if inherit_system {
+                    system = current.hint_system;
+                }
+            } else if let Some(partition) = &current.partition {
+                inherit_system = false;
+                let Some(parent) = self.block(&partition.table) else { return false };
+                current = parent;
+            } else {
+                return !system;
+            }
+        }
+        // Incomplete or cyclic ancestry must not expose an unknown device.
+        false
     }
 
     /// The disk the system runs from, as the desktop shows it: the

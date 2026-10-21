@@ -83,3 +83,32 @@ fn volumes_show_in_the_sidebar_with_eject_buttons() {
     assert!(h.texts(w).iter().any(|t| t == "sekka-nightly.iso"));
     h.save_png(w, out("volumes-night.png"), 2.0);
 }
+
+#[test]
+fn locked_volume_prompts_once_and_cancel_preserves_browser() {
+    use hako::ui::app::Sheet;
+    let s = Sandbox::new("locked-volume");
+    populate(&s);
+    let mut h = harness(&s, ThemeChoice::Night);
+    let w = h.window();
+    h.focus_window(w, true);
+    let block = "/org/freedesktop/UDisks2/block_devices/sdb1".to_owned();
+    h.program_mut().volumes.push(aizome_sys::disks::Volume {
+        block: block.clone(),
+        name: "PRIVATE".into(),
+        locked: true,
+        ..Default::default()
+    });
+    h.send(Msg::Mount(block.clone()));
+    assert_eq!(h.program().sheets.len(), 1);
+    let (&sheet, state) = h.program().sheets.iter().next().unwrap();
+    assert!(matches!(state, Sheet::Unlock { window, pass, busy: false, .. } if *window == w && pass.is_empty()));
+    assert!(h.texts(sheet).iter().any(|text| text == "Unlock PRIVATE"));
+    h.send(Msg::Mount(block));
+    assert_eq!(h.program().sheets.len(), 1, "repeat activation reuses the prompt");
+    h.send(Msg::UnlockPass(sheet, "test-only".into()));
+    assert!(h.click_text(sheet, "Cancel"));
+    assert!(h.program().sheets.is_empty());
+    assert!(h.program().mounting.is_empty());
+    assert_eq!(h.program().browser(w).unwrap().columns[0].loc, Loc::Folder(s.home()));
+}

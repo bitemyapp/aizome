@@ -19,7 +19,41 @@ pub fn view(h: &Hako, key: WindowKey, s: &Sheet) -> Element<Msg> {
         Sheet::Ask { job, all } => ask(h, *job, *all),
         Sheet::Confirm { what, .. } => confirm(h, key, what),
         Sheet::Message { title, body } => message(key, title, body),
+        Sheet::Unlock { name, pass, error, busy, .. } => unlock(key, name, pass, error, *busy),
     }
+}
+
+fn unlock(key: WindowKey, name: &str, pass: &str, error: &str, busy: bool) -> Element<Msg> {
+    let mut content = vec![
+        title(format!("Unlock {name}")),
+        text("Enter this volume's passphrase to unlock it and open its files.").wrap().width(Length::Fill).into(),
+        text_field(pass)
+            .password()
+            .id("unlock-pass")
+            .placeholder("Passphrase")
+            .enabled(!busy)
+            .on_change(move |p| Msg::UnlockPass(key, p))
+            .on_submit(Msg::UnlockSubmit(key))
+            .width(Length::Fill)
+            .into(),
+    ];
+    if !error.is_empty() {
+        content.push(text(error.to_owned()).role(Role::Danger).wrap().width(Length::Fill).into());
+    }
+    content.push(
+        row![
+            spacer(),
+            button("Cancel").cancel().enabled(!busy).on_press(Msg::CloseSheet(key)),
+            button(if busy { "Unlocking…" } else { "Unlock" })
+                .default()
+                .enabled(!busy && !pass.is_empty())
+                .on_press(Msg::UnlockSubmit(key)),
+        ]
+        .spacing(8.0)
+        .width(Length::Fill)
+        .into(),
+    );
+    frame(aizome_kit::column(content).spacing(14.0).width(Length::Fill).into(), 440.0)
 }
 
 fn frame(content: Element<Msg>, width: f64) -> Element<Msg> {
