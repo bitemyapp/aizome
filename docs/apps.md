@@ -342,6 +342,13 @@ days, label, sound; scheduled as systemd user timers so they fire when the
 app is closed, and wake from sleep when asked), a timer and a stopwatch with
 laps. Tabular IBM Plex Mono digits.
 
+On World Clock, Shift+Super+Up/Down moves the selected city. The Clock menu
+shows those shortcuts and disables each direction at its list boundary.
+Alt+Super+Up/Down remains the desktop's Fill/Minimise shortcuts. The
+`tokei-reorder` VM check exercises actual packaged input, both boundaries,
+unchanged window geometry during city moves, global window controls, and
+the saved order after Quit and relaunch.
+
 ### Soroban (Calculator)
 
 Basic, Scientific and Programmer (hex, dec, oct, bin; bitwise; word size)
