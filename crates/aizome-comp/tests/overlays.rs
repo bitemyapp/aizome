@@ -86,6 +86,38 @@ fn the_overview_shows_desks_and_moves_windows() {
 }
 
 #[test]
+fn a_parked_desk_suspends_its_windows_until_it_is_visited() {
+    let c = Compositor::start(Options::default());
+    let red = c.client(Spec::new("test.a", 0xcc2222).title("Red"));
+    let wa = c.wait_window("test.a");
+    c.ok(Request::MoveToDesk { id: Some(wa.id), desk: aizome_ipc::DeskSel::Index(2), follow: false });
+    c.ok(Request::Overview { state: Some(true) });
+    c.settle();
+    // Desk 2's card holds the red window's thumbnail: point at it.
+    let img = c.screenshot();
+    let mut at = None;
+    'find: for y in (0..img.height as i32).step_by(4) {
+        for x in (0..img.width as i32).step_by(4) {
+            if near(img.px(x, y), rgb(0xcc2222)) {
+                at = Some((x as f64 + 2.0, y as f64 + 2.0));
+                break 'find;
+            }
+        }
+    }
+    let (x, y) = at.expect("the red window's thumbnail on Desk 2's card");
+    c.ok(Request::Synthesize { events: vec![Synthetic::PointerMotion { x, y }] });
+    c.ok(Request::Synthesize { events: vec![Synthetic::Chord { keys: "p".into() }] });
+    red.wait_seen("suspended once its Desk is parked", |s| s.suspended);
+    keep(&c.screenshot(), "overview-parked");
+    // The overview stayed, unfiltered: p parked rather than typed.
+    let img = c.screenshot();
+    assert!(!near(img.px(x as i32, y as i32), rgb(0xcc2222)), "a parked Desk's windows show faintly");
+    // Going there wakes it.
+    c.ok(Request::Synthesize { events: vec![Synthetic::Chord { keys: "2".into() }] });
+    red.wait_seen("woken on arriving at its Desk", |s| !s.suspended);
+}
+
+#[test]
 fn a_marking_menu_flick_fills_without_drawing() {
     let c = Compositor::start(Options::default());
     let a = c.client(Spec::new("test.a", 0xcc2222));
