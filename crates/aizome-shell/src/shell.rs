@@ -309,6 +309,8 @@ pub struct Shell {
     pub(crate) item_icons: crate::systray::items::IconCache,
     /// What's left of the wheel over each status item, short of a step.
     pub(crate) item_wheel: HashMap<u64, aizome_kit::layout::Vec2>,
+    /// The processes playing sound, as last told to the compositor.
+    pub(crate) audible_sent: Vec<u32>,
     pub(crate) icon_lookup: Option<aizome_sys::apps::IconLookup>,
     /// The primary bar's Desks, by where they are across it.
     pub(crate) desk_strip: Vec<(u32, Rect)>,
@@ -425,6 +427,7 @@ impl Shell {
             icons: HashMap::new(),
             item_icons: HashMap::new(),
             item_wheel: HashMap::new(),
+            audible_sent: Vec::new(),
             icon_lookup: None,
             desk_strip: Vec::new(),
             bar_menu: None,
@@ -1359,6 +1362,12 @@ impl Program for Shell {
             }
             Msg::Sys => {
                 self.tray = self.sys.tray(&self.bar_cfg);
+                // What plays, for the overview's "audio playing".
+                let playing = self.sys.playing_pids();
+                if playing != self.audible_sent {
+                    self.ipc.send(aizome_ipc::Request::SetAudible { pids: playing.clone() });
+                    self.audible_sent = playing;
+                }
                 self.tray.awake = (self.awake != aizome_awake::Status::Off).then_some(self.awake);
                 self.sync_status_items();
                 self.session_events(cx);

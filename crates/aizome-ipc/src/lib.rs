@@ -241,6 +241,13 @@ pub enum Request {
         id: Option<WindowId>,
         rect: Rect,
     },
+    /// The processes playing sound now (the sound server's streams that
+    /// aren't paused), from the shell: the overview says which Desks have
+    /// audio playing.
+    SetAudible {
+        #[serde(default)]
+        pids: Vec<u32>,
+    },
     /// Opens or closes the Desks overview.
     Overview {
         #[serde(default)]
@@ -1033,6 +1040,8 @@ mod tests {
         assert_eq!(r, Request::Close { id: None });
         let r: Request = serde_json::from_str(r#"{"request":"move-to-desk","desk":2}"#).unwrap();
         assert_eq!(r, Request::MoveToDesk { id: None, desk: DeskSel::Index(2), follow: false });
+        let r: Request = serde_json::from_str(r#"{"request":"set-audible","pids":[42,7]}"#).unwrap();
+        assert_eq!(r, Request::SetAudible { pids: vec![42, 7] });
         let r: Request = serde_json::from_str(r#"{"request":"set-desk","desk":"Mail"}"#).unwrap();
         assert_eq!(r, Request::SetDesk { desk: DeskSel::Name("Mail".into()) });
         let r: Request = serde_json::from_str(r#"{"request":"hide-app","app_id":"foot"}"#).unwrap();

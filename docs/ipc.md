@@ -62,6 +62,7 @@ Protocol version: **1** (`version` reports it).
 | `move` | `id?`, `x`, `y` | `ok`; the content's top-left corner (the tab and frame sit outside it) |
 | `resize` | `id?`, `rect {x,y,w,h}` | `ok`; the content rectangle |
 | `overview` | `state?` | `ok`; the Desks overview |
+| `set-audible` | `pids` | `ok`; the processes playing sound now, from the shell (its sound streams that aren't paused). The overview says "audio playing" on the Desks whose windows belong to them or to a parent of them (a browser plays from a child process) |
 | `switcher` | `reverse?`, `state?` | `ok`; opens it (it stays until a pick or Esc, since no ❖ is held), `state: false` closes it |
 | `spawn` | `argv`, `cwd?`, `in_desk_folder` (default true) | `spawned {pid}`; with the session's environment, in `cwd`, else the current Desk's folder, else home |
 | `screenshot` | `output?`, `path?`, `window?`, `area? {x,y,w,h}`, `clipboard` (bool) | `screenshot {path}`; PNG of one output, a window (with its tab, frame and shadow), an area, or (none given) every output side by side; default path `~/Pictures/Screenshots/Screenshot YYYY-MM-DD at HH.MM.SS.png`; also emits `screenshot-taken` |

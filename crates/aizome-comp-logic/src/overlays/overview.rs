@@ -382,6 +382,9 @@ pub fn items(st: &mut State, output: &Output, scale: f64) -> aizome_comp_core::s
             rest.push_str(" · ");
             rest.push_str(&st);
         }
+        if l.desk_audible(desk) {
+            rest.push_str(" · audio playing");
+        }
         // Windows asking for attention, in amber after the rest.
         let urgent = l.wm.desk_urgent_count(desk);
         let new_w = if urgent > 0 { 70.0 } else { 0.0 };
