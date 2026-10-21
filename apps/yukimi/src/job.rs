@@ -51,6 +51,12 @@ pub fn explain(error: &str, system: bool, stopped: bool) -> String {
     if error == crate::ops::NO_HELPER {
         return error.to_owned();
     }
+    if error.contains("No authentication agent found") || error.contains("Error creating textual authentication agent")
+    {
+        return "The desktop's administrator password prompt is unavailable. Wait a moment and try again. \
+                If it keeps happening, sign out and back in. Nothing was changed."
+            .to_owned();
+    }
     if error.contains("dismissed") || error.contains("Not authorized") || error.contains("126") {
         return "Cancelled. Nothing was changed.".to_owned();
     }
@@ -344,6 +350,15 @@ echo '{{"ok":true}}'"#
             "Cancelled. Nothing was changed."
         );
         assert!(explain("x", false, true).starts_with("Stopped. Nothing"));
+        for error in [
+            "Error executing command as another user: No authentication agent found.",
+            "Error creating textual authentication agent: Error opening current controlling terminal for the process ('/dev/tty'): No such device or address",
+        ] {
+            let message = explain(error, true, false);
+            assert!(message.contains("password prompt is unavailable"));
+            assert!(!message.contains("put back"));
+            assert!(!message.contains("Cancelled"));
+        }
     }
 
     #[test]
