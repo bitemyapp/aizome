@@ -9,17 +9,19 @@ use std::marker::PhantomData;
 use std::path::PathBuf;
 
 use crate::Layoutable;
-use crate::element::{Element, MsgFn, MsgMap, RawElement};
+use crate::element::{Common, Element, MsgFn, MsgMap, RawElement};
 use crate::engine::{Core, KitMsg};
 use crate::icons::Icon;
-use crate::layout::{Align, Length};
+use crate::layout::{Align, Constraints, Length, Point, Size};
 use crate::platform::{Platform, WinId};
 use crate::program::WindowKey;
 use crate::text::text;
 use crate::theme::Role;
+use crate::widget::{LayoutCx, Widget};
 use crate::widgets::controls::{button, checkbox, icon_button};
 use crate::widgets::layout::container;
 use crate::widgets::layout::{column, row, spacer};
+use crate::widgets::scroll::scroll;
 use crate::widgets::text_field::text_field;
 
 /// How an alert's button behaves.
@@ -130,7 +132,7 @@ pub(crate) fn show_about(core: &mut Core, win: WinId) {
 pub(crate) fn alert_element(core: &Core, id: u64) -> Option<RawElement> {
     let a = core.alerts.get(&id)?;
     let m = &core.theme.metrics;
-    let mut buttons: Vec<Element<KitMsg>> = vec![spacer().into()];
+    let mut buttons = Vec::new();
     // Cancel first, the default last (at the right), as macOS orders them.
     let mut order: Vec<usize> = (0..a.buttons.len()).collect();
     order.sort_by_key(|&i| match a.buttons[i].kind {
@@ -141,27 +143,71 @@ pub(crate) fn alert_element(core: &Core, id: u64) -> Option<RawElement> {
     });
     for i in order {
         let b = &a.buttons[i];
-        let mut el = button(b.label.clone()).on_press(KitMsg::AlertChoice { alert: id, index: i }).key(i);
+        let mut el = button(b.label.clone()).wrap_label().on_press(KitMsg::AlertChoice { alert: id, index: i }).key(i);
         el = match b.kind {
             ButtonKind::Default => el.default(),
             ButtonKind::Cancel => el.cancel(),
             ButtonKind::Destructive => el.destructive(),
             ButtonKind::Normal => el,
         };
-        buttons.push(el.into());
+        buttons.push(Element::from(el).into_raw());
     }
+    let actions = Element::from_raw(RawElement::new(
+        AlertActions { gap: m.gap },
+        Common::sized(Length::Fill, Length::Shrink),
+        buttons,
+    ));
     let body: Element<KitMsg> = column(vec![
         text(a.title.clone()).size(m.title).weight(aizome_theme::typeface::WEIGHT_SEMIBOLD).wrap().into(),
         text(a.message.clone()).role(Role::Text2).wrap().into(),
         crate::widgets::layout::space(4.0),
-        row(buttons).spacing(m.gap).width(Length::Fill).into(),
+        actions,
     ])
     .spacing(8.0)
     .padding([20.0, 20.0, 16.0, 20.0])
     .align(Align::Start)
-    .width(Length::Fixed(400.0))
+    .width(Length::Fill)
     .into();
-    Some(body.into_raw())
+    Some(Element::from(scroll(body).width(400.0).height(Length::Shrink)).into_raw())
+}
+
+/// Keep a compact trailing row only when every action fits at its natural
+/// width. Otherwise stack full-width actions, letting long labels wrap.
+/// The same keyed children retain their focus and action semantics on resize.
+struct AlertActions {
+    gap: f64,
+}
+
+impl Widget for AlertActions {
+    fn name(&self) -> &'static str {
+        "alert-actions"
+    }
+
+    fn layout(&mut self, cx: &mut LayoutCx, bc: Constraints) -> Size {
+        let n = cx.child_count();
+        let sizes: Vec<_> = (0..n).map(|i| cx.layout_child(i, Constraints::UNBOUNDED)).collect();
+        let row_width = sizes.iter().map(|s| s.width).sum::<f64>() + self.gap * n.saturating_sub(1) as f64;
+        if row_width <= bc.max.width {
+            let height = sizes.iter().map(|s| s.height).fold(0.0, f64::max);
+            let size = bc.constrain(Size::new(row_width, height));
+            let mut x = (size.width - row_width).max(0.0);
+            for (i, child) in sizes.iter().enumerate() {
+                cx.place_child(i, Point::new(x, (size.height - child.height) / 2.0));
+                x += child.width + self.gap;
+            }
+            size
+        } else {
+            let width = bc.max.width;
+            let mut y = 0.0;
+            for i in 0..n {
+                let child = cx
+                    .layout_child(i, Constraints { min: Size::new(width, 0.0), max: Size::new(width, f64::INFINITY) });
+                cx.place_child(i, Point::new(0.0, y));
+                y += child.height + self.gap;
+            }
+            bc.constrain(Size::new(width, (y - self.gap).max(0.0)))
+        }
+    }
 }
 
 pub(crate) fn alert_chosen(core: &mut Core, alert: u64, index: usize) {

@@ -64,6 +64,7 @@ pub struct Button<Msg> {
     mono: bool,
     weight: Option<f32>,
     italic: bool,
+    wrap_label: bool,
     _m: PhantomData<fn() -> Msg>,
 }
 
@@ -85,6 +86,7 @@ pub fn button<Msg>(label: impl Into<Arc<str>>) -> Button<Msg> {
         mono: false,
         weight: None,
         italic: false,
+        wrap_label: false,
         _m: PhantomData,
     }
 }
@@ -182,6 +184,12 @@ impl<Msg> Button<Msg> {
         self.italic = true;
         self
     }
+
+    /// Alert actions must show their complete label even in a narrow sheet.
+    pub(crate) fn wrap_label(mut self) -> Self {
+        self.wrap_label = true;
+        self
+    }
 }
 
 impl<Msg> From<Button<Msg>> for Element<Msg> {
@@ -200,6 +208,7 @@ impl<Msg> From<Button<Msg>> for Element<Msg> {
             mono: b.mono,
             weight: b.weight,
             italic: b.italic,
+            wrap_label: b.wrap_label,
         };
         Element::from_raw(RawElement::new(w, b.common, Vec::new()))
     }
@@ -219,6 +228,7 @@ struct ButtonWidget {
     mono: bool,
     weight: Option<f32>,
     italic: bool,
+    wrap_label: bool,
 }
 
 impl ButtonWidget {
@@ -229,7 +239,11 @@ impl ButtonWidget {
         let mut f = if self.mono { FontSpec::mono(size) } else { FontSpec::ui(size) };
         f.weight = weight;
         f.italic = self.italic;
-        TextSpec::new(f, color)
+        let mut spec = TextSpec::new(f, color);
+        if self.wrap_label {
+            spec.wrap = sidestep_ui::Wrap::Words;
+        }
+        spec
     }
 
     fn icon_size(&self, t: &Theme) -> f64 {
@@ -316,7 +330,7 @@ impl Widget for ButtonWidget {
         let iw = if self.icon.is_some() { self.icon_size(t) } else { 0.0 };
         let gap = if tw > 0.0 && iw > 0.0 { 6.0 } else { 0.0 };
         let pad = if self.compact || self.style == ButtonStyle::Plain { 6.0 } else { 12.0 };
-        let h = m.control;
+        let mut h = m.control;
         let mut w = tw + iw + gap + 2.0 * pad;
         if tw == 0.0 {
             w = w.max(if self.compact { 24.0 } else { h });
@@ -324,6 +338,14 @@ impl Widget for ButtonWidget {
             w = w.max(64.0);
         } else {
             w = w.max(24.0);
+        }
+        if self.wrap_label
+            && let Some(label) = &self.label
+        {
+            let width = bc.constrain(Size::new(w.ceil(), h)).width;
+            let available = (width - 2.0 * pad - iw - gap).max(1.0);
+            let text = cx.env.text.layout(t, label, &self.label_spec(t, t.text()), Some(available));
+            h = h.max(text.size().height.ceil() + 8.0);
         }
         bc.constrain(Size::new(w.ceil(), h))
     }
@@ -341,6 +363,22 @@ impl Widget for ButtonWidget {
             enabled,
             self.selected,
         );
+        if self.wrap_label {
+            let pad = if self.compact || self.style == ButtonStyle::Plain { 6.0 } else { 12.0 };
+            let iw = if self.icon.is_some() { self.icon_size(t) } else { 0.0 };
+            let gap = if self.label.as_ref().is_some_and(|l| !l.is_empty()) && iw > 0.0 { 6.0 } else { 0.0 };
+            if let Some(icon) = self.icon {
+                icon.draw(cx.canvas, Point::new(pad, face.y0 + ((face.height() - iw) / 2.0).round()), iw, fg);
+            }
+            if let Some(label) = &self.label {
+                let mut spec = self.label_spec(t, fg);
+                spec.align = sidestep_ui::Alignment::Center;
+                let text = cx.layout_text(label, &spec, Some((face.width() - 2.0 * pad - iw - gap).max(1.0)));
+                let y = face.y0 + ((face.height() - text.size().height) / 2.0).round();
+                cx.canvas.draw_text(&text, Point::new(pad + iw + gap, y));
+            }
+            return;
+        }
         let tw = match &self.label {
             Some(l) if !l.is_empty() => cx.layout_text(l, &self.label_spec(t, fg), None).size().width.ceil(),
             _ => 0.0,
@@ -369,6 +407,7 @@ impl Widget for ButtonWidget {
     fn hash(&self, h: &mut PaintHasher) {
         h.add(&(self.label.as_deref(), self.icon, self.style, self.destructive, self.enabled, self.compact));
         h.add(&(self.selected, self.mono, self.weight.map(f32::to_bits), self.italic, self.on_press.is_some()));
+        h.add(&self.wrap_label);
     }
 
     fn hit(&self) -> bool {
