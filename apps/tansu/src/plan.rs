@@ -343,10 +343,7 @@ impl Plan {
                     return Err("There's no filesystem to label.".into());
                 }
                 if seg.is_unlocked() || seg.is_locked() {
-                    return Err(
-                        "An encrypted volume's label is its filesystem's: unlock it and label that, or format it."
-                            .into(),
-                    );
+                    return Err("Changing labels on encrypted filesystems isn't supported here.".into());
                 }
                 if is_new || seg.pending.contains(&Mark::Format) {
                     return Ok(());
