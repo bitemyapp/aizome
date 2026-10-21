@@ -101,6 +101,7 @@
         file-panel-multiple = import ./nix/vm-file-panel-multiple-test.nix { inherit pkgs self; };
         terminal-shortcuts = import ./nix/vm-terminal-shortcuts-test.nix { inherit pkgs self; };
         shashin-wallpaper = import ./nix/vm-shashin-wallpaper-test.nix { inherit pkgs self; };
+        standard-menu = import ./nix/vm-standard-menu-test.nix { inherit pkgs self; };
         wallpaper-choice = import ./nix/vm-wallpaper-choice-test.nix { inherit pkgs self; };
         network-auth = import ./nix/vm-network-auth-test.nix { inherit pkgs self; };
       });
