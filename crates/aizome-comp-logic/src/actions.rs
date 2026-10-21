@@ -72,6 +72,13 @@ impl Actions for State {
         let prev = l.wm.focused();
         l.wm.focus(id);
         let now = l.wm.focused();
+        // Selecting a tab also changes the previous active member's IPC
+        // state, even when the previously focused window was outside it.
+        if let Some(id) = now {
+            for member in l.wm.group_members(id) {
+                l.window_changed(member);
+            }
+        }
         if prev != now {
             for (w, on) in [(prev, false), (now, true)] {
                 if let Some(w) = w {
@@ -116,10 +123,14 @@ impl Actions for State {
     /// unhidden) and focuses it.
     fn activate_window(&mut self, id: WinId) {
         let before = self.lg.r().wm.current_desk();
+        let hidden_app = self.lg.r().wm.get(id).filter(|w| w.hidden).map(|w| w.app_id.clone());
         let desk_changed = self.lg.m().wm.reveal(id);
         if desk_changed {
             let after = self.lg.r().wm.current_desk();
             desk_switched(self, before, after);
+        }
+        if let Some(app) = hidden_app {
+            after_app_change(self, &app);
         }
         self.lg.m().window_changed(id);
         // Asked for (the switcher, a Deskbar row, IPC): the keys go to it,
