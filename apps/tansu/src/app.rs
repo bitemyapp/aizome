@@ -46,6 +46,8 @@ pub struct CreateForm {
     pub max: u64,
     pub size: u64,
     pub size_text: String,
+    /// Invalid typed input must never submit the last valid slider value.
+    pub size_error: Option<String>,
     pub unit: usize,
     /// An index into [`fs::FORMATS`]; one past them is "Unformatted".
     pub fs: usize,
@@ -66,6 +68,7 @@ pub struct ResizeForm {
     pub max: u64,
     pub size: u64,
     pub size_text: String,
+    pub size_error: Option<String>,
     pub unit: usize,
 }
 
@@ -639,6 +642,7 @@ impl Tansu {
                     max: seg.size,
                     size,
                     size_text: text,
+                    size_error: None,
                     unit: 1,
                     fs: 0,
                     label: String::new(),
@@ -676,6 +680,7 @@ impl Tansu {
                     max,
                     size: seg.size,
                     size_text: size_text(seg.size, unit),
+                    size_error: None,
                     unit,
                     last_used: last,
                 };
@@ -737,18 +742,27 @@ impl Tansu {
             (SheetKind::Create(f), SheetMsg::Size(mib)) => {
                 f.size = ((mib.round() as u64) * MIB).clamp(MIB, f.max);
                 f.size_text = size_text(f.size, f.unit);
+                f.size_error = None;
             }
             (SheetKind::Create(f), SheetMsg::Unit(u)) => {
                 f.unit = u;
                 f.size_text = size_text(f.size, u);
+                f.size_error = None;
             }
             (SheetKind::Create(f), SheetMsg::SizeText(t)) => {
-                if let Some(bytes) = parse_size(&t, UNITS[f.unit].1) {
-                    f.size = (bytes / MIB * MIB).clamp(MIB, f.max);
-                }
+                f.size_error = match typed_size(&t, UNITS[f.unit].1, MIB, f.max) {
+                    Ok(size) => {
+                        f.size = size;
+                        None
+                    }
+                    Err(error) => Some(error),
+                };
                 f.size_text = t;
             }
             (SheetKind::Create(f), SheetMsg::Submit) => {
+                if f.size_error.is_some() {
+                    return;
+                }
                 let f = f.clone();
                 if let Some(e) = passphrase_problem(f.encrypt, &f.pass, &f.pass2) {
                     sheet.error = Some(e);
@@ -782,18 +796,27 @@ impl Tansu {
             (SheetKind::Resize(f), SheetMsg::Size(mib)) => {
                 f.size = ((mib.round() as u64) * MIB).clamp(f.min, f.max);
                 f.size_text = size_text(f.size, f.unit);
+                f.size_error = None;
             }
             (SheetKind::Resize(f), SheetMsg::Unit(u)) => {
                 f.unit = u;
                 f.size_text = size_text(f.size, u);
+                f.size_error = None;
             }
             (SheetKind::Resize(f), SheetMsg::SizeText(t)) => {
-                if let Some(bytes) = parse_size(&t, UNITS[f.unit].1) {
-                    f.size = (bytes / MIB * MIB).clamp(f.min, f.max);
-                }
+                f.size_error = match typed_size(&t, UNITS[f.unit].1, f.min, f.max) {
+                    Ok(size) => {
+                        f.size = size;
+                        None
+                    }
+                    Err(error) => Some(error),
+                };
                 f.size_text = t;
             }
             (SheetKind::Resize(f), SheetMsg::Submit) => {
+                if f.size_error.is_some() {
+                    return;
+                }
                 let (seg, size) = (f.seg, f.size);
                 if self.queue(|p, _, l| p.resize(l, seg, size)) {
                     self.close_sheet(cx);
@@ -1035,7 +1058,18 @@ pub fn parse_size(text: &str, unit: u64) -> Option<u64> {
         "tib" => 1 << 40,
         _ => return None,
     };
-    Some((n * mult as f64) as u64)
+    let bytes = n * mult as f64;
+    (bytes.is_finite() && bytes < u64::MAX as f64).then_some(bytes as u64)
+}
+
+/// Validate edited text before aligning the requested size. Slider and unit
+/// changes already hold exact bytes; don't reparse their rounded display text.
+fn typed_size(text: &str, unit: u64, min: u64, max: u64) -> Result<u64, String> {
+    let bytes = parse_size(text, unit).ok_or_else(|| "Enter a size, such as 512 MB or 1.5 GB.".to_owned())?;
+    if bytes < min || bytes > max {
+        return Err(format!("Enter a size from {min} to {max} bytes."));
+    }
+    Ok((bytes / MIB * MIB).max(min))
 }
 
 impl Program for Tansu {

@@ -405,6 +405,11 @@ cannot be written. The system image-mount helper enables automatic detach only
 after mounting succeeds, and releases its own loop if probing or mounting fails.
 `nix build .#checks.x86_64-linux.loop-images` checks these lifetimes against real
 UDisks2 and kernel loop devices in a disposable VM, including error recovery.
+Invalid or out-of-range typed
+partition sizes stay in the create or resize dialog with an explanation;
+they cannot queue the last valid size. Correct the text or choose a size with
+the slider to continue. `checks.x86_64-linux.tansu-size` exercises the packaged
+interface on its in-memory sample disks; it does not test real storage.
 Everything through UDisks2
 (`aizome-sys::disks`). It never touches a disk in tests: use mocks, and
 loop devices only inside the VM test.
