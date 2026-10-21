@@ -773,7 +773,7 @@ impl Shell {
                     self.ipc.send(Request::Close { id: Some(w.id) });
                 }
             }
-            Action::FocusApp { app_id } => match self.wm.app_windows_by_recency(&app_id).first() {
+            Action::FocusApp { app_id } => match self.wm.app_window_to_activate(&app_id, self.apps.as_deref()) {
                 Some(w) => self.ipc.send(Request::Focus { id: w.id }),
                 None => self.launch(Launch::App { app_id, targets: vec![] }, cx),
             },

@@ -168,8 +168,8 @@ impl Shell {
     pub fn deskbar_msg(&mut self, m: DeskbarMsg, cx: &mut Cx<Msg>) {
         match m {
             DeskbarMsg::FocusApp(app_id) => {
-                let hidden = self.wm.app_windows_by_recency(&app_id).iter().all(|w| w.hidden || w.minimised);
-                match self.wm.app_windows_by_recency(&app_id).first() {
+                let hidden = self.wm.app_windows_by_recency(&app_id, None).iter().all(|w| w.hidden || w.minimised);
+                match self.wm.app_windows_by_recency(&app_id, None).first() {
                     Some(w) if hidden => {
                         let id = w.id;
                         self.ipc.send(Request::ShowApp { app: crate::shell::app_sel(&app_id) });

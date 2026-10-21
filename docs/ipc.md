@@ -131,6 +131,18 @@ cargo test -p aizome-comp --test layout_desktop -- --ignored --nocapture
 It needs the shell, Chrome and Calculator installed. Chrome uses a fresh
 temporary profile and a blank page. Both D-Bus addresses are isolated from
 the login session; no physical input or session services are changed.
+
+The app activation check needs only a built shell. It selects an already
+running app through the real palette and checks raising, keyboard focus,
+Desk switching, hidden/minimised windows, sticky windows and stack tabs.
+Its fixture uses different desktop and window app IDs and detects duplicate
+launches:
+
+```sh
+cargo build -p aizome-comp -p aizome-shell
+AIZOME_ACTIVATION_TEST_SHELL="${CARGO_TARGET_DIR:-target}/debug/aizome-shell" \
+cargo test -p aizome-comp --test layout_desktop palette_reveals_running_apps_on_their_desks -- --ignored --nocapture
+```
 Screenshots are kept in the Cargo target's `tmp/aizome-shots/` directory.
 Use a separate `CARGO_TARGET_DIR` when another checkout is being built.
 
