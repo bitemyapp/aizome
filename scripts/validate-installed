@@ -137,6 +137,14 @@ done
 sleep 4
 shot 06-apps 1
 c windows >"$out/windows.txt"
+# Each app on its own, filled, as it opened.
+for id in Soroban Koyomi Tokei Tenki Fusen Kura Tansu Settei Yukimi Myaku Shashin Annai; do
+  w=$(win "org.aizome.$id")
+  [ -n "$w" ] || continue
+  c focus "$w"; c fill "$w" on
+  shot "app-$(echo "$id" | tr '[:upper:]' '[:lower:]')" 1.2
+  c fill "$w" off
+done
 # Settings on its own, filled.
 c focus "$(win org.aizome.Settei)"; c fill "$(win org.aizome.Settei)" on; shot 07-settings 1.5
 c fill "$(win org.aizome.Settei)" off
