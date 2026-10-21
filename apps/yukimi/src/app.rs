@@ -683,7 +683,22 @@ impl Yukimi {
         self.job = Some(job);
         self.job_sheet = Some(cx.show_sheet(self.window));
         let steps = match &self.runner {
-            Runner::Real => operation.steps(&self.model),
+            Runner::Real => {
+                let steps = operation.steps(&self.model);
+                if self.model.setup.kind == Kind::Flake
+                    && (operation.is_update() || matches!(operation, Operation::FollowBranch { .. }))
+                    && let Some(state) = crate::paths::state_dir()
+                {
+                    crate::update_history::recording_steps(
+                        steps,
+                        self.model.setup.dir.clone(),
+                        checks::subject(&self.model),
+                        state,
+                    )
+                } else {
+                    steps
+                }
+            }
             Runner::Mock(steps) => steps(&operation),
         };
         let tx = cx.stream();

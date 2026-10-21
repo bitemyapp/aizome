@@ -112,6 +112,7 @@ pub struct Model {
     pub catalog: Vec<Application>,
     /// A flake's inputs, from `flake.lock`.
     pub inputs: Vec<Input>,
+    pub update_history: crate::update_history::History,
     /// Where `flake.nix` says Sekka comes from, when it does.
     pub sekka_url: Option<String>,
     /// A channel system's channels.
@@ -140,6 +141,7 @@ impl Default for Model {
             allow_unfree: false,
             catalog: Vec::new(),
             inputs: Vec::new(),
+            update_history: Default::default(),
             sekka_url: None,
             channels: Vec::new(),
             nixpkgs: None,
@@ -276,6 +278,9 @@ impl Model {
     }
 
     fn read_lock(&mut self) {
+        if let Some(state) = crate::paths::state_dir() {
+            self.update_history = crate::update_history::History::load(&state);
+        }
         if let Ok(text) = std::fs::read_to_string(self.setup.dir.join("flake.nix")) {
             self.sekka_url = edit::string_value(&text, &["inputs", "sekka", "url"]).ok().flatten();
         }

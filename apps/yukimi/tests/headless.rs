@@ -271,6 +271,9 @@ fn updating_takes_what_moves_forward() {
     h.send(Msg::Show(Page::Updates));
     assert!(has(&h, w, "newer version"));
     assert!(has(&h, w, "couldn't check"));
+    assert!(has(&h, w, "Changes"));
+    assert!(has(&h, w, "Pinned commit"));
+    assert!(h.texts(w).iter().any(|t| t.contains("Pinned:") && t.contains("Target:")));
     // On a Sekka system one update takes Sekka and every newer source.
     assert!(h.click_text(w, "Update"));
     let op = ran.lock().unwrap().first().cloned().unwrap();

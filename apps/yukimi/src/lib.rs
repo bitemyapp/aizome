@@ -17,3 +17,4 @@ pub mod model;
 pub mod ops;
 pub mod paths;
 pub mod ui;
+pub mod update_history;

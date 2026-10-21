@@ -8,7 +8,7 @@
 //! follows nixpkgs`) are shown as such.
 use std::collections::BTreeMap;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::{Error, Result};
 
@@ -34,7 +34,7 @@ enum InputRef {
 }
 
 /// A source as `flake.lock` records it.
-#[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct Locked {
     #[serde(rename = "type", default)]
@@ -81,10 +81,22 @@ impl Locked {
     pub fn web_url(&self) -> Option<String> {
         match (self.kind.as_str(), &self.owner, &self.repo, &self.rev) {
             ("github", Some(owner), Some(repo), Some(rev)) => {
-                Some(format!("https://github.com/{owner}/{repo}/commit/{rev}"))
+                let host = self.host.as_deref().unwrap_or("github.com");
+                Some(format!("https://{host}/{owner}/{repo}/commit/{rev}"))
             }
             _ => None,
         }
+    }
+
+    /// Compare this pinned revision with a target in the same repository.
+    pub fn compare_url(&self, target: &str) -> Option<String> {
+        if self.rev.as_deref()? == target || target.is_empty() {
+            return None;
+        }
+        let commit = self.web_url()?;
+        let (repo, revision) = commit.rsplit_once("/commit/")?;
+        // Two dots compare the endpoints themselves, including branch switches.
+        Some(format!("{repo}/compare/{revision}..{target}"))
     }
 }
 

@@ -497,6 +497,7 @@ pub fn model() -> Model {
         allow_unfree: true,
         catalog: catalog::own(),
         inputs: inputs(),
+        update_history: Default::default(),
         channels: Vec::new(),
         nixpkgs: Some(nixpkgs),
         store: Some(Arc::new(store)),

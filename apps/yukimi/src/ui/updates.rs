@@ -81,7 +81,7 @@ fn status(
             };
             let mut chip = tag("newer version", Role::Accent);
             if let Some(rev) = next.short_rev() {
-                chip = chip.tooltip(format!("{source} is now at {rev}"));
+                chip = chip.tooltip(format!("Update target for {source}: {rev}"));
             }
             vec![words, chip]
         }
@@ -118,6 +118,8 @@ fn inputs(app: &Yukimi, moves: Option<&BTreeMap<String, Movement>>) -> Vec<Eleme
         ));
     }
     for input in &model.inputs {
+        let mut revisions = String::new();
+        let mut title: Element<Msg> = text(input.name.clone()).weight(600.0).into();
         let (subtitle, trailing): (String, Vec<Element<Msg>>) = match (&input.locked, &input.follows) {
             (_, Some(path)) => (
                 format!("Follows {}", path.join("/")),
@@ -127,12 +129,17 @@ fn inputs(app: &Yukimi, moves: Option<&BTreeMap<String, Movement>>) -> Vec<Eleme
                 let source = input.original.as_ref().unwrap_or(locked).describe();
                 let mut subtitle = source.clone();
                 if let Some(rev) = locked.short_rev() {
-                    subtitle.push_str(&format!("  ·  {rev}"));
+                    revisions = format!("Pinned: {rev}");
                 }
                 if !input.follows_inputs.is_empty() {
                     subtitle.push_str(&format!("  ·  uses this system's {}", input.follows_inputs.join(", ")));
                 }
                 let movement = moves.and_then(|m| m.get(&input.name));
+                if let Some(Movement::Newer(target)) = movement
+                    && let Some(rev) = target.short_rev()
+                {
+                    revisions.push_str(&format!(" → Target: {rev}"));
+                }
                 let status = status(
                     app,
                     &source,
@@ -154,23 +161,38 @@ fn inputs(app: &Yukimi, moves: Option<&BTreeMap<String, Movement>>) -> Vec<Eleme
                             .into(),
                     );
                 }
-                let link = locked.web_url().map(|url| {
-                    icon_button(Icon::ExternalLink)
-                        .plain()
-                        .on_press(Msg::OpenUrl(url))
-                        .tooltip("See this version")
-                        .into()
-                });
+                let last = model.update_history.last(&checks::subject(model), input);
+                if let Some(link) = crate::update_history::link(input, movement, last) {
+                    title = row![
+                        title,
+                        button(link.label)
+                            .compact()
+                            .icon(Icon::ExternalLink)
+                            .plain()
+                            .on_press(Msg::OpenUrl(link.url))
+                            .tooltip(link.tooltip),
+                    ]
+                    .spacing(8.0)
+                    .into();
+                }
                 let update = matches!(movement, Some(Movement::Newer(_)))
                     .then(|| button("Update").compact().on_press(Msg::Update(vec![input.name.clone()])).into());
-                (subtitle, slots(status, branch_button, link, update))
+                (subtitle, slots(status, branch_button, None, update))
             }
             (None, None) => (String::new(), Vec::new()),
         };
         rows.push(super::item_row(
             Some(monogram(&input.name, 28.0)),
-            text(input.name.clone()).weight(600.0).into(),
-            (!subtitle.is_empty()).then(|| text(subtitle).mono().size(11.5).role(Role::Text3).into()),
+            title,
+            (!subtitle.is_empty()).then(|| {
+                let mut lines = column![text(subtitle.clone()).mono().size(11.5).role(Role::Text3).tooltip(subtitle)]
+                    .spacing(2.0)
+                    .width(Fill);
+                if !revisions.is_empty() {
+                    lines = lines.push(text(revisions).mono().size(11.5).role(Role::Text2).wrap());
+                }
+                lines.into()
+            }),
             trailing,
         ));
     }
@@ -321,12 +343,18 @@ pub fn page(app: &Yukimi) -> Element<Msg> {
     let (title, whence) = match model.setup.kind {
         Kind::Flake => (
             "Sources",
-            format!("The inputs of {}, as its lock file pins them.", model.setup.dir.join("flake.nix").display()),
+            format!(
+                "Pinned revisions come from {} and may differ from the running system. Target is the version found \
+                 by the last update check. Last update shows the most recent successful change to that source.",
+                model.setup.dir.join("flake.lock").display()
+            ),
         ),
         Kind::Channels => ("Channels", "root's channels, which the system is built with.".to_owned()),
     };
     c.push(
-        column![caption(title), text(whence).size(12.0).role(Role::Text3), super::list(rows)].spacing(6.0).width(Fill),
+        column![caption(title), text(whence).wrap().size(12.0).role(Role::Text3), super::list(rows)]
+            .spacing(6.0)
+            .width(Fill),
     )
     .into()
 }
@@ -439,11 +467,14 @@ fn slots(
     let slot = |e: Option<Element<Msg>>, w: f64, align: Align| -> Element<Msg> {
         container(e.unwrap_or_else(|| space(0.0))).width(w).align_x(align).into()
     };
-    vec![
+    let mut slots = vec![
         slot(Some(age), 140.0, Align::End),
         slot(Some(chip), 100.0, Align::Start),
         slot(branch, 110.0, Align::Start),
-        slot(link, 28.0, Align::Center),
-        slot(update, 64.0, Align::End),
-    ]
+    ];
+    if link.is_some() {
+        slots.push(slot(link, 28.0, Align::Center));
+    }
+    slots.push(slot(update, 64.0, Align::End));
+    slots
 }
