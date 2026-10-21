@@ -38,6 +38,7 @@ pkgs.testers.runNixOSTest {
       pkgs.atk
       pkgs.harfbuzz
       pkgs.glib
+      pkgs.gobject-introspection
     ];
     environment.etc."shortcut-probe.py".text = ''
       import gi
