@@ -203,15 +203,7 @@ impl Actions for State {
     }
 
     fn set_fullscreen(&mut self, id: WinId, on: Option<bool>) {
-        let Some(w) = self.lg.r().wm.get(id) else { return };
-        let rect = w.rect;
-        let out = self.az.output_for_rect(rect).map(|o| self.az.output_rect(&o)).unwrap_or(rect);
-        if let Some(new) = self.lg.m().wm.set_fullscreen(id, on, out) {
-            after_placement(self, id, Some(rect), new);
-            if self.lg.r().wm.get(id).is_some_and(|w| w.fullscreen()) {
-                self.focus_window(Some(id));
-            }
-        }
+        set_fullscreen_on(self, id, on, None);
     }
 
     /// Moves a window's content to a point (its group with it).
@@ -707,9 +699,32 @@ pub fn place_new_window(st: &mut State, id: WinId, size: (i32, i32), parent: Opt
 
 // ---- windows coming and going ------------------------------------------------------
 
+/// Fullscreen can target a client's requested display without changing the
+/// free geometry that will be restored on exit.
+fn set_fullscreen_on(st: &mut State, id: WinId, on: Option<bool>, output: Option<Output>) {
+    let Some(w) = st.lg.r().wm.get(id) else { return };
+    let rect = w.rect;
+    let out = output
+        .filter(|o| st.az.outputs.contains(o))
+        .or_else(|| st.az.output_for_rect(rect))
+        .map(|o| st.az.output_rect(&o))
+        .unwrap_or(rect);
+    if let Some(new) = st.lg.m().wm.set_fullscreen(id, on, out) {
+        after_placement(st, id, Some(rect), new);
+        if st.lg.r().wm.get(id).is_some_and(|w| w.fullscreen()) {
+            st.focus_window(Some(id));
+        }
+    }
+}
+
 /// A toplevel's first configure: the usable area as bounds, and the size
 /// its app last had.
 pub fn first_configure(st: &mut State, toplevel: &ToplevelSurface) {
+    // The core already agreed on the full output size for a request made
+    // before mapping. Remembered normal-window bounds must not replace it.
+    if toplevel.with_pending_state(|s| s.states.contains(xdg_toplevel::State::Fullscreen)) {
+        return;
+    }
     let (app_id, _) = aizome_comp_core::shell::toplevel_ids(toplevel);
     let parent = toplevel.parent().and_then(|p| st.az.window_for_surface(&p));
     let out = parent
@@ -752,6 +767,9 @@ pub fn window_mapped(st: &mut State, id: WinId, info: &MapInfo) {
         && let Some(f) = same_app
     {
         st.stack(f, id);
+    }
+    if info.fullscreen {
+        set_fullscreen_on(st, id, Some(true), info.fullscreen_output.clone());
     }
     st.az.window_outputs_dirty = true;
     st.focus_window(Some(id));
@@ -869,7 +887,7 @@ pub fn toplevel_request(st: &mut State, id: WinId, req: ToplevelRequest) {
             crate::grabs::start_client_resize(st, &seat, id, serial, crate::grabs::edges_from_xdg(edges))
         }
         ToplevelRequest::Maximize(on) => st.set_fill(id, Some(on)),
-        ToplevelRequest::Fullscreen(on) => st.set_fullscreen(id, Some(on)),
+        ToplevelRequest::Fullscreen { on, output } => set_fullscreen_on(st, id, Some(on), output),
         ToplevelRequest::Minimize => st.minimise(id),
         ToplevelRequest::WindowMenu(location) => {
             let (Some(w), Some(m)) = (st.lg.r().wm.get(id), st.az.windows.get(&id)) else { return };

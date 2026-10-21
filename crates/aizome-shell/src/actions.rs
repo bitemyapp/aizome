@@ -28,8 +28,8 @@ pub enum Action {
     FocusApp {
         app_id: String,
     },
-    /// Launch an app by its desktop entry's id (`org.aizome.Hako`), or its
-    /// app id.
+    /// Open an app by its desktop entry's id (`org.aizome.Hako`), or its
+    /// app id: raise its last window if running, otherwise launch it.
     Launch {
         app_id: String,
     },
@@ -113,6 +113,11 @@ pub enum Action {
     Service(ServiceVerb),
     /// The Deskbar shows, or folds into the bar.
     SetDeskbarCollapsed(bool),
+    /// Move an app one place in the Deskbar without changing its pinned state.
+    MoveDeskbarApp {
+        app_id: String,
+        down: bool,
+    },
     /// Mount, unmount or eject a disk by its device path.
     Disk {
         device: String,
