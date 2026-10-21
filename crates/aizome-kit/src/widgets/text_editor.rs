@@ -519,6 +519,20 @@ impl EditorWidget {
         use std::hash::{Hash, Hasher};
         text.hash(&mut fx);
         (selection.clone(), pre.clone(), selects_break, focused).hash(&mut fx);
+        // Search marks are painted behind the glyphs, independently of
+        // the text and selection. Changing a query (or its current match)
+        // must redraw the affected lines even when their text stays put.
+        for (i, mark) in self.opts.marks.iter().enumerate() {
+            if mark.end < start || mark.start > start + len_chars {
+                continue;
+            }
+            (
+                mark.start.saturating_sub(start).min(len_chars),
+                mark.end.saturating_sub(start).min(len_chars),
+                Some(i) == self.opts.current_mark,
+            )
+                .hash(&mut fx);
+        }
         for (r, s) in &styled {
             (
                 r.start,

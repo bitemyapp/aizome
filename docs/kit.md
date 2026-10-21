@@ -187,7 +187,9 @@ bar and passes the matches back with `.marks(ranges, current)`. Also
 (21/13 by default), `.current_line(b)`, `.read_only()`, `.placeholder(t)`,
 `.padding(p)`, and `.highlighter(Arc<dyn Fn(line, &str) -> Vec<LineStyle>>,
 version)`, called for the lines that show. It lays out only those lines,
-each through the text cache, and redraws only the lines that changed. The
+each through the text cache, and redraws only the lines that changed. Search
+range and current-match changes redraw their affected lines even when the text
+and selection stay unchanged; offscreen marks leave visible lines alone. The
 gutter is the board's: numbers in `faint` right-aligned in a 30pt column,
 14pt from the text, the caret's line's number in `text3` on a 10% `focus`
 band (with a selection too). A selection the program sets (found text, a
