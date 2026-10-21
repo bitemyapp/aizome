@@ -285,6 +285,13 @@ a `bevel_lo` bottom): compact pop-ups, `button(..).toolbar()`,
 | `mouse_area(el)` | `.on_press`, `.on_release`, `.on_double_click`, `.on_right_click(\|at\| ..)`, `.on_hover(\|in\| ..)`, `.on_move`, `.on_drag(\|DragEvent\| ..)`, `.on_drop(\|Dropped { urls, text, .. }\| ..)` (files and text from other programs, and this program's own drags out), `.drag_out(\|\| DragSource)` (pressed and moved four points, it goes out as the desktop's drag; `on_drag` hears no more of that press), `.cursor(c)`. |
 | `canvas(state, \|canvas, bounds, &state, theme\| …)` | Drawing of one's own (charts, calendars, disk maps) with Sidestep's `Canvas`; it's drawn again when `state`'s hash changes. `.on_event(\|event, size, &state\| Option<Msg>)` (pointer, scroll, `Event::Pinch { scale, .. }` from a touchpad, keys), `.focusable()` (`.focus_ring(FocusRing::Never)` for a canvas that is the whole content), `.parts(\|&state, size\| vec![(rect, hash)])`: parts that change by themselves (a hovered bar, a cursor), left out of `state`'s `Hash`, so that only the rectangles of parts that came, went or changed are drawn again. |
 
+A shown tooltip follows changes to its text or nearest tooltip-bearing ancestor
+even when the pointer stays still, and disappears when its source is removed.
+An unchanged rebuild does not reopen a dismissed tooltip or restart its delay;
+a pending text change uses the original deadline and the current text.
+`cargo test -p aizome-kit --test tooltip_refresh` compares rendered tooltips and
+checks their delay, removal, ancestor changes and click dismissal.
+
 ### Sheets, alerts and panels
 
 A sheet is a modal window of the program's own drawn over its parent's
