@@ -373,8 +373,8 @@ impl Disks {
         })
     }
 
-    /// Attach an image file as a loop device (read-only unless asked,
-    /// detached by itself once unmounted); the result is the loop device.
+    /// Attach an image file as a loop device (read-only unless asked).
+    /// It remains attached until explicitly detached with [`Self::loop_delete`].
     pub fn loop_setup(&self, file: &Path, read_only: bool) -> Task<String> {
         let file = file.to_owned();
         self.task(move |bus| loop_setup(bus, &file, read_only))
@@ -382,27 +382,48 @@ impl Disks {
 
     /// Attach an image (an `.iso`) read-only and mount its filesystem; the
     /// result is the mount point. Images with partitions are attached and
-    /// their first filesystem mounted.
+    /// their first filesystem mounted. Once mounted, the loop device is
+    /// detached automatically on unmount. Failed attempts release their loop.
     pub fn mount_image(&self, file: &Path) -> Task<String> {
         let file = file.to_owned();
         self.task(move |bus| {
             let device = loop_setup(bus, &file, true)?;
-            // The kernel and UDisks need a moment to probe what is on it.
-            let deadline = Instant::now() + Duration::from_secs(5);
-            loop {
-                let state = Disks::refreshed(bus);
-                let candidates = std::iter::once(state.block(&device)).flatten().chain(state.dependents(&device));
-                if let Some(fs) = candidates.into_iter().find(|b| b.filesystem.is_some()) {
-                    if let Some(mounted) = fs.filesystem.as_ref().and_then(|f| f.mount_points.first()) {
-                        return Ok(mounted.clone());
+            let mut mounted_by_us = None;
+            let result = (|| {
+                // The kernel and UDisks need a moment to probe what is on it.
+                let deadline = Instant::now() + Duration::from_secs(5);
+                loop {
+                    let state = Disks::refreshed(bus);
+                    let candidates = std::iter::once(state.block(&device)).flatten().chain(state.dependents(&device));
+                    if let Some(fs) = candidates.into_iter().find(|b| b.filesystem.is_some()) {
+                        let mounted = if let Some(mounted) = fs.filesystem.as_ref().and_then(|f| f.mount_points.first())
+                        {
+                            mounted.clone()
+                        } else {
+                            let point =
+                                bus.call_with(MOUNT, UDISKS, &fs.path, IFACE_FILESYSTEM, "Mount", &(empty(),))?;
+                            mounted_by_us = Some(fs.path.clone());
+                            point
+                        };
+                        // Autoclear drops a loop on its last close. The mount
+                        // must hold it first, or it disappears before probing.
+                        bus.call_with::<_, ()>(
+                            Opts::ACTION,
+                            UDISKS,
+                            &device,
+                            IFACE_LOOP,
+                            "SetAutoclear",
+                            &(true, empty()),
+                        )?;
+                        return Ok(mounted);
                     }
-                    return bus.call_with(MOUNT, UDISKS, &fs.path, IFACE_FILESYSTEM, "Mount", &(empty(),));
+                    if Instant::now() > deadline {
+                        return Err(Error::Failed("No filesystem found in the image".into()));
+                    }
+                    std::thread::sleep(Duration::from_millis(100));
                 }
-                if Instant::now() > deadline {
-                    return Err(Error::Failed("No filesystem found in the image".into()));
-                }
-                std::thread::sleep(Duration::from_millis(100));
-            }
+            })();
+            result.map_err(|error| cleanup_failed_image(bus, &device, mounted_by_us.as_deref(), error))
         })
     }
 
@@ -712,9 +733,24 @@ fn loop_setup(bus: &Bus, file: &Path, read_only: bool) -> Result<String> {
     let fd = zbus::zvariant::Fd::from(handle.as_fd());
     let device: OwnedObjectPath =
         bus.call_with(Opts::ACTION, UDISKS, MANAGER_PATH, IFACE_MANAGER, "LoopSetup", &(fd, options))?;
-    // Detach by itself once nothing uses it (after the image is unmounted).
-    let _ = bus.call_with::<_, ()>(Opts::ACTION, UDISKS, device.as_str(), IFACE_LOOP, "SetAutoclear", &(true, empty()));
     Ok(device.to_string())
+}
+
+/// Release only the loop this attempt created, and only a mount it made.
+/// Keep the operation's error; also report any cleanup that needs attention.
+fn cleanup_failed_image(bus: &Bus, device: &str, mounted_by_us: Option<&str>, error: Error) -> Error {
+    let mut failures = Vec::new();
+    if let Some(filesystem) = mounted_by_us
+        && let Err(cleanup) = unmount(bus, filesystem, false)
+    {
+        failures.push(format!("could not unmount the image: {cleanup}"));
+    }
+    if let Err(cleanup) = bus.call_with::<_, ()>(Opts::ACTION, UDISKS, device, IFACE_LOOP, "Delete", &(empty(),))
+        && !matches!(cleanup, Error::NotFound(_))
+    {
+        failures.push(format!("could not detach {device}: {cleanup}"));
+    }
+    if failures.is_empty() { error } else { Error::Failed(format!("{}; {}", error, failures.join("; "))) }
 }
 
 #[cfg(test)]

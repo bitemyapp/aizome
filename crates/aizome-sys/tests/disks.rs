@@ -44,6 +44,11 @@ fn option_bool(options: &HashMap<String, OwnedValue>, key: &str) -> Option<bool>
 struct Log {
     calls: Vec<String>,
     format_options: Vec<HashMap<String, OwnedValue>>,
+    loop_no_filesystem: bool,
+    loop_already_mounted: bool,
+    mount_error: bool,
+    autoclear_error: bool,
+    delete_error: bool,
 }
 
 type Shared = Arc<Mutex<Log>>;
@@ -82,7 +87,14 @@ impl Manager {
         server
             .at(p.as_str(), FakeBlock::new("/dev/loop0", 4 * MIB, None, "iso9660", "IMAGE", self.log.clone()))
             .await?;
-        server.at(p.as_str(), FakeFs::default_with(self.log.clone(), "IMAGE")).await?;
+        let no_filesystem = self.log.lock().unwrap().loop_no_filesystem;
+        if !no_filesystem {
+            let mut filesystem = FakeFs::default_with(self.log.clone(), "IMAGE");
+            if self.log.lock().unwrap().loop_already_mounted {
+                filesystem.mount_points = vec![bytes("/run/media/test/IMAGE")];
+            }
+            server.at(p.as_str(), filesystem).await?;
+        }
         server
             .at(
                 p.as_str(),
@@ -253,6 +265,9 @@ impl FakeFs {
     ) -> fdo::Result<String> {
         let me = header.path().map(|p| p.to_string()).unwrap_or_default();
         note(&self.log, format!("Mount {me}"));
+        if self.log.lock().unwrap().mount_error {
+            return Err(fdo::Error::Failed("mount refused".into()));
+        }
         let at = format!("/run/media/test/{}", self.label);
         self.mount_points = vec![bytes(&at)];
         self.mount_points_changed(&emitter).await?;
@@ -435,9 +450,28 @@ impl FakeLoop {
     fn autoclear(&self) -> bool {
         self.autoclear
     }
-    fn set_autoclear(&mut self, on: bool, _options: HashMap<String, OwnedValue>) {
+    fn set_autoclear(&mut self, on: bool, _options: HashMap<String, OwnedValue>) -> fdo::Result<()> {
         note(&self.log, format!("SetAutoclear({on})"));
+        if self.log.lock().unwrap().autoclear_error {
+            return Err(fdo::Error::Failed("autoclear refused".into()));
+        }
         self.autoclear = on;
+        Ok(())
+    }
+    async fn delete(
+        &self,
+        _options: HashMap<String, OwnedValue>,
+        #[zbus(object_server)] server: &ObjectServer,
+    ) -> fdo::Result<()> {
+        note(&self.log, "LoopDelete".into());
+        if self.log.lock().unwrap().delete_error {
+            return Err(fdo::Error::Failed("detach refused".into()));
+        }
+        if !self.log.lock().unwrap().loop_no_filesystem {
+            server.remove::<FakeFs, _>(block_path("loop0")).await?;
+        }
+        server.remove::<FakeBlock, _>(block_path("loop0")).await?;
+        Ok(())
     }
 }
 
@@ -661,6 +695,11 @@ fn images_mount_through_a_loop_device() {
     let calls = calls(&log);
     assert!(calls.contains(&"LoopSetup(read-only=Some(true))".to_owned()), "{calls:?}");
     assert!(calls.contains(&"SetAutoclear(true)".to_owned()));
+    assert!(
+        calls.iter().position(|c| c.starts_with("Mount ")).unwrap()
+            < calls.iter().position(|c| c == "SetAutoclear(true)").unwrap(),
+        "{calls:?}"
+    );
     // The snapshot follows UDisks2's signals, which can trail the mount's
     // reply on a busy machine.
     assert!(eventually(|| disks.snapshot().volumes().iter().any(|v| v.name == "IMAGE")));
@@ -668,6 +707,88 @@ fn images_mount_through_a_loop_device() {
     let volume = state.volumes().into_iter().find(|v| v.name == "IMAGE").unwrap();
     assert_eq!(volume.icon_name, "media-optical");
     assert!(volume.image_file.unwrap().ends_with(".iso"));
+}
+
+#[test]
+fn manual_images_stay_attached_until_explicit_delete() {
+    let bus = test_bus!();
+    let (_fake, log) = serve(&bus);
+    let disks = start(&bus);
+    let image = std::env::temp_dir().join(format!("aizome-manual-image-{}.img", std::process::id()));
+    std::fs::write(&image, vec![0u8; 4096]).unwrap();
+    for read_only in [true, false] {
+        let device = disks.loop_setup(&image, read_only).wait().unwrap();
+        assert!(eventually(|| disks.snapshot().block(&device).is_some_and(|b| b.loop_device.is_some())));
+        assert!(!disks.snapshot().block(&device).unwrap().loop_device.as_ref().unwrap().autoclear);
+        assert!(!calls(&log).iter().any(|c| c.starts_with("SetAutoclear")));
+        disks.loop_delete(&device).wait().unwrap();
+        assert!(eventually(|| disks.snapshot().block(&device).is_none()));
+    }
+    std::fs::remove_file(image).unwrap();
+}
+
+#[test]
+fn failed_image_mounts_release_their_loop_and_preserve_errors() {
+    let bus = test_bus!();
+    let (_fake, log) = serve(&bus);
+    let disks = start(&bus);
+    let image = std::env::temp_dir().join(format!("aizome-failed-image-{}.img", std::process::id()));
+    std::fs::write(&image, vec![0u8; 4096]).unwrap();
+    log.lock().unwrap().mount_error = true;
+    let error = disks.mount_image(&image).wait().unwrap_err();
+    assert!(error.to_string().contains("mount refused"));
+    assert!(calls(&log).contains(&"LoopDelete".into()));
+    assert!(!calls(&log).iter().any(|c| c.starts_with("SetAutoclear")));
+    assert!(eventually(|| disks.snapshot().block(&block_path("loop0")).is_none()));
+
+    {
+        let mut log = log.lock().unwrap();
+        log.calls.clear();
+        log.mount_error = false;
+        log.autoclear_error = true;
+        log.delete_error = true;
+    }
+    let error = disks.mount_image(&image).wait().unwrap_err().to_string();
+    assert!(error.contains("autoclear refused") && error.contains("detach refused"), "{error}");
+    let calls = calls(&log);
+    let unmount = calls.iter().position(|c| c.starts_with("Unmount ")).unwrap();
+    let delete = calls.iter().position(|c| c == "LoopDelete").unwrap();
+    assert!(unmount < delete, "{calls:?}");
+    std::fs::remove_file(image).unwrap();
+}
+
+#[test]
+fn image_without_a_filesystem_releases_its_loop() {
+    let bus = test_bus!();
+    let (_fake, log) = serve(&bus);
+    let disks = start(&bus);
+    log.lock().unwrap().loop_no_filesystem = true;
+    let image = std::env::temp_dir().join(format!("aizome-empty-image-{}.img", std::process::id()));
+    std::fs::write(&image, vec![0u8; 4096]).unwrap();
+    let error = disks.mount_image(&image).wait().unwrap_err();
+    assert!(error.to_string().contains("No filesystem found"));
+    assert!(calls(&log).contains(&"LoopDelete".into()));
+    assert!(eventually(|| disks.snapshot().block(&block_path("loop0")).is_none()));
+    std::fs::remove_file(image).unwrap();
+}
+
+#[test]
+fn cleanup_does_not_unmount_a_mount_made_by_someone_else() {
+    let bus = test_bus!();
+    let (_fake, log) = serve(&bus);
+    let disks = start(&bus);
+    {
+        let mut log = log.lock().unwrap();
+        log.loop_already_mounted = true;
+        log.autoclear_error = true;
+        log.delete_error = true;
+    }
+    let image = std::env::temp_dir().join(format!("aizome-automounted-image-{}.img", std::process::id()));
+    std::fs::write(&image, vec![0u8; 4096]).unwrap();
+    let error = disks.mount_image(&image).wait().unwrap_err().to_string();
+    assert!(error.contains("autoclear refused") && error.contains("detach refused"), "{error}");
+    assert!(!calls(&log).iter().any(|c| c.starts_with("Mount ") || c.starts_with("Unmount ")));
+    std::fs::remove_file(image).unwrap();
 }
 
 #[test]
