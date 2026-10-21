@@ -1388,7 +1388,7 @@ def clear_search():
     time.sleep(0.5)
 
 
-@part("Network: search reveals Add VPN and Other Network…; a wrong passphrase is asked again as typed; the hotspot")
+@part("Network: search reveals Add VPN and Other Network…; a wrong passphrase can be corrected; the hotspot")
 def network():
     S.open("network")
     S.reveal(label="Aizome Test AP", role="button") if S.find(label="Aizome Test AP", visible=False) else None
@@ -1405,7 +1405,7 @@ def network():
     key("return")
     until("the sheet back", lambda: S.find(contains="Couldn't join: "), timeout=120)
     field = S.wait(name="network-password")
-    assert field.get("text") == "not-the-passphrase", field
+    assert field.get("text") is None and field.get("value") is None, field
     assert "Aizome Test AP" not in machine.succeed("nmcli -t -f NAME connection show"), "a refused network left behind"
     S.click(field)
     chord("super+a")

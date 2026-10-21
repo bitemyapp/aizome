@@ -254,6 +254,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "aizome-network-agent"
+version = "0.1.0"
+dependencies = [
+ "aizome-kit",
+ "async-channel",
+ "cc",
+ "env_logger",
+ "libc",
+ "log",
+ "pkg-config",
+ "serde",
+ "serde_json",
+ "zbus",
+]
+
+[[package]]
 name = "aizome-search"
 version = "0.1.0"
 dependencies = [

@@ -69,6 +69,29 @@ let
     ExecStart=
     ExecStart=${portalWlr}
   '';
+  # Other installed desktops keep their network applet; Aizome has network
+  # controls and a credential agent of its own. This condition is what keeps
+  # the applet out of Aizome, for programs.nm-applet's service and the unit
+  # systemd generates from its XDG autostart entry alike: the generator
+  # reads only the user manager's own environment, not the session's
+  # imported variables, so an autostart override for Aizome alone can't
+  # work. aizome-session always sets XDG_SESSION_DESKTOP, which, unlike
+  # XDG_CURRENT_DESKTOP, ~/.config/aizome/environment can't change.
+  otherDesktop = pkgs.writeShellScript "nm-applet-outside-aizome" ''
+    if [ "''${XDG_SESSION_DESKTOP:-}" = aizome ]; then
+      echo "nm-applet is not started in Aizome, whose network agent asks for credentials" >&2
+      exit 1
+    fi
+  '';
+  nmAppletDropIns = pkgs.runCommand "aizome-nm-applet-session-policy" { } ''
+    for unit in 'nm-applet.service' 'app-nm\x2dapplet@autostart.service'; do
+      mkdir -p "$out/lib/systemd/user/$unit.d"
+      cat > "$out/lib/systemd/user/$unit.d/aizome.conf" <<EOF
+    [Service]
+    ExecCondition=${otherDesktop}
+    EOF
+    done
+  '';
   # wf-recorder (the fallback recorder) puts its wl_shm buffers in files in
   # /tmp, which on most NixOS systems is on disk: every frame the compositor
   # copies would be written out (over 1 GB/s at 2880 × 1800 and 60 fps) and
@@ -190,6 +213,7 @@ in
     systemd.packages = [
       cfg.package
       portalWlrDropIn
+      nmAppletDropIns
     ];
 
     # Under load, the session (the compositor, which also weighs 1000 within

@@ -839,6 +839,8 @@ impl Widget for FieldWidget {
     }
 
     fn text(&self) -> Option<&str> {
-        Some(&self.value)
+        // Inspection and search may describe a password field, but must
+        // never publish its contents (including credentials in dialogs).
+        (!self.password).then_some(&self.value)
     }
 }
