@@ -137,6 +137,8 @@ pub(crate) struct Win {
     pub panels: Vec<u64>,
     pub tooltip: Option<(NodeId, u64)>,
     pub tooltip_shown: Option<WinId>,
+    /// The nearest tooltip under the pointer, including one dismissed by a click.
+    tooltip_target: Option<(NodeId, Arc<str>)>,
     pub ime: (bool, Option<Rect>),
     pub title: String,
     /// Popups open over it, in order.
@@ -187,6 +189,7 @@ impl Win {
             panels: Vec::new(),
             tooltip: None,
             tooltip_shown: None,
+            tooltip_target: None,
             ime: (false, None),
             title: String::new(),
             popups: Vec::new(),
@@ -1691,38 +1694,55 @@ impl Core {
         let path = w.tree.path_at(p, w.modal());
         let hot_idx = path.iter().rev().copied().find(|&i| w.tree.nodes[i].widget.hit());
         let hot = hot_idx.map(|i| w.tree.nodes[i].id);
-        if hot == w.hot {
+        let tip = path
+            .iter()
+            .rev()
+            .find_map(|&i| w.tree.nodes[i].common.tooltip.as_ref().map(|text| (w.tree.nodes[i].id, text.clone())));
+        let hot_changed = hot != w.hot;
+        let tip_changed = tip != w.tooltip_target;
+        if !hot_changed && !tip_changed {
             return;
         }
-        let old = std::mem::replace(&mut w.hot, hot);
-        for id in [old, hot].into_iter().flatten() {
-            if let Some(i) = w.tree.get(id)
-                && w.tree.nodes[i].widget.hover_paints()
-            {
-                platform.invalidate(win, w.tree.nodes[i].own_rect());
+        let old = if hot_changed { std::mem::replace(&mut w.hot, hot) } else { None };
+        if hot_changed {
+            for id in [old, hot].into_iter().flatten() {
+                if let Some(i) = w.tree.get(id)
+                    && w.tree.nodes[i].widget.hover_paints()
+                {
+                    platform.invalidate(win, w.tree.nodes[i].own_rect());
+                }
+            }
+            let cursor = hot_idx.and_then(|i| w.tree.nodes[i].widget.cursor()).unwrap_or(Cursor::Default);
+            if cursor != w.cursor {
+                w.cursor = cursor;
+                platform.set_cursor(win, cursor);
             }
         }
-        let cursor = hot_idx.and_then(|i| w.tree.nodes[i].widget.cursor()).unwrap_or(Cursor::Default);
-        if cursor != w.cursor {
-            w.cursor = cursor;
-            platform.set_cursor(win, cursor);
-        }
-        // Tooltips: the nearest one around what's under the pointer.
-        let tip =
-            path.iter().rev().copied().find(|&i| w.tree.nodes[i].common.tooltip.is_some()).map(|i| w.tree.nodes[i].id);
+        // A rebuild can change a tooltip without changing the hot widget.
+        // A pending tooltip reads its text when shown, so a text-only change
+        // keeps its deadline. A visible tooltip changes immediately.
+        let same_source = tip.as_ref().map(|t| t.0) == w.tooltip_target.as_ref().map(|t| t.0);
+        let keep_pending = !hot_changed && same_source && w.tooltip.is_some();
+        let refresh_shown = !hot_changed && w.tooltip_shown.is_some();
+        w.tooltip_target = tip.clone();
         let shown = w.tooltip_shown.take();
-        let pending = w.tooltip.take();
+        let pending = if keep_pending { None } else { w.tooltip.take() };
         if let Some((_, token)) = pending {
             platform.cancel_timer(token);
+            self.timers.remove(&token);
         }
         if let Some(t) = shown {
             self.close_win(t, platform);
         }
-        if let Some(node) = tip {
-            let token = platform.set_timer(Duration::from_millis(650), false);
-            self.timers.insert(token, TimerUse::Tooltip { win, node });
-            if let Some(w) = self.wins.get_mut(&win) {
-                w.tooltip = Some((node, token));
+        if let Some((node, _)) = tip {
+            if refresh_shown {
+                self.show_tooltip(win, node, platform);
+            } else if !keep_pending {
+                let token = platform.set_timer(Duration::from_millis(650), false);
+                self.timers.insert(token, TimerUse::Tooltip { win, node });
+                if let Some(w) = self.wins.get_mut(&win) {
+                    w.tooltip = Some((node, token));
+                }
             }
         }
         if let Some(old) = old
@@ -1764,6 +1784,7 @@ impl Core {
     pub fn pointer_leave(&mut self, win: WinId, platform: &mut dyn Platform) {
         let Some(w) = self.wins.get_mut(&win) else { return };
         w.pointer = None;
+        w.tooltip_target = None;
         let old = w.hot.take();
         if let Some((_, token)) = w.tooltip.take() {
             platform.cancel_timer(token);
