@@ -769,17 +769,17 @@ impl Shell {
             },
             Action::Wm(req) => self.ipc.send(req),
             Action::QuitApp { app_id } => {
-                for w in self.wm.windows.values().filter(|w| w.app_id == app_id) {
+                for w in self.wm.app_windows_by_recency(&app_id, self.apps.as_deref()) {
                     self.ipc.send(Request::Close { id: Some(w.id) });
                 }
             }
-            Action::FocusApp { app_id } => match self.wm.app_window_to_activate(&app_id, self.apps.as_deref()) {
-                Some(w) => self.ipc.send(Request::Focus { id: w.id }),
-                None => self.launch(Launch::App { app_id, targets: vec![] }, cx),
-            },
-            Action::Launch { app_id } | Action::NewWindow { app_id } => {
-                self.launch(Launch::App { app_id, targets: vec![] }, cx)
+            Action::Launch { app_id } | Action::FocusApp { app_id } => {
+                match self.wm.app_window_to_activate(&app_id, self.apps.as_deref()) {
+                    Some(w) => self.ipc.send(Request::Focus { id: w.id }),
+                    None => self.launch(Launch::App { app_id, targets: vec![] }, cx),
+                }
             }
+            Action::NewWindow { app_id } => self.launch(Launch::App { app_id, targets: vec![] }, cx),
             Action::Spawn { argv } => self.launch(Launch::Argv(argv), cx),
             Action::Open { path } => {
                 let l = crate::launch::open_path(self.apps.as_deref(), &path);
@@ -1864,6 +1864,38 @@ impl Shell {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn launchers_and_deskbar_activate_the_local_window_while_new_window_launches() {
+        use crate::deskbar::DeskbarMsg;
+        use aizome_ipc::WindowInfo;
+        use aizome_kit::testing::Harness;
+
+        let mut shell = Shell::new(Options::default());
+        shell.wm.reset(crate::wm::Snapshot {
+            current_desk: 1,
+            windows: vec![
+                WindowInfo { id: 1, app_id: "editor".into(), desk: Some(1), minimised: true, ..Default::default() },
+                WindowInfo { id: 2, app_id: "editor".into(), desk: Some(2), ..Default::default() },
+            ],
+            focused: Some(2),
+            ..Default::default()
+        });
+        let (ipc, requests) = Ipc::recording();
+        shell.ipc = ipc;
+        let mut h = Harness::new(shell);
+        for msg in [
+            Msg::Run(Action::Launch { app_id: "editor".into() }),
+            Msg::Run(Action::FocusApp { app_id: "editor".into() }),
+            Msg::Deskbar(DeskbarMsg::FocusApp("editor".into())),
+        ] {
+            h.send(msg);
+            assert_eq!(requests.try_recv().unwrap(), (Request::Focus { id: 1 }, None));
+            assert!(requests.try_recv().is_err(), "one request reveals and focuses the selected window");
+        }
+        h.send(Msg::Run(Action::NewWindow { app_id: "editor".into() }));
+        assert!(requests.try_recv().is_err(), "New Window never substitutes a focus request");
+    }
 
     #[test]
     fn the_compositor_says_whether_the_session_is_real() {

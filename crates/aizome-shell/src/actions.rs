@@ -29,8 +29,8 @@ pub enum Action {
     FocusApp {
         app_id: String,
     },
-    /// Launch an app by its desktop entry's id (`org.aizome.Hako`), or its
-    /// app id.
+    /// Open an app by its desktop entry's id (`org.aizome.Hako`), or its
+    /// app id: activate an existing window, or launch it if none exists.
     Launch {
         app_id: String,
     },

@@ -167,21 +167,10 @@ impl Shell {
 
     pub fn deskbar_msg(&mut self, m: DeskbarMsg, cx: &mut Cx<Msg>) {
         match m {
-            DeskbarMsg::FocusApp(app_id) => {
-                let hidden = self.wm.app_windows_by_recency(&app_id, None).iter().all(|w| w.hidden || w.minimised);
-                match self.wm.app_windows_by_recency(&app_id, None).first() {
-                    Some(w) if hidden => {
-                        let id = w.id;
-                        self.ipc.send(Request::ShowApp { app: crate::shell::app_sel(&app_id) });
-                        self.ipc.send(Request::Focus { id });
-                    }
-                    Some(w) => self.ipc.send(Request::Focus { id: w.id }),
-                    None => self.run(Action::Launch { app_id }, cx),
-                }
-            }
+            DeskbarMsg::FocusApp(app_id) => self.run(Action::FocusApp { app_id }, cx),
             DeskbarMsg::AppMenu(app_id, at) => {
                 let Some(k) = self.deskbar else { return };
-                let running = self.wm.is_running(&app_id);
+                let running = self.wm.app_window_to_activate(&app_id, self.apps.as_deref()).is_some();
                 let pinned = self.deskbar_cfg.pinned.contains(&app_id);
                 let menu = ShellMenu::new(
                     self.app_look(&app_id).0,
