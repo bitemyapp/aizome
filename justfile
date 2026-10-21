@@ -1,4 +1,5 @@
 set positional-arguments
+set shell := ["bash", "scripts/just-shell", "-cu"]
 
 # List the checkout's development commands.
 default:
