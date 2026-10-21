@@ -225,6 +225,88 @@ fn sets_the_wallpaper_shows_in_hako_and_copies() {
 }
 
 #[test]
+fn wallpaper_uses_the_renderers_pixels_and_preserves_settings_on_failure() {
+    use std::os::unix::fs::PermissionsExt;
+    let mut r = rig("wallpaper-validation", ThemeChoice::Night, "beach.png");
+    let settings = r.dir.join("settings.toml");
+    // Every raster format the viewer advertises, all three destinations.
+    // Misleading extensions are fine: the renderer reads the content.
+    std::fs::copy(r.dir.join("beach.png"), r.dir.join("raster.svg")).unwrap();
+    for file in ["beach.png", "IMG_2.jpg", "dance.gif", "sticker.webp", "old.bmp", "scan.tiff", "app.ico", "raster.svg"]
+    {
+        r.h.send(Msg::Open(vec![r.dir.join(file)]));
+        settle(&mut r, 1.0);
+        for which in [Wallpaper::Night, Wallpaper::Day, Wallpaper::Both] {
+            let mut initial = aizome_config::Settings::default();
+            initial.appearance.wallpaper_night = Some("previous-night.png".into());
+            initial.appearance.wallpaper_day = Some("previous-day.png".into());
+            initial.save_to(&settings).unwrap();
+            r.h.send(Msg::SetWallpaper(which));
+            settle(&mut r, 1.0);
+            let got = aizome_config::Settings::load_from(&settings).unwrap();
+            let path = r.dir.join(file).to_string_lossy().into_owned();
+            assert_eq!(
+                got.appearance.wallpaper_night.as_deref(),
+                Some(if which == Wallpaper::Day { "previous-night.png" } else { &path })
+            );
+            assert_eq!(
+                got.appearance.wallpaper_day.as_deref(),
+                Some(if which == Wallpaper::Night { "previous-day.png" } else { &path })
+            );
+            assert!(r.h.program().note.as_ref().unwrap().text.starts_with("Set as"));
+            assert!(aizome_face::wallpaper::prepare(&r.dir.join(file), 32, 24).is_some(), "{file}");
+        }
+    }
+    // Fail after the viewer has already loaded a good picture: validation
+    // must read the path again rather than trusting the cached preview.
+    for failure in ["svg", "text", "truncated", "missing", "unreadable", "directory"] {
+        let path = r.dir.join("changed.png");
+        std::fs::copy(r.dir.join("beach.png"), &path).unwrap();
+        r.h.send(Msg::Open(vec![path.clone()]));
+        settle(&mut r, 1.0);
+        match failure {
+            "svg" => std::fs::write(&path, SVG).unwrap(),
+            "text" => std::fs::write(&path, "not an image").unwrap(),
+            "truncated" => {
+                let bytes = std::fs::read(&path).unwrap();
+                // Keep a valid PNG header while removing the pixel data.
+                std::fs::write(&path, &bytes[..33]).unwrap();
+            }
+            "missing" => std::fs::remove_file(&path).unwrap(),
+            "unreadable" => std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o000)).unwrap(),
+            "directory" => {
+                std::fs::remove_file(&path).unwrap();
+                std::fs::create_dir(&path).unwrap();
+            }
+            _ => unreachable!(),
+        }
+        let before = std::fs::read(&settings).unwrap();
+        for which in [Wallpaper::Night, Wallpaper::Day, Wallpaper::Both] {
+            r.h.send(Msg::SetWallpaper(which));
+            settle(&mut r, 1.0);
+            assert_eq!(std::fs::read(&settings).unwrap(), before, "{failure}, {which:?}");
+            let note = &r.h.program().note.as_ref().unwrap().text;
+            assert!(note.contains("Wallpaper unchanged"), "{failure}: {note}");
+            assert!(aizome_face::wallpaper::prepare(&path, 32, 24).is_none(), "{failure}");
+        }
+        if failure == "directory" {
+            std::fs::remove_dir(&path).unwrap();
+        } else if path.exists() {
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
+            std::fs::remove_file(&path).unwrap();
+        }
+    }
+    // Recovery with the same live app and settings destination.
+    r.h.send(Msg::Open(vec![r.dir.join("beach.png")]));
+    settle(&mut r, 1.0);
+    r.h.send(Msg::SetWallpaper(Wallpaper::Both));
+    settle(&mut r, 1.0);
+    let got = aizome_config::Settings::load_from(&settings).unwrap();
+    assert_eq!(got.appearance.wallpaper_night, got.appearance.wallpaper_day);
+    assert_eq!(got.appearance.wallpaper_night.as_deref(), r.dir.join("beach.png").to_str());
+}
+
+#[test]
 fn the_filmstrip_shows_thumbnails_kept_in_the_freedesktop_cache() {
     let mut r = rig("strip", ThemeChoice::Night, "IMG_2.jpg");
     let w = r.h.window();

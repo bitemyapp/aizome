@@ -304,6 +304,7 @@ name = "aizome-shashin"
 version = "0.1.0"
 dependencies = [
  "aizome-config",
+ "aizome-face",
  "aizome-ipc",
  "aizome-kit",
  "env_logger",

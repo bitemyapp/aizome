@@ -22,10 +22,31 @@ pub fn prepare(path: &Path, width: u32, height: u32) -> Option<Vec<u8>> {
     if width == 0 || height == 0 {
         return None;
     }
-    let image = Image::open(path).ok()?;
-    let (w, h) = image.pixel_size();
-    let rgba = image.to_rgba8()?;
+    let (rgba, w, h) = decode(path).ok()?;
     Some(cover(&rgba, w, h, width, height))
+}
+
+/// Check the actual pixels with the same decoder the desktop uses, before
+/// replacing a wallpaper setting. A readable header alone is not enough.
+/// This checks the file now; callers still need it at this path afterwards.
+pub fn validate(path: &Path) -> Result<(), String> {
+    decode(path).map(|_| ())
+}
+
+fn decode(path: &Path) -> Result<(Vec<u8>, u32, u32), String> {
+    let image = Image::open(path).map_err(|e| {
+        if e.kind() == std::io::ErrorKind::InvalidData {
+            "Unsupported or damaged image (SVG isn't supported).".to_owned()
+        } else {
+            e.to_string()
+        }
+    })?;
+    let (w, h) = image.pixel_size();
+    if w == 0 || h == 0 {
+        return Err("The wallpaper has no pixels.".into());
+    }
+    let rgba = image.to_rgba8().ok_or("The wallpaper's image data couldn't be decoded.")?;
+    Ok((rgba, w, h))
 }
 
 /// The image ready to draw at `scale` pixels a point.
