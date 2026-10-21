@@ -8,7 +8,9 @@
 //! filled with `selection`, separators as an engraved `line`, a 1pt
 //! `bevel_lo` edge with the top highlight, and the hard 3pt shadow. Menus
 //! at the pointer and palettes have a `menu_title` strip with their name,
-//! a close box and a pin.
+//! as the menus board draws them: a palette (torn off) has a close box and
+//! a pin, a submenu at the pointer a pin to tear it off, and the menu at
+//! the pointer itself only its name (its strip still tears it off).
 //!
 //! Behaviour: ↑↓ move, → opens a submenu, ← closes it (and past either
 //! end a menu bar's menu goes to the title beside: [`MenuStyle::on_side`]),
@@ -430,6 +432,17 @@ impl MenuView {
         Rect::new(7.0, 1.0 + (STRIP - 10.0) / 2.0, 17.0, 1.0 + (STRIP + 10.0) / 2.0)
     }
 
+    /// A palette, torn off into a window, closes by its close box; menus
+    /// at the pointer close as menus do.
+    fn has_close(&self) -> bool {
+        self.look.on_close.is_some() || self.look.pin.is_some()
+    }
+
+    /// The pin: a palette's (kept or not), and a submenu's that tears off.
+    fn has_pin(&self) -> bool {
+        self.look.pin.is_some() || (self.look.tear_off.is_some() && self.look.is_sub)
+    }
+
     fn pin_box(&self) -> Rect {
         Rect::new(self.width - 22.0, 1.0, self.width - 2.0, 1.0 + STRIP)
     }
@@ -608,14 +621,12 @@ impl Widget for MenuView {
             draw::bottom(cx.canvas, strip.inflate(0.0, 1.0), t.bevel_lo(), 1.0);
             let fg = t.on_menu_title();
             let close = self.close_box();
-            draw::border(cx.canvas, close, fg, 1.5);
+            if self.has_close() {
+                draw::border(cx.canvas, close, fg, 1.5);
+            }
             let spec = MenuView::strip_spec(t);
-            let right = if self.look.pin.is_some() || self.look.tear_off.is_some() {
-                self.pin_box().x0
-            } else {
-                strip.x1 - 6.0
-            };
-            let mut x = close.x1 + 7.0;
+            let right = if self.has_pin() { self.pin_box().x0 } else { strip.x1 - 6.0 };
+            let mut x = if self.has_close() { close.x1 + 7.0 } else { PAD };
             if self.look.mark {
                 // The mark at 12pt: its tab and three stripes, on whole points.
                 let brand = aizome_theme::Brand::for_theme(t.palette.name);
@@ -633,7 +644,7 @@ impl Widget for MenuView {
                 x += 18.0;
             }
             cx.draw_text_in(title, &spec, Rect::new(x, strip.y0, right, strip.y1), Align::Start);
-            if self.look.pin.is_some() || self.look.tear_off.is_some() {
+            if self.has_pin() {
                 let pinned = self.look.pin.as_ref().is_some_and(|(p, _)| *p);
                 let pb = self.pin_box();
                 let c = if pinned { t.focus() } else { t.text3() };
@@ -861,9 +872,9 @@ impl Widget for MenuView {
             Event::PointerDown { pos, button: PointerButton::Left, .. }
                 if self.look.title.is_some() && self.strip_rect().contains(*pos) =>
             {
-                if self.close_box().inflate(4.0, 4.0).contains(*pos) {
+                if self.has_close() && self.close_box().inflate(4.0, 4.0).contains(*pos) {
                     self.close(cx);
-                } else if (self.look.pin.is_some() || self.look.tear_off.is_some()) && self.pin_box().contains(*pos) {
+                } else if self.has_pin() && self.pin_box().contains(*pos) {
                     if let Some((on, f)) = &self.look.pin {
                         cx.emit_any(f.make(!on));
                     } else if let Some(m) = &self.look.tear_off {
@@ -1235,5 +1246,33 @@ impl Widget for TooltipView {
 
     fn semantics(&self) -> Option<Semantics> {
         Some(Semantics { role: SemanticRole::Tooltip, label: Some(self.text.clone()), ..Default::default() })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn view(look: MenuLook) -> MenuView {
+        MenuView::new(MenuSpec { title: "Editor".into(), ..MenuSpec::default() }, look)
+    }
+
+    #[test]
+    fn title_strips_are_drawn_as_the_menus_board_draws_them() {
+        let tear = || Some(MsgFn::new(()));
+        // The menu at the pointer: its name alone (its strip still tears it off).
+        let at_pointer = view(MenuLook { title: Some("Editor".into()), tear_off: tear(), ..MenuLook::default() });
+        assert!(!at_pointer.has_close() && !at_pointer.has_pin());
+        // One of its submenus: a pin to tear it off, no close box.
+        let sub = view(MenuLook { title: Some("Edit".into()), tear_off: tear(), is_sub: true, ..MenuLook::default() });
+        assert!(!sub.has_close() && sub.has_pin());
+        // A palette: a close box and its pin.
+        let palette = view(MenuLook {
+            title: Some("Toolchest".into()),
+            on_close: Some(MsgFn::new(())),
+            pin: Some((true, MsgMap::new(|_: bool| ()))),
+            ..MenuLook::default()
+        });
+        assert!(palette.has_close() && palette.has_pin());
     }
 }
