@@ -98,13 +98,18 @@ Its keys:
 | `sessions` | the system's `wayland-sessions` and `xsessions` | session directories, in order |
 | `hidden_sessions` | none | session ids not to offer |
 | `default_session` | `services.displayManager.defaultSession` | for someone new |
-| `x11_prefix` | `["startx", "/usr/bin/env"]` with `services.xserver` | how X11 sessions start; empty: none offered |
+| `x11_prefix` | `startx` with NixOS's session wrapper and logout cleanup | how X11 sessions start; empty: none offered |
 | `hidden_users` | `services.displayManager.hiddenUsers` | |
 | `user_list` | true | list people, or type the name |
 | `wallpaper_night`, `wallpaper_day` | Aizome's wallpapers | |
 | `wallpaper` | `auto` | `night`, `day` or `auto` |
 | `power` | true | the power menu |
 | `compositor`, `compositor_settings` | Aizome's, with the system's keyboard layout | |
+
+On NixOS, the X11 session wrapper imports the display environment and starts
+the graphical session target for desktops such as Xfce. Logging out stops
+that target and its portals, even if the user's service manager stays alive.
+The `greeter-x11` VM check covers Xfce followed by an Aizome login.
 
 `services.displayManager.autoLogin` becomes greetd's initial session,
 `aizome-greeter --session ID`. It starts the default session at boot with
