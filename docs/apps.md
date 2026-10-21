@@ -375,6 +375,15 @@ with `aizome-tenki --record-fixtures DIR`). NixOS needs
 for the current location (and a working location source, such as
 `services.geoclue2.geoProviderUrl` pointed at BeaconDB).
 
+City search debounces each query separately: editing while an older request
+waits starts the new query, and old results or errors cannot replace it or
+leave it stuck searching. `search_generation` tests hold background replies
+and release them in both orders, including Return before the current answer
+and clearing the field. `nix/vm-tenki-live-search-test.nix` is a separate
+manual packaged UI regression with delayed networking; build its `.driver`
+and run it with private `XDG_RUNTIME_DIR` and `TMPDIR` directories. It needs
+a reachable Open-Meteo and is deliberately outside the offline flake checks.
+
 ### Tansu (Disks)
 
 GParted's job with Aizome's care: pick a disk; a partition map bar
