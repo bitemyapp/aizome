@@ -10,10 +10,12 @@ Description=Koyomi calendar alerts
 Documentation=https://github.com/bitemyapp/aizome/blob/main/docs/koyomi.md
 PartOf=graphical-session.target
 After=graphical-session.target
-Requisite=graphical-session.target
 
 [Service]
 Type=simple
+# Check at startup without retaining the target. A Requisite dependency
+# prevents StopWhenUnneeded from ending an Xfce session after logout.
+ExecCondition=@systemctl@ --user --quiet is-active graphical-session.target
 ExecStart=@bindir@/aizome-koyomi --agent
 Restart=on-failure
 RestartSec=5

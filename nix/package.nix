@@ -38,6 +38,7 @@
   libpulseaudio,
   libsecret,
   pam,
+  systemd,
   src,
   sidestep,
   version ? "0.1.0",
@@ -169,7 +170,9 @@ rustPlatform.buildRustPackage {
     shopt -s nullglob
     for unit in session/*.service session/*.target session/*.path apps/*/data/*.service; do
       install -Dm644 "$unit" "$out/lib/systemd/user/$(basename "$unit")"
-      substituteInPlace "$out/lib/systemd/user/$(basename "$unit")" --replace-quiet @bindir@ "$out/bin"
+      substituteInPlace "$out/lib/systemd/user/$(basename "$unit")" \
+        --replace-quiet @bindir@ "$out/bin" \
+        --replace-quiet @systemctl@ "${systemd}/bin/systemctl"
     done
     install -Dm644 session/aizome-portals.conf $out/share/xdg-desktop-portal/aizome-portals.conf
 
