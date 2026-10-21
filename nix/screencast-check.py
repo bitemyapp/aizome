@@ -58,9 +58,16 @@ streams = request(screencast.Start, session, "", options={})["streams"]
 print(f"portal: PipeWire node {int(streams[0][0])}, {dict(streams[0][1])}", flush=True)
 fd = screencast.OpenPipeWireRemote(session, dbus.Dictionary({}, signature="sv")).take()
 # Through the portal's remote the stream is the only video source; a
-# video input, as browsers' streams are, for WirePlumber to link it.
+# video input, as browsers' streams are, for WirePlumber to link it. Not
+# live, so frames are taken as they come, as a browser takes them: a live
+# pipewiresrc holds each buffer until the clock reaches its timestamp,
+# counted from the first buffer's, and the portal's first can come with
+# none (pts 0, when its stream pauses as this one links while that
+# capture is in flight). The next would then wait as long as the machine
+# has been up, and the stream stall after one frame.
 pipeline = (
-    f"pipewiresrc fd={fd} do-timestamp=true stream-properties=props,media.class=(string)Stream/Input/Video"
+    f"pipewiresrc fd={fd} do-timestamp=true"
+    " stream-properties=props,media.class=(string)Stream/Input/Video,stream.is-live=(string)false"
     " ! identity silent=false ! fakesink sync=false enable-last-sample=false"
 )
 gst = subprocess.run(
