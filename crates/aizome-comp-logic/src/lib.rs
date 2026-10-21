@@ -89,6 +89,9 @@ pub struct Logic {
     published: Option<(u64, bool, bool, bool)>,
     /// The surfaces' scales as last told ([`scales::refresh`]).
     pub scales_seen: Option<u64>,
+    /// Processes playing sound, with their parents (a browser plays from a
+    /// child of the process its windows belong to), as the shell says.
+    pub audible: HashSet<i32>,
 }
 
 /// Per window, beside the model.
@@ -120,6 +123,7 @@ pub struct Saved {
     pub requested_sizes: HashMap<WinId, (i32, i32)>,
     /// Notification cards in motion.
     pub slides: Vec<slides::SavedSlide>,
+    pub audible: Vec<i32>,
 }
 
 impl Logic {
@@ -139,7 +143,18 @@ impl Logic {
             pending_action: None,
             published: None,
             scales_seen: None,
+            audible: HashSet::new(),
         }
+    }
+
+    /// Whether any of a Desk's windows belongs to a process playing sound.
+    pub fn desk_audible(&self, desk: wm::DeskId) -> bool {
+        !self.audible.is_empty()
+            && self
+                .wm
+                .desk_windows(desk)
+                .iter()
+                .any(|id| self.wm.get(*id).and_then(|w| w.pid).is_some_and(|pid| self.audible.contains(&pid)))
     }
 
     /// Notes that a window's IPC description changed.
@@ -212,4 +227,22 @@ pub fn aizome_logic_entry() -> &'static aizome_comp_core::LogicVTable {
     // Touch the mark so it's kept.
     let _ = std::hint::black_box(&ABI_MARK);
     &hooks::VTABLE
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_desk_plays_sound_when_a_window_of_a_playing_process_is_on_it() {
+        let mut l = Logic::new(&aizome_comp_core::aizome_config::Settings::default());
+        let d2 = l.wm.desks()[1].id;
+        let rect = crate::wm::Rect::new(0, 0, 100, 100);
+        let a = l.wm.insert("firefox", "Music", Some(4242), rect, None);
+        l.wm.move_to_desk(a, d2);
+        assert!(!l.desk_audible(d2));
+        l.audible = [4242].into_iter().collect();
+        assert!(l.desk_audible(d2));
+        assert!(!l.desk_audible(l.wm.desks()[0].id));
+    }
 }

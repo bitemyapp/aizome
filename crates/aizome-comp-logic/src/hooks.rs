@@ -59,6 +59,7 @@ fn init(st: &mut State, saved: Option<&[u8]>) -> Result<(), String> {
     if let Some(bytes) = saved {
         let saved: Saved = serde_json::from_slice(bytes).map_err(|e| format!("the saved state: {e}"))?;
         slides = saved.slides;
+        logic.audible = saved.audible.into_iter().collect();
         if let Some(model) = saved.model {
             logic.wm = model;
         }
@@ -81,6 +82,7 @@ fn save(st: &mut State) -> Result<Vec<u8>, String> {
         model: Some(l.wm.clone()),
         requested_sizes: l.wins.iter().filter_map(|(id, d)| d.requested_size.map(|s| (*id, s))).collect(),
         slides: crate::slides::save(l),
+        audible: l.audible.iter().copied().collect(),
     };
     serde_json::to_vec(&saved).map_err(|e| e.to_string())
 }

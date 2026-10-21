@@ -78,6 +78,16 @@ impl Sys {
         };
     }
 
+    /// The processes playing sound now (streams that aren't paused),
+    /// sorted.
+    pub fn playing_pids(&self) -> Vec<u32> {
+        let Some(a) = self.audio.as_ref().filter(|a| a.available()) else { return Vec::new() };
+        let mut pids: Vec<u32> = a.snapshot().playback.iter().filter(|s| !s.corked).filter_map(|s| s.pid).collect();
+        pids.sort_unstable();
+        pids.dedup();
+        pids
+    }
+
     /// What the systray shows now.
     pub fn tray(&self, cfg: &MenubarSettings) -> Tray {
         let mut t = Tray {
