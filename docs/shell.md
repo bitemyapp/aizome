@@ -215,6 +215,13 @@ opens the actions of any row (for a file: Open, Open With ▸, Show in Hako,
 Copy Path, Move to Trash; for a window: Focus, Close, Move to Desk ▸; for an
 app: Open, New Window, Quit if running).
 
+Opening an app from the palette, Toolchest or Deskbar raises its most
+recently used window on the current Desk (sticky windows count as local).
+If it has no window here, it switches to its most recently used window's
+Desk and raises it. Activation restores a minimised window, unhides its app,
+selects its stack tab and gives it keyboard focus. Apps without windows are
+launched; **New Window** explicitly launches another instance.
+
 Selections are recorded in the frecency store (`app:`, `file:`, `cmd:`
 keys), so the palette learns.
 
@@ -226,7 +233,8 @@ collapsible by its header (the `N apps ⌄` control).
 - Each running app (by app ID, in launch order, pinned apps first): its
   icon (Lucide glyph for Aizome's apps by kind, the app's own icon at 16pt
   for others), name in Archivo 650 and window count right-aligned. Click
-  focuses its last window (or shows it if hidden); right-click: New Window,
+  activates its last window on this Desk, or another Desk if none are local;
+  right-click: New Window,
   Hide, Quit, Keep in Deskbar.
 - Its windows indented beneath: the focused one with a 3pt `focus` bar at
   the left edge, hidden or minimised ones in italic `text3` with "hidden",
