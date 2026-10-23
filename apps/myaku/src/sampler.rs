@@ -364,12 +364,12 @@ impl Sampler {
                                 shared: Some(client.shared),
                             },
                         };
-                        if let Some((was, at)) = self.clients.get(&id) {
+                        if let Some((was, at)) = self.clients.get(&id)
+                            && client.measures_busy()
+                        {
                             let cu = ClientUse::between(was, &client, started.duration_since(*at).as_secs_f64());
-                            if !client.engines.is_empty() || !client.cycles.is_empty() {
-                                u.usage.busy = Some(f64::from(cu.busy));
-                                u.usage.video = Some(f64::from(cu.video));
-                            }
+                            u.usage.busy = Some(f64::from(cu.busy));
+                            u.usage.video = Some(f64::from(cu.video));
                         }
                         fresh_clients.insert(id, (client, started));
                         gpus.push(u);
@@ -486,11 +486,6 @@ impl Sampler {
         if let Some(nvml) = &mut self.nvml {
             merge_nvidia(&mut gpus, &mut processes, &nvml.read());
         }
-        for process in &mut processes {
-            for (device, gpu) in gpus.iter().enumerate() {
-                process.usage.graphics.add(&process.graphics_on(device, gpu));
-            }
-        }
 
         // Power: the processor's counters where readable, else the battery
         // while it discharges; shared by processor use.
@@ -598,7 +593,10 @@ impl Sampler {
         self.identities.retain(|k, _| used.contains(k));
         lap("groups", &mut phases);
         self.phases = phases;
-        Frame { tick, system, gpus, power, processes, groups, uid: self.uid, cost: started.elapsed() }
+        let mut frame = Frame { tick, system, gpus, power, processes, groups, uid: self.uid, cost: Duration::ZERO };
+        frame.total_graphics();
+        frame.cost = started.elapsed();
+        frame
     }
 }
 

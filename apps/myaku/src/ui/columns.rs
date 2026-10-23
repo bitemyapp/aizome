@@ -24,6 +24,8 @@ pub enum Col {
     Video,
     Vram,
     GpuShared,
+    /// Which graphics cards it uses, when there are several.
+    Card,
     Read,
     Write,
     ReadTotal,
@@ -54,6 +56,7 @@ impl Col {
             Video => "% Video",
             Vram => "Video Memory",
             GpuShared => "Shared GPU",
+            Card => "Card",
             Read => "Reading",
             Write => "Writing",
             ReadTotal => "Read",
@@ -83,6 +86,7 @@ impl Col {
             Video => "Busiest video encoding or decoding engine",
             Vram => "Graphics memory it holds",
             GpuShared => "System memory mapped for the graphics card",
+            Card => "The graphics cards it uses",
             Read | Write => "Storage read or written each second",
             ReadTotal | WriteTotal => "Storage read or written since it started",
             Pid => "Process ID",
@@ -95,6 +99,7 @@ impl Col {
             Name => 300.0,
             Pid => 64.0,
             User => 84.0,
+            Card => 132.0,
             Threads => 70.0,
             Cpu | Gpu | Video => 72.0,
             _ => 96.0,
@@ -106,14 +111,18 @@ impl Col {
         match self {
             Name => 210.0,
             Pid => 56.0,
-            Cpu | Gpu | Video => 64.0,
+            Cpu => 64.0,
+            // The GPU lens has room for its own: its columns are fewer.
+            Gpu | Video => 72.0,
+            Vram => 96.0,
             Threads => 62.0,
+            Card => 112.0,
             _ => 80.0,
         }
     }
 
     pub fn numeric(self) -> bool {
-        !matches!(self, Name | User)
+        !matches!(self, Name | User | Card)
     }
 }
 
@@ -165,6 +174,19 @@ fn number(col: Col, u: &Usage) -> Option<f64> {
     })
 }
 
+/// A figure's order, ties broken by a kindred one: most of what uses a
+/// graphics card is idle at any moment, so at the same % GPU, the memory
+/// held puts its clients before what uses no card.
+fn order_usage(col: Col, a: &Usage, b: &Usage, asc: bool) -> Ordering {
+    let tie = match col {
+        Gpu | Video => Some(Vram),
+        Vram => Some(Gpu),
+        _ => None,
+    };
+    order_numbers(number(col, a), number(col, b), asc)
+        .then_with(|| tie.map_or(Ordering::Equal, |t| order_numbers(number(t, a), number(t, b), asc)))
+}
+
 /// Unknowns last, whichever way.
 fn order_numbers(a: Option<f64>, b: Option<f64>, asc: bool) -> Ordering {
     match (a, b) {
@@ -192,7 +214,7 @@ pub fn compare_process(col: Col, a: &Process, b: &Process, asc: bool) -> Orderin
             let o = a.pid.cmp(&b.pid);
             if asc { o } else { o.reverse() }
         }
-        c => order_numbers(number(c, &a.usage), number(c, &b.usage), asc),
+        c => order_usage(c, &a.usage, &b.usage, asc),
     };
     o.then(a.pid.cmp(&b.pid))
 }
@@ -214,7 +236,7 @@ pub fn compare_group(col: Col, a: &Group, b: &Group, f: &Frame, asc: bool) -> Or
             let o = first(a).pid.cmp(&first(b).pid);
             if asc { o } else { o.reverse() }
         }
-        c => order_numbers(number(c, &a.usage), number(c, &b.usage), asc),
+        c => order_usage(c, &a.usage, &b.usage, asc),
     };
     o.then(a.key.cmp(&b.key))
 }
@@ -222,7 +244,7 @@ pub fn compare_group(col: Col, a: &Group, b: &Group, f: &Frame, asc: bool) -> Or
 /// What a cell says (`None`: not known, a dash).
 pub fn text(col: Col, u: &Usage, pid: Option<u32>, user: Option<&str>) -> Option<String> {
     Some(match col {
-        Name => return None,
+        Name | Card => return None,
         Cpu => model::percent(u.cpu),
         CpuTime => model::cpu_time(u.cpu_time),
         Threads => model::grouped(u.threads),
@@ -251,6 +273,7 @@ pub fn text(col: Col, u: &Usage, pid: Option<u32>, user: Option<&str>) -> Option
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::GpuUsage;
 
     #[test]
     fn every_lens_leads_with_the_name_and_sorts_by_its_own() {
@@ -266,5 +289,18 @@ mod tests {
         let b = Process { pid: 2, ..Default::default() };
         assert_eq!(compare_process(Private, &a, &b, false), Ordering::Less);
         assert_eq!(compare_process(Private, &a, &b, true), Ordering::Less);
+    }
+
+    #[test]
+    fn idle_clients_holding_memory_come_before_what_uses_no_card() {
+        let held = |pid, mib: u64| Process {
+            pid,
+            usage: Usage { graphics: GpuUsage { vram: Some(mib << 20), ..Default::default() }, ..Default::default() },
+            ..Default::default()
+        };
+        // A systemd with a lower pid, and a browser holding 789 MiB, both idle.
+        let (systemd, chrome) = (held(1, 0), held(20699, 789));
+        assert_eq!(compare_process(Gpu, &chrome, &systemd, false), Ordering::Less);
+        assert_eq!(compare_process(Video, &chrome, &systemd, false), Ordering::Less);
     }
 }

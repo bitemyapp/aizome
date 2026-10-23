@@ -21,16 +21,15 @@ pub fn window(m: &Myaku) -> Element<Msg> {
         middle.push(divider().vertical().into());
         middle.push(super::inspector::view(m));
     }
-    let mut sections = vec![toolbar(m)];
-    if m.lens == Lens::Gpu && !m.frame.gpus.is_empty() {
-        sections.push(super::gpu::overview(m));
-    }
-    sections.extend([
-        aizome_kit::widgets::layout::row(middle).width(Length::Fill).height(Length::Fill).into(),
+    column![
+        toolbar(m),
+        aizome_kit::widgets::layout::row(middle).width(Length::Fill).height(Length::Fill),
         graphs(m),
         status(m),
-    ]);
-    aizome_kit::widgets::layout::column(sections).width(Length::Fill).height(Length::Fill).into()
+    ]
+    .width(Length::Fill)
+    .height(Length::Fill)
+    .into()
 }
 
 fn toolbar(m: &Myaku) -> Element<Msg> {
@@ -42,7 +41,7 @@ fn toolbar(m: &Myaku) -> Element<Msg> {
         Ok(_) => "Quit the selection…".to_owned(),
         Err(e) => format!("Quit — {e}"),
     };
-    aizome_kit::toolbar(vec![
+    let mut items: Vec<Element<Msg>> = vec![
         icon_button(Icon::Info)
             .toolbar()
             .selected(m.inspector)
@@ -59,6 +58,28 @@ fn toolbar(m: &Myaku) -> Element<Msg> {
         toolbar_separator(),
         segmented(lenses.iter().map(|l| l.title()), current).on_select(move |i| Msg::Lens(picks[i])).into(),
         spacer().into(),
+    ];
+    // With several cards, which the GPU lens shows: every card, or one.
+    let gpus = &m.frame.gpus;
+    if m.lens == Lens::Gpu && gpus.len() > 1 {
+        let names = model::gpu_names(gpus);
+        let order = model::gpu_order(gpus);
+        let shown = order.iter().position(|&i| m.gpu.as_ref() == Some(&gpus[i].pci)).map_or(0, |at| at + 1);
+        let pcis: Vec<String> = order.iter().map(|&i| gpus[i].pci.clone()).collect();
+        items.push(
+            dropdown(
+                std::iter::once("All GPUs".to_owned()).chain(order.iter().map(|&i| names[i].clone())),
+                Some(shown),
+            )
+            .compact()
+            .on_select(move |i| Msg::Gpu(i.checked_sub(1).and_then(|i| pcis.get(i).cloned())))
+            .id("gpu-selector")
+            .label("GPU")
+            .tooltip("Show the processes using every GPU, or one")
+            .into(),
+        );
+    }
+    items.extend([
         dropdown(
             ["Applications", "All Processes", "My Processes"],
             Some(match m.show {
@@ -71,7 +92,8 @@ fn toolbar(m: &Myaku) -> Element<Msg> {
         .on_select(|i| Msg::Show([Show::Apps, Show::All, Show::Mine][i.min(2)]))
         .into(),
         search_field(&m.search).placeholder("Search").on_change(Msg::Search).id("search").width(190.0).into(),
-    ])
+    ]);
+    aizome_kit::toolbar(items)
 }
 
 /// A kind's glyph and colour.
@@ -92,16 +114,21 @@ fn table_view(m: &Myaku) -> Element<Msg> {
     // Beside the inspector, narrower columns and no User, so the figures
     // fit without scrolling sideways.
     let narrow = m.inspector;
-    let all: &'static [Col] = columns::for_lens(m.lens);
-    let cols: &'static [Col] = if narrow && all.last() == Some(&Col::User) { &all[..all.len() - 1] } else { all };
+    let mut cols = m.columns();
+    if narrow && cols.last() == Some(&Col::User) {
+        cols.pop();
+    }
     let columns: Vec<Column> = cols
         .iter()
         .map(|c| {
             let width = if narrow { c.narrow_width() } else { c.width() };
-            let col = Column::new(c.title()).width(width).sortable();
+            let col = Column::new(c.title()).width(width);
+            // The cards' names don't sort; % GPU and Video Memory do the work.
+            let col = if *c == Col::Card { col } else { col.sortable() };
             if c.numeric() { col.align_end() } else { col }
         })
         .collect();
+    let cols = Rc::new(cols);
     let (sort, asc) = m.sort();
     let sorted = cols.iter().position(|c| *c == sort).unwrap_or(0);
     let rows = m.rows.clone();
@@ -120,8 +147,9 @@ fn table_view(m: &Myaku) -> Element<Msg> {
     };
     let count = rows.len();
     let gpu = m.gpu_filter();
+    let cards = Rc::new(model::gpu_names(&frame.gpus));
     let selected: Vec<usize> = m.selected_row().into_iter().collect();
-    let body = table(columns, count, move |r, c| cell(&frame, rows[r], cols[c], &expanded, gpu))
+    let body = table(columns, count, move |r, c| cell(&frame, rows[r], cols[c], &expanded, gpu, &cards))
         .sorted(sorted, asc)
         .on_sort(Msg::Sort)
         .selected(selected)
@@ -134,11 +162,7 @@ fn table_view(m: &Myaku) -> Element<Msg> {
         .id("processes");
     if count == 0 && m.frames > 0 {
         let message = if let Some(device) = m.gpu_filter().filter(|_| m.search.is_empty()) {
-            if m.frame.gpus[device].unlisted_usage == model::GpuUsage::UNKNOWN {
-                "GPU process data is unavailable.".to_owned()
-            } else {
-                "No processes are using this GPU.".to_owned()
-            }
+            super::gpu::nothing(&m.frame, device)
         } else if m.search.is_empty() {
             "Nothing to list.".to_owned()
         } else {
@@ -192,8 +216,19 @@ fn cell(
     col: Col,
     expanded: &std::collections::HashSet<(u32, u64)>,
     gpu: Option<usize>,
+    names: &[String],
 ) -> Element<Msg> {
     match (r, col) {
+        (r, Col::Card) => {
+            let used = match r {
+                RowRef::Group(g) => super::gpu::used_by(f.groups[g].members.iter().map(|&m| &f.processes[m]), names),
+                RowRef::Process(p, _) => super::gpu::used_by(std::iter::once(&f.processes[p]), names),
+            };
+            match used {
+                Some(t) => text(t).role(Role::Text2).into(),
+                None => dash(),
+            }
+        }
         (RowRef::Group(g), Col::Name) => {
             let grp = &f.groups[g];
             let (glyph, role) = kind_icon(grp.kind);
@@ -212,8 +247,7 @@ fn cell(
                 text(grp.name.clone()).weight(if grp.focused { 650.0 } else { 500.0 }).into(),
             ];
             let detail = if let Some(device) = gpu.filter(|_| grp.members.len() > 1) {
-                let clients =
-                    grp.members.iter().filter(|&&p| f.processes[p].gpus.iter().any(|g| g.device == device)).count();
+                let clients = grp.members.iter().filter(|&&p| f.processes[p].uses(device)).count();
                 if clients == grp.members.len() {
                     model::count(clients, "process", "processes")
                 } else {
@@ -297,11 +331,16 @@ impl Widget for Swatch {
     }
 }
 
-fn key(hue: Hue, words: String) -> Element<Msg> {
+pub(super) fn key(hue: Hue, words: String) -> Element<Msg> {
     row![Element::new(Swatch(hue), Vec::new()), text(words).size(11.0).tabular().role(Role::Text2)].spacing(5.0).into()
 }
 
-fn card(title: &str, value: String, body: Element<Msg>, keys: Vec<Element<Msg>>) -> Element<Msg> {
+/// A graph's place in the strip: room for a frame around it.
+pub(super) fn slot(card: Element<Msg>) -> aizome_kit::widgets::layout::Container<Msg> {
+    container(card).padding([5.0, 7.0]).width(Length::Fill)
+}
+
+pub(super) fn card(title: &str, value: String, body: Element<Msg>, keys: Vec<Element<Msg>>) -> Element<Msg> {
     column![
         row![
             text(title.to_owned()).semibold().size(12.0),
@@ -389,8 +428,22 @@ fn graphs(m: &Myaku) -> Element<Msg> {
             key(Hue::Amber, format!("Out {}", model::rate(s.net_tx))),
         ],
     );
-    container(row![cpu, memory, disk, net].spacing(16.0).width(Length::Fill))
-        .padding([10.0, 14.0, 10.0, 14.0])
+    // The GPU lens puts each card's graph in the place of Network's, then
+    // Disk's and on: the processor's and memory's keep theirs.
+    let mut cards: Vec<Element<Msg>> = [cpu, memory, disk, net].into_iter().map(|c| slot(c).into()).collect();
+    let gpus = &m.frame.gpus;
+    let order = model::gpu_order(gpus);
+    if m.lens == Lens::Gpu && !order.is_empty() {
+        let names = model::gpu_names(gpus);
+        cards.truncate(4usize.saturating_sub(order.len()));
+        cards.extend(order.iter().map(|&i| super::gpu::strip_card(m, i, &names[i])));
+    }
+    let many = cards.len() > 4;
+    let strip = aizome_kit::widgets::layout::row(cards).spacing(2.0).width(Length::Fill);
+    // More cards than four scroll sideways, each at its graph's own width.
+    let strip: Element<Msg> = if many { scroll(strip).horizontal().width(Length::Fill).into() } else { strip.into() };
+    container(strip)
+        .padding([5.0, 7.0, 5.0, 7.0])
         .fill(Tone::Chrome)
         .edges(Edge::BevelLo, Sides::TOP)
         .width(Length::Fill)
@@ -401,10 +454,11 @@ fn graphs(m: &Myaku) -> Element<Msg> {
 fn status(m: &Myaku) -> Element<Msg> {
     let f: &Arc<Frame> = &m.frame;
     let s = &f.system;
-    let (left, error) = match &m.notice {
-        Some((n, e)) => (n.clone(), *e),
-        None if m.frames == 0 => (String::new(), false),
-        None => (
+    let (left, error) = match (&m.notice, m.gpu_filter()) {
+        (Some((n, e)), _) => (n.clone(), *e),
+        (None, _) if m.frames == 0 => (String::new(), false),
+        (None, Some(device)) => (super::gpu::clients(m, device), false),
+        (None, None) => (
             format!(
                 "{} · {} · up {}",
                 model::count(s.processes, "process", "processes"),
@@ -444,13 +498,7 @@ fn status(m: &Myaku) -> Element<Msg> {
             Meter::Battery => format!("Battery {}", f.power.battery.map(model::watts).unwrap_or_else(|| "—".into())),
             Meter::None => "No power meter".into(),
         },
-        Lens::Gpu => m.gpu_filter().map_or_else(
-            || "Process usage across all GPUs".into(),
-            |device| {
-                let n = f.processes.iter().filter(|p| p.gpus.iter().any(|g| g.device == device)).count();
-                format!("{} using {}", model::count(n, "process", "processes"), f.gpus[device].name)
-            },
-        ),
+        Lens::Gpu => super::gpu::status(m),
         Lens::Disk => s.disks.iter().map(|d| format!("{} {:.0}% busy", d.name, d.busy)).collect::<Vec<_>>().join(" · "),
     };
     aizome_kit::status_bar(vec![

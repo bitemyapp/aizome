@@ -1,128 +1,150 @@
-//! Device totals stay visible while the compact picker filters process usage.
+//! The GPU lens's own parts. Each graphics card has a graph in the strip
+//! along the bottom, in the place of Disk's and Network's: how busy it is
+//! and how full its memory, over two minutes. With several cards, pressing
+//! one shows its clients alone, as the toolbar's pop-up and View ▸ GPUs do;
+//! the card shown is framed in the focus colour.
 
 use aizome_kit::prelude::*;
-use aizome_kit::{column, row};
+use aizome_kit::sidestep_ui::Cursor;
 
+use super::graph::{Hue, Scale, Style, graph};
+use super::view::{card, key, slot};
 use crate::app::{Msg, Myaku};
-use crate::model::{self, Gpu};
+use crate::history::Ring;
+use crate::model::{self, Frame, Gpu, Process};
 
-pub fn overview(m: &Myaku) -> Element<Msg> {
-    let multiple = m.frame.gpus.len() > 1;
-    let mut heading: Vec<Element<Msg>> = Vec::new();
-    if multiple {
-        let mut labels = vec!["All GPUs".to_owned()];
-        labels.extend(m.frame.gpus.iter().enumerate().map(|(i, g)| {
-            if m.frame.gpus.iter().filter(|other| other.name == g.name).count() > 1 {
-                format!("GPU {i} · {}", g.name)
-            } else {
-                g.name.clone()
-            }
-        }));
-        let devices: Vec<String> = m.frame.gpus.iter().map(|g| g.pci.clone()).collect();
-        let selected = devices.iter().position(|pci| Some(pci) == m.gpu.as_ref()).map_or(0, |i| i + 1);
-        heading.push(text("GPU").size(12.0).role(Role::Text2).into());
-        heading.push(
-            dropdown(labels, Some(selected))
-                .compact()
-                .width(280.0)
-                .on_select(move |i| Msg::Gpu(i.checked_sub(1).and_then(|i| devices.get(i).cloned())))
-                .id("gpu-selector")
-                .label("Filter processes by GPU")
-                .tooltip("Show processes using this GPU, including idle clients holding memory")
-                .into(),
-        );
+/// Card `i`'s graph in the strip, `name` its label.
+pub fn strip_card(m: &Myaku, i: usize, name: &str) -> Element<Msg> {
+    let g = &m.frame.gpus[i];
+    let history = m.history.card(&g.pci);
+    // A figure not read now isn't drawn as if it were naught.
+    let series = |ring: Option<&Ring>, known: bool| ring.filter(|_| known).cloned().unwrap_or_default();
+    let share = g.vram_used.zip(g.vram_total).filter(|(_, total)| *total > 0);
+    let busy = g.busy.map_or("—".into(), |b| format!("{}%", model::percent(b)));
+    let mut keys = vec![key(Hue::Violet, format!("Busy {busy}"))];
+    // Integrated Intel cards have no memory of their own to tell of.
+    let has_memory = g.vram_used.is_some() || g.vram_total.is_some();
+    if has_memory {
+        let percent = share.map_or("—".into(), |(used, total)| format!("{:.0}%", used as f64 / total as f64 * 100.0));
+        keys.push(key(Hue::Cyan, format!("Memory {percent}")));
     }
-    heading.push(spacer().into());
-    heading.push(text("Device totals").mono().caps().letter_spacing(1.1).size(10.5).role(Role::Text3).into());
-    let cards: Vec<Element<Msg>> = m
-        .frame
-        .gpus
-        .iter()
-        .enumerate()
-        .map(|(i, g)| {
-            let card = device(g, i, m.gpu.as_deref() == Some(&g.pci) || !multiple);
-            // Two cards fit even at the window's minimum width. Larger inventories
-            // scroll horizontally instead of squeezing their figures or growing tall.
-            if m.frame.gpus.len() > 2 { card.width(328.0) } else { card.width(Length::Fill) }
-        })
-        .collect();
-    let cards = aizome_kit::widgets::layout::row(cards).spacing(10.0);
-    let cards: Element<Msg> = if m.frame.gpus.len() > 2 {
-        scroll(cards).horizontal().height(102.0).width(Length::Fill).into()
-    } else {
-        cards.width(Length::Fill).into()
+    let value = match (g.vram_used, g.vram_total) {
+        (Some(used), Some(total)) => format!("{} of {}", model::bytes(used), model::bytes(total)),
+        (Some(used), None) => model::bytes(used),
+        (None, Some(total)) => format!("— of {}", model::bytes(total)),
+        (None, None) => busy,
     };
-    container(
-        column![aizome_kit::widgets::layout::row(heading).spacing(8.0).height(24.0).width(Length::Fill), cards,]
-            .spacing(6.0)
-            .width(Length::Fill),
-    )
-    .padding([6.0, 14.0, 12.0, 14.0])
-    .fill(Tone::Chrome)
-    .edges(Edge::BevelLo, Sides::BOTTOM)
-    .width(Length::Fill)
-    .id("gpu-overview")
-    .into()
+    let body = card(
+        name,
+        value,
+        graph(
+            [series(history.map(|h| &h.busy), g.busy.is_some()), series(history.map(|h| &h.memory), share.is_some())],
+            [Hue::Violet, Hue::Cyan],
+            Style::Overlaid,
+            Scale::Fixed(1.0),
+            format!("{name}: how busy, and how full its memory, over two minutes"),
+        ),
+        keys,
+    );
+    let several = m.frame.gpus.len() > 1;
+    let shown = several && m.gpu.as_deref() == Some(g.pci.as_str());
+    let mut framed = slot(body);
+    if shown {
+        framed = framed.border(Edge::Focus);
+    } else if several && m.hover_gpu.as_deref() == Some(g.pci.as_str()) {
+        framed = framed.border(Edge::Line2);
+    }
+    let mut about = vec![g.name.clone(), describe(g)];
+    if !several {
+        return framed.tooltip(about.join("\n")).key(g.pci.clone()).id(format!("gpu-card-{i}")).into();
+    }
+    about.push(if shown { "Show every GPU's processes".into() } else { "Show only the processes using it".into() });
+    let pci = g.pci.clone();
+    mouse_area(framed)
+        .on_press(Msg::Gpu((!shown).then(|| pci.clone())))
+        .on_hover(move |inside| Msg::HoverGpu(pci.clone(), inside))
+        .cursor(Cursor::Pointer)
+        .tooltip(about.join("\n"))
+        .label(if shown { format!("{name}, shown alone") } else { format!("Show {name} alone") })
+        .key(g.pci.clone())
+        .id(format!("gpu-card-{i}"))
+        .into()
 }
 
-fn device(g: &Gpu, index: usize, selected: bool) -> Element<Msg> {
-    let mut detail = vec![format!("GPU {index}"), if g.integrated { "Integrated" } else { "Discrete" }.into()];
-    if let Some(c) = g.temperature {
-        detail.push(format!("{c:.0} °C"));
+/// A card's kind, driver, address and figures: "Discrete · nvidia ·
+/// 0000:01:00.0 · 2.61 GHz · 52 °C · 180 W".
+fn describe(g: &Gpu) -> String {
+    let mut parts = vec![if g.integrated { "Integrated" } else { "Discrete" }.to_owned()];
+    parts.extend([g.driver.clone(), g.pci.clone()].into_iter().filter(|s| !s.is_empty()));
+    parts.extend(figures(g, true));
+    parts.join(" · ")
+}
+
+/// What a card measures of itself: its temperature and power, and with
+/// `clock`, its clock first.
+fn figures(g: &Gpu, clock: bool) -> Vec<String> {
+    let mut v = Vec::new();
+    if let Some(mhz) = g.clock.filter(|c| clock && *c > 0.0) {
+        v.push(model::frequency(mhz));
+    }
+    if let Some(t) = g.temperature {
+        v.push(format!("{t:.0} °C"));
     }
     if let Some(w) = g.power {
-        detail.push(model::watts(w));
+        v.push(model::watts(w));
     }
-    let utilization = g.busy.map(|p| format!("{}%", model::percent(p))).unwrap_or_else(|| "—".into());
-    let memory = g.vram_used.map(model::bytes).unwrap_or_else(|| "—".into());
-    let capacity = g.vram_total.map(|n| format!("/ {}", model::bytes(n))).unwrap_or_default();
-    let meter: Element<Msg> = match g.vram_used.zip(g.vram_total).filter(|(_, total)| *total > 0) {
-        Some((used, total)) => {
-            progress((used as f64 / total as f64).clamp(0.0, 1.0)).height(6.0).width(Length::Fill).into()
+    v
+}
+
+/// The status line's right in the GPU lens: the card shown, in full, with
+/// its figures ("NVIDIA GeForce RTX 5090 · 2.61 GHz · 62 °C · 461 W"); with
+/// every card shown, each card's, as the Disk lens gives each disk's.
+pub fn status(m: &Myaku) -> String {
+    let gpus = &m.frame.gpus;
+    match m.gpu_filter().or((gpus.len() == 1).then_some(0)) {
+        Some(i) => std::iter::once(gpus[i].name.clone()).chain(figures(&gpus[i], true)).collect::<Vec<_>>().join(" · "),
+        None => {
+            let names = model::gpu_names(gpus);
+            model::gpu_order(gpus)
+                .into_iter()
+                .map(|i| {
+                    std::iter::once(names[i].clone()).chain(figures(&gpus[i], false)).collect::<Vec<_>>().join(" ")
+                })
+                .collect::<Vec<_>>()
+                .join(" · ")
         }
-        None => space(6.0),
-    };
-    let content = column![
-        text(g.name.clone())
-            .semibold()
-            .size(12.0)
-            .role(if selected { Role::Accent } else { Role::Text })
-            .width(Length::Fill),
-        text(detail.join(" · ")).size(10.5).role(Role::Text3).tabular().width(Length::Fill),
-        row![
-            column![
-                text("Utilization").size(10.5).role(Role::Text3),
-                text(utilization).size(22.0).tabular().role(Role::Accent),
-            ]
-            .spacing(1.0)
-            .width(92.0),
-            column![
-                text("Video memory").size(10.5).role(Role::Text3),
-                row![
-                    text(memory).size(18.0).tabular().semibold(),
-                    text(capacity).size(11.5).tabular().role(Role::Text2),
-                ]
-                .spacing(5.0),
-                meter,
-            ]
-            .spacing(1.0)
-            .width(Length::Fill),
-        ]
-        .spacing(16.0)
-        .width(Length::Fill),
-    ]
-    .spacing(3.0)
-    .padding([8.0, 12.0])
-    .width(Length::Fill);
-    container(content)
-        .fill(Tone::Sunk)
-        .border(Edge::Line)
-        .height(98.0)
-        .key(g.pci.clone())
-        .id(format!("gpu-device-{index}"))
-        .tooltip(format!(
-            "{}\n{} · {}\nDriver totals include allocations outside the process list.",
-            g.name, g.pci, g.driver
-        ))
-        .into()
+    }
+}
+
+/// The status line's left with one card shown: how many processes use it.
+pub fn clients(m: &Myaku, device: usize) -> String {
+    let f = &m.frame;
+    let n = f.processes.iter().filter(|p| p.uses(device)).count();
+    let name = &model::gpu_names(&f.gpus)[device];
+    match n {
+        0 => format!("No process uses {name}"),
+        1 => format!("1 of {} processes uses {name}", f.processes.len()),
+        _ => format!("{n} of {} processes use {name}", f.processes.len()),
+    }
+}
+
+/// What the table says with one card shown and no rows.
+pub fn nothing(f: &Frame, device: usize) -> String {
+    let name = &model::gpu_names(&f.gpus)[device];
+    if f.gpus[device].clients_unknown() {
+        format!("The processes using {name} can't be read here.")
+    } else {
+        format!("Nothing is using {name}.")
+    }
+}
+
+/// What the Card column says of processes: the cards they use, by `names`.
+pub fn used_by<'a>(procs: impl Iterator<Item = &'a Process> + Clone, names: &[String]) -> Option<String> {
+    let used: Vec<usize> = (0..names.len()).filter(|&d| procs.clone().any(|p| p.uses(d))).collect();
+    match used.len() {
+        0 => None,
+        1 => Some(names[used[0]].clone()),
+        2 if names.len() == 2 => Some("Both".into()),
+        n => Some(format!("{n} GPUs")),
+    }
 }

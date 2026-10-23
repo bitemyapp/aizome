@@ -1,115 +1,37 @@
+//! The GPU lens with two cards, on made-up readings of a desktop whose
+//! RTX 5090 does most of the work beside an integrated Radeon: which card
+//! the table shows, chosen from the toolbar, the strip or the menu; what
+//! the figures mean across cards; and what can't be read staying unknown.
+
 use std::sync::Arc;
 
 use aizome_kit::Size;
 use aizome_kit::sidestep_ui::{Key, Modifiers, NamedKey};
 use aizome_kit::testing::Harness;
-use aizome_kit::theme::{Appearance, ThemeChoice};
 use myaku::app::{Msg, Myaku, Request, RowRef, Sel, Show};
-use myaku::model::{Frame, Gpu, GpuUsage, GpuUse, Group, Kind, Lens, Process, Usage};
+use myaku::fixture;
+use myaku::model::{Frame, GpuUsage, Lens};
+use myaku::ui::columns::Col;
 
-fn frame(tick: u64) -> Frame {
-    let mut f = myaku::fixture::frame(300, tick);
-    f.gpus = vec![
-        Gpu {
-            name: "AMD Radeon Graphics".into(),
-            pci: "0000:78:00.0".into(),
-            integrated: true,
-            busy: Some(18.0),
-            vram_used: Some(22 << 20),
-            vram_total: Some(2 << 30),
-            ..Default::default()
-        },
-        Gpu {
-            name: "NVIDIA GeForce RTX 5090".into(),
-            pci: "0000:01:00.0".into(),
-            busy: Some(3.0),
-            vram_used: Some(2941 << 20),
-            vram_total: Some(32 << 30),
-            ..Default::default()
-        },
-    ];
-    let client = |device, busy, mib: u64| GpuUse {
-        device,
-        usage: GpuUsage { busy: Some(busy), vram: Some(mib << 20), ..Default::default() },
-    };
-    f.processes = vec![
-        Process {
-            pid: 10,
-            start_ticks: 1,
-            name: "aizome".into(),
-            uid: 1000,
-            readable: true,
-            group: 0,
-            usage: Usage { cpu: 1.5, ..Default::default() },
-            gpus: vec![client(0, 18.0, 6), client(1, 2.0, 876)],
-            ..Default::default()
-        },
-        Process {
-            pid: 20,
-            start_ticks: 2,
-            name: "koe".into(),
-            uid: 1000,
-            readable: true,
-            group: 1,
-            gpus: vec![client(1, 3.0, 355)],
-            ..Default::default()
-        },
-        Process {
-            pid: 21,
-            start_ticks: 3,
-            name: "koe helper".into(),
-            uid: 1000,
-            readable: true,
-            group: 1,
-            gpus: vec![client(1, 4.0, 10)],
-            ..Default::default()
-        },
-    ];
-    for p in &mut f.processes {
-        for gpu in &p.gpus {
-            p.usage.graphics.add(&gpu.usage);
-        }
-    }
-    f.groups = vec![
-        Group {
-            key: (10, 1),
-            name: "Aizome".into(),
-            kind: Some(Kind::Service),
-            own: true,
-            members: vec![0],
-            ..Default::default()
-        },
-        Group {
-            key: (20, 2),
-            name: "Koe".into(),
-            kind: Some(Kind::App),
-            own: true,
-            members: vec![1, 2],
-            ..Default::default()
-        },
-    ];
-    for g in &mut f.groups {
-        for &i in &g.members {
-            g.usage.add(&f.processes[i].usage);
-        }
-    }
-    f
+const RADEON: &str = "0000:78:00.0";
+const NVIDIA: &str = "0000:01:00.0";
+
+fn start_with(frame: Frame) -> Harness<Myaku> {
+    let (signals, _) = Myaku::recorder();
+    Harness::new(Myaku::with_frame(Arc::new(frame), signals, Request { lens: Some(Lens::Gpu), ..Default::default() }))
 }
 
 fn start() -> Harness<Myaku> {
-    let (signals, _) = Myaku::recorder();
-    Harness::new(Myaku::with_frame(
-        Arc::new(frame(1)),
-        signals,
-        Request { lens: Some(Lens::Gpu), ..Default::default() },
-    ))
+    start_with(fixture::workstation(300, 40))
 }
 
+/// Choose the toolbar pop-up's `index`th item: All GPUs, then the cards,
+/// discrete first.
 fn choose(h: &mut Harness<Myaku>, index: usize) {
     let w = h.window();
-    let rect = h.find_id(w, "gpu-selector").expect("GPU selector");
+    let rect = h.find_id(w, "gpu-selector").expect("GPU pop-up");
     h.click(w, rect.center());
-    let popup = h.popups(w).last().expect("GPU menu").0;
+    let popup = h.popups(w).last().expect("its menu").0;
     h.popup_keyboard(popup, Key::Named(NamedKey::Home), Modifiers::NONE);
     for _ in 0..index {
         h.popup_keyboard(popup, Key::Named(NamedKey::ArrowDown), Modifiers::NONE);
@@ -117,176 +39,241 @@ fn choose(h: &mut Harness<Myaku>, index: usize) {
     h.popup_keyboard(popup, Key::Named(NamedKey::Enter), Modifiers::NONE);
 }
 
+fn group(h: &Harness<Myaku>, name: &str) -> usize {
+    h.program().frame.groups.iter().position(|g| g.name == name).unwrap_or_else(|| panic!("{name}"))
+}
+
+fn names(h: &Harness<Myaku>) -> Vec<String> {
+    let m = h.program();
+    m.rows
+        .iter()
+        .map(|r| match r {
+            RowRef::Group(g) => m.frame.groups[*g].name.clone(),
+            RowRef::Process(p, _) => m.frame.processes[*p].name.clone(),
+        })
+        .collect()
+}
+
 #[test]
-fn selecting_a_gpu_updates_values_groups_sorting_and_inspector() {
+fn every_card_shows_with_the_busiest_first_and_which_card_each_uses() {
+    let h = start();
+    let w = h.window();
+    assert_eq!(names(&h)[0], "ollama", "the model's runner keeps the RTX 5090 busiest");
+    let cols = h.program().columns();
+    assert!(cols.contains(&Col::Card) && cols.contains(&Col::GpuShared));
+    let texts = h.texts(w);
+    assert!(texts.iter().any(|t| t == "Both"), "Firefox draws on both cards");
+    assert!(texts.iter().any(|t| t == "GeForce RTX 5090"));
+    // The strip: the processor's and memory's graphs, then the cards'.
+    let strip = ["gpu-card-1", "gpu-card-0"].map(|id| h.find_id(w, id).expect(id));
+    assert!(strip[0].x1 <= strip[1].x0, "the discrete card first");
+    assert!(!texts.iter().any(|t| t == "Network"), "the cards take Disk's and Network's places");
+    // The shell keeps 1% of each card busy: shares of different cards
+    // don't add up, so it's 1%. Their memory does; shared memory is the
+    // Radeon's alone, as NVML reports none.
+    let shell = h.program().frame.groups[group(&h, "aizome-shell")].usage.graphics;
+    assert_eq!((shell.busy, shell.vram, shell.shared), (Some(1.0), Some(102 << 20), Some(4 << 20)));
+}
+
+#[test]
+fn a_card_chosen_shows_its_clients_alone() {
     let mut h = start();
     let w = h.window();
-    assert_eq!(h.program().rows[0], RowRef::Group(0)); // AMD 18 + NVIDIA 2.
-    choose(&mut h, 2);
-    assert_eq!(h.program().gpu.as_deref(), Some("0000:01:00.0"));
-    assert_eq!(h.program().rows[0], RowRef::Group(1)); // NVIDIA 3 + 4.
-    assert_eq!(h.program().frame.groups[1].usage.graphics.vram, Some(365 << 20));
-    assert_eq!(h.program().frame.processes[0].usage.graphics.vram, Some(876 << 20));
-    assert_eq!(h.program().frame.processes[0].usage.cpu, 1.5);
-    h.send(Msg::Select(Sel::Group((20, 2))));
-    h.send(Msg::Inspector(true));
-    assert!(h.texts(w).iter().any(|s| s == "365 MiB"));
-    assert!(h.texts(w).iter().any(|s| s.contains("GRAPHICS · NVIDIA")));
-    h.send(Msg::Toggle((20, 2)));
-    assert_eq!(h.program().rows[1], RowRef::Process(2, true));
-    h.send(Msg::Show(Show::All));
-    assert_eq!(h.program().rows[0], RowRef::Process(2, false));
     choose(&mut h, 1);
-    assert_eq!(*h.program().rows, vec![RowRef::Process(0, false)]);
-    assert_eq!(h.program().frame.groups[1].usage.graphics.vram, Some(0));
-    assert_eq!(h.program().sel, Some(Sel::Group((20, 2))));
-    choose(&mut h, 0);
-    assert_eq!(h.program().frame.processes[0].usage.graphics.vram, Some(882 << 20));
-}
-
-#[test]
-fn filtering_keeps_idle_clients_and_respects_search_and_process_views() {
-    let mut h = start();
-    let mut f = frame(2);
-    f.processes[1].gpus[0].usage.busy = Some(0.0); // Koe holds memory while idle.
-    f.processes[2].gpus.clear(); // Its CPU helper has no GPU context.
-    h.send(Msg::Frame(Arc::new(f)));
+    assert_eq!(h.program().gpu.as_deref(), Some(NVIDIA));
+    let cols = h.program().columns();
+    assert!(!cols.contains(&Col::Card), "every row uses the card shown");
+    assert!(!cols.contains(&Col::GpuShared), "NVML reports no shared memory");
+    let shown = names(&h);
+    assert_eq!(shown[0], "ollama");
+    assert!(!shown.contains(&"Spotify".to_owned()), "Spotify draws on the Radeon");
+    // Each application's figures are its use of that card.
+    let shell = &h.program().frame.groups[group(&h, "aizome-shell")];
+    assert_eq!(shell.usage.graphics.vram, Some(96 << 20));
+    let status = h.texts(w);
+    assert!(
+        status.iter().any(|t| t.starts_with("5 of ") && t.ends_with("processes use GeForce RTX 5090")),
+        "{status:?}"
+    );
+    assert!(status.iter().any(|t| t.starts_with("NVIDIA GeForce RTX 5090 · 2.61 GHz")));
+    // An application on both shows its processes using this one.
+    h.send(Msg::Toggle(h.program().frame.groups[group(&h, "Firefox")].key));
+    assert!(h.texts(w).iter().any(|t| t == "1 of 14 processes"));
+    // The Radeon: Spotify and the compositor's helper.
     choose(&mut h, 2);
-    assert_eq!(h.program().rows.len(), 2);
-    h.send(Msg::Toggle((20, 2)));
-    assert!(h.program().rows.contains(&RowRef::Process(1, true)));
-    assert!(!h.program().rows.contains(&RowRef::Process(2, true)));
-    assert!(h.texts(h.window()).iter().any(|s| s == "1 of 2 processes"));
-    h.send(Msg::Search("helper".into()));
+    assert_eq!(h.program().gpu.as_deref(), Some(RADEON));
+    assert!(h.program().columns().contains(&Col::GpuShared));
+    assert!(names(&h).contains(&"Spotify".to_owned()) && !names(&h).contains(&"ollama".to_owned()));
+    choose(&mut h, 0);
+    assert_eq!(h.program().gpu, None);
+    // Searching and listing processes keep to the card.
+    choose(&mut h, 1);
+    h.send(Msg::Show(Show::All));
+    assert!(
+        h.program()
+            .rows
+            .iter()
+            .all(|r| matches!(r, RowRef::Process(p, false) if h.program().frame.processes[*p].uses(1)))
+    );
+    h.send(Msg::Search("spotify".into()));
     assert!(h.program().rows.is_empty());
-    h.send(Msg::Search("koe".into()));
-    assert_eq!(*h.program().rows, vec![RowRef::Group(1), RowRef::Process(1, true)]);
-    h.send(Msg::Show(Show::All));
-    assert_eq!(*h.program().rows, vec![RowRef::Process(1, false)]);
-    h.send(Msg::Show(Show::Mine));
-    assert_eq!(*h.program().rows, vec![RowRef::Process(1, false)]);
-    h.send(Msg::Lens(Lens::Cpu));
-    assert_eq!(h.program().rows.len(), 2);
-    h.send(Msg::Lens(Lens::Gpu));
-    assert_eq!(*h.program().rows, vec![RowRef::Process(1, false)]);
-    h.send(Msg::Search(String::new()));
-    choose(&mut h, 1);
-    h.send(Msg::Show(Show::Apps));
-    assert_eq!(*h.program().rows, vec![RowRef::Group(0)]);
-    choose(&mut h, 0);
-    h.send(Msg::Show(Show::All));
-    assert_eq!(h.program().rows.len(), 3);
+    assert!(h.texts(w).iter().any(|t| t == "Nothing matches “spotify”."));
 }
 
 #[test]
-fn selection_survives_readings_reordering_and_other_lenses() {
+fn the_strip_and_the_menu_choose_too() {
     let mut h = start();
-    choose(&mut h, 2);
+    let w = h.window();
+    let card = h.find_id(w, "gpu-card-1").unwrap();
+    h.move_to(w, card.center());
+    assert_eq!(h.program().hover_gpu.as_deref(), Some(NVIDIA));
+    h.click(w, card.center());
+    assert_eq!(h.program().gpu.as_deref(), Some(NVIDIA));
+    // Pressed again, every card shows.
+    h.click(w, card.center());
+    assert_eq!(h.program().gpu, None);
+    // View ▸ GPUs, from another lens: it opens the GPU lens on the card.
+    h.send(Msg::Lens(Lens::Memory));
+    let items = view_menu(&h);
+    let at = |label: &str| items.iter().position(|(l, _)| l == label).unwrap_or_else(|| panic!("{label}: {items:?}"));
+    assert!(
+        items[at("All GPUs")].1
+            && at("All GPUs") < at("GeForce RTX 5090")
+            && at("GeForce RTX 5090") < at("Radeon Graphics")
+    );
+    h.send(Msg::Gpu(Some(RADEON.into())));
+    assert_eq!((h.program().lens, h.program().gpu.as_deref()), (Lens::Gpu, Some(RADEON)));
+    assert!(view_menu(&h).contains(&("Radeon Graphics".into(), true)));
+}
+
+/// The View menu's items, submenus' too, and whether each is checked.
+fn view_menu(h: &Harness<Myaku>) -> Vec<(String, bool)> {
+    use aizome_kit::Program;
+    let bar = h.program().menus();
+    let view = bar.menus().iter().find(|m| m.title == "View").expect("View");
+    view.actions().iter().map(|a| (a.label.clone(), a.checked)).collect()
+}
+
+#[test]
+fn other_lenses_show_every_cards_use() {
+    let mut h = start();
+    choose(&mut h, 1);
+    let shell = group(&h, "aizome-shell");
+    assert_eq!(h.program().frame.groups[shell].usage.graphics.vram, Some(96 << 20));
     h.send(Msg::Lens(Lens::Cpu));
-    let mut f = frame(2);
+    assert_eq!(
+        h.program().frame.groups[shell].usage.graphics.vram,
+        Some(102 << 20),
+        "the CPU lens's figures are as read"
+    );
+    h.send(Msg::Select(Sel::Group(h.program().frame.groups[group(&h, "Firefox")].key)));
+    h.send(Msg::Inspector(true));
+    // The inspector gives its use of each card, whichever the table shows.
+    let texts = h.texts(h.window());
+    assert!(texts.iter().any(|t| t == "GeForce RTX 5090") && texts.iter().any(|t| t == "Radeon Graphics"), "{texts:?}");
+    assert!(texts.iter().any(|t| t.starts_with("0.0% · 12.0 KiB")));
+    h.send(Msg::Lens(Lens::Gpu));
+    assert_eq!(h.program().gpu.as_deref(), Some(NVIDIA), "the GPU lens comes back to the card chosen");
+    assert_eq!(h.program().frame.groups[shell].usage.graphics.vram, Some(96 << 20));
+}
+
+#[test]
+fn the_choice_follows_the_card_and_goes_with_it() {
+    let mut h = start();
+    choose(&mut h, 1);
+    let mut f = fixture::workstation(300, 41);
     f.gpus.swap(0, 1);
     for p in &mut f.processes {
         for g in &mut p.gpus {
             g.device = 1 - g.device;
         }
     }
+    f.total_graphics();
     h.send(Msg::Frame(Arc::new(f)));
-    h.send(Msg::Lens(Lens::Gpu));
-    assert_eq!(h.program().gpu.as_deref(), Some("0000:01:00.0"));
-    assert_eq!(h.program().frame.processes[0].usage.graphics.vram, Some(876 << 20));
-    let mut gone = frame(3);
+    assert_eq!(h.program().gpu.as_deref(), Some(NVIDIA));
+    assert_eq!(names(&h)[0], "ollama");
+    assert_eq!(h.program().history.card(NVIDIA).unwrap().busy.len(), 2, "its graph goes on");
+    let mut gone = fixture::workstation(300, 42);
     gone.gpus.pop();
+    for p in &mut gone.processes {
+        p.gpus.retain(|g| g.device == 0);
+    }
+    gone.total_graphics();
     h.send(Msg::Frame(Arc::new(gone)));
     assert_eq!(h.program().gpu, None);
-    assert!(h.find_id(h.window(), "gpu-selector").is_none());
+    let w = h.window();
+    assert!(h.find_id(w, "gpu-selector").is_none());
+    assert!(!h.program().columns().contains(&Col::Card));
 }
 
 #[test]
-fn unknown_measurements_stay_unknown_and_sort_last() {
-    let mut h = start();
-    let mut f = frame(2);
-    f.gpus[1].busy = None;
-    f.gpus[1].vram_used = None;
-    f.processes[1].gpus[0].usage.busy = None;
-    h.send(Msg::Frame(Arc::new(f)));
-    choose(&mut h, 2);
-    assert_eq!(h.program().frame.groups[1].usage.graphics.busy, None);
-    assert_eq!(h.program().rows[0], RowRef::Group(0));
-    h.send(Msg::Sort(1, true));
-    assert_eq!(h.program().rows[0], RowRef::Group(0));
-    assert!(h.texts(h.window()).iter().any(|s| s == "—"));
-}
-
-#[test]
-fn an_unavailable_driver_does_not_turn_missing_clients_into_zeroes() {
-    let mut h = start();
-    let mut f = frame(2);
+fn what_cant_be_read_stays_unknown() {
+    // NVML couldn't be opened: the NVIDIA card lists no clients, and that
+    // says nothing about who uses it.
+    let mut f = fixture::workstation(300, 40);
     f.gpus[1].unlisted_usage = GpuUsage::UNKNOWN;
+    f.gpus[1].busy = None;
     for p in &mut f.processes {
         p.gpus.retain(|g| g.device != 1);
     }
-    h.send(Msg::Frame(Arc::new(f)));
-    choose(&mut h, 2);
-    assert_eq!(h.program().frame.processes[1].usage.graphics.vram, None);
-    assert_eq!(h.program().frame.groups[1].usage.graphics.busy, None);
-    assert!(h.program().rows.is_empty());
-    assert!(h.texts(h.window()).iter().any(|s| s == "GPU process data is unavailable."));
+    f.total_graphics();
+    let mut h = start_with(f);
+    let w = h.window();
+    let spotify = &h.program().frame.groups[group(&h, "Spotify")];
+    assert_eq!(spotify.usage.graphics.busy, None);
+    assert_eq!(spotify.usage.graphics.shared, Some(18 << 20), "the Radeon's shared memory is known");
+    assert!(h.texts(w).iter().any(|t| t == "Busy —"));
     choose(&mut h, 1);
-    assert_eq!(h.program().frame.processes[0].usage.graphics.vram, Some(6 << 20));
-    assert_eq!(h.program().frame.processes[1].usage.graphics.vram, Some(0));
+    assert!(h.program().rows.is_empty());
+    assert!(h.texts(w).iter().any(|t| t == "The processes using GeForce RTX 5090 can't be read here."));
+    choose(&mut h, 2);
+    assert!(h.program().frame.groups[group(&h, "Spotify")].usage.graphics.busy.is_some());
 }
 
 #[test]
-fn gpu_views_render_at_normal_and_minimum_sizes() {
+fn one_card_or_many() {
+    let mut one = fixture::workstation(300, 40);
+    one.gpus.truncate(1);
+    for p in &mut one.processes {
+        p.gpus.retain(|g| g.device == 0);
+    }
+    one.total_graphics();
+    let mut h = start_with(one);
+    let w = h.window();
+    assert!(h.find_id(w, "gpu-selector").is_none(), "nothing to choose");
+    assert!(!h.program().columns().contains(&Col::Card));
+    let card = h.find_id(w, "gpu-card-0").expect("its graph");
+    assert!(card.x0 > 1080.0 * 0.7, "one card takes Network's place alone: {card:?}");
+    h.click(w, card.center());
+    assert_eq!(h.program().gpu, None, "it doesn't choose");
+
+    let mut many = fixture::workstation(300, 40);
+    for bus in ["0000:41:00.0", "0000:61:00.0", "0000:81:00.0"] {
+        let mut more = many.gpus[1].clone();
+        more.pci = bus.into();
+        many.gpus.push(more);
+    }
+    let mut h = start_with(many);
+    let w = h.window();
+    assert!(h.texts(w).iter().any(|t| t == "GeForce RTX 5090 · 41:00"), "alike cards are told apart by bus");
+    let fifth = h.find_id(w, "gpu-card-0").expect("five cards fill the strip and scroll");
+    assert!(fifth.x0 > h.find_id(w, "gpu-card-4").unwrap().x1, "the integrated card last");
+    choose(&mut h, 4);
+    assert_eq!(h.program().gpu.as_deref(), Some("0000:81:00.0"));
+    assert!(h.texts(w).iter().any(|t| t == "Nothing is using GeForce RTX 5090 · 81:00."));
+}
+
+#[test]
+fn the_toolbar_fits_at_the_smallest_size() {
     let mut h = start();
     let w = h.window();
-    let dir = std::env::temp_dir().join("myaku-gpu");
-    std::fs::create_dir_all(&dir).unwrap();
-    h.save_png(w, dir.join("all.png"), 1.0);
-    choose(&mut h, 2);
-    h.save_png(w, dir.join("nvidia.png"), 1.0);
-    h.send(Msg::Select(Sel::Group((20, 2))));
-    h.send(Msg::Inspector(true));
-    h.save_png(w, dir.join("inspector.png"), 1.0);
-    h.send(Msg::Inspector(false));
     h.resize(w, Size::new(760.0, 480.0));
-    h.save_png(w, dir.join("minimum.png"), 1.0);
-    assert!(h.find_id(w, "gpu-selector").unwrap().width() <= 280.0);
-    let amd = h.find_id(w, "gpu-device-0").unwrap();
-    let nvidia = h.find_id(w, "gpu-device-1").unwrap();
-    assert!(amd.x1 < nvidia.x0 && nvidia.x1 <= 760.0);
-    assert!(h.texts(w).iter().any(|s| s == "22.0 MiB"));
-    assert!(h.texts(w).iter().any(|s| s == "2.9 GiB"));
-
-    let (signals, _) = Myaku::recorder();
-    let mut day = Harness::with(
-        Myaku::with_frame(Arc::new(frame(1)), signals, Request { lens: Some(Lens::Gpu), ..Default::default() }),
-        Appearance { theme: ThemeChoice::Day, ..Appearance::default() },
-        false,
-    );
-    let dw = day.window();
-    choose(&mut day, 2);
-    day.resize(dw, Size::new(760.0, 480.0));
-    day.save_png(dw, dir.join("minimum-day.png"), 1.0);
-
-    let mut many = frame(2);
-    let mut third = many.gpus[1].clone();
-    third.pci = "0000:02:00.0".into();
-    many.gpus.push(third);
-    h.send(Msg::Frame(Arc::new(many)));
-    h.save_png(w, dir.join("three-gpus.png"), 1.0);
-    choose(&mut h, 3);
-    assert_eq!(h.program().gpu.as_deref(), Some("0000:02:00.0"));
-    assert!(h.program().rows.is_empty());
-    assert!(h.texts(w).iter().any(|s| s == "No processes are using this GPU."));
-
-    let mut single = frame(3);
-    single.gpus.truncate(1);
-    h.send(Msg::Frame(Arc::new(single)));
-    h.save_png(w, dir.join("one-gpu.png"), 1.0);
-    assert!(h.find_id(w, "gpu-selector").is_none());
-    assert!(h.find_id(w, "gpu-device-0").is_some());
-    eprintln!("GPU renderings: {}", dir.display());
+    let selector = h.find_id(w, "gpu-selector").unwrap();
+    let search = h.find_id(w, "search").unwrap();
+    assert!(selector.x1 < search.x0 && search.x1 <= 760.0, "{selector:?} {search:?}");
+    assert!(search.width() >= 150.0, "the search field gives a little room: {search:?}");
+    let strip = ["gpu-card-1", "gpu-card-0"].map(|id| h.find_id(w, id).unwrap());
+    assert!(strip[1].x1 <= 760.0);
 }
 
 #[test]
@@ -324,4 +311,17 @@ fn live_nvidia_memory_matches_nvidia_smi() {
         matched += 1;
     }
     assert!(matched > 0, "at least one compute process must be running");
+}
+
+#[test]
+#[ignore = "requires an AMD card with idle clients, as an AMD and NVIDIA desktop has"]
+fn live_idle_amd_clients_are_idle_not_unknown() {
+    let mut sampler = myaku::sampler::Sampler::new();
+    let _ = sampler.sample();
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    let f = sampler.sample();
+    let amd = f.gpus.iter().position(|g| g.driver == "amdgpu").expect("an AMD card");
+    let clients: Vec<_> = f.processes.iter().filter_map(|p| p.gpus.iter().find(|g| g.device == amd)).collect();
+    assert!(!clients.is_empty(), "the desktop has clients on it");
+    assert!(clients.iter().all(|g| g.usage.busy.is_some()), "amdgpu leaves out idle engines: idle, not unknown");
 }

@@ -89,7 +89,6 @@ struct Api {
     memory: unsafe extern "C" fn(Device, *mut MemoryInfo) -> Return,
     memory_v2: Option<unsafe extern "C" fn(Device, *mut MemoryInfoV2) -> Return>,
     power: unsafe extern "C" fn(Device, *mut c_uint) -> Return,
-    energy: Option<unsafe extern "C" fn(Device, *mut c_ulonglong) -> Return>,
     temperature: unsafe extern "C" fn(Device, c_uint, *mut c_uint) -> Return,
     clock: unsafe extern "C" fn(Device, c_uint, *mut c_uint) -> Return,
     encoder: Option<unsafe extern "C" fn(Device, *mut c_uint, *mut c_uint) -> Return>,
@@ -150,7 +149,6 @@ impl Api {
                 memory: required!(c"nvmlDeviceGetMemoryInfo"),
                 memory_v2: symbol(handle, c"nvmlDeviceGetMemoryInfo_v2"),
                 power: required!(c"nvmlDeviceGetPowerUsage"),
-                energy: symbol(handle, c"nvmlDeviceGetTotalEnergyConsumption"),
                 temperature: required!(c"nvmlDeviceGetTemperature"),
                 clock: required!(c"nvmlDeviceGetClockInfo"),
                 encoder: symbol(handle, c"nvmlDeviceGetEncoderUtilization"),
@@ -178,8 +176,6 @@ pub struct Reading {
     pub vram_total: Option<u64>,
     /// Watts now.
     pub power: Option<f64>,
-    /// Joules since the driver loaded, where the card counts them.
-    pub energy: Option<f64>,
     pub temperature: Option<f64>,
     pub clock: Option<f64>,
     /// Each process's share: PID, percent of the 3D/compute engines,
@@ -263,12 +259,6 @@ impl Nvml {
                 let mut milliwatts = 0;
                 if (api.power)(device, &mut milliwatts) == SUCCESS {
                     reading.power = Some(milliwatts as f64 / 1000.0);
-                }
-                let mut millijoules = 0;
-                if let Some(energy) = api.energy
-                    && energy(device, &mut millijoules) == SUCCESS
-                {
-                    reading.energy = Some(millijoules as f64 / 1000.0);
                 }
                 let mut celsius = 0;
                 if (api.temperature)(device, TEMPERATURE_GPU, &mut celsius) == SUCCESS {
