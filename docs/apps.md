@@ -496,6 +496,30 @@ and processes with CPU, memory, energy, disk and GPU use; sorting, search,
 quit and force quit; graphs of CPU, memory, disk and network over time; the
 inspector for a process. Through `aizome-sys::sysinfo`.
 
+GPU readings use DRM statistics for AMD/Intel and NVML for NVIDIA (loaded
+at runtime, with no NVIDIA dependency on other machines). NVIDIA graphics and
+compute process lists are merged by PID without counting their memory twice;
+card totals come directly from the driver. The newer NVML memory query separates
+driver-reserved memory from allocations, matching `nvidia-smi`'s used figure;
+the fallback for older drivers includes reservations. Unavailable counters show
+a dash rather than zero.
+
+The GPU view keeps every card's utilization and used/total video memory visible.
+With multiple cards, a compact selector offers **All GPUs** or an individual
+card. Selecting a card filters the table to its clients, including idle processes
+holding memory, and scopes application figures, sorting and the inspector's
+graphics section. Search and the application/process views respect this filter;
+other lenses keep their full process lists. Selection follows the PCI address
+across readings. Device totals come from the driver, including allocations
+outside the process list.
+`aizome-myaku --print` also includes card and application video-memory usage.
+
+`cargo test -p aizome-myaku --test gpu` exercises selection through the real
+menu, grouping, sorting, missing counters and device reordering. On a machine
+with NVIDIA compute clients running, `cargo test -p aizome-myaku --test gpu
+live_nvidia_memory_matches_nvidia_smi -- --ignored --nocapture` compares the
+sampler with `nvidia-smi` (allowing allocations to change between readings).
+
 ### Shashin (Images)
 
 The image viewer the desktop opens pictures with: PNG, JPEG, GIF

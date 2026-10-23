@@ -4,7 +4,7 @@
 
 use std::time::Duration;
 
-use crate::model::{Frame, Gpu, GpuUse, Group, Kind, Memory, Meter, Power, Process, System, Usage};
+use crate::model::{Frame, Gpu, GpuUsage, GpuUse, Group, Kind, Memory, Meter, Power, Process, System, Usage};
 
 /// A small, steady generator of numbers in `[0, 1)`.
 struct Noise(u64);
@@ -91,8 +91,11 @@ pub fn frame(processes: usize, tick: u64) -> Frame {
             write_rate: own.then_some((noise.next() * 80_000.0 * (cpu / 10.0)).floor()),
             read_total: own.then_some(u64::from(pid) * 9_100_000),
             write_total: own.then_some(u64::from(pid) * 3_700_000),
-            gpu: if name == "firefox" && role == "GPU process" { 8.0 * jitter } else { 0.0 },
-            vram: if role == "GPU process" { 180 << 20 } else { 0 },
+            graphics: GpuUsage {
+                busy: Some(if name == "firefox" && role == "GPU process" { 8.0 * jitter } else { 0.0 }),
+                vram: Some(if role == "GPU process" { 180 << 20 } else { 0 }),
+                ..Default::default()
+            },
             ..Default::default()
         };
         procs.push(Process {
@@ -112,11 +115,7 @@ pub fn frame(processes: usize, tick: u64) -> Frame {
             cgroup: String::new(),
             kernel,
             readable: own,
-            gpus: if usage.gpu > 0.0 {
-                vec![GpuUse { device: 0, busy: usage.gpu, video: 0.0, vram: usage.vram, shared: 0 }]
-            } else {
-                Vec::new()
-            },
+            gpus: if role == "GPU process" { vec![GpuUse { device: 0, usage: usage.graphics }] } else { Vec::new() },
             usage,
             group: 0,
         });

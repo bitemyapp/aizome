@@ -41,7 +41,8 @@ fn energy_note(f: &Frame) -> &'static str {
     }
 }
 
-fn usage_sections(f: &Frame, u: &Usage, readable: bool) -> Vec<Element<Msg>> {
+fn usage_sections(m: &Myaku, u: &Usage, readable: bool) -> Vec<Element<Msg>> {
+    let f = &m.frame;
     let mut v = vec![section(
         "Processor",
         vec![
@@ -79,13 +80,18 @@ fn usage_sections(f: &Frame, u: &Usage, readable: bool) -> Vec<Element<Msg>> {
     energy.push(text(energy_note(f)).size(11.0).role(Role::Text3).wrap().width(Length::Fill).into());
     v.push(section("Energy", energy));
     if !f.gpus.is_empty() {
+        let title = m
+            .gpu
+            .as_ref()
+            .and_then(|pci| f.gpus.iter().find(|g| g.pci == *pci))
+            .map_or_else(|| "Graphics".to_owned(), |g| format!("Graphics · {}", g.name));
         v.push(section(
-            "Graphics",
+            &title,
             vec![
-                pair("% GPU", format!("{}%", model::percent(u.gpu))),
-                pair("% Video", format!("{}%", model::percent(u.video))),
-                pair("Video memory", model::bytes(u.vram)),
-                pair("Shared GPU", model::bytes(u.gpu_shared)),
+                pair("% GPU", opt(u.graphics.busy, |n| format!("{}%", model::percent(n)))),
+                pair("% Video", opt(u.graphics.video, |n| format!("{}%", model::percent(n)))),
+                pair("Video memory", opt(u.graphics.vram, model::bytes)),
+                pair("Shared GPU", opt(u.graphics.shared, model::bytes)),
             ],
         ));
     }
@@ -123,7 +129,7 @@ pub fn view(m: &Myaku) -> Element<Msg> {
         Some(RowRef::Group(g)) => {
             let grp = &f.groups[g];
             let mut v = header(m, &grp.name, &group_detail(f, g), grp.kind);
-            v.extend(usage_sections(f, &grp.usage, grp.members.iter().all(|&i| f.processes[i].readable)));
+            v.extend(usage_sections(m, &grp.usage, grp.members.iter().all(|&i| f.processes[i].readable)));
             let mut list: Vec<Element<Msg>> = Vec::new();
             for &i in grp.members.iter().take(40) {
                 let p = &f.processes[i];
@@ -144,7 +150,7 @@ pub fn view(m: &Myaku) -> Element<Msg> {
             let p = &f.processes[i];
             let meta = format!("PID {} · {} · {}", p.pid, p.user, p.state_text());
             let mut v = header(m, &p.name, &meta, f.groups[p.group].kind);
-            v.extend(usage_sections(f, &p.usage, p.readable));
+            v.extend(usage_sections(m, &p.usage, p.readable));
             let mut about = Vec::new();
             if !p.role.is_empty() {
                 about.push(pair("Role", p.role.clone()));

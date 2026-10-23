@@ -2,5 +2,6 @@
 
 pub mod columns;
 pub mod graph;
+pub mod gpu;
 pub mod inspector;
 pub mod view;

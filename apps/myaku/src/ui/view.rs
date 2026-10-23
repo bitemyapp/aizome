@@ -21,15 +21,16 @@ pub fn window(m: &Myaku) -> Element<Msg> {
         middle.push(divider().vertical().into());
         middle.push(super::inspector::view(m));
     }
-    column![
-        toolbar(m),
-        aizome_kit::widgets::layout::row(middle).width(Length::Fill).height(Length::Fill),
+    let mut sections = vec![toolbar(m)];
+    if m.lens == Lens::Gpu && !m.frame.gpus.is_empty() {
+        sections.push(super::gpu::overview(m));
+    }
+    sections.extend([
+        aizome_kit::widgets::layout::row(middle).width(Length::Fill).height(Length::Fill).into(),
         graphs(m),
         status(m),
-    ]
-    .width(Length::Fill)
-    .height(Length::Fill)
-    .into()
+    ]);
+    aizome_kit::widgets::layout::column(sections).width(Length::Fill).height(Length::Fill).into()
 }
 
 fn toolbar(m: &Myaku) -> Element<Msg> {
@@ -118,8 +119,9 @@ fn table_view(m: &Myaku) -> Element<Msg> {
         }
     };
     let count = rows.len();
+    let gpu = m.gpu_filter();
     let selected: Vec<usize> = m.selected_row().into_iter().collect();
-    let body = table(columns, count, move |r, c| cell(&frame, rows[r], cols[c], &expanded))
+    let body = table(columns, count, move |r, c| cell(&frame, rows[r], cols[c], &expanded, gpu))
         .sorted(sorted, asc)
         .on_sort(Msg::Sort)
         .selected(selected)
@@ -131,7 +133,13 @@ fn table_view(m: &Myaku) -> Element<Msg> {
         .height(Length::Fill)
         .id("processes");
     if count == 0 && m.frames > 0 {
-        let message = if m.search.is_empty() {
+        let message = if let Some(device) = m.gpu_filter().filter(|_| m.search.is_empty()) {
+            if m.frame.gpus[device].unlisted_usage == model::GpuUsage::UNKNOWN {
+                "GPU process data is unavailable.".to_owned()
+            } else {
+                "No processes are using this GPU.".to_owned()
+            }
+        } else if m.search.is_empty() {
             "Nothing to list.".to_owned()
         } else {
             format!("Nothing matches “{}”.", m.search)
@@ -178,7 +186,13 @@ fn row_menu(f: &Frame, r: Option<RowRef>, i: usize) -> Menu<Msg> {
         .item(MenuItem::new(if paused { "Resume" } else { "Pause" }, Msg::Pause(!paused)).enabled(can))
 }
 
-fn cell(f: &Frame, r: RowRef, col: Col, expanded: &std::collections::HashSet<(u32, u64)>) -> Element<Msg> {
+fn cell(
+    f: &Frame,
+    r: RowRef,
+    col: Col,
+    expanded: &std::collections::HashSet<(u32, u64)>,
+    gpu: Option<usize>,
+) -> Element<Msg> {
     match (r, col) {
         (RowRef::Group(g), Col::Name) => {
             let grp = &f.groups[g];
@@ -197,7 +211,15 @@ fn cell(f: &Frame, r: RowRef, col: Col, expanded: &std::collections::HashSet<(u3
                 icon(glyph).size(14.0).role(role).into(),
                 text(grp.name.clone()).weight(if grp.focused { 650.0 } else { 500.0 }).into(),
             ];
-            let detail = if !grp.detail.is_empty() && grp.detail != grp.name {
+            let detail = if let Some(device) = gpu.filter(|_| grp.members.len() > 1) {
+                let clients =
+                    grp.members.iter().filter(|&&p| f.processes[p].gpus.iter().any(|g| g.device == device)).count();
+                if clients == grp.members.len() {
+                    model::count(clients, "process", "processes")
+                } else {
+                    format!("{clients} of {} processes", grp.members.len())
+                }
+            } else if !grp.detail.is_empty() && grp.detail != grp.name {
                 grp.detail.clone()
             } else if grp.members.len() > 1 {
                 model::count(grp.members.len(), "process", "processes")
@@ -422,21 +444,13 @@ fn status(m: &Myaku) -> Element<Msg> {
             Meter::Battery => format!("Battery {}", f.power.battery.map(model::watts).unwrap_or_else(|| "—".into())),
             Meter::None => "No power meter".into(),
         },
-        Lens::Gpu => f
-            .gpus
-            .iter()
-            .map(|g| {
-                let mut w = g.name.clone();
-                if let Some(b) = g.busy {
-                    w.push_str(&format!(" {}%", model::percent(b)));
-                }
-                if let Some(v) = g.vram_used {
-                    w.push_str(&format!(" · {}", model::bytes(v)));
-                }
-                w
-            })
-            .collect::<Vec<_>>()
-            .join(" · "),
+        Lens::Gpu => m.gpu_filter().map_or_else(
+            || "Process usage across all GPUs".into(),
+            |device| {
+                let n = f.processes.iter().filter(|p| p.gpus.iter().any(|g| g.device == device)).count();
+                format!("{} using {}", model::count(n, "process", "processes"), f.gpus[device].name)
+            },
+        ),
         Lens::Disk => s.disks.iter().map(|d| format!("{} {:.0}% busy", d.name, d.busy)).collect::<Vec<_>>().join(" · "),
     };
     aizome_kit::status_bar(vec![

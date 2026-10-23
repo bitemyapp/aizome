@@ -23,7 +23,15 @@ fn print() {
     );
     println!("Memory: {} of {} used", model::bytes(sys.memory.used()), model::bytes(sys.memory.total));
     for g in &f.gpus {
-        println!("{} ({}): {}% busy", g.name, g.driver, g.busy.map(model::percent).unwrap_or_else(|| "—".into()));
+        println!(
+            "{} ({}, {}): {}% busy; video memory {} / {}",
+            g.name,
+            g.driver,
+            g.pci,
+            g.busy.map(model::percent).unwrap_or_else(|| "—".into()),
+            g.vram_used.map(model::bytes).unwrap_or_else(|| "—".into()),
+            g.vram_total.map(model::bytes).unwrap_or_else(|| "—".into())
+        );
     }
     println!(
         "Power: {}",
@@ -35,15 +43,19 @@ fn print() {
     );
     let mut groups = f.groups.clone();
     groups.sort_by(|a, b| b.usage.cpu.total_cmp(&a.usage.cpu));
-    println!("\n{:<28} {:>7} {:>10} {:>10} {:>11}  Kind", "Application", "% CPU", "Memory", "% GPU", "Reading");
+    println!(
+        "\n{:<28} {:>7} {:>10} {:>10} {:>12} {:>11}  Kind",
+        "Application", "% CPU", "Memory", "% GPU", "Video Memory", "Reading"
+    );
     for g in groups.iter().take(25) {
         let u = &g.usage;
         println!(
-            "{:<28} {:>7} {:>10} {:>10} {:>11}  {}",
+            "{:<28} {:>7} {:>10} {:>10} {:>12} {:>11}  {}",
             g.name.chars().take(28).collect::<String>(),
             model::percent(u.cpu),
             model::bytes(u.memory()),
-            model::percent(u.gpu),
+            u.graphics.busy.map(model::percent).unwrap_or_else(|| "—".into()),
+            u.graphics.vram.map(model::bytes).unwrap_or_else(|| "—".into()),
             u.read_rate.map(model::rate).unwrap_or_else(|| "—".into()),
             g.kind.map_or("", |k| k.words())
         );

@@ -73,14 +73,37 @@ impl Kind {
     }
 }
 
+/// Graphics measurements. An unavailable counter stays unknown when summed.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct GpuUsage {
+    pub busy: Option<f64>,
+    pub video: Option<f64>,
+    pub vram: Option<u64>,
+    pub shared: Option<u64>,
+}
+
+impl Default for GpuUsage {
+    fn default() -> Self {
+        Self { busy: Some(0.0), video: Some(0.0), vram: Some(0), shared: Some(0) }
+    }
+}
+
+impl GpuUsage {
+    pub const UNKNOWN: Self = Self { busy: None, video: None, vram: None, shared: None };
+
+    pub fn add(&mut self, other: &Self) {
+        self.busy = self.busy.zip(other.busy).map(|(a, b)| a + b);
+        self.video = self.video.zip(other.video).map(|(a, b)| a + b);
+        self.vram = self.vram.zip(other.vram).map(|(a, b)| a + b);
+        self.shared = self.shared.zip(other.shared).map(|(a, b)| a + b);
+    }
+}
+
 /// One process's use of one graphics card.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct GpuUse {
     pub device: usize,
-    pub busy: f64,
-    pub video: f64,
-    pub vram: u64,
-    pub shared: u64,
+    pub usage: GpuUsage,
 }
 
 /// The use of the system's resources by a process, or the sum of a
@@ -112,10 +135,7 @@ pub struct Usage {
     /// seconds measured.
     pub energy: f64,
     pub measured: f64,
-    pub gpu: f64,
-    pub video: f64,
-    pub vram: u64,
-    pub gpu_shared: u64,
+    pub graphics: GpuUsage,
     /// Storage read and written, in bytes a second and since it started.
     pub read_rate: Option<f64>,
     pub write_rate: Option<f64>,
@@ -156,10 +176,7 @@ impl Usage {
         self.power = sum(self.power, o.power);
         self.energy += o.energy;
         self.measured = self.measured.max(o.measured);
-        self.gpu += o.gpu;
-        self.video += o.video;
-        self.vram += o.vram;
-        self.gpu_shared += o.gpu_shared;
+        self.graphics.add(&o.graphics);
         self.read_rate = sum(self.read_rate, o.read_rate);
         self.write_rate = sum(self.write_rate, o.write_rate);
         self.read_total = sum(self.read_total, o.read_total);
@@ -197,6 +214,18 @@ pub struct Process {
 }
 
 impl Process {
+    /// Absence from a successfully read process list means zero; absence from
+    /// an unavailable list does not establish that the process uses no GPU.
+    pub fn graphics_on(&self, device: usize, gpu: &Gpu) -> GpuUsage {
+        let mut uses = self.gpus.iter().filter(|g| g.device == device);
+        let Some(first) = uses.next() else { return gpu.unlisted_usage };
+        let mut usage = first.usage;
+        for other in uses {
+            usage.add(&other.usage);
+        }
+        usage
+    }
+
     pub fn key(&self) -> (u32, u64) {
         (self.pid, self.start_ticks)
     }
@@ -303,6 +332,8 @@ pub struct Gpu {
     pub power: Option<f64>,
     pub temperature: Option<f64>,
     pub clock: Option<f64>,
+    /// What can be inferred for a process absent from this card's client lists.
+    pub unlisted_usage: GpuUsage,
 }
 
 /// Where the power figures come from.
@@ -343,6 +374,24 @@ pub struct Frame {
     pub uid: u32,
     /// How long the reading took on the sampler's thread.
     pub cost: std::time::Duration,
+}
+
+impl Frame {
+    /// Project only the graphics columns; process identities and other resources
+    /// stay intact so selection, grouping and sorting use the same rows.
+    pub fn for_gpu(&self, device: usize) -> Frame {
+        let mut frame = self.clone();
+        for process in &mut frame.processes {
+            process.usage.graphics = process.graphics_on(device, &frame.gpus[device]);
+        }
+        for group in &mut frame.groups {
+            group.usage.graphics = GpuUsage::default();
+            for &member in &group.members {
+                group.usage.graphics.add(&frame.processes[member].usage.graphics);
+            }
+        }
+        frame
+    }
 }
 
 /// Sizes in binary units: "512 KiB", "3.4 GiB".

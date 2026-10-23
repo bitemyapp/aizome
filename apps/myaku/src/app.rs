@@ -48,6 +48,7 @@ pub const INTERVALS: [(&str, u64); 3] = [("Every Second", 1000), ("Every 2 Secon
 pub enum Msg {
     Frame(Arc<Frame>),
     Lens(Lens),
+    Gpu(Option<String>),
     Show(Show),
     Search(String),
     FocusSearch,
@@ -95,6 +96,9 @@ impl Request {
 pub struct Myaku {
     pub window: WindowKey,
     pub frame: Arc<Frame>,
+    reading: Arc<Frame>,
+    /// PCI address, stable across readings; None shows all cards together.
+    pub gpu: Option<String>,
     pub history: History,
     pub lens: Lens,
     pub show: Show,
@@ -132,6 +136,8 @@ impl Myaku {
         let mut m = Myaku {
             window: WindowKey::NONE,
             frame: Arc::new(Frame::default()),
+            reading: Arc::new(Frame::default()),
+            gpu: None,
             history: History::default(),
             lens: request.lens.unwrap_or(Lens::Cpu),
             show: Show::Apps,
@@ -186,7 +192,8 @@ impl Myaku {
     /// Take a new reading.
     fn take(&mut self, frame: Arc<Frame>) {
         self.history.push(&frame);
-        self.frame = frame;
+        self.reading = frame;
+        self.project_gpu();
         self.frames += 1;
         if !self.lens_shown(self.lens) {
             self.lens = Lens::Cpu;
@@ -207,6 +214,15 @@ impl Myaku {
             }
         }
         self.rebuild();
+    }
+
+    fn project_gpu(&mut self) {
+        if let Some(device) = self.reading.gpus.iter().position(|g| Some(&g.pci) == self.gpu.as_ref()) {
+            self.frame = Arc::new(self.reading.for_gpu(device));
+        } else {
+            self.gpu = None;
+            self.frame = self.reading.clone();
+        }
     }
 
     /// The group or process selected, as indices into the frame.
@@ -231,9 +247,20 @@ impl Myaku {
             || p.user.to_lowercase() == q
     }
 
+    /// Selecting a GPU filters its client list only in the GPU lens.
+    pub fn gpu_filter(&self) -> Option<usize> {
+        (self.lens == Lens::Gpu).then_some(())?;
+        let pci = self.gpu.as_ref()?;
+        self.frame.gpus.iter().position(|g| &g.pci == pci)
+    }
+
     /// The table's rows, filtered and sorted.
     pub fn rebuild(&mut self) {
         let f = self.frame.clone();
+        let device = self.gpu_filter();
+        // Client membership, rather than nonzero utilization, keeps idle
+        // contexts and memory-holding processes visible.
+        let uses_gpu = |p: &model::Process| device.is_none_or(|d| p.gpus.iter().any(|g| g.device == d));
         let (col, asc) = self.sort();
         let cmp_p = |a: &usize, b: &usize| columns::compare_process(col, &f.processes[*a], &f.processes[*b], asc);
         let mut rows = Vec::new();
@@ -241,9 +268,12 @@ impl Myaku {
             Show::Apps => {
                 let mut groups: Vec<usize> = (0..f.groups.len())
                     .filter(|&g| {
-                        self.search.is_empty()
-                            || f.groups[g].name.to_lowercase().contains(&self.search.to_lowercase())
-                            || f.groups[g].members.iter().any(|&m| self.matches(&f.processes[m]))
+                        let group_matches = self.search.is_empty()
+                            || f.groups[g].name.to_lowercase().contains(&self.search.to_lowercase());
+                        f.groups[g]
+                            .members
+                            .iter()
+                            .any(|&m| uses_gpu(&f.processes[m]) && (group_matches || self.matches(&f.processes[m])))
                     })
                     .collect();
                 groups.sort_by(|a, b| columns::compare_group(col, &f.groups[*a], &f.groups[*b], &f, asc));
@@ -260,9 +290,10 @@ impl Myaku {
                             .iter()
                             .copied()
                             .filter(|&m| {
-                                self.search.is_empty()
-                                    || self.matches(&f.processes[m])
-                                    || grp.name.to_lowercase().contains(&self.search.to_lowercase())
+                                uses_gpu(&f.processes[m])
+                                    && (self.search.is_empty()
+                                        || self.matches(&f.processes[m])
+                                        || grp.name.to_lowercase().contains(&self.search.to_lowercase()))
                             })
                             .collect();
                         members.sort_by(cmp_p);
@@ -273,7 +304,9 @@ impl Myaku {
             Show::All | Show::Mine => {
                 let mut procs: Vec<usize> = (0..f.processes.len())
                     .filter(|&i| {
-                        (self.show == Show::All || f.processes[i].uid == f.uid) && self.matches(&f.processes[i])
+                        (self.show == Show::All || f.processes[i].uid == f.uid)
+                            && uses_gpu(&f.processes[i])
+                            && self.matches(&f.processes[i])
                     })
                     .collect();
                 procs.sort_by(cmp_p);
@@ -403,6 +436,11 @@ impl Program for Myaku {
     fn update(&mut self, msg: Msg, cx: &mut Cx<Msg>) {
         match msg {
             Msg::Frame(f) => self.take(f),
+            Msg::Gpu(pci) => {
+                self.gpu = pci;
+                self.project_gpu();
+                self.rebuild();
+            }
             Msg::Lens(l) => {
                 if self.lens_shown(l) {
                     self.lens = l;
