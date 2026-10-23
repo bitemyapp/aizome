@@ -153,8 +153,10 @@ dependencies = [
 name = "aizome-greeter"
 version = "0.1.0"
 dependencies = [
+ "aizome-config",
  "aizome-face",
  "aizome-kit",
+ "aizome-sys",
  "aizome-theme",
  "env_logger",
  "libc",
