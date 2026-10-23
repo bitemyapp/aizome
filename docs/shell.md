@@ -399,6 +399,11 @@ media controls are not shown while locked. Unlocking restores everything.
 The polkit agent (`aizome-sys`) asks the shell: an overlay dialog with the
 mark, the action's message, the identity (a dropdown if several admins), a
 password field, Cancel and Authenticate, PAM's prompts and errors inline.
+The agent follows polkit's D-Bus owner and registers again after a daemon
+restart. Registration failures retry with backoff, including the overlap
+between old and replacement shells. Losing the authority cancels pending
+conversations and closes their dialogs; losing the bus recreates the agent
+on a fresh connection.
 
 ## Real and headless sessions
 

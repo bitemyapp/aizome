@@ -204,15 +204,19 @@ impl Shell {
         std::thread::Builder::new()
             .name("polkit".into())
             .spawn(move || {
-                let t = tx.clone();
-                match aizome_sys::polkit::PolkitAgent::register(move |e| {
-                    t.send(Msg::Auth(e.into()));
-                }) {
-                    Ok(agent) => loop {
-                        std::thread::park();
-                        let _ = &agent;
-                    },
-                    Err(e) => log::warn!("the polkit agent: {e}"),
+                loop {
+                    let t = tx.clone();
+                    match aizome_sys::polkit::PolkitAgent::register(move |e| {
+                        t.send(Msg::Auth(e.into()));
+                    }) {
+                        Ok(agent) => {
+                            while agent.is_running() {
+                                std::thread::sleep(std::time::Duration::from_secs(1));
+                            }
+                        }
+                        Err(e) => log::warn!("the polkit agent: {e}; retrying"),
+                    }
+                    std::thread::sleep(std::time::Duration::from_secs(2));
                 }
             })
             .ok();

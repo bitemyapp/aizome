@@ -112,6 +112,7 @@
         encrypted-volumes = import ./nix/vm-encrypted-volumes-test.nix { inherit pkgs self; };
         wallpaper-choice = import ./nix/vm-wallpaper-choice-test.nix { inherit pkgs self; };
         network-auth = import ./nix/vm-network-auth-test.nix { inherit pkgs self; };
+        polkit-recovery = import ./nix/vm-polkit-recovery-test.nix { inherit pkgs self; };
       });
 
       devShells = forAll (pkgs: {

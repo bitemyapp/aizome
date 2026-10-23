@@ -19,6 +19,9 @@ const AGENT_PATH: &str = "/org/aizome/PolicyKit1/AuthenticationAgent";
 struct Registrations {
     agents: Vec<(String, String, String)>,
     unregistered: usize,
+    active: Option<String>,
+    reject: usize,
+    attempts: usize,
 }
 
 struct Authority {
@@ -29,14 +32,39 @@ type Subject = (String, HashMap<String, OwnedValue>);
 
 #[zbus::interface(name = "org.freedesktop.PolicyKit1.Authority")]
 impl Authority {
-    fn register_authentication_agent(&self, subject: Subject, locale: String, path: String) {
+    fn register_authentication_agent(
+        &self,
+        subject: Subject,
+        locale: String,
+        path: String,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+    ) -> zbus::fdo::Result<()> {
         let session =
             subject.1.get("session-id").and_then(|v| String::try_from(v.try_clone().ok()?).ok()).unwrap_or_default();
         assert_eq!(subject.0, "unix-session");
-        self.log.lock().unwrap().agents.push((session, locale, path));
+        let mut log = self.log.lock().unwrap();
+        log.attempts += 1;
+        if log.reject > 0 {
+            log.reject -= 1;
+            return Err(zbus::fdo::Error::Failed("temporarily unavailable".into()));
+        }
+        if log.active.is_some() {
+            return Err(zbus::fdo::Error::Failed("an agent is already registered".into()));
+        }
+        log.active = Some(header.sender().unwrap().to_string());
+        log.agents.push((session, locale, path));
+        Ok(())
     }
-    fn unregister_authentication_agent(&self, _subject: Subject, _path: String) {
-        self.log.lock().unwrap().unregistered += 1;
+    fn unregister_authentication_agent(
+        &self,
+        _subject: Subject,
+        _path: String,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+    ) {
+        let mut log = self.log.lock().unwrap();
+        assert_eq!(log.active.as_deref(), header.sender().map(|s| s.as_str()));
+        log.active = None;
+        log.unregistered += 1;
     }
 }
 
@@ -302,4 +330,98 @@ fn polkitd_can_cancel_and_the_socket_helper_works() {
     server.join().unwrap();
     assert_eq!(received.lock().unwrap().last().unwrap(), "hung up true");
     std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn registers_after_delayed_start_and_recovers_repeated_authority_restarts() {
+    let bus = test_bus!();
+    let script = helper_script();
+    let events = Arc::new(Mutex::new(Vec::new()));
+    let agent_bus = bus.bus();
+    let agent_name = agent_bus.unique_name().unwrap();
+    let agent = PolkitAgent::register_with(
+        agent_bus,
+        "7".into(),
+        Helper::Program(script.clone()),
+        answering_ui(vec!["secret", "secret", "secret"], events.clone()),
+    )
+    .unwrap();
+    assert!(!agent.is_registered());
+    for i in 0..3 {
+        let (authority, log) = serve_polkitd(&bus);
+        assert!(eventually(|| agent.is_registered() && log.lock().unwrap().agents.len() == 1));
+        if has_passwd_entry() {
+            begin(&authority, &agent_name, &format!("cookie-{i}")).unwrap();
+        }
+        authority.release_name("org.freedesktop.PolicyKit1").unwrap();
+        assert!(eventually(|| !agent.is_registered()));
+    }
+    drop(agent);
+    let (_authority, log) = serve_polkitd(&bus);
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    assert_eq!(log.lock().unwrap().attempts, 0, "dropped agents must never register again");
+    std::fs::remove_dir_all(script.parent().unwrap()).unwrap();
+}
+
+#[test]
+fn retries_transient_failures_and_takes_over_from_a_retiring_shell() {
+    let bus = test_bus!();
+    let (_authority, log) = serve_polkitd(&bus);
+    log.lock().unwrap().reject = 2;
+    let helper = Helper::Program("/unused".into());
+    let old = PolkitAgent::register_with(bus.bus(), "7".into(), helper.clone(), |_| {}).unwrap();
+    assert!(eventually(|| old.is_registered()));
+    let next = PolkitAgent::register_with(bus.bus(), "7".into(), helper, |_| {}).unwrap();
+    assert!(!next.is_registered());
+    drop(old);
+    assert!(eventually(|| next.is_registered()));
+    assert_eq!(log.lock().unwrap().agents.len(), 2);
+    drop(next);
+    assert_eq!(log.lock().unwrap().unregistered, 2);
+}
+
+#[test]
+fn authority_loss_closes_an_open_dialog_and_allows_a_new_conversation() {
+    let bus = test_bus!();
+    if !has_passwd_entry() {
+        return;
+    }
+    let (authority, _log) = serve_polkitd(&bus);
+    let script = helper_script();
+    let events = Arc::new(Mutex::new(Vec::new()));
+    let agent_bus = bus.bus();
+    let agent_name = agent_bus.unique_name().unwrap();
+    let agent = PolkitAgent::register_with(
+        agent_bus,
+        "7".into(),
+        Helper::Program(script.clone()),
+        answering_ui(vec!["wait", "secret"], events.clone()),
+    )
+    .unwrap();
+    let pending = std::thread::spawn({
+        let authority = authority.clone();
+        let agent_name = agent_name.clone();
+        move || begin(&authority, &agent_name, "lost-cookie")
+    });
+    assert!(eventually(|| events.lock().unwrap().iter().any(|e| e.starts_with("prompt"))));
+    authority.release_name("org.freedesktop.PolicyKit1").unwrap();
+    assert!(eventually(|| events.lock().unwrap().contains(&"done false".to_owned())));
+    assert!(pending.join().unwrap().is_err());
+    let (replacement, log) = serve_polkitd(&bus);
+    assert!(eventually(|| agent.is_registered() && log.lock().unwrap().agents.len() == 1));
+    begin(&replacement, &agent_name, "fresh-cookie").unwrap();
+    assert!(events.lock().unwrap().contains(&"done true".to_owned()));
+    drop(agent);
+    std::fs::remove_dir_all(script.parent().unwrap()).unwrap();
+}
+
+#[test]
+fn a_disconnected_bus_stops_the_registration_worker() {
+    let bus = test_bus!();
+    let (_authority, _) = serve_polkitd(&bus);
+    let agent = PolkitAgent::register_with(bus.bus(), "7".into(), Helper::Program("/unused".into()), |_| {}).unwrap();
+    assert!(agent.is_running());
+    drop(bus);
+    assert!(eventually(|| !agent.is_running()));
+    assert!(!agent.is_registered());
 }
