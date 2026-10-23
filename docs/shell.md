@@ -425,6 +425,8 @@ idle lock still lock it.
   terminals present when the shell starts or reconnects receive the current
   palette too. Only Foot processes with windows on this compositor are
   signalled, including custom app IDs and foot server windows.
+  Applications inside Foot may cache their own colours; see
+  [Codex's theme-change limitation and deferred remedy](terminal-theme-changes.md).
 - Apps launch through `aizome-sys::apps` (systemd user scopes) with an
   xdg-activation token, so their first window takes focus.
 - The shell never blocks its loop: D-Bus, PAM, file indexing and searches
