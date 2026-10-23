@@ -243,8 +243,8 @@ the helper's report without inventing a successful rollback.
 
 `nix build .#checks.x86_64-linux.polkit-recovery` exercises real Yukimi,
 polkit and PAM through two prebuilt system activations that change the
-package profile, then shell replacement and an interrupted password dialog.
-The fixture substitutes prebuilt profiles for Nix evaluation/building.
+package profile, then shell replacement, an interrupted password dialog,
+and retrying after a sustained agent outage. The fixture substitutes prebuilt profiles for Nix evaluation/building.
 
 Beyond the GTK Yukimi, it changes what used to take typing `sudo` commands:
 

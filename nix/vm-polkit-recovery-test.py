@@ -14,6 +14,11 @@ def user(command):
         "export AIZOME_SOCKET=/run/user/1000/aizome.$WAYLAND_DISPLAY.sock; " + command))
 
 
+def shell_pid():
+    pids = machine.succeed("pgrep -u alice -x aizome-shell").split()
+    return pids[0] if len(pids) == 1 else None
+
+
 def until(description, condition):
     deadline = time.monotonic() + 40
     while time.monotonic() < deadline:
@@ -21,6 +26,8 @@ def until(description, condition):
         if result:
             return result
         time.sleep(0.2)
+    machine.screenshot("failed")
+    print(json.dumps(documents()))
     raise AssertionError(description)
 
 
@@ -75,8 +82,9 @@ def authenticate():
 
 
 def propose(target):
+    until("previous job sheet closes", lambda: not find("Stop") and not find("Close"))
     user(f"aizomectl spawn aizome-yukimi --choose qa.install={target}")
-    click("Apply")
+    click("Apply…")
     click("Apply")
 
 
@@ -104,23 +112,27 @@ assert machine.succeed("pgrep -u alice -x aizome-shell").strip() == shell
 machine.screenshot("two-installs-one-session")
 # Shell handover overlaps agents: the replacement must retry registration.
 user("aizomectl reload --shell")
-until("replacement shell", lambda: machine.succeed("pgrep -u alice -x aizome-shell").strip() != shell)
+until("replacement shell finishes handover", lambda: shell_pid() not in (None, shell))
 # Ask again, then restart the daemon while the password dialog is open.
 propose("first")
 old_dialog = until("password before daemon restart", password_dialog)
 machine.succeed("systemctl restart polkit")
 until("obsolete password dialog closes", lambda: password_dialog() != old_dialog)
 # A retry may already have opened a fresh dialog; dismiss it before the
-# permanent-outage case. No request has reached the helper.
+# sustained-outage case. No request has reached the helper.
 until("fresh prompt or completed authorization failure", lambda: password_visible() or find("Close"))
 if password_visible():
     input_("key Escape")
 assert machine.succeed("cat /var/lib/qa-helper-starts").splitlines() == ["first", "second"]
 machine.screenshot("interrupted-authentication")
 
-# A sustained authority outage has a recoverable UI and no /dev/tty fallback.
+# Pause the agent's process while restarting polkit: the independent Yukimi
+# and compositor remain usable, but no agent can register until resumed.
+# This also avoids an /etc-vs-/run systemd masking precedence dependency.
 click("Close")
-machine.succeed("systemctl mask --runtime --now polkit.service")
+paused_shell = until("one active shell", shell_pid)
+machine.succeed(f"kill -STOP {paused_shell}")
+machine.succeed("systemctl restart polkit")
 propose("first")
 until("recoverable authentication failure", lambda: find("Try Again"))
 text = json.dumps(documents())
@@ -129,9 +141,11 @@ assert "was put back" not in text
 assert "/dev/tty" not in text
 assert machine.succeed("cat /var/lib/qa-helper-starts").splitlines() == ["first", "second"]
 machine.screenshot("authentication-unavailable")
-machine.succeed("systemctl unmask --runtime polkit.service; systemctl start polkit.service")
+machine.succeed(f"kill -CONT {paused_shell}")
 click("Try Again")
 authenticate()
 machine.wait_until_succeeds("test $(wc -l < /var/lib/qa-helper-starts) = 3")
+until("retried operation succeeds and its sheet closes", lambda: not find("Stop") and not find("Close"))
+machine.succeed("test ! -x /run/current-system/sw/bin/qa-second-package")
 assert machine.succeed("cat /var/lib/qa-helper-starts").splitlines() == ["first", "second", "first"]
 machine.screenshot("authentication-recovered")
