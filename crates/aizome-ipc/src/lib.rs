@@ -471,6 +471,8 @@ pub enum Synthetic {
     /// Presses a chord's keys in order and releases them in reverse:
     /// `"super+shift+3"`.
     Chord { keys: String },
+    /// Closes or opens the laptop's lid, as its switch does.
+    Lid { closed: bool },
 }
 
 fn yes() -> bool {

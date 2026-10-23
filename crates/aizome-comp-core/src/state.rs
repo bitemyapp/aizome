@@ -325,6 +325,8 @@ pub struct Aizome {
     /// Activation tokens that may move focus.
     pub valid_tokens: HashSet<String>,
     pub idle: crate::idle::IdleState,
+    /// What has the displays off: idleness, IPC, the laptop's lid.
+    pub power: crate::power::Power,
     pub children: crate::session::Children,
     /// Buttons whose presses the seat was given and whose releases it
     /// hasn't been yet. The seat ends its grabs (a client's implicit grab,
@@ -544,6 +546,7 @@ impl State {
             idle_inhibitors: HashSet::new(),
             valid_tokens: HashSet::new(),
             idle: Default::default(),
+            power: Default::default(),
             children: Default::default(),
             forwarded_buttons: HashSet::new(),
         };
@@ -560,6 +563,9 @@ impl State {
         // The safe point between frames: no logic code is on the stack.
         self.recover_logic();
         if std::mem::take(&mut self.az.outputs_dirty) {
+            // An output that came while the displays are off, or a panel
+            // behind the closed lid, goes dark before its first frame.
+            self.apply_power();
             self.lg_call((), |vt, st| (vt.outputs_changed)(st));
         }
         self.lg_call((), |vt, st| (vt.loop_iteration)(st));
