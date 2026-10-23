@@ -421,7 +421,12 @@ idle lock still lock it.
   motion, clock format, Deskbar collapsed or not, which systray widgets show.
 - When the theme changes, the shell also tells foot instances (SIGUSR1 for
   dark, SIGUSR2 for light) and updates the GTK color-scheme (`dconf write
-  /org/gnome/desktop/interface/color-scheme`).
+  /org/gnome/desktop/interface/color-scheme`). Newly opened terminals and
+  terminals present when the shell starts or reconnects receive the current
+  palette too. Only Foot processes with windows on this compositor are
+  signalled, including custom app IDs and foot server windows.
+  Applications inside Foot may cache their own colours; see
+  [Codex's theme-change limitation and deferred remedy](terminal-theme-changes.md).
 - Apps launch through `aizome-sys::apps` (systemd user scopes) with an
   xdg-activation token, so their first window takes focus.
 - The shell never blocks its loop: D-Bus, PAM, file indexing and searches
@@ -429,3 +434,20 @@ idle lock still lock it.
 - Frame budget: every surface's frames stay under 4 ms (measure with
   `SIDESTEP_FRAME_STATS=1`); the clock tick repaints only the clock, a meter
   only its bars.
+
+## Checking Foot's live theme
+
+With `aizome` and `foot` installed, build the shell and run the real-terminal
+regression check:
+
+```sh
+nix develop --command cargo build -p aizome-shell
+nix develop --command nix shell --inputs-from . nixpkgs#python3 --command \
+  python3 scripts/check-foot-theme --shell target/debug/aizome-shell
+```
+
+It queries Foot's active background with OSC 11 in two isolated headless
+sessions, covering existing and newly opened terminals, custom app IDs,
+foot server windows, live Night/Day changes and a shell reload. The second
+session shares the Wayland socket name but must keep its own palette.
+Logs and screenshots are kept in the printed evidence directory.
