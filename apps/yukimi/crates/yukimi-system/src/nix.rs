@@ -13,6 +13,14 @@ pub enum Error {
     Spawn(String, std::io::Error),
     #[error("{0}")]
     Failed(String),
+    #[error("{message}")]
+    CommandFailed {
+        message: String,
+        code: Option<i32>,
+        stdout: String,
+        /// Complete stderr only when small enough to classify safely.
+        stderr: Option<String>,
+    },
     #[error("Nix's answer could not be read: {0}")]
     Json(#[from] serde_json::Error),
 }
@@ -94,7 +102,17 @@ impl Stop {
 /// Run a program that speaks Nix's progress log on its error output,
 /// calling `update` with the progress after each event. Returns its
 /// standard output.
-pub fn stream(mut command: Command, stop: &Stop, mut update: impl FnMut(&Progress)) -> Result<(String, Progress)> {
+pub fn stream(mut command: Command, stop: &Stop, update: impl FnMut(&Progress)) -> Result<(String, Progress)> {
+    stream_command(&mut command, stop, update)
+}
+
+/// As `stream`, retaining the command for a caller that can prove a retry
+/// is safe (for example pkexec failing before it starts the helper).
+pub fn stream_command(
+    command: &mut Command,
+    stop: &Stop,
+    mut update: impl FnMut(&Progress),
+) -> Result<(String, Progress)> {
     let program = command.get_program().to_string_lossy().into_owned();
     let mut child = {
         let mut state = stop.0.lock().unwrap_or_else(|p| p.into_inner());
@@ -118,7 +136,16 @@ pub fn stream(mut command: Command, stop: &Stop, mut update: impl FnMut(&Progres
         out
     });
     let mut progress = Progress::default();
+    let mut stderr = Some(String::new());
     for line in BufReader::new(child.stderr.take().expect("piped")).lines().map_while(|l| l.ok()) {
+        if let Some(text) = &mut stderr {
+            if text.len() + line.len() < 8192 {
+                text.push_str(&line);
+                text.push('\n');
+            } else {
+                stderr = None;
+            }
+        }
         if progress.feed(&line) {
             update(&progress);
         }
@@ -136,7 +163,7 @@ pub fn stream(mut command: Command, stop: &Stop, mut update: impl FnMut(&Progres
             .last()
             .map(str::to_owned)
             .unwrap_or_else(|| progress.log.iter().rev().take(5).cloned().collect::<Vec<_>>().join("\n"));
-        return Err(Error::Failed(message));
+        return Err(Error::CommandFailed { message, code: status.code(), stdout: out, stderr });
     }
     Ok((out, progress))
 }
