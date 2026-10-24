@@ -415,6 +415,9 @@ every two seconds; a healthy registration waits for owner changes without
 polling. This also lets a replacement shell wait for the previous shell to
 release its registration. Losing the authority cancels its pending dialogs
 and helper conversations; requests from the old authority are rejected.
+Initial setup failures retry, and losing the bus recreates the agent on
+a fresh private connection. A lost registration reply is cleaned up before
+retrying so the agent cannot collide with its own previous registration.
 Dropping the handle stops the worker and unregisters from that specific
 authority. The private-bus tests in `aizome-sys/tests/polkit.rs` exercise
 restarts, interrupted authentication, deferred registration and handover.

@@ -21,6 +21,8 @@ struct Registrations {
     unregistered: usize,
     attempts: usize,
     failures: usize,
+    lost_replies: usize,
+    unregister_failures: usize,
     owner: Option<String>,
 }
 
@@ -32,27 +34,39 @@ type Subject = (String, HashMap<String, OwnedValue>);
 
 #[zbus::interface(name = "org.freedesktop.PolicyKit1.Authority")]
 impl Authority {
-    fn register_authentication_agent(
+    async fn register_authentication_agent(
         &self,
         subject: Subject,
         locale: String,
         path: String,
         #[zbus(header)] header: zbus::message::Header<'_>,
     ) -> zbus::fdo::Result<()> {
-        let mut log = self.log.lock().unwrap();
-        log.attempts += 1;
-        if log.failures > 0 {
-            log.failures -= 1;
-            return Err(zbus::fdo::Error::Failed("Authority not ready".into()));
+        let delay_reply = {
+            let mut log = self.log.lock().unwrap();
+            log.attempts += 1;
+            if log.failures > 0 {
+                log.failures -= 1;
+                return Err(zbus::fdo::Error::Failed("Authority not ready".into()));
+            }
+            if log.owner.is_some() {
+                return Err(zbus::fdo::Error::Failed("An authentication agent is already registered".into()));
+            }
+            let session = subject
+                .1
+                .get("session-id")
+                .and_then(|v| String::try_from(v.try_clone().ok()?).ok())
+                .unwrap_or_default();
+            assert_eq!(subject.0, "unix-session");
+            log.owner = header.sender().map(ToString::to_string);
+            log.agents.push((session, locale, path));
+            let delay = log.lost_replies > 0;
+            log.lost_replies = log.lost_replies.saturating_sub(1);
+            delay
+        };
+        if delay_reply {
+            // Registration succeeded, but the caller times out before the reply.
+            async_io::Timer::after(std::time::Duration::from_secs(3)).await;
         }
-        if log.owner.is_some() {
-            return Err(zbus::fdo::Error::Failed("An authentication agent is already registered".into()));
-        }
-        let session =
-            subject.1.get("session-id").and_then(|v| String::try_from(v.try_clone().ok()?).ok()).unwrap_or_default();
-        assert_eq!(subject.0, "unix-session");
-        log.owner = header.sender().map(ToString::to_string);
-        log.agents.push((session, locale, path));
         Ok(())
     }
     fn unregister_authentication_agent(
@@ -62,6 +76,10 @@ impl Authority {
         #[zbus(header)] header: zbus::message::Header<'_>,
     ) -> zbus::fdo::Result<()> {
         let mut log = self.log.lock().unwrap();
+        if log.unregister_failures > 0 {
+            log.unregister_failures -= 1;
+            return Err(zbus::fdo::Error::Failed("Authority temporarily unavailable".into()));
+        }
         if log.owner.as_deref() != header.sender().map(|s| s.as_str()) {
             return Err(zbus::fdo::Error::Failed("Not this caller's registration".into()));
         }
@@ -69,6 +87,30 @@ impl Authority {
         log.unregistered += 1;
         Ok(())
     }
+}
+
+#[test]
+fn a_lost_registration_reply_does_not_block_retries() {
+    let bus = test_bus!();
+    let (_authority, log) = serve_polkitd(&bus);
+    log.lock().unwrap().lost_replies = 1;
+    // Recovery must also survive a failed cleanup of that uncertain registration.
+    log.lock().unwrap().unregister_failures = 1;
+    let agent = PolkitAgent::register_with(bus.bus(), "7".into(), Helper::Program("/unused".into()), |_| {}).unwrap();
+    assert!(eventually(|| log.lock().unwrap().agents.len() == 2));
+    assert_eq!(log.lock().unwrap().unregistered, 1);
+    drop(agent);
+    assert_eq!(log.lock().unwrap().unregistered, 2);
+}
+
+#[test]
+fn a_disconnected_bus_stops_the_registration_worker() {
+    let bus = test_bus!();
+    let (_authority, log) = serve_polkitd(&bus);
+    let agent = PolkitAgent::register_with(bus.bus(), "7".into(), Helper::Program("/unused".into()), |_| {}).unwrap();
+    assert!(eventually(|| log.lock().unwrap().agents.len() == 1));
+    drop(bus);
+    assert!(eventually(|| !agent.is_running()));
 }
 
 /// A directory with a helper script that wants the password "secret".

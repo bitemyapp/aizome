@@ -569,6 +569,8 @@ enum PolkitError {
 
 #[zbus::interface(name = "org.freedesktop.PolicyKit1.AuthenticationAgent")]
 impl Agent {
+    // Polkit fixes the D-Bus arguments; the header is needed to validate its sender.
+    #[allow(clippy::too_many_arguments)]
     async fn begin_authentication(
         &self,
         action_id: String,
@@ -657,67 +659,121 @@ impl PolkitAgent {
     /// Serve the agent for this login session and keep it registered.
     /// Registration is asynchronous: an absent or restarting polkit, or
     /// a previous shell still registered, does not disable this agent.
+    /// Setup failures retry, and a lost bus connection is replaced. The
+    /// returned handle owns all recovery work; dropping it stops retries.
     pub fn register(ui: impl Fn(AuthEvent) + Send + Sync + 'static) -> Result<PolkitAgent> {
-        let bus = Bus::system()?;
-        let helper = Helper::find().ok_or_else(|| Error::Unavailable("polkit's agent helper".into()))?;
-        let session_id = crate::power::session_id(&bus).ok_or_else(|| Error::NotFound("no login session".into()))?;
-        PolkitAgent::register_with(bus, session_id, helper, ui)
+        Self::reconnecting(ui, || {
+            // The process-wide bus cache can retain a disconnected connection.
+            // This agent owns a fresh connection on every recovery attempt.
+            let conn = zbus::block_on(with_timeout(crate::bus::TIMEOUT, zbus::connection::Builder::system()?.build()))
+                .ok_or(Error::Timeout)??;
+            let bus = Bus::from_connection(conn);
+            let helper = Helper::find().ok_or_else(|| Error::Unavailable("polkit's agent helper".into()))?;
+            let session_id =
+                crate::power::session_id(&bus).ok_or_else(|| Error::NotFound("no login session".into()))?;
+            Ok((bus, session_id, helper))
+        })
+    }
+
+    fn reconnecting(
+        ui: impl Fn(AuthEvent) + Send + Sync + 'static,
+        mut connect: impl FnMut() -> Result<(Bus, String, Helper)> + Send + 'static,
+    ) -> Result<PolkitAgent> {
+        let ui: Ui = Arc::new(ui);
+        Self::spawn(move |mut stopped| {
+            loop {
+                let setup = connect().and_then(|(bus, session_id, helper)| {
+                    serve(&bus, helper, ui.clone()).map(|(state, changes)| (bus, session_id, state, changes))
+                });
+                match setup {
+                    Ok((bus, session_id, state, changes)) => {
+                        if maintain(bus, session_id, state, changes, &mut stopped) {
+                            break;
+                        }
+                    }
+                    Err(error) => log::warn!("aizome-sys: polkit agent setup deferred: {error}"),
+                }
+                // Both initial setup failures and a closed bus are recoverable.
+                // Dropping the handle interrupts this wait as well as maintain.
+                if zbus::block_on(with_timeout(REGISTER_RETRY, &mut stopped)).is_some() {
+                    break;
+                }
+            }
+        })
     }
 
     /// Serve and maintain the agent on `bus` for `session_id`, using `helper`.
+    /// Unlike [`register`](Self::register), a supplied bus cannot be recreated;
+    /// losing it ends this worker and makes [`is_running`](Self::is_running) false.
     pub fn register_with(
         bus: Bus,
         session_id: String,
         helper: Helper,
         ui: impl Fn(AuthEvent) + Send + Sync + 'static,
     ) -> Result<PolkitAgent> {
-        // Subscribe before querying the owner or registering. The stream
-        // owns its match rule and releases it when the worker stops.
-        let rule = zbus::MatchRule::builder()
-            .msg_type(zbus::message::Type::Signal)
-            .sender("org.freedesktop.DBus")?
-            .interface("org.freedesktop.DBus")?
-            .member("NameOwnerChanged")?
-            .add_arg(POLKIT)?
-            .build();
-        let changes = zbus::block_on(with_timeout(
-            crate::bus::TIMEOUT,
-            zbus::MessageStream::for_match_rule(rule, bus.connection(), Some(64)),
-        ))
-        .ok_or(Error::Timeout)??;
-        let state = Arc::new(Mutex::new(AgentState::default()));
-        let agent = Agent { ui: Arc::new(ui), helper, state: state.clone() };
-        // ObjectServer::at atomically refuses an existing interface; a
-        // second handle must never remove the first one's served object.
-        if !zbus::block_on(bus.connection().object_server().at(AGENT_PATH, agent))? {
-            return Err(Error::InvalidArgument("an agent is already registered on this connection".into()));
-        }
-        if let Err(error) = crate::bus::wait_until_serving(&bus, AGENT_PATH) {
-            let _ = zbus::block_on(bus.connection().object_server().remove::<Agent, _>(AGENT_PATH));
-            return Err(error);
-        }
-        let (stop, stopped) = oneshot::channel();
+        let (state, changes) = serve(&bus, helper, Arc::new(ui))?;
         let worker_bus = bus.clone();
-        let worker = std::thread::Builder::new()
-            .name("aizome-sys polkit registration".into())
-            .spawn(move || maintain(worker_bus, session_id, state, changes, stopped));
-        match worker {
-            Ok(worker) => Ok(PolkitAgent { stop: Some(stop), worker: Some(worker) }),
+        match Self::spawn(move |mut stopped| {
+            maintain(worker_bus, session_id, state, changes, &mut stopped);
+        }) {
+            Ok(agent) => Ok(agent),
             Err(error) => {
                 let _ = zbus::block_on(bus.connection().object_server().remove::<Agent, _>(AGENT_PATH));
-                Err(error.into())
+                Err(error)
             }
         }
     }
+
+    fn spawn(run: impl FnOnce(oneshot::Receiver<()>) + Send + 'static) -> Result<PolkitAgent> {
+        let (stop, stopped) = oneshot::channel();
+        let worker =
+            std::thread::Builder::new().name("aizome-sys polkit registration".into()).spawn(move || run(stopped))?;
+        Ok(PolkitAgent { stop: Some(stop), worker: Some(worker) })
+    }
+
+    /// Whether the worker is still serving or recovering its connection.
+    pub fn is_running(&self) -> bool {
+        self.worker.as_ref().is_some_and(|worker| !worker.is_finished())
+    }
 }
 
+fn serve(bus: &Bus, helper: Helper, ui: Ui) -> Result<(Arc<Mutex<AgentState>>, zbus::MessageStream)> {
+    // Subscribe before querying the owner or registering. The stream
+    // owns its match rule and releases it when the worker stops.
+    let rule = zbus::MatchRule::builder()
+        .msg_type(zbus::message::Type::Signal)
+        .sender("org.freedesktop.DBus")?
+        .interface("org.freedesktop.DBus")?
+        .member("NameOwnerChanged")?
+        .add_arg(POLKIT)?
+        .build();
+    let changes = zbus::block_on(with_timeout(
+        crate::bus::TIMEOUT,
+        zbus::MessageStream::for_match_rule(rule, bus.connection(), Some(64)),
+    ))
+    .ok_or(Error::Timeout)??;
+    let state = Arc::new(Mutex::new(AgentState::default()));
+    let agent = Agent { ui, helper, state: state.clone() };
+    // ObjectServer::at atomically refuses an existing interface; a
+    // second handle must never remove the first one's served object.
+    if !zbus::block_on(bus.connection().object_server().at(AGENT_PATH, agent))? {
+        return Err(Error::InvalidArgument("an agent is already registered on this connection".into()));
+    }
+    if let Err(error) = crate::bus::wait_until_serving(bus, AGENT_PATH) {
+        let _ = zbus::block_on(bus.connection().object_server().remove::<Agent, _>(AGENT_PATH));
+        return Err(error);
+    }
+    Ok((state, changes))
+}
+
+/// True when the handle was dropped; false when its bus disconnected.
 fn maintain(
     bus: Bus,
     session_id: String,
     state: Arc<Mutex<AgentState>>,
     mut changes: zbus::MessageStream,
-    mut stopped: oneshot::Receiver<()>,
-) {
+    stopped: &mut oneshot::Receiver<()>,
+) -> bool {
     let locale = std::env::var("LC_ALL")
         .or_else(|_| std::env::var("LC_MESSAGES"))
         .or_else(|_| std::env::var("LANG"))
@@ -725,9 +781,18 @@ fn maintain(
     let mut owner = bus.owner(POLKIT);
     change_owner(&state, owner.clone());
     let mut registered = false;
+    let mut cleanup_pending = false;
     let mut warned = false;
-    loop {
+    let stopping = loop {
+        if owner.is_none() && bus.activatable(POLKIT) {
+            let _ = bus.start(POLKIT, crate::bus::TIMEOUT);
+            owner = bus.owner(POLKIT);
+            change_owner(&state, owner.clone());
+        }
         if let Some(dest) = owner.as_deref().filter(|_| !registered) {
+            if cleanup_pending {
+                cleanup_pending = unregister(&bus, dest, &session_id).is_err();
+            }
             // Bind the call to this daemon, not the well-known name: a
             // reply or cleanup must never affect its replacement.
             match bus.call_with::<_, ()>(
@@ -740,37 +805,47 @@ fn maintain(
             ) {
                 Ok(()) => {
                     registered = true;
+                    cleanup_pending = false;
                     log::info!("aizome-sys: polkit agent registered");
                 }
-                Err(error) if !warned => {
-                    log::warn!("aizome-sys: polkit registration deferred: {error}");
-                    warned = true;
+                Err(error) => {
+                    // The daemon may have registered us but lost its reply.
+                    // Remove only this connection's registration at that exact
+                    // authority before retrying, or every retry could collide.
+                    if matches!(error, Error::Timeout) {
+                        cleanup_pending = unregister(&bus, dest, &session_id).is_err();
+                    }
+                    if !warned {
+                        log::warn!("aizome-sys: polkit registration deferred: {error}");
+                        warned = true;
+                    }
                 }
-                Err(_) => {}
             }
         }
         enum Next {
             Stop,
+            Disconnected,
             Changed,
             Retry,
         }
         let next = zbus::block_on(futures_lite::future::or(
             async {
-                (&mut stopped).await;
+                (&mut *stopped).await;
                 Next::Stop
             },
             async {
                 let next = async {
                     match changes.next().await {
                         Some(Ok(_)) => Next::Changed,
-                        _ => Next::Stop,
+                        _ => Next::Disconnected,
                     }
                 };
                 if !registered { with_timeout(REGISTER_RETRY, next).await.unwrap_or(Next::Retry) } else { next.await }
             },
         ));
         match next {
-            Next::Stop => break,
+            Next::Stop => break true,
+            Next::Disconnected => break false,
             Next::Retry | Next::Changed => {
                 // Reconcile queued signals with the current owner. An
                 // initial snapshot can already include a queued change.
@@ -779,22 +854,30 @@ fn maintain(
                     change_owner(&state, current.clone());
                     owner = current;
                     registered = false;
+                    cleanup_pending = false;
                     warned = false;
                 }
             }
         }
-    }
+    };
     change_owner(&state, None);
-    if registered && let Some(owner) = owner {
-        let _ = bus.call::<_, ()>(
-            &owner,
-            AUTHORITY_PATH,
-            IFACE_AUTHORITY,
-            "UnregisterAuthenticationAgent",
-            &(subject(&session_id), AGENT_PATH),
-        );
+    if (registered || cleanup_pending)
+        && let Some(owner) = owner
+    {
+        let _ = unregister(&bus, &owner, &session_id);
     }
     let _ = zbus::block_on(bus.connection().object_server().remove::<Agent, _>(AGENT_PATH));
+    stopping
+}
+
+fn unregister(bus: &Bus, owner: &str, session_id: &str) -> Result<()> {
+    bus.call::<_, ()>(
+        owner,
+        AUTHORITY_PATH,
+        IFACE_AUTHORITY,
+        "UnregisterAuthenticationAgent",
+        &(subject(session_id), AGENT_PATH),
+    )
 }
 
 /// polkit's subject for a login session.
@@ -816,6 +899,82 @@ impl Drop for PolkitAgent {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn setup_failure_and_bus_loss_reconnect_until_the_handle_is_dropped() {
+        struct Daemon(Child, String);
+        impl Daemon {
+            fn start() -> Option<Self> {
+                let mut child = Command::new("dbus-daemon")
+                    .args(["--session", "--nofork", "--print-address"])
+                    .stdout(Stdio::piped())
+                    .spawn()
+                    .ok()?;
+                let mut address = String::new();
+                BufReader::new(child.stdout.take().unwrap()).read_line(&mut address).unwrap();
+                Some(Self(child, address.trim().into()))
+            }
+        }
+        impl Drop for Daemon {
+            fn drop(&mut self) {
+                let _ = self.0.kill();
+                let _ = self.0.wait();
+            }
+        }
+        let Some(first) = Daemon::start() else {
+            eprintln!("skipping: no dbus-daemon");
+            return;
+        };
+        let second = Daemon::start().unwrap();
+        let (first_address, second_address) = (first.1.clone(), second.1.clone());
+        let (tx, rx) = mpsc::channel();
+        let mut attempt = 0;
+        let agent = PolkitAgent::reconnecting(
+            |_| {},
+            move || {
+                attempt += 1;
+                if attempt == 1 || attempt == 3 {
+                    return Err(Error::Unavailable("bus not ready".into()));
+                }
+                let bus = Bus::at(if attempt == 2 { &first_address } else { &second_address })?;
+                tx.send(bus.clone()).unwrap();
+                Ok((bus, "7".into(), Helper::Program("/unused".into())))
+            },
+        )
+        .unwrap();
+        let wait_serving = |bus: &Bus| {
+            let deadline = std::time::Instant::now() + Duration::from_secs(5);
+            while zbus::block_on(bus.connection().object_server().interface::<_, Agent>(AGENT_PATH)).is_err() {
+                assert!(std::time::Instant::now() < deadline, "agent never served");
+                std::thread::sleep(Duration::from_millis(20));
+            }
+        };
+        let first_bus = rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        wait_serving(&first_bus);
+        drop(first);
+        let second_bus = rx.recv_timeout(Duration::from_secs(7)).unwrap();
+        wait_serving(&second_bus);
+        assert!(agent.is_running());
+        drop(agent);
+        assert!(zbus::block_on(second_bus.connection().object_server().interface::<_, Agent>(AGENT_PATH)).is_err());
+        assert!(rx.recv_timeout(Duration::from_millis(100)).is_err());
+
+        // Setup retries are owned too: dropping during the retry wait ends it.
+        let (tx, rx) = mpsc::channel();
+        let agent = PolkitAgent::reconnecting(
+            |_| {},
+            move || {
+                tx.send(()).unwrap();
+                Err(Error::Unavailable("still unavailable".into()))
+            },
+        )
+        .unwrap();
+        rx.recv_timeout(Duration::from_secs(1)).unwrap();
+        let started = std::time::Instant::now();
+        drop(agent);
+        assert!(started.elapsed() < Duration::from_secs(1));
+        assert!(rx.recv_timeout(Duration::from_millis(100)).is_err());
+    }
 
     #[test]
     fn helper_lines() {
