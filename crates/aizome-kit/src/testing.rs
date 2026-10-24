@@ -704,6 +704,12 @@ impl<P: Program> Harness<P> {
         self.key(key, Key::Character(c.to_string()), Modifiers::SUPER);
     }
 
+    /// A close request from the compositor's title bar.
+    pub fn request_close(&mut self, key: WindowKey) {
+        let win = self.win(key);
+        self.rt.close_requested(win, &mut self.platform);
+    }
+
     /// Type `text`, a key per character.
     pub fn type_text(&mut self, key: WindowKey, text: &str) {
         for c in text.chars() {

@@ -341,6 +341,8 @@ impl Scroller {
 // The `scroll` element.
 
 /// Content taller (or wider) than its room: `scroll(column![...])`.
+/// `.height(Shrink)` keeps short content compact and scrolls once it
+/// reaches the height its parent allows.
 pub struct Scroll<Msg> {
     pub(crate) common: Common,
     dir: Direction,
@@ -377,7 +379,7 @@ impl<Msg> Scroll<Msg> {
 impl<Msg> From<Scroll<Msg>> for Element<Msg> {
     fn from(s: Scroll<Msg>) -> Element<Msg> {
         Element::from_raw(RawElement {
-            widget: Box::new(ScrollWidget { dir: s.dir }),
+            widget: Box::new(ScrollWidget { dir: s.dir, shrink_height: s.common.height == Length::Shrink }),
             common: s.common,
             children: vec![s.child],
         })
@@ -386,6 +388,7 @@ impl<Msg> From<Scroll<Msg>> for Element<Msg> {
 
 struct ScrollWidget {
     dir: Direction,
+    shrink_height: bool,
 }
 
 impl Widget for ScrollWidget {
@@ -398,8 +401,8 @@ impl Widget for ScrollWidget {
         let unbounded = |v: f64| if v.is_finite() { v } else { 0.0 };
         let view = Size::new(unbounded(bc.max.width), unbounded(bc.max.height));
         let child_bc = Constraints {
-            // Content at least fills the view.
-            min: view,
+            // A shrinking view follows short content instead of stretching it.
+            min: Size::new(view.width, if self.shrink_height { bc.min.height } else { view.height }),
             max: Size::new(
                 if dir.x() { f64::INFINITY } else { view.width },
                 if dir.y() { f64::INFINITY } else { view.height },
@@ -408,7 +411,7 @@ impl Widget for ScrollWidget {
         let content = if cx.child_count() > 0 { cx.layout_child(0, child_bc) } else { Size::ZERO };
         let size = bc.constrain(Size::new(
             if bc.max.width.is_finite() { view.width } else { content.width },
-            if bc.max.height.is_finite() { view.height } else { content.height },
+            if bc.max.height.is_finite() && !self.shrink_height { view.height } else { content.height },
         ));
         let st = cx.state::<ScrollState>();
         st.viewport = size;
@@ -431,7 +434,7 @@ impl Widget for ScrollWidget {
     }
 
     fn hash(&self, h: &mut PaintHasher) {
-        h.add(&self.dir);
+        h.add(&(self.dir, self.shrink_height));
     }
 
     fn clips(&self) -> bool {

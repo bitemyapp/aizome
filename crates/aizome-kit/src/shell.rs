@@ -241,7 +241,7 @@ pub(crate) fn published(core: &Core) -> Vec<proto::Menu> {
         .enumerate()
         .map(|(i, m)| {
             let mut m = m.clone();
-            core.settle_menu(&mut m);
+            core.settle_app_menu(&mut m, None);
             let path = if i == 0 { "app".to_owned() } else { m.title.clone() };
             proto::Menu { id: menu_id(&path), title: m.title.clone(), items: items(&m, &path) }
         })
@@ -266,7 +266,7 @@ pub(crate) fn find(core: &Core, id: u32) -> Option<ActionSpec> {
     }
     core.menubar.iter().enumerate().find_map(|(i, m)| {
         let mut m = m.clone();
-        core.settle_menu(&mut m);
+        core.settle_app_menu(&mut m, None);
         let path = if i == 0 { "app".to_owned() } else { m.title.clone() };
         walk(&m, &path, id)
     })
@@ -303,7 +303,7 @@ pub(crate) fn handle<P: Program>(rt: &mut Runtime<P>, msg: proto::ShellMessage, 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::menu::MenuBar;
+    use crate::menu::{Menu, MenuBar, MenuItem, MenuRole};
     use crate::theme::Appearance;
 
     #[test]
@@ -342,5 +342,54 @@ mod tests {
         ids.sort_unstable();
         ids.dedup();
         assert_eq!(ids.len(), n);
+    }
+
+    #[test]
+    fn unsupported_standard_roles_are_unavailable_in_native_and_published_menus() {
+        let info = AppInfo::new("org.aizome.Test", "Test", "Tester");
+        let mut core = Core::new(info.clone(), Appearance::default());
+        core.menubar = MenuBar::<()>::standard(&info).into_specs();
+        assert!(!published(&core)[0].items.iter().any(|i| i.label == "Settings…"));
+        assert!(!core.menubar[0].actions().into_iter().any(|a| a.role == Some(MenuRole::Settings)));
+        // An app that explicitly adds a role without implementing it must
+        // still get the unavailable state in both menu implementations.
+        core.menubar = MenuBar::<()>::standard(&info)
+            .extend("Test", [MenuItem::role_item("Settings…", MenuRole::Settings)])
+            .into_specs();
+        let menus = published(&core);
+        for (index, label) in [(0, "Settings…"), (3, "Test Help")] {
+            let item = menus[index].items.iter().find(|i| i.label == label).unwrap();
+            assert!(!item.enabled, "{label} has no handler");
+            assert!(!find(&core, item.id).unwrap().enabled, "shell lookup retains the unavailable state");
+            let mut native = core.menubar[index].clone();
+            core.settle_menu(&mut native);
+            assert!(!native.actions().into_iter().find(|a| a.label == label).unwrap().enabled);
+        }
+        assert!(menus[0].items.iter().find(|i| i.label == "About Test").unwrap().enabled);
+        for label in ["Search", "Aizome Tour"] {
+            assert!(menus[3].items.iter().find(|i| i.label == label).unwrap().enabled);
+        }
+    }
+
+    #[test]
+    fn app_owned_settings_and_help_keep_their_declared_states() {
+        let info = AppInfo::new("org.aizome.Test", "Test", "Tester");
+        let mut core = Core::new(info, Appearance::default());
+        core.menubar = MenuBar::new()
+            .with_menu(
+                Menu::new("App")
+                    .item(MenuItem::new("Settings", ()).role(MenuRole::Settings))
+                    .item(MenuItem::new("Help", ()).role(MenuRole::Help))
+                    .item(MenuItem::new("Unavailable Settings", ()).role(MenuRole::Settings).id(41).enabled(false))
+                    .item(MenuItem::new("Unavailable Help", ()).role(MenuRole::Help).id(42).enabled(false)),
+            )
+            .into_specs();
+        let items = &published(&core)[0].items;
+        assert_eq!(items.iter().map(|i| i.enabled).collect::<Vec<_>>(), [true, true, false, false]);
+        for item in items {
+            let action = find(&core, item.id).unwrap();
+            assert!(action.msg.is_some());
+            assert_eq!(action.enabled, item.enabled);
+        }
     }
 }

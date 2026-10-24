@@ -343,10 +343,7 @@ impl Plan {
                     return Err("There's no filesystem to label.".into());
                 }
                 if seg.is_unlocked() || seg.is_locked() {
-                    return Err(
-                        "An encrypted volume's label is its filesystem's: unlock it and label that, or format it."
-                            .into(),
-                    );
+                    return Err("Changing labels on encrypted filesystems isn't supported here.".into());
                 }
                 if is_new || seg.pending.contains(&Mark::Format) {
                     return Ok(());
@@ -774,10 +771,13 @@ impl Plan {
                 );
                 let how = match (grow, fs_now.is_empty()) {
                     (_, true) => "Its end moves; its start stays where it is.".to_owned(),
+                    (true, false) if fs::check_before_resize(&fs_now) => {
+                        "The filesystem is checked and repaired, the partition's end moves into the free space after it, then the filesystem grows to fill it.".to_owned()
+                    }
                     (true, false) => {
                         "Its end moves into the free space after it, then the filesystem grows to fill it.".to_owned()
                     }
-                    (false, false) if fs::check_before_shrink(&fs_now) => {
+                    (false, false) if fs::check_before_resize(&fs_now) => {
                         "The filesystem is checked and repaired, shrunk, and then the partition's end moves in."
                             .to_owned()
                     }

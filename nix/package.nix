@@ -36,7 +36,9 @@
   freetype,
   dbus,
   libpulseaudio,
+  libsecret,
   pam,
+  systemd,
   src,
   sidestep,
   version ? "0.1.0",
@@ -56,6 +58,7 @@ let
   runtimeLibs = [
     libglvnd
     libpulseaudio
+    libsecret
     fontconfig
     libxkbcommon
     wayland
@@ -121,6 +124,7 @@ rustPlatform.buildRustPackage {
     dbus
     pam
     libpulseaudio
+    libsecret
   ];
 
   postPatch = ''
@@ -150,6 +154,9 @@ rustPlatform.buildRustPackage {
     rel=target/${target}/release
     lto=target/${target}/release-lto
     mkdir -p $out/bin $out/lib/aizome $out/share/aizome
+    install -Dm644 etc/org.aizome.DisplayScales.xml $out/share/dbus-1/interfaces/org.aizome.DisplayScales.xml
+    mkdir -p $out/share/accountsservice/interfaces
+    ln -s ../../dbus-1/interfaces/org.aizome.DisplayScales.xml $out/share/accountsservice/interfaces/org.aizome.DisplayScales.xml
     install -m755 $rel/aizome $out/bin/aizome
     # The core, the logic it loads, and the std they share.
     install -m644 $rel/libaizome_comp_core.so $rel/libaizome_comp_logic.so $out/lib/aizome/
@@ -166,7 +173,9 @@ rustPlatform.buildRustPackage {
     shopt -s nullglob
     for unit in session/*.service session/*.target session/*.path apps/*/data/*.service; do
       install -Dm644 "$unit" "$out/lib/systemd/user/$(basename "$unit")"
-      substituteInPlace "$out/lib/systemd/user/$(basename "$unit")" --replace-quiet @bindir@ "$out/bin"
+      substituteInPlace "$out/lib/systemd/user/$(basename "$unit")" \
+        --replace-quiet @bindir@ "$out/bin" \
+        --replace-quiet @systemctl@ "${systemd}/bin/systemctl"
     done
     install -Dm644 session/aizome-portals.conf $out/share/xdg-desktop-portal/aizome-portals.conf
 

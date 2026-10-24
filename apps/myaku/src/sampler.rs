@@ -27,9 +27,46 @@ use aizome_sys::sysinfo::power::{EnergyCounter, Floor, battery_draw, joules, rap
 use aizome_sys::sysinfo::{self, CpuSampler, DiskIoSampler, NetSampler, ProcessSampler};
 
 use crate::group::{self, Node};
-use crate::model::{self, Frame, GpuUse, Group, Lens, Meter, Process, Usage};
+use crate::model::{self, Frame, GpuUsage, GpuUse, Group, Lens, Meter, Process, Usage};
+use crate::nvml::Nvml;
 
 type Key = (u32, u64);
+
+/// Only this card's measured clients can supply a fallback utilization.
+fn client_busy(processes: &[Process], device: usize) -> Option<f64> {
+    let mut values = processes.iter().flat_map(|p| &p.gpus).filter(|g| g.device == device).map(|g| g.usage.busy);
+    let first = values.next()??;
+    Some((first + values.sum::<Option<f64>>()?).min(100.0))
+}
+
+fn merge_nvidia(gpus: &mut [model::Gpu], processes: &mut [Process], readings: &[crate::nvml::Reading]) {
+    let pids: HashMap<u32, usize> = processes.iter().enumerate().map(|(i, p)| (p.pid, i)).collect();
+    for reading in readings {
+        let Some(device) = gpus.iter().position(|g| g.pci == reading.pci) else { continue };
+        let gpu = &mut gpus[device];
+        if !reading.name.is_empty() {
+            gpu.name = reading.name.clone();
+        }
+        gpu.busy = reading.busy;
+        gpu.video = reading.video;
+        gpu.vram_used = reading.vram_used;
+        gpu.vram_total = reading.vram_total;
+        gpu.power = reading.power;
+        gpu.temperature = reading.temperature;
+        gpu.clock = reading.clock;
+        gpu.unlisted_usage = reading.unlisted_usage;
+        // NVML is authoritative for this card, including if a future NVIDIA DRM
+        // driver starts exporting overlapping counters.
+        for process in processes.iter_mut() {
+            process.gpus.retain(|g| g.device != device);
+        }
+        for (pid, usage) in &reading.processes {
+            if let Some(&index) = pids.get(pid) {
+                processes[index].gpus.push(GpuUse { device, usage: *usage });
+            }
+        }
+    }
+}
 
 /// What the window tells the sampler.
 pub enum Command {
@@ -115,6 +152,7 @@ pub struct Sampler {
     drm_fds: HashMap<Key, Vec<u32>>,
     clients: HashMap<(String, u64), (DrmClient, Instant)>,
     cards: Vec<Card>,
+    nvml: Option<Nvml>,
     rapl: Vec<PathBuf>,
     rapl_before: Option<Vec<EnergyCounter>>,
     floor: Floor,
@@ -141,7 +179,7 @@ impl Default for Sampler {
 
 impl Sampler {
     pub fn new() -> Sampler {
-        let cards = sysinfo::gpus()
+        let cards: Vec<Card> = sysinfo::gpus()
             .into_iter()
             .map(|g| Card {
                 pci: aizome_sys::sysinfo::drm::card_pci(&g.card).unwrap_or_default(),
@@ -149,6 +187,7 @@ impl Sampler {
                 gpu: g,
             })
             .collect();
+        let nvml = cards.iter().any(|c| c.gpu.driver.as_deref() == Some("nvidia")).then(Nvml::open).flatten();
         Sampler {
             procs: ProcessSampler::new(),
             reader: ProcReader::new(),
@@ -161,6 +200,7 @@ impl Sampler {
             drm_fds: HashMap::new(),
             clients: HashMap::new(),
             cards,
+            nvml,
             rapl: rapl_domains(),
             rapl_before: None,
             floor: Floor::default(),
@@ -313,23 +353,27 @@ impl Sampler {
                         if !counted.insert(id.clone()) {
                             continue;
                         }
-                        let device = self.cards.iter().position(|c| c.pci == client.pdev).unwrap_or(0);
-                        let mut u = GpuUse { device, vram: client.vram, shared: client.shared, ..Default::default() };
-                        if let Some((was, at)) = self.clients.get(&id) {
+                        let Some(device) = self.cards.iter().position(|c| c.pci == client.pdev) else { continue };
+                        let mut u = GpuUse {
+                            device,
+                            usage: GpuUsage {
+                                busy: None,
+                                video: None,
+                                vram: Some(client.vram),
+                                shared: Some(client.shared),
+                            },
+                        };
+                        if let Some((was, at)) = self.clients.get(&id)
+                            && client.measures_busy()
+                        {
                             let cu = ClientUse::between(was, &client, started.duration_since(*at).as_secs_f64());
-                            u.busy = f64::from(cu.busy);
-                            u.video = f64::from(cu.video);
+                            u.usage.busy = Some(f64::from(cu.busy));
+                            u.usage.video = Some(f64::from(cu.video));
                         }
                         fresh_clients.insert(id, (client, started));
                         gpus.push(u);
                     }
                 }
-            }
-            for g in &gpus {
-                usage.gpu += g.busy;
-                usage.video += g.video;
-                usage.vram += g.vram;
-                usage.gpu_shared += g.shared;
             }
             processes.push(Process {
                 pid: p.pid,
@@ -411,17 +455,13 @@ impl Sampler {
 
         lap("system", &mut phases);
         // Graphics cards.
-        let gpus: Vec<model::Gpu> = self
+        let mut gpus: Vec<model::Gpu> = self
             .cards
             .iter()
             .enumerate()
             .map(|(i, c)| {
                 let s = gpu_stats(&c.gpu.card);
-                let busy = s.busy.map(f64::from).or_else(|| {
-                    let sum: f64 =
-                        processes.iter().flat_map(|p| p.gpus.iter()).filter(|g| g.device == i).map(|g| g.busy).sum();
-                    (sum > 0.0 || !processes.iter().all(|p| p.gpus.is_empty())).then_some(sum.min(100.0))
-                });
+                let busy = s.busy.map(f64::from).or_else(|| client_busy(&processes, i));
                 model::Gpu {
                     name: c.gpu.name.clone(),
                     driver: c.gpu.driver.clone().unwrap_or_default(),
@@ -434,9 +474,17 @@ impl Sampler {
                     power: s.power,
                     temperature: s.temperature.map(f64::from),
                     clock: s.clock.map(f64::from),
+                    unlisted_usage: if c.gpu.driver.as_deref() == Some("nvidia") {
+                        GpuUsage::UNKNOWN
+                    } else {
+                        GpuUsage::default()
+                    },
                 }
             })
             .collect();
+        if let Some(nvml) = &mut self.nvml {
+            merge_nvidia(&mut gpus, &mut processes, &nvml.read());
+        }
 
         // Power: the processor's counters where readable, else the battery
         // while it discharges; shared by processor use.
@@ -538,7 +586,10 @@ impl Sampler {
         self.identities.retain(|k, _| used.contains(k));
         lap("groups", &mut phases);
         self.phases = phases;
-        Frame { tick, system, gpus, power, processes, groups, uid: self.uid, cost: started.elapsed() }
+        let mut frame = Frame { tick, system, gpus, power, processes, groups, uid: self.uid, cost: Duration::ZERO };
+        frame.total_graphics();
+        frame.cost = started.elapsed();
+        frame
     }
 }
 
@@ -567,6 +618,38 @@ impl Sampler {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn nvidia_matches_pci_and_keeps_amd_allocations_separate() {
+        let mut cards = vec![
+            model::Gpu { pci: "0000:78:00.0".into(), ..Default::default() },
+            model::Gpu { pci: "0000:01:00.0".into(), ..Default::default() },
+        ];
+        let mut processes = vec![Process {
+            pid: 42,
+            gpus: vec![GpuUse { device: 0, usage: GpuUsage { vram: Some(12 << 10), ..Default::default() } }],
+            ..Default::default()
+        }];
+        assert_eq!(client_busy(&processes, 0), Some(0.0));
+        assert_eq!(client_busy(&processes, 1), None, "AMD cannot make an unmeasured NVIDIA card look idle");
+        let reading = crate::nvml::Reading {
+            pci: cards[1].pci.clone(),
+            vram_used: Some(2941 << 20),
+            processes: vec![
+                (42, GpuUsage { vram: Some(355 << 20), ..Default::default() }),
+                (999, GpuUsage::default()), // Already exited, or not visible in /proc.
+            ],
+            ..Default::default()
+        };
+        merge_nvidia(&mut cards, &mut processes, std::slice::from_ref(&reading));
+        merge_nvidia(&mut cards, &mut processes, &[reading]);
+        assert_eq!(processes[0].gpus.len(), 2, "never duplicate a device's process figures");
+        assert_eq!(processes[0].gpus[0].usage.vram, Some(12 << 10));
+        assert_eq!(processes[0].gpus[1].usage.vram, Some(355 << 20));
+        assert_eq!(cards[0].vram_used, None);
+        assert_eq!(cards[1].vram_used, Some(2941 << 20));
+        assert_eq!(cards[1].busy, None);
+    }
 
     #[test]
     fn cpu_names_lose_their_marks() {

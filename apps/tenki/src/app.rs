@@ -44,6 +44,8 @@ pub struct Search {
     pub text: String,
     /// Bumped by each change, so an old answer is dropped.
     pub generation: u64,
+    /// A request for the current generation is running. Older requests may
+    /// still finish, but cannot hold this query busy or supply its results.
     pub busy: bool,
     /// What the last answered search found, and for what text.
     pub results: Vec<Found>,
@@ -541,11 +543,14 @@ impl Program for Tenki {
                 self.search.text = text;
                 self.search.generation += 1;
                 self.search.add_first = false;
+                // All transient state belongs to the query just replaced.
+                // In particular, a stale reply is discarded below, so it must
+                // not be the only thing that could release this query's busy flag.
+                self.search.busy = false;
+                self.search.results.clear();
+                self.search.answered = None;
+                self.search.error = None;
                 if self.search.text.trim().chars().count() < 2 {
-                    self.search.busy = false;
-                    self.search.results.clear();
-                    self.search.answered = None;
-                    self.search.error = None;
                     return;
                 }
                 cx.after(SEARCH_DELAY, Msg::RunSearch(self.search.generation));

@@ -69,6 +69,24 @@ nix develop
 cargo build
 ```
 
+To try one app from the current checkout or worktree in your running Aizome
+session:
+
+```sh
+just replace yukimi
+```
+
+Recipes automatically enter `nix develop` when outside a Nix shell and
+reuse the current environment when already inside one. `just` itself must
+be on your PATH; it is also included in `nix develop`, so if it is not
+installed yet, use `nix develop -c just replace yukimi`.
+Substitute any app name, such as
+`hako` or `sumi`. This builds that app, asks its existing windows to close,
+and starts the new binary. A failed build leaves the running app alone;
+an app asking to save is not forcibly stopped. Future launches still use
+the installed app; run the command again to test the checkout version.
+See [live reload](docs/reload.md) for watching changes on every save.
+
 Run the whole desktop without touching your own session, headless:
 
 ```sh

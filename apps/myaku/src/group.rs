@@ -193,6 +193,13 @@ impl Node {
         self.unit_path().and_then(|p| p.rsplit('/').next()).unwrap_or("")
     }
 
+    /// A deliberate desktop launch is independent, even for another instance
+    /// of the same app. Private Chromium/Electron helper scopes are not launches.
+    fn launch_scope(&self) -> bool {
+        let unit = self.unit();
+        unit.starts_with("app-aizome-") && unit.ends_with(".scope")
+    }
+
     fn dedicated_unit(&self) -> Option<&str> {
         let unit = self.unit();
         ((unit.ends_with(".service") && !unit.starts_with("user@"))
@@ -296,33 +303,22 @@ pub fn group(nodes: &[Node], windows: &[Window], apps: Option<&AppIndex>) -> Vec
                 if own.is_some_and(|id| identities[root].as_ref() != Some(id)) {
                     return false;
                 }
-                // Explicitly launched headless apps/services are boundaries
-                // too. Same-program helpers may move between differently
-                // named app scopes (notably Electron's generic Chromium ID).
+                // Explicit launcher scopes are independent instances even
+                // when both windows have the same app identity.
                 let different_unit = n.unit_path() != nodes[p].unit_path();
+                if different_unit && n.launch_scope() {
+                    return false;
+                }
+                // Headless apps/services are boundaries too. Same-program
+                // helpers may move between differently named non-launcher
+                // scopes, even before their command line exposes a role.
                 let same_program =
                     !n.exe.is_empty() && n.exe == nodes[p].exe || (!n.name.is_empty() && n.name == nodes[p].name);
                 let different_app = scope_id.is_some() && scope_id != identities[root];
-                let helper = same_program
-                    && matches!(
-                        n.role.as_str(),
-                        "Renderer"
-                            | "Extension"
-                            | "GPU process"
-                            | "Zygote"
-                            | "Broker"
-                            | "Crash reporter"
-                            | "Network service"
-                            | "Storage service"
-                            | "Audio service"
-                            | "Video capture"
-                            | "Data decoder"
-                            | "Utility"
-                    );
                 !(own.is_none()
                     && different_unit
                     && n.dedicated_unit().is_some()
-                    && (n.unit().ends_with(".service") || different_app && !helper))
+                    && (n.unit().ends_with(".service") || different_app && !same_program))
             });
             if let Some(p) = parent {
                 let root = roots[p].unwrap();
@@ -698,7 +694,7 @@ mod tests {
     #[test]
     fn electron_helpers_keep_their_owner_across_generic_and_branded_scopes() {
         let generic = "/app.slice/app-org.chromium.Chromium-20.scope";
-        let branded = "/app.slice/app-aizome-chatgpt-abc.scope";
+        let branded = "/app.slice/app-chatgpt-abc.scope";
         let nodes = vec![
             node(20, 1, "ChatGPT", generic),
             Node { role: "Zygote".into(), ..node(21, 20, "ChatGPT", branded) },
@@ -890,15 +886,12 @@ mod tests {
 
         let nodes = vec![
             node(20, 1, "chrome", ""),
-            Node {
-                role: "Renderer".into(),
-                ..node(30, 20, "chrome", "/app.slice/app-aizome-com.anthropic.Claude-1.scope")
-            },
+            Node { role: "Renderer".into(), ..node(30, 20, "chrome", "/app.slice/app-com.anthropic.Claude-1.scope") },
         ];
         assert_eq!(partition(&nodes, &[]), [vec![20, 30]]);
         let id = identify(&nodes, &[0, 1], &[], Some(&apps), 1000);
         assert_eq!(id.name, "Claude");
-        assert!(id.attribution.contains("dedicated unit: app-aizome-com.anthropic.Claude-1.scope"));
+        assert!(id.attribution.contains("dedicated unit: app-com.anthropic.Claude-1.scope"));
 
         let nodes = vec![node(20, 1, "background-worker", "/app.slice/app-background-1.scope")];
         let id = identify(&nodes, &[0], &[], Some(&apps), 1000);
@@ -924,5 +917,50 @@ mod tests {
             assert_ne!(key, fingerprint(&edited, &[0, 1], &[]));
         }
         assert_eq!(key, fingerprint(&nodes, &[1, 0], &[]));
+    }
+    #[test]
+    fn shell_launches_and_opened_applications_keep_their_own_groups() {
+        let nodes = vec![
+            node(1, 0, "systemd", "/init.scope"),
+            node(10, 1, "aizome", "/user.slice/aizome.service"),
+            node(11, 10, "aizome-shell", "/user.slice/aizome.service"),
+            // The shell starts Settings directly, without a scope.
+            node(12, 11, "aizome-settei", "/user.slice/aizome.service"),
+            node(20, 11, "aizome-hako", "/user.slice/app-aizome-org.aizome.Hako-a.scope"),
+            // Opening a document starts Sumi as Hako's child in its own scope.
+            node(21, 20, "aizome-sumi", "/user.slice/app-aizome-org.aizome.Sumi-b.scope"),
+            node(22, 21, "helper", "/user.slice/app-aizome-org.aizome.Sumi-b.scope"),
+            node(30, 11, "firefox", "/user.slice/app-aizome-firefox-c.scope"),
+            node(31, 30, "firefox", "/user.slice/app-aizome-firefox-c.scope"),
+            node(40, 11, "aizome-myaku", "/user.slice/app-aizome-org.aizome.Myaku-d.scope"),
+        ];
+        let pids: Vec<Vec<u32>> =
+            group(&nodes, &[], None).iter().map(|g| g.iter().map(|&i| nodes[i].pid).collect()).collect();
+        assert_eq!(pids, [vec![1], vec![10], vec![11], vec![12], vec![20], vec![21, 22], vec![30, 31], vec![40]]);
+    }
+
+    #[test]
+    fn explicit_app_scopes_bound_parent_edges_but_helpers_still_follow() {
+        let nodes = vec![
+            node(1, 0, "systemd", "/init.scope"),
+            node(20, 1, "foot", "/user.slice/app-aizome-foot-a.scope"),
+            node(21, 20, "fish", "/user.slice/app-aizome-foot-a.scope"),
+            // An independently scoped launch is a new instance, even for the same app.
+            node(22, 21, "foot", "/user.slice/app-aizome-foot-b.scope"),
+            // An ordinary unscoped child remains part of the terminal's work.
+            node(23, 21, "sleep", "/user.slice/app-aizome-foot-a.scope"),
+            node(30, 1, "chrome", "/user.slice/app-aizome-chrome-c.scope"),
+            // Browsers move their helpers into non-launcher scopes of their own.
+            node(31, 30, "chrome", "/user.slice/app-chrome-helper-d.scope"),
+            node(32, 31, "chrome", "/user.slice/app-chrome-helper-d.scope"),
+        ];
+        let pids: Vec<Vec<u32>> =
+            group(&nodes, &[], None).iter().map(|g| g.iter().map(|&i| nodes[i].pid).collect()).collect();
+        assert_eq!(pids, [vec![1], vec![20, 21, 23], vec![22], vec![30, 31, 32]]);
+        assert_eq!(
+            partition(&nodes, &[window(20, "foot"), window(22, "foot")]),
+            [vec![1], vec![20, 21, 23], vec![22], vec![30, 31, 32]],
+            "same-app windows must not collapse independently launched instances"
+        );
     }
 }

@@ -96,7 +96,9 @@ palette. Search filters the sidebar and highlights options.
   previews; focus colour (amber, cyan, rose, lime); effects tier (Full,
   Lean, Austere) with a description of each; Size (small, medium, large);
   wallpaper for Night and Day (a grid of `/run/current-system/sw/share/backgrounds`
-  and `~/Pictures`); reduced motion.
+  and `~/Pictures`); reduced motion. Wallpaper choices distinguish System
+  default (the session's picture) from No picture (a plain background).
+  Each theme remembers its own choice, including after logout.
 - **Desktop & Deskbar**: Desks (names, folders, add/remove), Deskbar
   (collapsed, pinned apps, show the Shelf), desktop icons (show disks,
   Home, Trash), windows (stack new windows of the same app, double-click on a
@@ -223,13 +225,27 @@ where Sekka's Yukimi package installs it.
 As built: the helper is the program Sekka's polkit action
 `io.github.bitemyapp.Yukimi.change-system` names (its
 `org.freedesktop.policykit.exec.path`, read from the installed policy), run
-through `/run/wrappers/bin/pkexec` with the GTK Yukimi's arguments, so it
-needs `programs.yukimi.enable` (Sekka sets it on every desktop) and nothing
+through `/run/wrappers/bin/pkexec --disable-internal-agent` with the GTK
+Yukimi's helper arguments, so it needs `programs.yukimi.enable` (Sekka sets
+it on every desktop) and nothing
 of Aizome's. Its cache is `~/.cache/aizome/yukimi`, reading the GTK
 Yukimi's package index and last check from `~/.cache/yukimi` until it has
 its own. `aizome-yukimi --sample` shows a sample system;
 `AIZOME_YUKIMI_ETC=/some/etc` looks at another system's configuration
 without changing anything.
+
+Yukimi waits up to five seconds through an unavailable authentication
+agent by retrying only recognized pre-execution pkexec failures (complete
+C-locale diagnostics, matching exit status, and no helper stdout). It never
+retries a build or activation failure. An unavailable dialog offers **Try
+Again**; denial and cancellation are distinct. Generic failures preserve
+the helper's report without inventing a successful rollback.
+
+`nix build .#checks.x86_64-linux.polkit-recovery` exercises real Yukimi,
+polkit and PAM through two prebuilt system activations that change the
+package profile, then shell replacement, an interrupted password dialog,
+and retrying after a sustained agent outage. The fixture substitutes
+prebuilt profiles for Nix evaluation/building.
 
 Beyond the GTK Yukimi, it changes what used to take typing `sudo` commands:
 
@@ -265,6 +281,13 @@ folder, duplicate, compress and extract with `bsdtar`), Open With, Get Info
 Desktop and the Shelf, image thumbnails cached in
 `$XDG_CACHE_HOME/thumbnails` (the freedesktop spec), hidden files toggle,
 sorting. Tabs are Aizome's own tab groups, so no tabs inside.
+
+Refreshing a listing keeps a still-selected folder's deeper columns
+open. If that folder leaves the listing (including Put Back from Trash),
+its obsolete columns close and keyboard focus returns to the surviving
+parent when needed.
+
+Encrypted removable volumes stay in the file sidebar after unlocking. Hako asks for a volume passphrase before mounting a locked one; Cancel leaves it locked, and an incorrect passphrase can be retried. While unlocking, the prompt waits for the device operation to finish. System volumes and devices hidden by UDisks policy stay excluded from the removable list.
 
 ### Sumi (Text Editor)
 
@@ -318,7 +341,15 @@ runs `aizome-fusen --stickies` at login (the stickies only). `aizome-fusen
 --new TEXT`, `--new-from-stdin` and a file (the shell's Services hand
 selected text over in one) make new notes; a second launch hands its
 request to the running Fusen. Quit keeps the stickies; closing one puts
-it away.
+it away. A failed note write keeps the draft dirty and shows a persistent error
+with Retry. Close (including a sticky's decoration) and Quit retry saving first;
+if that fails, Keep Open preserves the draft and Retry saves before finishing
+the requested exit. Restoring folder access allows recovery without retyping.
+Rescans retain dirty notes even when their backing directory is unreadable.
+Force termination and session shutdown are not a durable draft-recovery system.
+`checks.fusen-save` exercises permission loss, visible errors, cancelled exits,
+restored-access retry, sticky close and exact-byte persistence in a packaged VM;
+these diagnostic fault injections are component evidence, not ISO qualification.
 
 ### Koyomi (Calendar)
 
@@ -334,6 +365,13 @@ World clocks (search cities, with day/night and offset), alarms (repeat
 days, label, sound; scheduled as systemd user timers so they fire when the
 app is closed, and wake from sleep when asked), a timer and a stopwatch with
 laps. Tabular IBM Plex Mono digits.
+
+On World Clock, Shift+Super+Up/Down moves the selected city. The Clock menu
+shows those shortcuts and disables each direction at its list boundary.
+Alt+Super+Up/Down remains the desktop's Fill/Minimise shortcuts. The
+`tokei-reorder` VM check exercises actual packaged input, both boundaries,
+unchanged window geometry during city moves, global window controls, and
+the saved order after Quit and relaunch.
 
 ### Soroban (Calculator)
 
@@ -376,6 +414,15 @@ with `aizome-tenki --record-fixtures DIR`). NixOS needs
 for the current location (and a working location source, such as
 `services.geoclue2.geoProviderUrl` pointed at BeaconDB).
 
+City search debounces each query separately: editing while an older request
+waits starts the new query, and old results or errors cannot replace it or
+leave it stuck searching. `search_generation` tests hold background replies
+and release them in both orders, including Return before the current answer
+and clearing the field. `nix/vm-tenki-live-search-test.nix` is a separate
+manual packaged UI regression with delayed networking; build its `.driver`
+and run it with private `XDG_RUNTIME_DIR` and `TMPDIR` directories. It needs
+a reachable Open-Meteo and is deliberately outside the offline flake checks.
+
 ### Tansu (Disks)
 
 GParted's job with Aizome's care: pick a disk; a partition map bar
@@ -384,9 +431,26 @@ partition table (name, filesystem, label, mount point, size, used, flags);
 operations queued and listed (create, delete, format, resize, label, flags,
 check, mount, unmount, create a partition table, unlock LUKS) and applied
 only after a confirmation that lists them in plain words; SMART health;
-images (attach `.iso`/`.img` as loop devices). Everything through UDisks2
-(`aizome-sys::disks`). It never touches a disk in tests: use mocks, and
-loop devices only inside the VM test.
+images (attach `.iso`/`.img` as loop devices). Manual attachments stay until
+Detach, including blank images opened for partitioning; read-only attachments
+cannot be written. The system image-mount helper enables automatic detach only
+after mounting succeeds, and releases its own loop if probing or mounting fails.
+`nix build .#checks.x86_64-linux.loop-images` checks these lifetimes against real
+UDisks2 and kernel loop devices in a disposable VM, including error recovery.
+Invalid or out-of-range typed
+partition sizes stay in the create or resize dialog with an explanation;
+they cannot queue the last valid size. Correct the text or choose a size with
+the slider to continue. `checks.x86_64-linux.tansu-size` exercises the packaged
+interface on its in-memory sample disks; it does not test real storage.
+Ext2/3/4 resizing checks and repairs the unmounted filesystem before either
+growing or shrinking it. A failed check stops before changing the partition
+size; a failure in a later step is reported with any earlier changes retained.
+`nix build .#checks.x86_64-linux.tansu-resize` exercises normal packaged Tansu
+mount, unmount, grow and shrink controls on a disposable VM disk, checking the
+actual filesystem size and preservation of ten files after each resize.
+Everything goes through UDisks2 (`aizome-sys::disks`). Tests never use host
+disks: unit tests use mocks, and storage integration tests use disposable disks
+and loop images inside VMs.
 
 ### Kura (Disk Usage)
 
@@ -441,6 +505,14 @@ the store.
 
 ### Myaku (Activity)
 
+Independent Aizome application scopes bound process groups, including an editor
+opened by Hako. The desktop shell is a launcher, not one application containing
+everything it starts. Ordinary descendants and browser helper scopes remain
+grouped. `nix build .#checks.x86_64-linux.myaku-grouping` exercises actual Hako,
+Sumi, Firefox and Myaku launches, independent inspectors, pause/resume and Quit
+cancel/confirm without signaling unrelated applications. It is a component test,
+not an ISO qualification result.
+
 Port Tatami's Activity (`desktop/tatami/activity` on Sekka's main): apps
 and processes with CPU, memory, energy, disk and GPU use; sorting, search,
 quit and force quit; graphs of CPU, memory, disk and network over time; the
@@ -461,6 +533,58 @@ each process's **Parent** link. Shared unit membership does not imply direct
 parenthood. To inspect the same attribution without opening a window, run
 `cargo run -p aizome-myaku --example groups -- NAME` inside `nix develop`;
 omit `NAME` to include every group. This probe only reads the system.
+
+GPU readings use DRM statistics for AMD/Intel and NVML for NVIDIA (loaded
+at runtime, with no NVIDIA dependency on other machines). NVIDIA graphics and
+compute process lists are merged by PID without counting their memory twice;
+card totals come directly from the driver. The newer NVML memory query separates
+driver-reserved memory from allocations, matching `nvidia-smi`'s used figure;
+the fallback for older drivers includes reservations. Unavailable counters show
+a dash rather than zero. amdgpu leaves out the engines a client hasn't used,
+so an amdgpu client listing none is idle, not unknown (the compositor's idle
+context on an integrated Radeon, for one).
+
+Across cards, % GPU and % Video are the busiest card's, as their column says:
+each card's figure is a share of its own engines, so 18% of an integrated
+Radeon and 2% of an RTX 5090 are not 20% of anything. Video memory adds up.
+Shared GPU (system memory mapped through DRM's GTT) adds up from the cards
+that report it; NVML has no such figure, so the column leaves when only
+NVIDIA cards are shown. Most clients are idle at any moment, so at the same
+% GPU or % Video the memory held decides: a browser holding 800 MiB comes
+before the hundreds of processes that use no card.
+
+In the GPU lens, each card's graph takes a place in the strip along the
+bottom, Network's first, then Disk's: how busy it is (violet) and how full
+its memory (cyan), over two minutes, with used and total memory above. The
+discrete cards come first. With several cards, the table gains a **Card**
+column saying which each application uses ("GeForce RTX 5090", "Both"), and
+the table can show one card alone: from the toolbar's pop-up beside
+Applications, from View ▸ GPUs (which opens the GPU lens from any other), or
+by pressing the card's graph (again for every card). The card shown is
+framed in the focus colour, as Tansu frames the partition selected; a
+graph under the pointer is framed faintly. With one card shown, the table
+lists its clients, idle ones holding memory included, with their use of
+that card alone; applications on several cards say how many of their
+processes use it ("1 of 14 processes"); the status line counts its clients
+and gives its clock, temperature and power. The other lenses always show
+every card's use, and the inspector gives the selection's use of each card
+it uses whichever is shown. The choice follows the card's PCI address
+across readings. Cards are named without their maker or codename ("Radeon
+Graphics" for "AMD Radeon Graphics (Granite Ridge)"); alike cards add their
+bus ("GeForce RTX 4090 · 41:00"), as Myaku's numbering of them would not
+match `nvidia-smi`'s.
+`aizome-myaku --print` also includes card and application video-memory usage.
+
+`cargo test -p aizome-myaku --test gpu` drives the choice from the toolbar,
+the strip and the menu on a made-up desktop with both cards
+(`fixture::workstation`), and covers figures across cards, other lenses,
+cards renumbered or gone, what can't be read, one card and five, and the
+smallest window; `--test look` holds its pictures in Night and Day, and
+`--test perf` a reading with one card shown (1.2 ms at the median, release,
+600 processes). On a machine with NVIDIA compute clients running, `cargo
+test -p aizome-myaku --test gpu live_ -- --ignored --nocapture` compares the
+sampler with `nvidia-smi` (allowing allocations to change between readings)
+and checks that idle amdgpu clients read as idle.
 
 ### Shashin (Images)
 
@@ -484,8 +608,13 @@ reads with, and SVG through resvg, rendered at the zoom.
   re-encoded; other kinds are decoded, turned and written again in their
   format (not SVG, nor animated WebP and PNG). Closing with turns unsaved
   asks. Copy (❖C) offers the picture as `image/png`; Set as Wallpaper ▸
-  Night, Day or Both writes `appearance.wallpaper_night`/`_day` and asks
-  the compositor to `reload-config`; Show in Hako (⌥❖R) runs
+  Night, Day or Both first decodes the file with the desktop's renderer,
+  then writes `appearance.wallpaper_night`/`_day` and asks the compositor
+  to `reload-config`. Wallpapers support PNG, JPEG, GIF (the first frame),
+  WebP, BMP, TIFF and ICO; SVG viewing works, but SVG wallpapers are not
+  supported. Unreadable, corrupt or unsupported files leave both existing
+  wallpapers unchanged and show an error. The setting keeps the source
+  path, so the image must remain there. Show in Hako (⌥❖R) runs
   `aizome-hako --select`; Move to Trash (❖⌫) follows the freedesktop
   Trash, and Undo (❖Z) puts the picture back. Get Info (❖I): kind,
   dimensions, size, dates, where, and the camera, lens and settings from

@@ -15,6 +15,82 @@ use tansu::plan::{Action, OpKind};
 
 const GB: f64 = 1_000_000_000.0;
 
+#[test]
+fn invalid_create_size_cannot_queue_the_previous_size() {
+    let (mut h, mock) = start();
+    drive(&mut h, "Crucial");
+    largest_free(&mut h);
+    h.send(Msg::Do(Action::New));
+    let w = h.window();
+    for text in ["1.02.1", "", "lots", "0", "-1", "999999999999999999999999999999999999999"] {
+        sheet(&mut h, SheetMsg::SizeText(text.into()));
+        h.named(w, NamedKey::Enter, Modifiers::NONE);
+        assert_eq!(sheet_kind(&h), Some("create"), "invalid size {text:?} submitted by Return");
+        sheet(&mut h, SheetMsg::Submit);
+        assert!(h.program().plan.is_empty(), "invalid size {text:?} queued a partition");
+        assert!(h.texts(w).iter().any(|t| t.starts_with("Enter a size")));
+    }
+    assert!(mock.calls().is_empty());
+    sheet(&mut h, SheetMsg::SizeText("5 GB".into()));
+    sheet(&mut h, SheetMsg::Submit);
+    assert_eq!(sheet_kind(&h), None);
+    assert_eq!(h.program().plan.len(), 1);
+    assert!(mock.calls().is_empty(), "only queued");
+}
+
+#[test]
+fn invalid_resize_size_cannot_queue_the_last_valid_prefix() {
+    let (mut h, mock) = start();
+    drive(&mut h, "Crucial");
+    seg(&mut h, "sda3");
+    h.send(Msg::Do(Action::Unmount));
+    h.send(Msg::Do(Action::Resize));
+    sheet(&mut h, SheetMsg::Unit(1));
+    sheet(&mut h, SheetMsg::SizeText("120".into()));
+    for text in ["120x", "", "0", "999999999999999999999999999999999999999"] {
+        sheet(&mut h, SheetMsg::SizeText(text.into()));
+        let w = h.window();
+        h.named(w, NamedKey::Enter, Modifiers::NONE);
+        assert_eq!(sheet_kind(&h), Some("resize"), "invalid size {text:?} submitted by Return");
+        sheet(&mut h, SheetMsg::Submit);
+        assert_eq!(sheet_kind(&h), Some("resize"), "invalid size {text:?} submitted");
+        assert!(h.program().plan.is_empty());
+    }
+    assert_eq!(mock.calls(), ["Unmount /dev/sda3"]);
+    sheet(&mut h, SheetMsg::SizeText("120".into()));
+    sheet(&mut h, SheetMsg::Submit);
+    assert_eq!(sheet_kind(&h), None);
+    let OpKind::Resize { from, to } = h.program().plan.ops[0].kind else { panic!() };
+    assert!(to < from);
+}
+
+#[test]
+fn size_slider_and_unit_selection_recover_invalid_text_without_rounding_the_size() {
+    let (mut h, _) = start();
+    drive(&mut h, "Crucial");
+    largest_free(&mut h);
+    h.send(Msg::Do(Action::New));
+    sheet(&mut h, SheetMsg::Size(4777.0));
+    let exact = match &h.program().sheet.as_ref().unwrap().kind {
+        SheetKind::Create(f) => f.size,
+        _ => panic!(),
+    };
+    sheet(&mut h, SheetMsg::SizeText("invalid".into()));
+    sheet(&mut h, SheetMsg::Unit(0));
+    sheet(&mut h, SheetMsg::Submit);
+    let OpKind::Create(ref p) = h.program().plan.ops[0].kind else { panic!() };
+    assert_eq!(p.size, exact, "rounded display text must not change the chosen bytes");
+
+    h.send(Msg::Undo);
+    largest_free(&mut h);
+    h.send(Msg::Do(Action::New));
+    sheet(&mut h, SheetMsg::SizeText("invalid".into()));
+    sheet(&mut h, SheetMsg::Size(4777.0));
+    sheet(&mut h, SheetMsg::Submit);
+    let OpKind::Create(ref p) = h.program().plan.ops[0].kind else { panic!() };
+    assert_eq!(p.size, exact, "moving the slider replaces invalid typed text");
+}
+
 fn start() -> (Harness<Tansu>, Rc<Mock>) {
     let mock = Rc::new(Mock::default());
     (Harness::new(Tansu::new(mock.clone())), mock)

@@ -369,6 +369,9 @@ pkgs.testers.runNixOSTest {
 
         text = share("window", 3, click_window)
         assert "exit 0" in text and "frames:" in text, text
+        # The click picked on its press; its release went to nobody, not
+        # to the terminal under it.
+        machine.fail("journalctl -b --no-pager -o cat | grep -F 'stray button release'")
 
         # Esc: the portal refuses the share, and nothing is shared.
         text = share("refused", 3, lambda: as_alice("aizomectl input key escape"))
@@ -377,6 +380,15 @@ pkgs.testers.runNixOSTest {
 
     with subtest("frame times stay inside the budget"):
         print(as_alice("aizomectl stats"))
+
+    with subtest("without a usable GPU the session falls back to software by itself"):
+        # virtio-gpu without 3D: the renderer setting is Automatic, and the
+        # real session (udev, KMS) chose pixman on its own.
+        stats = ipc("stats")["stats"]
+        assert stats["backend"] == "udev", stats
+        assert stats["renderer_setting"] == "auto", stats
+        assert stats["renderer"] == "pixman", stats
+        assert all(o["frames_rendered"] > 0 for o in stats["outputs"]), stats
 
     with subtest("a stalled compositor is restarted, and says so"):
         def main_pid():

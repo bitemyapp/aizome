@@ -79,3 +79,30 @@ fn goldens() {
     h.send(Msg::Show(Page::Desktops));
     assert_golden(&mut h, w, golden("desktops-day"), 1.0);
 }
+
+#[test]
+fn comparison_sheets() {
+    if std::env::var_os("AIZOME_FONT_DIR").is_none() {
+        return;
+    }
+    for (theme, name) in [(ThemeChoice::Night, "night"), (ThemeChoice::Day, "day")] {
+        let mut h = sample(theme);
+        h.send(Msg::Show(Page::Updates));
+        h.send(Msg::InspectChanges("sekka".into()));
+        settle(&mut h, |a| a.comparison.as_ref().is_some_and(|c| c.details.is_some()));
+        let details = aizome_yukimi::fixture::comparison();
+        let comparison = h.program_mut().comparison.as_mut().unwrap();
+        comparison.link.tooltip = "Saved generations 27 → 28: 1111111 → 65b011c".into();
+        comparison.link.generations = Some((27, 28));
+        comparison.link.before = details.root.before.clone();
+        comparison.link.after = details.root.after.clone().unwrap();
+        comparison.link.url = details.root.url().unwrap();
+        let sheet = comparison.sheet;
+        h.send(Msg::ComparisonLoaded(sheet, Arc::new(details)));
+        assert_golden(&mut h, sheet, golden(&format!("comparison-{name}")), 1.0);
+        h.send(Msg::ComparisonInto(0));
+        assert_golden(&mut h, sheet, golden(&format!("comparison-input-{name}")), 1.0);
+        h.send(Msg::ComparisonPackages(true));
+        assert_golden(&mut h, sheet, golden(&format!("comparison-packages-{name}")), 1.0);
+    }
+}

@@ -96,8 +96,8 @@ pub fn key(state: &mut State, syms: &[Keysym], mods: Mods, pressed: bool, utf8: 
 }
 
 /// Scrolling over an overlay; true if it took it.
-pub fn scroll(state: &mut State, _h: f64, _v: f64) -> bool {
-    state.lg.m().overlays.overview.is_some() || state.lg.m().overlays.switcher.is_some()
+pub fn scroll(state: &mut State, _h: f64, v: f64) -> bool {
+    overview::scroll(state, v) || state.lg.m().overlays.switcher.is_some()
 }
 
 pub fn pointer_moved(state: &mut State, pos: Point<f64, Logical>) {

@@ -9,17 +9,19 @@ use std::marker::PhantomData;
 use std::path::PathBuf;
 
 use crate::Layoutable;
-use crate::element::{Element, MsgFn, MsgMap, RawElement};
+use crate::element::{Common, Element, MsgFn, MsgMap, RawElement};
 use crate::engine::{Core, KitMsg};
 use crate::icons::Icon;
-use crate::layout::{Align, Length};
+use crate::layout::{Align, Constraints, Length, Point, Size};
 use crate::platform::{Platform, WinId};
 use crate::program::WindowKey;
 use crate::text::text;
 use crate::theme::Role;
+use crate::widget::{LayoutCx, Widget};
 use crate::widgets::controls::{button, checkbox, icon_button};
 use crate::widgets::layout::container;
 use crate::widgets::layout::{column, row, spacer};
+use crate::widgets::scroll::scroll;
 use crate::widgets::text_field::text_field;
 
 /// How an alert's button behaves.
@@ -130,7 +132,7 @@ pub(crate) fn show_about(core: &mut Core, win: WinId) {
 pub(crate) fn alert_element(core: &Core, id: u64) -> Option<RawElement> {
     let a = core.alerts.get(&id)?;
     let m = &core.theme.metrics;
-    let mut buttons: Vec<Element<KitMsg>> = vec![spacer().into()];
+    let mut buttons = Vec::new();
     // Cancel first, the default last (at the right), as macOS orders them.
     let mut order: Vec<usize> = (0..a.buttons.len()).collect();
     order.sort_by_key(|&i| match a.buttons[i].kind {
@@ -141,27 +143,71 @@ pub(crate) fn alert_element(core: &Core, id: u64) -> Option<RawElement> {
     });
     for i in order {
         let b = &a.buttons[i];
-        let mut el = button(b.label.clone()).on_press(KitMsg::AlertChoice { alert: id, index: i }).key(i);
+        let mut el = button(b.label.clone()).wrap_label().on_press(KitMsg::AlertChoice { alert: id, index: i }).key(i);
         el = match b.kind {
             ButtonKind::Default => el.default(),
             ButtonKind::Cancel => el.cancel(),
             ButtonKind::Destructive => el.destructive(),
             ButtonKind::Normal => el,
         };
-        buttons.push(el.into());
+        buttons.push(Element::from(el).into_raw());
     }
+    let actions = Element::from_raw(RawElement::new(
+        AlertActions { gap: m.gap },
+        Common::sized(Length::Fill, Length::Shrink),
+        buttons,
+    ));
     let body: Element<KitMsg> = column(vec![
         text(a.title.clone()).size(m.title).weight(aizome_theme::typeface::WEIGHT_SEMIBOLD).wrap().into(),
         text(a.message.clone()).role(Role::Text2).wrap().into(),
         crate::widgets::layout::space(4.0),
-        row(buttons).spacing(m.gap).width(Length::Fill).into(),
+        actions,
     ])
     .spacing(8.0)
     .padding([20.0, 20.0, 16.0, 20.0])
     .align(Align::Start)
-    .width(Length::Fixed(400.0))
+    .width(Length::Fill)
     .into();
-    Some(body.into_raw())
+    Some(Element::from(scroll(body).width(400.0).height(Length::Shrink)).into_raw())
+}
+
+/// Keep a compact trailing row only when every action fits at its natural
+/// width. Otherwise stack full-width actions, letting long labels wrap.
+/// The same keyed children retain their focus and action semantics on resize.
+struct AlertActions {
+    gap: f64,
+}
+
+impl Widget for AlertActions {
+    fn name(&self) -> &'static str {
+        "alert-actions"
+    }
+
+    fn layout(&mut self, cx: &mut LayoutCx, bc: Constraints) -> Size {
+        let n = cx.child_count();
+        let sizes: Vec<_> = (0..n).map(|i| cx.layout_child(i, Constraints::UNBOUNDED)).collect();
+        let row_width = sizes.iter().map(|s| s.width).sum::<f64>() + self.gap * n.saturating_sub(1) as f64;
+        if row_width <= bc.max.width {
+            let height = sizes.iter().map(|s| s.height).fold(0.0, f64::max);
+            let size = bc.constrain(Size::new(row_width, height));
+            let mut x = (size.width - row_width).max(0.0);
+            for (i, child) in sizes.iter().enumerate() {
+                cx.place_child(i, Point::new(x, (size.height - child.height) / 2.0));
+                x += child.width + self.gap;
+            }
+            size
+        } else {
+            let width = bc.max.width;
+            let mut y = 0.0;
+            for i in 0..n {
+                let child = cx
+                    .layout_child(i, Constraints { min: Size::new(width, 0.0), max: Size::new(width, f64::INFINITY) });
+                cx.place_child(i, Point::new(0.0, y));
+                y += child.height + self.gap;
+            }
+            bc.constrain(Size::new(width, (y - self.gap).max(0.0)))
+        }
+    }
 }
 
 pub(crate) fn alert_chosen(core: &mut Core, alert: u64, index: usize) {
@@ -350,6 +396,9 @@ impl PanelState {
         if self.selected.is_empty() {
             return self.dialog.directories.then(|| vec![self.dir.clone()]);
         }
+        if self.invalid_file_selection() {
+            return None;
+        }
         if let [i] = self.selected[..]
             && self.entries[i].dir
             && !self.dialog.directories
@@ -359,6 +408,13 @@ impl PanelState {
             return None;
         }
         Some(self.selected.iter().map(|&i| self.dir.join(&self.entries[i].name)).collect())
+    }
+
+    fn invalid_file_selection(&self) -> bool {
+        !self.save
+            && !self.dialog.directories
+            && self.selected.len() > 1
+            && self.selected.iter().any(|&i| self.entries[i].dir)
     }
 }
 
@@ -429,7 +485,12 @@ pub(crate) fn panel_message(core: &mut Core, panel: u64, msg: PanelMsg, platform
             }
         }
         PanelMsg::Activate(i) => {
-            p.selected = vec![i];
+            // Return activates the list cursor, which can be a row just
+            // toggled off. Multiple-open must use the selection, even empty.
+            // A pointer activation sends Select before Activate when needed.
+            if !p.dialog.multiple || p.save {
+                p.selected = vec![i];
+            }
             result = p.chosen().map(Some);
         }
         PanelMsg::Name(n) => p.name = n,
@@ -500,7 +561,7 @@ pub(crate) fn panel_element(core: &Core, id: u64) -> Option<RawElement> {
         container(text(e.clone()).role(Role::Danger).wrap()).padding(12.0).width(Length::Fill).into()
     } else {
         let names = p.entries.clone();
-        virtual_list(entries.len(), core.theme.metrics.row, move |i| {
+        let mut list = virtual_list(entries.len(), core.theme.metrics.row, move |i| {
             let e = &entries[i];
             let icon = if e.dir { Icon::Folder } else { Icon::File };
             let size = if e.dir { String::new() } else { human(e.size) };
@@ -512,16 +573,23 @@ pub(crate) fn panel_element(core: &Core, id: u64) -> Option<RawElement> {
             ]
             .spacing(8.0)
             .padding([0.0, 10.0])
-        })
-        .selected(p.selected.iter().copied())
-        .on_select(move |s| m(PanelMsg::Select(s)))
-        .on_activate(move |i| KitMsg::Panel { panel: id, msg: PanelMsg::Activate(i) })
-        .type_select(move |i| names[i].name.clone())
-        .id("panel-files")
-        .into()
+        });
+        if p.dialog.multiple && !p.save {
+            list = list.multiple();
+        }
+        list.selected(p.selected.iter().copied())
+            .on_select(move |s| m(PanelMsg::Select(s)))
+            .on_activate(move |i| KitMsg::Panel { panel: id, msg: PanelMsg::Activate(i) })
+            .type_select(move |i| names[i].name.clone())
+            .id("panel-files")
+            .into()
     };
-    let multi_files = files;
-    let can = if p.save { !p.name.trim().is_empty() } else { !p.selected.is_empty() || p.dialog.directories };
+    let invalid_files = p.invalid_file_selection();
+    let can = if p.save {
+        !p.name.trim().is_empty()
+    } else {
+        (!p.selected.is_empty() || p.dialog.directories) && !invalid_files
+    };
     let confirm = if p.save { "Save" } else { "Open" };
     let mut bottom: Vec<Element<KitMsg>> = Vec::new();
     if p.save {
@@ -543,12 +611,12 @@ pub(crate) fn panel_element(core: &Core, id: u64) -> Option<RawElement> {
     bottom.push(spacer().into());
     bottom.push(button("Cancel").cancel().on_press(m(PanelMsg::Cancel)).into());
     bottom.push(button(confirm).default().enabled(can).on_press(m(PanelMsg::Confirm)).into());
-    let body: Element<KitMsg> = column(vec![
+    let mut contents: Vec<Element<KitMsg>> = vec![
         row(vec![text(title).weight(aizome_theme::typeface::WEIGHT_SEMIBOLD).size(core.theme.metrics.title).into()])
             .padding([12.0, 16.0, 8.0, 16.0])
             .into(),
         container(row(crumbs).spacing(2.0)).padding([0.0, 12.0, 8.0, 12.0]).width(Length::Fill).into(),
-        container(sidebar_layout(column(side), multi_files).first_size(170.0))
+        container(sidebar_layout(column(side), files).first_size(170.0))
             .edges(
                 crate::widgets::layout::Edge::Line,
                 crate::widgets::layout::Sides { top: true, right: false, bottom: true, left: false },
@@ -556,10 +624,16 @@ pub(crate) fn panel_element(core: &Core, id: u64) -> Option<RawElement> {
             .width(Length::Fill)
             .height(Length::Fill)
             .into(),
-        row(bottom).spacing(10.0).padding([10.0, 16.0, 12.0, 16.0]).width(Length::Fill).into(),
-    ])
-    .width(Length::Fixed(640.0))
-    .height(Length::Fixed(420.0))
-    .into();
+    ];
+    if invalid_files {
+        contents.push(
+            container(text("Select files, or open one folder.").role(Role::Danger).wrap())
+                .padding([6.0, 16.0, 0.0, 16.0])
+                .width(Length::Fill)
+                .into(),
+        );
+    }
+    contents.push(row(bottom).spacing(10.0).padding([10.0, 16.0, 12.0, 16.0]).width(Length::Fill).into());
+    let body: Element<KitMsg> = column(contents).width(Length::Fixed(640.0)).height(Length::Fixed(420.0)).into();
     Some(body.into_raw())
 }

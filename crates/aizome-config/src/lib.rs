@@ -19,6 +19,7 @@ use std::time::{Duration, SystemTime};
 pub use aizome_theme::{Effects, FocusColor, ThemeName};
 
 pub mod compositor;
+pub mod greeter;
 pub mod location;
 pub mod shell;
 pub use compositor::{NightLight, NightSchedule, RendererChoice, Sun, TabDoubleClick, sun_times, temperature_rgb};
@@ -146,7 +147,9 @@ pub struct Appearance {
     pub reduced_motion: bool,
     pub cursor_theme: String,
     pub cursor_size: u32,
+    /// Unset follows the system wallpaper; an empty string means no picture.
     pub wallpaper_night: Option<String>,
+    /// Unset follows the system wallpaper; an empty string means no picture.
     pub wallpaper_day: Option<String>,
     #[serde(flatten)]
     pub extra: toml::Table,
@@ -171,6 +174,24 @@ impl Default for Appearance {
 }
 
 impl Appearance {
+    /// Resolve an explicit picture or the system default. An explicit empty
+    /// value disables the picture, even when the session supplies a default.
+    pub fn wallpaper_path(&self, day: bool) -> Option<PathBuf> {
+        let configured = if day { &self.wallpaper_day } else { &self.wallpaper_night };
+        match configured.as_deref() {
+            Some("") => None,
+            Some(path) => Some(expand_home(path)),
+            None => Self::system_wallpaper(day),
+        }
+    }
+
+    /// The wallpaper supplied by the session, before any user preference.
+    pub fn system_wallpaper(day: bool) -> Option<PathBuf> {
+        std::env::var_os(if day { "AIZOME_WALLPAPER_DAY" } else { "AIZOME_WALLPAPER_NIGHT" })
+            .filter(|path| !path.is_empty())
+            .map(PathBuf::from)
+    }
+
     /// How long layers take to move, after reduced motion.
     pub fn motion_ms(&self) -> u32 {
         if self.reduced_motion { 0 } else { self.effects.motion_ms() }
@@ -810,6 +831,20 @@ a = 1
         let back = Settings::load_from(&path).unwrap();
         assert_eq!(back, s);
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn wallpaper_blank_choices_survive_serialization_and_custom_paths_stay_per_theme() {
+        let settings =
+            Settings::from_toml("[appearance]\nwallpaper_night = \"\"\nwallpaper_day = \"~/Pictures/day.png\"\n")
+                .unwrap();
+        assert_eq!(settings.appearance.wallpaper_path(false), None);
+        assert_eq!(settings.appearance.wallpaper_path(true), Some(home_dir().join("Pictures/day.png")));
+        let serialized = toml::to_string(&settings).unwrap();
+        let again = Settings::from_toml(&serialized).unwrap();
+        assert_eq!(again.appearance.wallpaper_night.as_deref(), Some(""));
+        assert_eq!(again.appearance.wallpaper_day.as_deref(), Some("~/Pictures/day.png"));
+        assert!(Settings::default().appearance.wallpaper_night.is_none(), "unset remains the system default");
     }
 
     #[test]

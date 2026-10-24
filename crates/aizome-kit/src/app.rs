@@ -177,8 +177,15 @@ impl<P: Program> Runtime<P> {
                 self.core.mark_all_dirty();
                 self.refresh_menus(platform);
             }
-            for win in self.core.dirty_windows() {
+            let dirty = self.core.dirty_windows();
+            let rebuilt = !dirty.is_empty();
+            for win in dirty {
                 self.rebuild(win, platform);
+            }
+            if rebuilt {
+                // Dialog cancellation can be a kit-only message. Publish
+                // the newly uncovered commands and restored field focus.
+                self.refresh_menus(platform);
             }
             for win in self.core.relayout_windows() {
                 self.core.relayout(win, platform);
@@ -232,6 +239,12 @@ impl<P: Program> Runtime<P> {
 
     /// The user asked to close a window (its close box, a shortcut).
     pub fn close_requested(&mut self, win: WinId, platform: &mut dyn Platform) {
+        // The dialog's Cancel/default controls decide what happens first.
+        // Re-entering the document's close handler could discard data or
+        // stack another unsaved-changes alert over this one.
+        if self.core.has_modal(win) {
+            return;
+        }
         if let Some(key) = self.core.wins.get(&win).and_then(|w| w.key()) {
             self.core.queue.push_back(Box::new(KitMsg::CloseRequest(key)));
         }

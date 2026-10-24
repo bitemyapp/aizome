@@ -120,6 +120,7 @@ pub enum Sheet {
     Ask { job: u64, all: bool },
     Confirm { window: WindowKey, what: Confirm },
     Message { title: String, body: String },
+    Unlock { window: WindowKey, block: String, name: String, pass: String, error: String, busy: bool },
 }
 
 /// Something asked before it's done.
@@ -248,6 +249,8 @@ pub enum Msg {
     Desks(Vec<aizome_ipc::DeskInfo>),
     DisksChanged,
     Mount(String),
+    UnlockPass(WindowKey, String),
+    UnlockSubmit(WindowKey),
     Eject(String),
     // Jobs.
     Job(u64, JobEvent),
@@ -279,7 +282,8 @@ pub struct Hako {
     pub disks: Option<aizome_sys::disks::Disks>,
     pub volumes: Vec<aizome_sys::disks::Volume>,
     pub mounting: HashSet<String>,
-    pub(crate) mount_tasks: Vec<(String, bool, aizome_sys::Task<String>)>,
+    pub(crate) mount_tasks: Vec<(String, WindowKey, aizome_sys::Task<String>)>,
+    pub(crate) unlock_tasks: Vec<(WindowKey, String, aizome_sys::Task<String>)>,
     /// Volumes being ejected: the drive to eject once the unmount is done.
     pub(crate) eject_tasks: Vec<(String, Option<String>, aizome_sys::Task<()>)>,
     pub apps: Option<Arc<aizome_sys::apps::AppIndex>>,
@@ -336,6 +340,7 @@ impl Hako {
             volumes: Vec::new(),
             mounting: HashSet::new(),
             mount_tasks: Vec::new(),
+            unlock_tasks: Vec::new(),
             eject_tasks: Vec::new(),
             apps: None,
             thumbs: Rc::new(Thumbs::default()),
@@ -389,9 +394,12 @@ impl Hako {
                 .unwrap_or(WindowKey::NONE);
         }
         match self.sheets.get(&key) {
-            Some(Sheet::Info { window, .. } | Sheet::QuickLook { window, .. } | Sheet::Confirm { window, .. }) => {
-                *window
-            }
+            Some(
+                Sheet::Info { window, .. }
+                | Sheet::QuickLook { window, .. }
+                | Sheet::Confirm { window, .. }
+                | Sheet::Unlock { window, .. },
+            ) => *window,
             _ => key,
         }
     }
@@ -554,12 +562,11 @@ impl Hako {
                 c.selected = Rc::new(Vec::new());
             }
         }
-        // A folder selected (revealed on the way down) opens the next.
-        let last = i + 1 == b.columns.len();
-        if last && b.open_after(i, fresh) {
-            if b.focus == i && b.columns[i].pending.is_none() && b.layout == Layout::Column {
-                // The focus stays where the selection is.
-            }
+        // Keep valid descendants on refresh, and close those whose
+        // selected parent moved out of this listing (including Put Back).
+        // A failed read does not prove that a known child disappeared:
+        // an explicit path may pass through an unlistable directory.
+        if result.is_ok() && b.refresh_after(i, fresh) {
             self.start_loads(cx, w);
         }
         // A rename asked for (a new folder) starts once it's there.

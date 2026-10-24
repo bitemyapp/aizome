@@ -289,8 +289,9 @@ mod activation_tests {
             let s = h.program_mut();
             s.ipc = ipc;
             s.wm.reset(crate::wm::Snapshot {
+                current_desk: 1,
                 windows: vec![
-                    WindowInfo { id: 10, app_id: "mail".into(), ..Default::default() },
+                    WindowInfo { id: 10, app_id: "mail".into(), desk: Some(2), ..Default::default() },
                     WindowInfo { id: 11, app_id: "mail".into(), desk: Some(2), minimised: true, ..Default::default() },
                 ],
                 ..Default::default()
@@ -322,6 +323,27 @@ mod activation_tests {
         h.send(Msg::Card(CardMsg::Dismiss(7)));
         assert!(requests.try_recv().is_err());
         assert!(h.program().notes.get(7).is_none());
+    }
+
+    #[test]
+    fn notification_activation_prefers_the_current_desk_over_a_more_recent_remote_window() {
+        let mut h = Harness::new(Shell::new(Options::default()));
+        let (ipc, requests) = Ipc::recording();
+        let s = h.program_mut();
+        s.ipc = ipc;
+        s.wm.reset(crate::wm::Snapshot {
+            current_desk: 1,
+            windows: vec![
+                WindowInfo { id: 10, app_id: "mail".into(), desk: Some(1), minimised: true, ..Default::default() },
+                WindowInfo { id: 11, app_id: "mail".into(), desk: Some(2), ..Default::default() },
+            ],
+            focused: Some(11),
+            ..Default::default()
+        });
+        s.notes.post_as(7, Incoming::default(), "mail".into(), false, 0);
+        h.send(Msg::Card(CardMsg::Open(7)));
+        assert_eq!(requests.try_recv().unwrap().0, Request::Focus { id: 10 });
+        assert!(requests.try_recv().is_err());
     }
 
     #[test]

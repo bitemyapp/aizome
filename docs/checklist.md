@@ -51,6 +51,10 @@ tests, which were run after each fix.
 | Overview (⌃❖↑): Desks with thumbnails, counts, "here", new Desk slot | done | live, `04` | |
 | Drag a window to another Desk in the overview | done | live (Tokei to Write) | |
 | Type to filter, 1–9 to go, Esc | done | live | |
+| Park a Desk (p): its windows suspended, "parked 3 days · draws nothing", woken on arrival | done | `overlays` test (a client told it's suspended, then woken), `wm` tests | Added 20 October after comparing the installed build with C4-Overview |
+| What each Desk is doing: here, "12 min ago", "● 3 new" (windows asking for attention), "audio playing" | done | `wm`, `overview` and logic tests; laptop's build (`scripts/validate-installed`) | "audio playing" from the shell's sound streams (`set-audible`), matched to windows through parent processes |
+| ❖-scroll zooms, "zoom 28%" in the heading | done | laptop's build | |
+| A dragged window's label: "Notes → Mail" | done | | |
 
 ## The switcher (C1-Switcher)
 
@@ -241,7 +245,21 @@ It checked:
   icons, the Deskbar and the Shelf.
 - **Every app of the suite:** each opens a window (Soroban, Koyomi, Tokei,
   Tenki, Fusen, Kura, Tansu, Settei, Yukimi, Myaku, Shashin, Annai, with
-  Hako and Sumi). Yukimi reads the laptop's own generations.
+  Hako and Sumi). Yukimi reads the laptop's own generations. Each is also
+  photographed filled on its own (`app-*.png`). On the build pinned as
+  Sekka `99bda5d` they showed:
+  - Tansu: the laptop's NVMe drive and its partitions.
+  - Myaku: the processes, with live graphs.
+  - Tenki: Chicago's forecast.
+  - Tokei: the world clocks.
+  - Kura: the disks and the Nix store, ready to scan.
+  - Koyomi: the month.
+  - Fusen: a note.
+  - Soroban: the keypad and its tape.
+  - Shashin: its empty state.
+  - Annai: the welcome.
+  - Settei: Network.
+  - Yukimi: the Overview.
 - **Both renderers:** the same scene draws under GLES and under pixman.
 - **The systray:** every widget the brief names (network, sound,
   Bluetooth, display, battery and power) next to the CPU and memory

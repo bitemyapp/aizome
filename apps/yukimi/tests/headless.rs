@@ -111,6 +111,54 @@ fn searching_finds_packages_and_opens_one() {
 }
 
 #[test]
+fn implicit_catalog_apps_are_installed_but_are_not_written_when_adding_another_app() {
+    let mut model = aizome_yukimi::fixture::model();
+    model.store = None;
+    model.catalog = yukimi_system::catalog::parse(
+        r#"[{"id":"fish","name":"fish","description":"The desktop's shell.","category":"Terminals","packages":["fish"]},
+            {"id":"kitty","name":"Kitty","description":"A terminal.","category":"Terminals","packages":["kitty"]}]"#,
+    )
+    .unwrap();
+    for app in &mut model.catalog {
+        app.setting = Some("calamares.applications".into());
+    }
+    model.configured.settings.insert("calamares.applications".into(), vec!["firefox".into()]);
+    model.installer_applications = ["firefox".into(), "fish".into()].into();
+    let model = Arc::new(model);
+    let ran = Arc::new(Mutex::new(Vec::new()));
+    let seen = ran.clone();
+    let runner = Runner::Mock(Arc::new(move |op: &Operation| {
+        seen.lock().unwrap().push(op.clone());
+        vec![script(WORKS)]
+    }));
+    let mut app = Yukimi::with(Source::Sample(model), runner, Clock::Fixed(aizome_yukimi::fixture::NOW, 21));
+    app.index = Some(Arc::new(aizome_yukimi::fixture::index()));
+    let mut h = Harness::new(app);
+    let w = h.window();
+    h.send(Msg::Show(Page::Discover));
+    assert!(has(&h, w, "fish"));
+    assert!(h.semantics(w).iter().any(|(s, _)| s.label.as_deref() == Some("Installed") && s.disabled));
+    // Only Kitty can be installed; fish already has a disabled Installed button.
+    assert_eq!(h.semantics(w).iter().filter(|(s, _)| s.label.as_deref() == Some("Install")).count(), 1);
+    assert!(h.click_text(w, "Install"));
+    assert!(has(&h, w, "Install Kitty?"));
+    assert!(ran.lock().unwrap().is_empty());
+    assert!(click_last(&mut h, w, "Install"));
+    settle(&mut h, |a| a.job.as_ref().is_some_and(|j| j.outcome.is_some()));
+    assert_eq!(
+        ran.lock().unwrap().as_slice(),
+        &[Operation::ChangeSystem {
+            change: SystemChange {
+                applications: Some(("calamares.applications".into(), vec!["firefox".into(), "kitty".into()])),
+                ..SystemChange::default()
+            },
+            what: "Kitty".into(),
+            adding: true,
+        }]
+    );
+}
+
+#[test]
 fn install_for_everyone_asks_first_then_runs_the_helper() {
     let (mut h, w, ran) = sample(WORKS);
     h.send(Msg::Show(Page::Discover));
@@ -169,7 +217,8 @@ fn a_failure_stays_with_its_log() {
     let job = h.program().job.as_ref().unwrap();
     let Some(Outcome::Failed(why)) = &job.outcome else { panic!("{:?}", job.outcome) };
     assert!(why.starts_with("error: builder for gimp2 failed"), "{why}");
-    assert!(why.contains("the running system was not changed"));
+    assert!(!why.contains("was put back"));
+    assert!(!why.contains("system was not changed"));
     assert!(job.details, "the log shows");
     assert!(has(&h, sheet, "building the new system"));
     // It stays until closed.
@@ -223,6 +272,9 @@ fn updating_takes_what_moves_forward() {
     h.send(Msg::Show(Page::Updates));
     assert!(has(&h, w, "newer version"));
     assert!(has(&h, w, "couldn't check"));
+    assert!(has(&h, w, "Changes"));
+    assert!(has(&h, w, "Pinned commit"));
+    assert!(h.texts(w).iter().any(|t| t.contains("Pinned:") && t.contains("Target:")));
     // On a Sekka system one update takes Sekka and every newer source.
     assert!(h.click_text(w, "Update"));
     let op = ran.lock().unwrap().first().cloned().unwrap();
@@ -500,4 +552,68 @@ fn a_system_without_choices_offers_no_desktops_page() {
     let h = Harness::new(app);
     let w = h.window();
     assert!(!has(&h, w, "Desktops"));
+}
+
+#[test]
+fn comparisons_open_a_sheet_drill_into_inputs_and_filter_packages() {
+    let (mut h, w, ran) = sample(WORKS);
+    h.resize(w, aizome_kit::layout::Size::new(760.0, 520.0));
+    h.send(Msg::Show(Page::Updates));
+    h.scroll(w, Point::new(600.0, 400.0), Vec2::new(0.0, 400.0));
+    assert!(h.click_text(w, "Changes"));
+    settle(&mut h, |a| a.comparison.as_ref().is_some_and(|c| c.details.is_some()));
+    let sheet = h.program().comparison.as_ref().unwrap().sheet;
+    // Input reads can fail without taking away the direct link.
+    assert!(has(&h, sheet, "Open commit diff"));
+    h.send(Msg::ComparisonLoaded(sheet, Arc::new(aizome_yukimi::fixture::comparison())));
+    assert!(has(&h, sheet, "aizome"));
+    assert!(h.click_text(sheet, "Inspect"));
+    assert_eq!(h.program().comparison.as_ref().unwrap().node().unwrap().name, "aizome");
+    assert!(has(&h, sheet, "nixpkgs"));
+    assert!(h.click_text(sheet, "Inspect"));
+    assert!(h.texts(sheet).iter().any(|t| t.contains("No changed inputs")));
+    assert!(h.click_text(sheet, "Back"));
+    assert_eq!(h.program().comparison.as_ref().unwrap().node().unwrap().name, "aizome");
+    assert!(h.click_text(sheet, "Package changes"));
+    h.send(Msg::ComparisonQuery("firefox".into()));
+    assert!(has(&h, sheet, "firefox"));
+    assert!(!has(&h, sheet, "htop"));
+    assert!(h.click_text(sheet, "Source changes"));
+    assert_eq!(h.program().comparison.as_ref().unwrap().node().unwrap().name, "aizome");
+    assert!(h.click_text(sheet, "Done"));
+    assert!(h.program().comparison.is_none());
+    // Closing/reopening cannot accept a late result from the old sheet.
+    h.send(Msg::InspectChanges("sekka".into()));
+    settle(&mut h, |a| a.comparison.as_ref().is_some_and(|c| c.details.is_some()));
+    let new_sheet = h.program().comparison.as_ref().unwrap().sheet;
+    assert_ne!(sheet, new_sheet);
+    h.send(Msg::ComparisonLoaded(sheet, Arc::new(aizome_yukimi::fixture::comparison())));
+    assert!(h.program().comparison.as_ref().unwrap().details.as_ref().unwrap().source_error.is_some());
+    h.named(new_sheet, aizome_kit::sidestep_ui::NamedKey::Escape, aizome_kit::sidestep_ui::Modifiers::default());
+    assert!(h.program().comparison.is_none());
+    assert!(ran.lock().unwrap().is_empty(), "inspecting must not run update operations");
+}
+
+#[test]
+fn authentication_failure_offers_an_explicit_retry_and_runs_it_once() {
+    let (mut h, _, ran) = sample(WORKS);
+    let operation = Operation::Rollback { generation: 26 };
+    // A normal operation opens the sheet. Injecting the result below uses
+    // that same sheet, avoiding any fixture-only widget behavior.
+    h.send(Msg::Run(operation.clone()));
+    settle(&mut h, |a| a.job.as_ref().is_some_and(|j| j.outcome.is_some()));
+    let id = h.program().job.as_ref().unwrap().id;
+    h.send(Msg::Job(
+        id,
+        aizome_yukimi::job::JobEvent::AuthorizationFailed(aizome_yukimi::job::AuthorizationFailure::Unavailable),
+    ));
+    let sheet = h.program().job_sheet.unwrap();
+    assert!(has(
+        &h,
+        sheet,
+        "The administrator password dialog is unavailable. Nothing was changed. Try again when it is available."
+    ));
+    assert!(h.click_text(sheet, "Try Again"));
+    settle(&mut h, |a| a.job.as_ref().is_some_and(|j| j.outcome.is_some()));
+    assert_eq!(ran.lock().unwrap().as_slice(), [operation.clone(), operation]);
 }

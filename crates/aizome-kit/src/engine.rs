@@ -124,6 +124,9 @@ pub(crate) struct Win {
     pub hot: Option<NodeId>,
     pub active: Option<NodeId>,
     pub focused: Option<NodeId>,
+    /// Focus suspended by a modal, restored when that layer is uncovered.
+    modal_focus: HashMap<Option<NodeId>, (Option<NodeId>, bool)>,
+    focus_modal: Option<NodeId>,
     pub focus_visible: bool,
     pub has_keyboard: bool,
     pub pointer: Option<Point>,
@@ -136,6 +139,8 @@ pub(crate) struct Win {
     pub panels: Vec<u64>,
     pub tooltip: Option<(NodeId, u64)>,
     pub tooltip_shown: Option<WinId>,
+    /// The nearest tooltip under the pointer, including one dismissed by a click.
+    tooltip_target: Option<(NodeId, Arc<str>)>,
     pub ime: (bool, Option<Rect>),
     pub title: String,
     /// Popups open over it, in order.
@@ -173,6 +178,8 @@ impl Win {
             hot: None,
             active: None,
             focused: None,
+            modal_focus: HashMap::new(),
+            focus_modal: None,
             focus_visible: false,
             has_keyboard: false,
             pointer: None,
@@ -184,6 +191,7 @@ impl Win {
             panels: Vec::new(),
             tooltip: None,
             tooltip_shown: None,
+            tooltip_target: None,
             ime: (false, None),
             title: String::new(),
             popups: Vec::new(),
@@ -211,12 +219,26 @@ impl Win {
 
     /// The focused widget, while this window has the keyboard.
     pub fn active_focus(&self) -> Option<NodeId> {
-        if self.has_keyboard || self.is_popup() { self.focused } else { None }
+        if self.has_keyboard || self.is_popup() {
+            self.focused.filter(|id| self.input_node(*id).is_some())
+        } else {
+            None
+        }
     }
 
     /// Where input stays while a sheet is up.
     fn modal(&self) -> Option<usize> {
         self.tree.root.and(self.tree.modal())
+    }
+
+    /// Also sees a dialog opened or dismissed before its next layout.
+    fn has_modal(&self) -> bool {
+        !self.sheets.is_empty() || !self.alerts.is_empty() || !self.panels.is_empty()
+    }
+
+    /// A live node that may receive input in the current modal scope.
+    fn input_node(&self, id: NodeId) -> Option<usize> {
+        self.tree.get(id).filter(|&i| self.modal().is_none_or(|m| m == i || self.tree.is_ancestor(m, i)))
     }
 }
 
@@ -693,6 +715,8 @@ impl Core {
                 platform.set_text_input(win, false, None);
             }
         }
+        self.restore_modal_focus(win, platform);
+        let Some(w) = self.wins.get_mut(&win) else { return };
         let ahead = w.hidden && w.ahead.is_some();
         if let Some(p) = w.pointer {
             self.update_hot(win, p, platform);
@@ -1043,7 +1067,7 @@ impl Core {
     pub fn open_bar_menu(&mut self, win: WinId, index: usize, anchor: Rect, platform: &mut dyn Platform) {
         self.close_menus(win, platform);
         let Some(mut spec) = self.menubar.get(index).cloned() else { return };
-        self.settle_menu(&mut spec);
+        self.settle_app_menu(&mut spec, Some(win));
         let root = MenuView::element(spec.clone(), MenuLook::default());
         self.open_popup(
             win,
@@ -1148,12 +1172,24 @@ impl Core {
         let idx = self.wins.get(&win).and_then(|w| w.tree.get(node)).unwrap_or(0);
         let mapper = self.mapper_chain(win, idx);
         let app = self.app_window_for(win);
+        // A bar submenu still belongs to the application's command menu.
+        // Widget menus inside a dialog (dropdowns, text context menus) do not.
+        let mut owner = win;
+        let mut bar = false;
+        while let Some(WinKind::Popup { owner: parent, kind, .. }) = self.wins.get(&owner).map(|w| &w.kind) {
+            bar |= matches!(kind, PopupKind::Menu { bar: Some(_), .. });
+            owner = *parent;
+        }
         if self.wins.get(&win).is_some_and(|w| w.is_popup()) {
             self.close_menus(win, platform);
         } else {
             for o in self.menu_popups_of(win) {
                 self.close_win(o, platform);
             }
+        }
+        if bar {
+            self.perform(&a, app, platform);
+            return;
         }
         if let Some(role) = a.role {
             if let Some(cmd) = role.edit_command()
@@ -1175,24 +1211,74 @@ impl Core {
         }
     }
 
-    /// Enabled states the kit knows: Edit items by the focused widget,
-    /// the Window menu's list of windows.
+    /// Enabled states the kit knows: supported roles, Edit items by the
+    /// focused widget, and the Window menu's list of windows.
     pub fn settle_menu(&self, spec: &mut MenuSpec) {
         let focused = self.key_window.and_then(|w| self.wins.get(&w)).and_then(|w| {
-            let idx = w.tree.get(w.focused?)?;
+            let idx = w.input_node(w.focused?)?;
             Some((w, idx))
         });
         spec.settle(&|a: &ActionSpec| {
-            let cmd = a.role?.edit_command()?;
+            let role = a.role?;
             if a.msg.is_some() {
                 return None;
             }
+            // These roles need an app's own action. The kit has no generic
+            // preferences window or app-help destination to open.
+            if matches!(role, MenuRole::Settings | MenuRole::Help) {
+                return Some(false);
+            }
+            let cmd = role.edit_command()?;
             Some(focused.is_some_and(|(w, idx)| {
                 let n = &w.tree.nodes[idx];
                 n.widget.can(crate::widget::StateView::new(&w.states, n.id), cmd)
             }))
         });
         self.expand_window_list(spec);
+    }
+
+    /// Global commands cannot act on the document covered by a dialog.
+    /// Edit commands belong to its focused field; window navigation remains
+    /// available. Dialog-owned menus use `settle_menu` instead.
+    pub fn settle_app_menu(&self, spec: &mut MenuSpec, win: Option<WinId>) {
+        self.settle_menu(spec);
+        // Quit is application-wide, unlike Save/Close and editing commands.
+        if self.wins.values().any(Win::has_modal) {
+            spec.settle(&|a| (a.role == Some(MenuRole::Quit)).then_some(false));
+        }
+        let Some(win) = win.or(self.key_window) else { return };
+        let win = self.app_window_for(win);
+        let Some(w) = self.wins.get(&win).filter(|w| w.has_modal()) else { return };
+        spec.settle(&|a| {
+            if let Some(cmd) = a.role.and_then(MenuRole::edit_command) {
+                return Some(w.focused.and_then(|f| w.input_node(f)).is_some_and(|i| {
+                    let n = &w.tree.nodes[i];
+                    n.widget.can(crate::widget::StateView::new(&w.states, n.id), cmd)
+                }));
+            }
+            (!Self::window_command(a)).then_some(false)
+        });
+    }
+
+    fn window_command(a: &ActionSpec) -> bool {
+        a.msg.is_none()
+            && matches!(
+                a.role,
+                Some(
+                    MenuRole::Minimise
+                        | MenuRole::Fill
+                        | MenuRole::Hide
+                        | MenuRole::HideOthers
+                        | MenuRole::ShowAll
+                        | MenuRole::StackWith
+                        | MenuRole::BringAllToFront
+                        | MenuRole::WindowList
+                )
+            )
+    }
+
+    pub fn has_modal(&self, win: WinId) -> bool {
+        self.wins.get(&self.app_window_for(win)).is_some_and(Win::has_modal)
     }
 
     fn expand_window_list(&self, spec: &mut MenuSpec) {
@@ -1520,6 +1606,7 @@ impl Core {
     /// Give `id` the focus (or none).
     pub fn set_focus(&mut self, win: WinId, id: Option<NodeId>, visible: bool, platform: &mut dyn Platform) {
         let Some(w) = self.wins.get_mut(&win) else { return };
+        let id = id.filter(|id| w.input_node(*id).is_some());
         if w.focused == id {
             w.focus_visible = visible || w.focus_visible;
             return;
@@ -1553,6 +1640,24 @@ impl Core {
         if self.wins.get(&win).is_some_and(|w| w.hidden && w.ahead.is_some()) {
             self.restart_ahead(win, platform);
         }
+    }
+
+    /// A new sheet/alert suspends the covered field, including its IME.
+    /// Keep each layer's focus so dismissing an alert returns to the draft.
+    fn restore_modal_focus(&mut self, win: WinId, platform: &mut dyn Platform) {
+        let Some(w) = self.wins.get_mut(&win) else { return };
+        let modal = w.modal().map(|i| w.tree.nodes[i].id);
+        if modal == w.focus_modal {
+            return;
+        }
+        w.modal_focus.insert(w.focus_modal, (w.focused, w.focus_visible));
+        w.focus_modal = modal;
+        let (focus, visible) = w.modal_focus.remove(&modal).unwrap_or((None, false));
+        w.modal_focus.retain(|id, _| id.is_none_or(|id| w.tree.get(id).is_some()));
+        w.active = w.active.filter(|id| w.input_node(*id).is_some());
+        self.set_focus(win, focus, visible, platform);
+        // A menu from the covered layer must not retain an armed action.
+        self.close_menus(win, platform);
     }
 
     /// Tab and Shift-Tab.
@@ -1591,38 +1696,55 @@ impl Core {
         let path = w.tree.path_at(p, w.modal());
         let hot_idx = path.iter().rev().copied().find(|&i| w.tree.nodes[i].widget.hit());
         let hot = hot_idx.map(|i| w.tree.nodes[i].id);
-        if hot == w.hot {
+        let tip = path
+            .iter()
+            .rev()
+            .find_map(|&i| w.tree.nodes[i].common.tooltip.as_ref().map(|text| (w.tree.nodes[i].id, text.clone())));
+        let hot_changed = hot != w.hot;
+        let tip_changed = tip != w.tooltip_target;
+        if !hot_changed && !tip_changed {
             return;
         }
-        let old = std::mem::replace(&mut w.hot, hot);
-        for id in [old, hot].into_iter().flatten() {
-            if let Some(i) = w.tree.get(id)
-                && w.tree.nodes[i].widget.hover_paints()
-            {
-                platform.invalidate(win, w.tree.nodes[i].own_rect());
+        let old = if hot_changed { std::mem::replace(&mut w.hot, hot) } else { None };
+        if hot_changed {
+            for id in [old, hot].into_iter().flatten() {
+                if let Some(i) = w.tree.get(id)
+                    && w.tree.nodes[i].widget.hover_paints()
+                {
+                    platform.invalidate(win, w.tree.nodes[i].own_rect());
+                }
+            }
+            let cursor = hot_idx.and_then(|i| w.tree.nodes[i].widget.cursor()).unwrap_or(Cursor::Default);
+            if cursor != w.cursor {
+                w.cursor = cursor;
+                platform.set_cursor(win, cursor);
             }
         }
-        let cursor = hot_idx.and_then(|i| w.tree.nodes[i].widget.cursor()).unwrap_or(Cursor::Default);
-        if cursor != w.cursor {
-            w.cursor = cursor;
-            platform.set_cursor(win, cursor);
-        }
-        // Tooltips: the nearest one around what's under the pointer.
-        let tip =
-            path.iter().rev().copied().find(|&i| w.tree.nodes[i].common.tooltip.is_some()).map(|i| w.tree.nodes[i].id);
+        // A rebuild can change a tooltip without changing the hot widget.
+        // A pending tooltip reads its text when shown, so a text-only change
+        // keeps its deadline. A visible tooltip changes immediately.
+        let same_source = tip.as_ref().map(|t| t.0) == w.tooltip_target.as_ref().map(|t| t.0);
+        let keep_pending = !hot_changed && same_source && w.tooltip.is_some();
+        let refresh_shown = !hot_changed && w.tooltip_shown.is_some();
+        w.tooltip_target = tip.clone();
         let shown = w.tooltip_shown.take();
-        let pending = w.tooltip.take();
+        let pending = if keep_pending { None } else { w.tooltip.take() };
         if let Some((_, token)) = pending {
             platform.cancel_timer(token);
+            self.timers.remove(&token);
         }
         if let Some(t) = shown {
             self.close_win(t, platform);
         }
-        if let Some(node) = tip {
-            let token = platform.set_timer(Duration::from_millis(650), false);
-            self.timers.insert(token, TimerUse::Tooltip { win, node });
-            if let Some(w) = self.wins.get_mut(&win) {
-                w.tooltip = Some((node, token));
+        if let Some((node, _)) = tip {
+            if refresh_shown {
+                self.show_tooltip(win, node, platform);
+            } else if !keep_pending {
+                let token = platform.set_timer(Duration::from_millis(650), false);
+                self.timers.insert(token, TimerUse::Tooltip { win, node });
+                if let Some(w) = self.wins.get_mut(&win) {
+                    w.tooltip = Some((node, token));
+                }
             }
         }
         if let Some(old) = old
@@ -1664,6 +1786,7 @@ impl Core {
     pub fn pointer_leave(&mut self, win: WinId, platform: &mut dyn Platform) {
         let Some(w) = self.wins.get_mut(&win) else { return };
         w.pointer = None;
+        w.tooltip_target = None;
         let old = w.hot.take();
         if let Some((_, token)) = w.tooltip.take() {
             platform.cancel_timer(token);
@@ -1847,7 +1970,7 @@ impl Core {
 
     pub fn ime(&mut self, win: WinId, ime: Ime, platform: &mut dyn Platform) {
         let Some(w) = self.wins.get(&win) else { return };
-        if let Some(i) = w.focused.and_then(|f| w.tree.get(f)) {
+        if let Some(i) = w.focused.and_then(|f| w.input_node(f)) {
             self.send(win, i, &Event::Ime(ime), platform);
         }
     }
@@ -1867,7 +1990,7 @@ impl Core {
                 let mut a = a;
                 // Settle Edit items against the focused widget.
                 let mut probe = MenuSpec { title: String::new(), items: vec![ItemSpec::Action(a.clone())], icon: None };
-                self.settle_menu(&mut probe);
+                self.settle_app_menu(&mut probe, Some(self.app_window_for(win)));
                 if let Some(ItemSpec::Action(s)) = probe.items.first() {
                     a.enabled = s.enabled;
                 }
@@ -1880,7 +2003,7 @@ impl Core {
             }
         }
         let w = &self.wins[&win];
-        let focused = w.focused.and_then(|f| w.tree.get(f));
+        let focused = w.focused.and_then(|f| w.input_node(f));
         // With nothing focused, keys go to what's under the pointer.
         let under = || w.pointer.and_then(|p| w.tree.path_at(p, w.modal()).last().copied());
         let target = focused.or_else(|| if w.is_popup() { w.tree.root } else { under() });
@@ -2007,6 +2130,21 @@ impl Core {
 
     /// Carry out a menu item: its role, then its message.
     pub fn perform(&mut self, a: &ActionSpec, win: WinId, platform: &mut dyn Platform) {
+        let win = self.app_window_for(win);
+        if a.role == Some(MenuRole::Quit) && self.wins.values().any(Win::has_modal) {
+            return;
+        }
+        if self.has_modal(win) {
+            if let Some(cmd) = a.role.and_then(MenuRole::edit_command) {
+                // Do not fall through to an app's Undo/Find/etc. if the
+                // dialog's focused widget cannot handle the command.
+                self.command(win, cmd, platform);
+                return;
+            }
+            if !Self::window_command(a) {
+                return;
+            }
+        }
         if let Some(role) = a.role {
             if let Some(cmd) = role.edit_command()
                 && self.command(win, cmd, platform)
@@ -2026,7 +2164,7 @@ impl Core {
     /// The focused widget's selected text, in the key window.
     pub fn focused_selection(&self) -> Option<String> {
         let w = self.wins.get(&self.key_window?)?;
-        let i = w.tree.get(w.focused?)?;
+        let i = w.input_node(w.focused?)?;
         let n = &w.tree.nodes[i];
         n.widget.selection(crate::widget::StateView::new(&w.states, n.id))
     }
@@ -2082,10 +2220,13 @@ impl Core {
     /// An Edit command to the focused widget of `win` (or of the key
     /// window): whether one took it.
     pub fn command(&mut self, win: WinId, cmd: EditCommand, platform: &mut dyn Platform) -> bool {
-        let win =
-            if self.wins.get(&win).is_some_and(|w| w.focused.is_some()) { win } else { self.key_window.unwrap_or(win) };
+        let win = if self.wins.get(&win).is_some_and(|w| w.focused.is_some() || w.has_modal()) {
+            win
+        } else {
+            self.key_window.unwrap_or(win)
+        };
         let Some(w) = self.wins.get_mut(&win) else { return false };
-        let Some(idx) = w.focused.and_then(|f| w.tree.get(f)) else { return false };
+        let Some(idx) = w.focused.and_then(|f| w.input_node(f)) else { return false };
         let mut widget = std::mem::replace(&mut w.tree.nodes[idx].widget, Box::new(Vacant));
         let id = w.tree.nodes[idx].id;
         let mut out = Out::default();

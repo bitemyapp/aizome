@@ -44,6 +44,9 @@ pub trait Actions {
     fn set_sticky(&mut self, id: WinId, on: Option<bool>);
     fn move_to_desk(&mut self, id: WinId, desk: DeskId, follow: bool);
     fn switch_desk(&mut self, desk: DeskId);
+    /// Parks a Desk (its windows are told they're suspended) or unparks
+    /// it; the current Desk isn't parked. True if that changed it.
+    fn set_desk_parked(&mut self, desk: DeskId, park: bool) -> bool;
     fn emit_desks(&mut self);
     fn stack(&mut self, a: WinId, b: WinId) -> bool;
     fn unstack(&mut self, id: WinId, to: Option<(i32, i32)>) -> bool;
@@ -72,6 +75,13 @@ impl Actions for State {
         let prev = l.wm.focused();
         l.wm.focus(id);
         let now = l.wm.focused();
+        // Selecting a tab also changes the previous active member's IPC
+        // state, even when the previously focused window was outside it.
+        if let Some(id) = now {
+            for member in l.wm.group_members(id) {
+                l.window_changed(member);
+            }
+        }
         if prev != now {
             for (w, on) in [(prev, false), (now, true)] {
                 if let Some(w) = w {
@@ -116,10 +126,14 @@ impl Actions for State {
     /// unhidden) and focuses it.
     fn activate_window(&mut self, id: WinId) {
         let before = self.lg.r().wm.current_desk();
+        let hidden_app = self.lg.r().wm.get(id).filter(|w| w.hidden).map(|w| w.app_id.clone());
         let desk_changed = self.lg.m().wm.reveal(id);
         if desk_changed {
             let after = self.lg.r().wm.current_desk();
             desk_switched(self, before, after);
+        }
+        if let Some(app) = hidden_app {
+            after_app_change(self, &app);
         }
         self.lg.m().window_changed(id);
         // Asked for (the switcher, a Deskbar row, IPC): the keys go to it,
@@ -276,8 +290,13 @@ impl Actions for State {
     fn move_to_desk(&mut self, id: WinId, desk: DeskId, follow: bool) {
         let l = self.lg.m();
         let r = l.wm.move_to_desk(id, desk);
-        for m in l.wm.group_members(id) {
-            l.window_changed(m);
+        let members = l.wm.group_members(id);
+        for m in &members {
+            l.window_changed(*m);
+        }
+        // Onto a parked Desk, or off one: suspended or not.
+        for m in members {
+            self.configure(m);
         }
         self.az.window_outputs_dirty = true;
         self.az.queue_redraw_all();
@@ -290,12 +309,30 @@ impl Actions for State {
         self.emit_desks();
     }
 
-    /// Switches to a Desk, sliding over the motion time.
+    /// Switches to a Desk, sliding over the motion time. A parked Desk
+    /// wakes as it's arrived at.
     fn switch_desk(&mut self, desk: DeskId) {
         let from = self.lg.r().wm.current_desk();
+        let was_parked = self.lg.r().wm.desk(desk).is_some_and(|d| d.parked.is_some());
         let Some(r) = self.lg.m().wm.switch_desk(desk) else { return };
+        self.lg.m().wm.mark_left(from, now_secs());
+        if was_parked {
+            for id in self.lg.r().wm.desk_windows(desk) {
+                self.configure(id);
+            }
+        }
         desk_switched(self, from, desk);
         self.apply_refocus(r);
+    }
+
+    fn set_desk_parked(&mut self, desk: DeskId, park: bool) -> bool {
+        if !self.lg.m().wm.set_parked(desk, park.then(now_secs)) {
+            return false;
+        }
+        for id in self.lg.r().wm.desk_windows(desk) {
+            self.configure(id);
+        }
+        true
     }
 
     fn emit_desks(&mut self) {
@@ -433,6 +470,7 @@ impl Actions for State {
         let Some(w) = l.wm.get(id) else { return };
         let Some(m) = self.az.windows.get(&id) else { return };
         let focused = l.wm.focused() == Some(id);
+        let parked = l.wm.is_parked_window(id);
         let placement = w.placement;
         let ssd = w.ssd;
         let rect = w.rect;
@@ -451,6 +489,9 @@ impl Actions for State {
                 }
             };
             set(s, S::Activated, focused);
+            // A parked Desk's windows: clients stop drawing until it wakes
+            // (smithay leaves it out for clients older than xdg-shell 6).
+            set(s, S::Suspended, parked);
             set(s, S::Maximized, placement == Placement::Fill);
             set(s, S::Fullscreen, placement == Placement::Fullscreen);
             let left = placement == Placement::SplitLeft;
@@ -594,6 +635,11 @@ pub fn flush_ipc_events(st: &mut State) {
             st.az.ipc.emit(&Event::WindowChanged { window: info });
         }
     }
+}
+
+/// Seconds since the epoch.
+pub fn now_secs() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs())
 }
 
 pub fn desk_infos(l: &Logic) -> Vec<DeskInfo> {

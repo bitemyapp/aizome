@@ -212,6 +212,17 @@ fn wm_request(st: &mut State, req: Request) -> Result<Option<Response>, String> 
             st.resize_window(id, Rect::new(rect.x, rect.y, rect.w, rect.h));
             Response::Ok
         }
+        Request::SetAudible { pids } => {
+            let audible = with_parents(pids.iter().map(|p| *p as i32));
+            let l = st.lg.m();
+            if l.audible != audible {
+                l.audible = audible;
+                if let Some(o) = l.overlays.overview.as_ref().map(|o| o.output.clone()) {
+                    st.az.queue_redraw(&o);
+                }
+            }
+            Response::Ok
+        }
         Request::Overview { state } => {
             let open = st.lg.r().overlays.overview_open();
             if state.unwrap_or(!open) != open {
@@ -241,4 +252,42 @@ fn wm_request(st: &mut State, req: Request) -> Result<Option<Response>, String> 
         }
         _ => return Ok(None),
     }))
+}
+
+/// Processes and their parents, up to init: a window belongs to the
+/// process that drew it, but a browser plays sound from a child of it.
+fn with_parents(pids: impl Iterator<Item = i32>) -> std::collections::HashSet<i32> {
+    let mut out = std::collections::HashSet::new();
+    for mut pid in pids {
+        for _ in 0..16 {
+            if pid <= 1 || !out.insert(pid) {
+                break;
+            }
+            match parent_of(pid) {
+                Some(p) => pid = p,
+                None => break,
+            }
+        }
+    }
+    out
+}
+
+/// A process's parent, from `/proc/PID/stat` (its fourth field, after the
+/// name in parentheses, which may hold spaces).
+fn parent_of(pid: i32) -> Option<i32> {
+    let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+    stat.rsplit_once(')')?.1.split_whitespace().nth(1)?.parse().ok()
+}
+
+#[cfg(test)]
+mod audible_tests {
+    #[test]
+    fn a_process_brings_its_parents() {
+        let me = std::process::id() as i32;
+        let parent = super::parent_of(me).expect("this test has a parent");
+        let set = super::with_parents([me].into_iter());
+        assert!(set.contains(&me) && set.contains(&parent), "{set:?}");
+        assert!(!set.contains(&1) && !set.contains(&0), "init and nothing aren't anyone's sound");
+        assert!(super::with_parents([0, -3].into_iter()).is_empty());
+    }
 }

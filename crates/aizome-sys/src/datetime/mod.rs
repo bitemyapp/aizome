@@ -80,13 +80,22 @@ fn in_store(path: &str) -> bool {
     std::fs::read_link(path).is_ok_and(|target| pinned_link(&target))
 }
 
-/// Whether an /etc link is one NixOS made: into /etc/static or the store
-/// (`environment.etc`), or, for `/etc/localtime` with `time.timeZone` set,
-/// straight to `/etc/zoneinfo/ZONE` (a direct, absolute symlink).
-/// timedated writes its own link relative (`../…/zoneinfo/ZONE`), so a zone
-/// chosen in Settings doesn't read as pinned.
+/// A NixOS-looking link, used as a conservative fallback when the module
+/// doesn't publish its policy. Both NixOS and timedated can write an
+/// absolute /etc/zoneinfo link, so its spelling alone cannot distinguish
+/// a configured zone from a mutable one.
 fn pinned_link(target: &std::path::Path) -> bool {
     target.starts_with("/etc/static") || target.starts_with("/nix/store") || target.starts_with("/etc/zoneinfo/")
+}
+
+/// The module publishes the effective time.timeZone policy. A mutable
+/// localtime link may resolve into the store without being managed by Nix.
+fn timezone_managed(env: &HashMap<String, String>) -> bool {
+    match env.get("AIZOME_TIMEZONE_MANAGED").map(String::as_str) {
+        Some("0") => false,
+        Some("1") => true,
+        _ => pinned(env, "SYSTEMD_ETC_LOCALTIME", "/etc/localtime"),
+    }
 }
 
 // --- timedated -------------------------------------------------------------
@@ -128,15 +137,14 @@ impl TimeDate {
         let stop = Stop::default();
         if let Some(bus) = bus.clone() {
             let follower = model.clone();
-            let mut env: Option<HashMap<String, String>> = None;
             bus::follow_props(bus, TIMEDATE, TIMEDATE_PATH, TIMEDATE, true, stop.clone(), move |bus, props| {
-                let env = env.get_or_insert_with(|| unit_environment(bus, "systemd-timedated.service"));
+                let env = unit_environment(bus, "systemd-timedated.service");
                 follower.set_if_changed(match props {
                     None => TimeDateState::default(),
                     Some(p) => TimeDateState {
                         available: true,
                         timezone: p.str("Timezone"),
-                        timezone_managed: pinned(env, "SYSTEMD_ETC_LOCALTIME", "/etc/localtime"),
+                        timezone_managed: timezone_managed(&env),
                         local_rtc: p.bool("LocalRTC"),
                         can_ntp: p.bool("CanNTP"),
                         ntp: p.bool("NTP"),
@@ -471,7 +479,8 @@ mod tests {
         // /etc/zoneinfo (itself a link into /etc/static), one hop that
         // isn't into /etc/static or the store.
         let nixos = link("nixos", "/etc/zoneinfo/Europe/Lisbon");
-        // timedated's own link, after a change in Settings.
+        // A relative link is another possible spelling; the module
+        // publishes the actual policy for either spelling.
         let timedated = link("timedated", "../etc/zoneinfo/Europe/Lisbon");
         let none = HashMap::new();
         assert!(pinned(&none, "SYSTEMD_ETC_LOCALTIME", &nixos));

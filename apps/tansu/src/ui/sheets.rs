@@ -171,14 +171,27 @@ fn format(t: &Tansu, f: &FormatForm) -> Vec<Element<Msg>> {
     v
 }
 
-fn size_controls(size: u64, min: u64, max: u64, text_: &str, unit: usize, id: &str) -> Element<Msg> {
+fn size_controls(
+    size: u64,
+    min: u64,
+    max: u64,
+    text_: &str,
+    unit: usize,
+    id: &str,
+    error: Option<&str>,
+) -> Element<Msg> {
     let lo = (min / MIB).max(1) as f64;
     let hi = (max / MIB).max(1) as f64;
-    column![
-        slider((size / MIB) as f64, lo..=hi.max(lo)).step(1.0).on_change(|v| s(SheetMsg::Size(v))).width(Length::Fill),
+    let mut parts: Vec<Element<Msg>> = vec![
+        slider((size / MIB) as f64, lo..=hi.max(lo))
+            .step(1.0)
+            .on_change(|v| s(SheetMsg::Size(v)))
+            .width(Length::Fill)
+            .into(),
         row![
             text_field(text_)
                 .id(id.to_owned())
+                .error(error.map(|_| "Invalid size"))
                 .on_change(|v| s(SheetMsg::SizeText(v)))
                 .on_submit(s(SheetMsg::Submit))
                 .mono()
@@ -188,11 +201,13 @@ fn size_controls(size: u64, min: u64, max: u64, text_: &str, unit: usize, id: &s
             text(format!("{} to {}", format_size(min), format_size(max))).size(11.5).role(Role::Text3).tabular(),
         ]
         .spacing(8.0)
-        .width(Length::Fill),
-    ]
-    .spacing(8.0)
-    .width(Length::Fill)
-    .into()
+        .width(Length::Fill)
+        .into(),
+    ];
+    if let Some(error) = error {
+        parts.push(text(error.to_owned()).role(Role::Danger).wrap().width(Length::Fill).into());
+    }
+    aizome_kit::widgets::layout::column(parts).spacing(8.0).width(Length::Fill).into()
 }
 
 fn create(t: &Tansu, f: &CreateForm) -> Vec<Element<Msg>> {
@@ -205,7 +220,10 @@ fn create(t: &Tansu, f: &CreateForm) -> Vec<Element<Msg>> {
             t.layout.device.trim_start_matches("/dev/"),
             format_size(f.offset)
         )),
-        field_row("Size", size_controls(f.size, MIB, f.max, &f.size_text, f.unit, "create-size")),
+        field_row(
+            "Size",
+            size_controls(f.size, MIB, f.max, &f.size_text, f.unit, "create-size", f.size_error.as_deref()),
+        ),
         field_row(
             "Filesystem",
             dropdown(fs_choices(t, true), Some(f.fs)).on_select(|i| s(SheetMsg::Fs(i))).width(Length::Fill),
@@ -239,7 +257,7 @@ fn create(t: &Tansu, f: &CreateForm) -> Vec<Element<Msg>> {
     if left >= MIB {
         v.push(note(format!("{} stays unallocated after it.", format_size(left))));
     }
-    v.push(buttons("Add to Pending", f.size >= MIB, false));
+    v.push(buttons("Add to Pending", f.size >= MIB && f.size_error.is_none(), false));
     v
 }
 
@@ -254,7 +272,10 @@ fn resize(t: &Tansu, f: &ResizeForm) -> Vec<Element<Msg>> {
             Role::Accent,
             "Tansu moves a partition's end; its start stays where it is. Moving a start means moving all the data, which UDisks doesn't do: use GParted from a live system for that.",
         ),
-        field_row("New size", size_controls(f.size, f.min, f.max, &f.size_text, f.unit, "resize-size")),
+        field_row(
+            "New size",
+            size_controls(f.size, f.min, f.max, &f.size_text, f.unit, "resize-size", f.size_error.as_deref()),
+        ),
     ];
     let mut can = Vec::new();
     if r.grow {
@@ -288,7 +309,7 @@ fn resize(t: &Tansu, f: &ResizeForm) -> Vec<Element<Msg>> {
         } else {
             "Resize"
         },
-        f.size != f.from,
+        f.size != f.from && f.size_error.is_none(),
         false,
     ));
     v

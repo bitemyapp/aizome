@@ -932,6 +932,10 @@ impl Shashin {
         self.errands += 1;
         cx.spawn(move || {
             let r = (|| {
+                // The viewer also reads SVG, but the desktop's decoder does
+                // not. Check the file again (including all pixels), before
+                // touching either theme's setting or notifying the desktop.
+                aizome_face::wallpaper::validate(&path)?;
                 let mut s = aizome_config::Settings::load_from(&settings).map_err(|e| e.to_string())?;
                 let p = Some(path.to_string_lossy().into_owned());
                 if matches!(which, Wallpaper::Night | Wallpaper::Both) {
@@ -1399,7 +1403,7 @@ impl Program for Shashin {
                         };
                         self.say(format!("Set as {which} wallpaper"), false, cx);
                     }
-                    Err(e) => self.say(format!("Couldn't set the wallpaper: {e}"), true, cx),
+                    Err(e) => self.say(format!("Wallpaper unchanged: {e}"), true, cx),
                 }
             }
             Msg::ShowInHako => {

@@ -56,6 +56,9 @@ impl Program for Hako {
     }
 
     fn close_requested(&mut self, window: WindowKey, cx: &mut Cx<Msg>) -> bool {
+        if matches!(self.sheets.get(&window), Some(Sheet::Unlock { busy: true, .. })) {
+            return false;
+        }
         if let Some(s) = self.sheets.remove(&window) {
             if let Sheet::Ask { job, .. } = s {
                 self.answer(cx, job, None);
@@ -505,6 +508,9 @@ impl Program for Hako {
                 }
             }
             Msg::CloseSheet(s) => {
+                if matches!(self.sheets.get(&s), Some(Sheet::Unlock { busy: true, .. })) {
+                    return;
+                }
                 if let Some(Sheet::Ask { job, .. }) = self.sheets.get(&s).cloned() {
                     self.answer(cx, job, None);
                 }
@@ -534,7 +540,13 @@ impl Program for Hako {
                 self.desk = desks.into_iter().find(|d| d.current);
             }
             Msg::DisksChanged => self.disks_changed(cx),
-            Msg::Mount(block) => self.mount(block, true),
+            Msg::Mount(block) => self.mount(cx, block, self.any_window()),
+            Msg::UnlockPass(s, text) => {
+                if let Some(Sheet::Unlock { pass, busy: false, .. }) = self.sheets.get_mut(&s) {
+                    *pass = text;
+                }
+            }
+            Msg::UnlockSubmit(s) => self.unlock(s),
             Msg::Eject(block) => self.eject(block),
             Msg::Job(id, ev) => self.on_job(cx, id, ev),
             Msg::Answer(id, a) => {

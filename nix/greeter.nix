@@ -20,6 +20,19 @@ let
       inherit (xkb) variant options model;
     };
   };
+  # The desktop Exec alone skips NixOS's environment/session setup. Keep a
+  # parent around too: upstream X11 entries such as startxfce4 do not stop
+  # the fake graphical target on exit, and the user manager may outlive them.
+  x11Session = pkgs.writeShellScript "aizome-x11-session" ''
+    cleanup() {
+      # A portal's Requisite can keep graphical-session.target needed even
+      # after the fake target stops. End the graphical session explicitly.
+      ${config.systemd.package}/bin/systemctl --user stop nixos-fake-graphical-session.target graphical-session.target
+      ${config.systemd.package}/bin/systemctl --user unset-environment DISPLAY XAUTHORITY XDG_SESSION_ID XDG_CURRENT_DESKTOP XDG_SESSION_DESKTOP XDG_SESSION_TYPE
+    }
+    trap cleanup EXIT
+    ${config.services.displayManager.sessionData.wrapper} "$@"
+  '';
   greeterConfig = toml.generate "aizome-greeter.toml" (
     {
       sessions = g.sessionDirs;
@@ -28,7 +41,7 @@ let
       # own VT.
       x11_prefix = lib.optionals g.x11 [
         "startx"
-        "/usr/bin/env"
+        "${x11Session}"
       ];
       hidden_users = config.services.displayManager.hiddenUsers;
       inherit (g) power;
@@ -97,14 +110,19 @@ in
     environment.etc."aizome/greeter.toml".source = greeterConfig;
     services.greetd = {
       enable = true;
+      # From the running system rather than by store path, as Sekka starts
+      # Tatami: an Aizome update then leaves greetd's configuration (and
+      # unit) as it was, so it applies live, and the next login screen is
+      # the new greeter. By store path, every update would change greetd's
+      # configuration, which waits for a restart.
       settings.default_session = {
-        command = "${cfg.package}/bin/aizome-greeter";
+        command = "/run/current-system/sw/bin/aizome-greeter";
         user = "greeter";
       };
       # Logging in by itself at boot: straight into the default session,
       # without the greeter (greetd's initial session).
       settings.initial_session = lib.mkIf (autoLogin.enable && autoLogin.user != null) {
-        command = "${cfg.package}/bin/aizome-greeter --session ${
+        command = "/run/current-system/sw/bin/aizome-greeter --session ${
           if g.defaultSession != null then g.defaultSession else "aizome"
         }";
         inherit (autoLogin) user;

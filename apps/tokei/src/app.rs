@@ -768,12 +768,12 @@ impl Program for Tokei {
                     .separator()
                     .item(
                         MenuItem::new("Move Up", Msg::MovePlace(sel.unwrap_or(0), -1))
-                            .shortcut(Shortcut::cmd_key(ShortcutKey::Up).alt())
+                            .shortcut(Shortcut::cmd_key(ShortcutKey::Up).shift())
                             .enabled(sel.is_some_and(|i| i > 0)),
                     )
                     .item(
                         MenuItem::new("Move Down", Msg::MovePlace(sel.unwrap_or(0), 1))
-                            .shortcut(Shortcut::cmd_key(ShortcutKey::Down).alt())
+                            .shortcut(Shortcut::cmd_key(ShortcutKey::Down).shift())
                             .enabled(sel.is_some_and(|i| i + 1 < self.places.len())),
                     );
             }

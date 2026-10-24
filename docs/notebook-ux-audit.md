@@ -5,7 +5,8 @@ items and tentative margin notes are retained below so they are not mistaken
 for omissions. Failures were reproduced against Aizome `a4dd2fa`; the final
 branch also includes main through `b4e9cd6`. The independent repository audit
 checked Sekka main `70e1819`, Sidestep main `626422b`, and the open PRs in all
-three repositories.
+three repositories. The original evidence below is historical; the reconciliation
+against current main and its validation are recorded at the end.
 
 ## Transcription and disposition
 
@@ -28,7 +29,7 @@ three repositories.
 | 15 | Screenshot cursor doesn't properly persist until the SS is taken | Fixed: effective cursor policy keeps the area/window picker cursor through motion and selection, then returns to the normal cursor. Real-client regression fails before the change. |
 | 16 | “add window” (screenshot margin) | Already implemented: press Space in the area picker to select a window. Picker/overlay integration tests pass. |
 | 17 | Add options for overriding the modifier keys [in] the settings app | Already on main: `53719cb`, Keyboard → Modifier keys; matching goldens corrected in `58dde5a`. |
-| 18 | Raising a sub-menu in command palette should go to the app when it already exists | Fixed: launcher results raise the app's most recent window; New Window still launches. Settings forwards the requested pane and explicitly raises its existing window across Desks. Unit regressions and a real shell/Settings test cover the hidden-window case. |
+| 18 | Raising a sub-menu in command palette should go to the app when it already exists | Fixed: activation prefers the app's most recent window on the current Desk, falling back to another Desk; New Window still launches. Settings forwards the requested pane and explicitly raises its existing window. Unit regressions and a real shell/Settings test cover the hidden-window case. |
 | 19 | Clicking on a notification should raise en place or go to the app that popped the notification | Fixed: activate the originating app while preserving its default action and notification residency. Without an action, focus the running app or launch a known desktop entry. Tests cover identity/recency, closed known apps, unknown senders, default actions, residency and dismissal; a real notification click raises hidden Settings on another Desk. |
 | 20 | Make Steam games show up in a games menu in the Toolchest | Fixed: the `Game` desktop-entry category maps to a Games menu. Verified local installed Steam game entries use this category; regression failed before the change. |
 | 21 | Don't show a settings menu when there are none | Fixed: standard kit menus omit the unimplemented Settings role. Apps opt in with a real action, as Tenki and Koyomi already do. A negative-control run confirmed the old standard menu fails the new regression. |
@@ -80,7 +81,7 @@ focus. In 12/12 instrumented opens, an immediate Escape still went to the app.
 The desktop fixture now waits for compositor-confirmed layer focus before
 sending palette keys, rather than relying on model state or a longer sleep.
 
-Final integrated checks (inside `nix develop`, with the distribution's font
+Original integrated checks (inside `nix develop`, with the distribution's font
 directory supplied as `AIZOME_FONT_DIR`):
 
 | Check | Result |
@@ -159,3 +160,46 @@ stayed at 228416 KiB over 200 additional readings. Under the shared benchmark
 lock, test-build frame medians were 3.81 ms per reading, 0.65 ms per row
 click and 0.84 ms per scroll at 2× with 600 fixture processes; this is not
 a release-build budget measurement.
+
+## Reconciliation with main, 2026-10-24
+
+PR #17 is partially overlapping, not redundant. It now includes main through
+`f05a379` and retains the distinct notebook fixes above. The integration keeps
+the newer fixes and their regression coverage:
+
+| Merged work | Combined behavior |
+|---|---|
+| [#25](https://github.com/bitemyapp/aizome/pull/25), application activation | Keep strict desktop/WM_CLASS identity, current-Desk preference, tab-group focus history, and alias-aware Hide/Quit. Settings-pane and notification activation use that same selection policy. |
+| [#45](https://github.com/bitemyapp/aizome/pull/45), unsupported menu roles | Omit standard Settings as requested by notebook item 21. Explicit handler-less Settings/Help roles remain unavailable; message-backed application actions retain their declared enabled states. |
+| [#44](https://github.com/bitemyapp/aizome/pull/44), Tenki city search | Preserve search-generation race protection alongside GeoClue deadlines, cancellation, stale-location rejection and manual search. |
+| [#48](https://github.com/bitemyapp/aizome/pull/48), Myaku launch grouping | Keep the shell separate from its apps and treat every new `app-aizome-*.scope` as an independent launch, even with the same app ID and visible windows. Extend this with window/service boundaries, unambiguous orphan attribution, complete cache invalidation and inspector evidence. Browser helper scopes remain with their owner unless explicitly launched by Aizome. |
+| [#61](https://github.com/bitemyapp/aizome/pull/61), Myaku GPU reporting | Keep per-device GPU accounting and inspector details alongside the new grouping explanation. |
+
+Picker-release, modal-input, lid-output, greeter-scaling and authentication
+changes from main are retained. They are not additional implementations in
+this PR.
+
+The combined activation regressions also exposed a case-folding bug for app
+IDs that themselves end in `.desktop`: `ORG.TELEGRAM.DESKTOP` lost part of its
+identity. Matching now checks the complete ID before interpreting the suffix
+as a desktop filename, without introducing executable or suffix guesses.
+
+Current validation uses the pinned Nix development environment and packaged
+fonts. These results supersede the historical counts above:
+
+| Check | Result |
+|---|---|
+| Shell, config, kit, sys, face, Tenki, Settings and Myaku unit/integration suites | 947 checks passed across the grouped run and targeted reruns. Includes the merged modal, search-generation, authentication, GPU and activation regressions. 39 existing hardware/session tests remain ignored. |
+| Compositor core and logic libraries | 68 passed. |
+| Fullscreen, frame callbacks, picker, marking edges, layout, headless, displays, protocols and recovery | 65 passed; one subprocess helper remains ignored. |
+| Actual shell/Settings and Chrome/Soroban desktop suites | All six passed, including both original notebook activation cases and the merged launcher activation test. |
+| Myaku images and frame/memory checks | All five image tests and both performance/memory checks passed. Updated and visually reviewed both GPU inspector images to include Grouping while retaining per-device readings. Test-build timing is not a release/hardware benchmark. |
+| Editor regression tests after current-Clippy compatibility cleanup | All 13 passed; range-vector test data is unchanged. |
+| Fullscreen grant followed by logic failure before mapping | Passed with the separately built panic-injection variant. |
+| Formatting, diff checks and strict Clippy | Passed for all targets of shell, config, kit, sys, face, Tenki, Settings, Myaku and compositor core/logic/executable. |
+| Packaged NixOS VM checks | `standard-menu` and `myaku-grouping` both passed. The former exercises omitted Settings, unavailable Help, working About and actual Koyomi/Tenki Settings. The latter launches real apps, opens Sumi from Hako, and checks independent groups and their controls. |
+
+Three shell wallpaper goldens remain excluded because their external wallpaper
+assets are absent, as recorded above. The grouped run also excluded seven
+timing checks; the two Myaku checks were subsequently run. No other golden
+expectations were relaxed.

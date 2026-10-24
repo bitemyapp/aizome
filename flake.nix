@@ -47,6 +47,7 @@
           pam
           # aizome-sys talks to PipeWire through pipewire-pulse.
           libpulseaudio
+          libsecret
         ];
       # Only what the build reads: the workspace and the files the package
       # installs.
@@ -89,14 +90,35 @@
         # Changes something in every pane of Settings and checks the
         # system took it (nix/vm-settings-test.nix).
         settings = import ./nix/vm-settings-test.nix { inherit pkgs self; };
+        timezone-policy = import ./nix/timezone-policy-test.nix { inherit pkgs self; };
         # The login screen: people, sessions (another Wayland one, an X11
         # one), a wrong password, logging out and back (nix/vm-greeter-test.nix).
         greeter = import ./nix/vm-greeter-test.nix { inherit pkgs self; };
+        greeter-x11 = import ./nix/vm-greeter-x11-test.nix { inherit pkgs self; };
+        koyomi-session = import ./nix/vm-koyomi-session-test.nix { inherit pkgs self; };
+        koyomi-modal = import ./nix/vm-koyomi-modal-test.nix { inherit pkgs self; };
+        shashin-modal = import ./nix/vm-shashin-modal-test.nix { inherit pkgs self; };
+        file-panel-multiple = import ./nix/vm-file-panel-multiple-test.nix { inherit pkgs self; };
+        terminal-shortcuts = import ./nix/vm-terminal-shortcuts-test.nix { inherit pkgs self; };
+        shashin-wallpaper = import ./nix/vm-shashin-wallpaper-test.nix { inherit pkgs self; };
+        standard-menu = import ./nix/vm-standard-menu-test.nix { inherit pkgs self; };
+        tokei-reorder = import ./nix/vm-tokei-reorder-test.nix { inherit pkgs self; };
+        loop-images = import ./nix/vm-loop-images-test.nix { inherit pkgs self; };
+        myaku-grouping = import ./nix/vm-myaku-grouping-test.nix { inherit pkgs self; };
+        tansu-size = import ./nix/vm-tansu-size-test.nix { inherit pkgs self; };
+        tansu-resize = import ./nix/vm-tansu-resize-test.nix { inherit pkgs self; };
+        sumi-search = import ./nix/vm-sumi-search-test.nix { inherit pkgs self; };
+        fusen-save = import ./nix/vm-fusen-save-test.nix { inherit pkgs self; };
+        encrypted-volumes = import ./nix/vm-encrypted-volumes-test.nix { inherit pkgs self; };
+        wallpaper-choice = import ./nix/vm-wallpaper-choice-test.nix { inherit pkgs self; };
+        network-auth = import ./nix/vm-network-auth-test.nix { inherit pkgs self; };
+        polkit-recovery = import ./nix/vm-polkit-recovery-test.nix { inherit pkgs self; };
       });
 
       devShells = forAll (pkgs: {
         default = pkgs.mkShell {
           nativeBuildInputs = with pkgs; [
+            just
             rustc
             cargo
             clippy

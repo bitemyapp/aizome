@@ -187,7 +187,9 @@ bar and passes the matches back with `.marks(ranges, current)`. Also
 (21/13 by default), `.current_line(b)`, `.read_only()`, `.placeholder(t)`,
 `.padding(p)`, and `.highlighter(Arc<dyn Fn(line, &str) -> Vec<LineStyle>>,
 version)`, called for the lines that show. It lays out only those lines,
-each through the text cache, and redraws only the lines that changed. The
+each through the text cache, and redraws only the lines that changed. Search
+range and current-match changes redraw their affected lines even when the text
+and selection stay unchanged; offscreen marks leave visible lines alone. The
 gutter is the board's: numbers in `faint` right-aligned in a 30pt column,
 14pt from the text, the caret's line's number in `text3` on a 10% `focus`
 band (with a selection too). A selection the program sets (found text, a
@@ -283,6 +285,13 @@ a `bevel_lo` bottom): compact pop-ups, `button(..).toolbar()`,
 | `mouse_area(el)` | `.on_press`, `.on_release`, `.on_double_click`, `.on_right_click(\|at\| ..)`, `.on_hover(\|in\| ..)`, `.on_move`, `.on_drag(\|DragEvent\| ..)`, `.on_drop(\|Dropped { urls, text, .. }\| ..)` (files and text from other programs, and this program's own drags out), `.drag_out(\|\| DragSource)` (pressed and moved four points, it goes out as the desktop's drag; `on_drag` hears no more of that press), `.cursor(c)`. |
 | `canvas(state, \|canvas, bounds, &state, theme\| …)` | Drawing of one's own (charts, calendars, disk maps) with Sidestep's `Canvas`; it's drawn again when `state`'s hash changes. `.on_event(\|event, size, &state\| Option<Msg>)` (pointer, scroll, `Event::Pinch { scale, .. }` from a touchpad, keys), `.focusable()` (`.focus_ring(FocusRing::Never)` for a canvas that is the whole content), `.parts(\|&state, size\| vec![(rect, hash)])`: parts that change by themselves (a hovered bar, a cursor), left out of `state`'s `Hash`, so that only the rectangles of parts that came, went or changed are drawn again. |
 
+A shown tooltip follows changes to its text or nearest tooltip-bearing ancestor
+even when the pointer stays still, and disappears when its source is removed.
+An unchanged rebuild does not reopen a dismissed tooltip or restart its delay;
+a pending text change uses the original deadline and the current text.
+`cargo test -p aizome-kit --test tooltip_refresh` compares rendered tooltips and
+checks their delay, removal, ancestor changes and click dismissal.
+
 ### Sheets, alerts and panels
 
 A sheet is a modal window of the program's own drawn over its parent's
@@ -291,6 +300,34 @@ content, under a dimming veil and at the top under the in-window menu bar:
 `cx.close_window(s)` takes it away. While it's up the parent takes no
 pointer or keys; Tab stays in the sheet, Return presses its `.default()`
 button and Escape its `.cancel()` one.
+
+When an alert or panel covers an editor sheet, the last layer painted owns
+pointer input, Tab, Return and Escape. The covered field's text/IME focus
+is suspended, then restored when that layer is uncovered, so cancelling
+a confirmation returns to the same draft. `cargo test -p aizome-kit --test
+nested_modals` checks stacked layers and focus restoration;
+`checks.x86_64-linux.koyomi-modal`
+drives the packaged calendar's recurring-event save/delete confirmations
+in a disposable VM.
+
+Application menu commands and their keyboard shortcuts cannot change the
+document behind a sheet, alert or file panel. Edit roles act only on the
+focused control in the top layer, without falling back to application-level
+Undo or Find. Window navigation remains available, and another uncovered
+window can still use its own commands. Quit waits for all dialogs to close;
+Close and the title-bar close request wait for that window's Cancel or default
+action. Dialog-owned dropdown/context menus keep working. Published menu
+states update when the dialog closes, and stale shell actions are checked
+again on arrival. `cargo test -p aizome-kit --test modal_commands` covers these
+routes; `checks.x86_64-linux.shashin-modal` checks a real unsaved-picture alert,
+blocked Save, cancellation, default Save and reopening in a disposable VM.
+
+Alert actions stay in a trailing row when all their measured labels fit.
+Otherwise they stack at the sheet's width, wrapping long labels without
+ellipsis. Short windows scroll the alert, and Tab reveals each focused
+action. Resizing preserves button order, focus, and default/cancel behavior.
+`cargo test -p aizome-kit --test alert_layout` covers four actions, a long
+two-action prompt, narrow/resized windows, and scrolling to actions.
 
 ```rust
 cx.alert(window, Alert::new("Delete “notes.md”?", "It goes to the Trash.")
@@ -307,7 +344,11 @@ to here, Places (Home, and Desktop, Documents, Downloads, Pictures, Music
 and Videos where they exist, then Computer), the folder as a virtual list
 (folders first, files by the filters; Return or a double click opens a
 folder or chooses), a name field when saving, a "Show hidden files" box,
-and `.directories()` to choose folders. The About role shows an alert with
+and `.directories()` to choose folders. With `.multiple()`, Shift selects a
+range and Command-click toggles individual rows; both Open and Return keep
+the full selection. File panels ask you to select files or open one folder
+when folders are mixed into a range. Save panels still choose one name.
+The About role shows an alert with
 the app's name, kind and version.
 
 ### Writing a widget
@@ -387,6 +428,13 @@ too gets it only when no widget takes the command); Quit asks each window's
 `close_requested`; About shows the About panel; Minimise asks the window's
 compositor; Hide, Hide Others, Fill, Stack with… and Bring All to Front go
 through `Cx::set_window_manager` (the compositor's IPC).
+
+Settings and app-specific Help have no generic kit handler. Their role-only
+standard entries are disabled, including their shortcuts. Apps with preferences
+or help replace those entries with `MenuItem::new(label, msg)`; a message-backed
+item may keep the role, and the kit preserves its declared enabled state.
+Koyomi and Tenki use their own Settings sheets. Help Search and Aizome Tour
+remain available through their implemented roles.
 
 Where `$AIZOME_SHELL_SOCKET` is set, the menus are published to the shell
 (`docs/shell-protocol.md`) whenever they change; elsewhere the kit draws a

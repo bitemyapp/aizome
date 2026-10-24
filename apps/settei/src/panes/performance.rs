@@ -377,11 +377,7 @@ impl Pane for Performance {
                         .help(super::appearance::effects_text(s.appearance.effects).1),
                 ],
             ),
-            vcx.section_with(
-                "Frame Times",
-                frames,
-                Some("Every frame should take under 4 ms, the budget line, so the screen keeps up at 120 Hz with room to spare.".into()),
-            ),
+            vcx.section("Frame Times", frames),
             vcx.section("Displays", displays),
             row![spacer(), button("Start Counting Again").enabled(!vcx.sample()).on_press(Msg::Reset)].width(Fill).into(),
         ])

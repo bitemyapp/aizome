@@ -319,6 +319,32 @@ impl Browser {
         }
     }
 
+    /// Reconcile a refreshed listing with the columns it opened. A
+    /// still-selected folder keeps the whole path below it; a folder
+    /// moved, restored or removed closes that obsolete path.
+    pub fn refresh_after(&mut self, col: usize, generation: u64) -> bool {
+        if let Some(next) = self.columns.get(col + 1) {
+            let c = &self.columns[col];
+            let matches_next = |e: &Entry| e.is_folder() && next.loc.folder() == Some(e.path.as_path());
+            // An explicit path can go through a hidden folder, which has
+            // no selected visible row. Its entry still proves the link.
+            if c.single().is_some_and(matches_next) || (c.selected.is_empty() && c.all.iter().any(matches_next)) {
+                return false;
+            }
+            if self.focus > col {
+                self.focus = col;
+                self.focus_pending = true;
+            }
+            self.reveal = (col, generation);
+            if self.rename.as_ref().is_some_and(|r| r.column > col) {
+                self.rename = None;
+            }
+            // A drag's source or destination may refer to a closed column.
+            self.drag = None;
+        }
+        self.open_after(col, generation)
+    }
+
     /// → in column `col`: into the folder selected there, selecting its
     /// first item. Whether the focus moved.
     pub fn into_next(&mut self, col: usize) -> bool {

@@ -153,8 +153,10 @@ dependencies = [
 name = "aizome-greeter"
 version = "0.1.0"
 dependencies = [
+ "aizome-config",
  "aizome-face",
  "aizome-kit",
+ "aizome-sys",
  "aizome-theme",
  "env_logger",
  "libc",
@@ -254,6 +256,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "aizome-network-agent"
+version = "0.1.0"
+dependencies = [
+ "aizome-kit",
+ "async-channel",
+ "cc",
+ "env_logger",
+ "libc",
+ "log",
+ "pkg-config",
+ "serde",
+ "serde_json",
+ "zbus",
+]
+
+[[package]]
 name = "aizome-search"
 version = "0.1.0"
 dependencies = [
@@ -288,6 +306,7 @@ name = "aizome-shashin"
 version = "0.1.0"
 dependencies = [
  "aizome-config",
+ "aizome-face",
  "aizome-ipc",
  "aizome-kit",
  "env_logger",

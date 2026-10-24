@@ -122,7 +122,10 @@ Without `--json` it prints the same as lines a person reads.
 
 `aizome-koyomi --agent` runs as the systemd user service
 `apps/koyomi/data/aizome-koyomi-agent.service` (wanted by
-`graphical-session.target`; the package replaces `@bindir@` in it). It
+`graphical-session.target`; the package replaces `@bindir@` and `@systemctl@`
+in it). A start-time condition requires an active graphical session without
+keeping that target alive after logout. `PartOf` stops the agent with the
+session, including when the user manager persists. It
 reads the calendars (again whenever their files change, looking every 30
 seconds), sleeps until the next alert, and posts it to
 `org.freedesktop.Notifications` with the event's title, its time ("In 10
@@ -137,6 +140,11 @@ expiry, and two actions:
 It remembers which alerts it showed, so a restart doesn't repeat them;
 after a sleep it shows those it missed within the last six hours if their
 events aren't over.
+
+`nix build .#checks.x86_64-linux.koyomi-session` exercises normal GDM
+Xfce→GNOME→Aizome logins and logouts with one persistent user manager. It
+checks that the agent runs in each session, stops after logout and refuses
+a manual start outside a graphical session.
 
 ## Settings
 

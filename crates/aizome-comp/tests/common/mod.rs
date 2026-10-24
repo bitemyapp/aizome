@@ -375,6 +375,8 @@ pub struct Seen {
     pub activated: bool,
     pub maximized: bool,
     pub fullscreen: bool,
+    /// Told it's suspended (xdg-shell 6): it needn't draw.
+    pub suspended: bool,
     pub close_requested: bool,
     pub decoration_server_side: Option<bool>,
     /// Keys pressed (evdev codes) with the modifiers held then.
@@ -383,6 +385,8 @@ pub struct Seen {
     pub keyboard_focus: bool,
     /// Vertical scrolling received, summed.
     pub scrolled: f64,
+    /// Buttons: (code, pressed).
+    pub buttons: Vec<(u32, bool)>,
 }
 
 pub enum Cmd {
@@ -682,8 +686,14 @@ impl Dispatch<wayland_client::protocol::wl_pointer::WlPointer, ()> for App {
         _: &QueueHandle<Self>,
     ) {
         use wayland_client::protocol::wl_pointer;
-        if let wl_pointer::Event::Axis { axis: WEnum::Value(wl_pointer::Axis::VerticalScroll), value, .. } = event {
-            app.seen.lock().unwrap().scrolled += value;
+        match event {
+            wl_pointer::Event::Axis { axis: WEnum::Value(wl_pointer::Axis::VerticalScroll), value, .. } => {
+                app.seen.lock().unwrap().scrolled += value;
+            }
+            wl_pointer::Event::Button { button, state: WEnum::Value(state), .. } => {
+                app.seen.lock().unwrap().buttons.push((button, state == wl_pointer::ButtonState::Pressed));
+            }
+            _ => {}
         }
     }
 }
@@ -777,6 +787,7 @@ impl Dispatch<xdg_toplevel::XdgToplevel, ()> for App {
                 seen.activated = states.contains(&(xdg_toplevel::State::Activated as u32));
                 seen.maximized = states.contains(&(xdg_toplevel::State::Maximized as u32));
                 seen.fullscreen = states.contains(&(xdg_toplevel::State::Fullscreen as u32));
+                seen.suspended = states.contains(&(xdg_toplevel::State::Suspended as u32));
             }
             xdg_toplevel::Event::Close => {
                 app.seen.lock().unwrap().close_requested = true;

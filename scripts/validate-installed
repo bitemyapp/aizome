@@ -8,6 +8,8 @@
 #   scripts/validate-installed OUT [gles|pixman] [BIN]
 #
 # BIN is where the installed binaries are (default /run/current-system/sw/bin).
+# THEME=night|day|high-contrast in the environment picks the appearance
+# (default: Aizome's own, by the time of day).
 # Run it under its own session bus: dbus-run-session -- scripts/validate-installed …
 # OUT gets the screenshots, the windows each step had, the compositor's log
 # and its frame times (stats.txt). See docs/checklist.md.
@@ -25,6 +27,10 @@ scratch=$(mktemp -d -t aizome-validate.XXXXXX)
 export XDG_RUNTIME_DIR=$scratch/run HOME=$scratch/home
 mkdir -p "$XDG_RUNTIME_DIR" "$HOME"/{Documents,Notes,Desktop,Pictures} && chmod 700 "$XDG_RUNTIME_DIR"
 export XDG_CONFIG_HOME=$HOME/.config XDG_DATA_HOME=$HOME/.local/share XDG_CACHE_HOME=$HOME/.cache XDG_STATE_HOME=$HOME/.local/state
+if [ -n "${THEME:-}" ]; then
+  mkdir -p "$XDG_CONFIG_HOME/aizome"
+  printf '[appearance]\ntheme = "%s"\n' "$THEME" >"$XDG_CONFIG_HOME/aizome/settings.toml"
+fi
 while IFS= read -r line; do case "$line" in *=*) export "${line%%=*}=${line#*=}";; esac; done </etc/xdg/aizome/environment
 export PATH=$B:$PATH
 cp "$(dirname "$0")/../README.md" "$HOME/Documents/README.md" 2>/dev/null || printf '# Aizome
@@ -131,6 +137,14 @@ done
 sleep 4
 shot 06-apps 1
 c windows >"$out/windows.txt"
+# Each app on its own, filled, as it opened.
+for id in Soroban Koyomi Tokei Tenki Fusen Kura Tansu Settei Yukimi Myaku Shashin Annai; do
+  w=$(win "org.aizome.$id")
+  [ -n "$w" ] || continue
+  c focus "$w"; c fill "$w" on
+  shot "app-$(echo "$id" | tr '[:upper:]' '[:lower:]')" 1.2
+  c fill "$w" off
+done
 # Settings on its own, filled.
 c focus "$(win org.aizome.Settei)"; c fill "$(win org.aizome.Settei)" on; shot 07-settings 1.5
 c fill "$(win org.aizome.Settei)" off

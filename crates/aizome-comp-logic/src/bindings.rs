@@ -2,7 +2,8 @@
 //! actions, and overrides from the settings' `keys.bindings`.
 //!
 //! ❖ is the command key: everything not listed here goes to the focused
-//! app (❖C, ❖V, ❖Q… belong to apps).
+//! app (❖C, ❖V, ❖Q… belong to apps). Terminal Close/Quit are contextual:
+//! their fallback menus promise window actions, not terminal control bytes.
 
 use std::collections::HashMap;
 
@@ -45,6 +46,8 @@ pub enum Action {
     StackWithBehind,
     Fullscreen,
     Terminal,
+    TerminalClose,
+    TerminalQuit,
     ScreenshotScreen,
     ScreenshotArea,
     ScreenshotWindow,
@@ -95,6 +98,8 @@ impl Action {
             "stack-with-behind" | "stack" => Action::StackWithBehind,
             "fullscreen" => Action::Fullscreen,
             "terminal" => Action::Terminal,
+            "terminal-close" => Action::TerminalClose,
+            "terminal-quit" => Action::TerminalQuit,
             "screenshot" | "screenshot-screen" => Action::ScreenshotScreen,
             "screenshot-area" => Action::ScreenshotArea,
             "screenshot-window" => Action::ScreenshotWindow,
@@ -226,6 +231,8 @@ pub fn defaults() -> Vec<(&'static str, String)> {
         ("Alt+Super+S", "stack-with-behind".into()),
         ("Ctrl+Super+F", "fullscreen".into()),
         ("Super+Return", "terminal".into()),
+        ("Super+W", "terminal-close".into()),
+        ("Super+Q", "terminal-quit".into()),
         ("Ctrl+Super+Q", "lock".into()),
         ("Super+Shift+3", "screenshot-screen".into()),
         ("Super+Shift+4", "screenshot-area".into()),
@@ -365,5 +372,24 @@ mod tests {
         assert_eq!(b.find(alt, &print), Some(&Action::Shell("record".into())));
         assert_eq!(b.find(Mods::default(), &print[..1]), Some(&Action::ScreenshotArea));
         assert_eq!(Action::parse("stop-recording"), Some(Action::Shell("stop-recording".into())));
+    }
+
+    #[test]
+    fn terminal_close_quit_are_plain_command_defaults_and_can_be_overridden() {
+        let logo = Mods { logo: true, ..Default::default() };
+        let w = [Keysym::new(keysyms::KEY_w)];
+        let q = [Keysym::new(keysyms::KEY_q)];
+        let defaults = Bindings::new(&Default::default());
+        assert_eq!(defaults.find(logo, &w), Some(&Action::TerminalClose));
+        assert_eq!(defaults.find(logo, &q), Some(&Action::TerminalQuit));
+        assert_eq!(defaults.find(Mods { shift: true, ..logo }, &w), None);
+        assert_eq!(defaults.find(Mods { ctrl: true, shift: true, ..Default::default() }, &q), None);
+        for key in [keysyms::KEY_c, keysyms::KEY_v, keysyms::KEY_f, keysyms::KEY_n] {
+            assert_eq!(defaults.find(logo, &[Keysym::new(key)]), None, "terminal translation stays intact");
+        }
+        let overrides = [("Super+W".into(), "none".into()), ("Super+Q".into(), "spawn custom".into())].into();
+        let configured = Bindings::new(&overrides);
+        assert_eq!(configured.find(logo, &w), None);
+        assert_eq!(configured.find(logo, &q), Some(&Action::Spawn(vec!["custom".into()])));
     }
 }

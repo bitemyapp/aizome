@@ -1,12 +1,17 @@
 //! The Desks overview (⌃❖↑): C4's grid of Desk cards in Aizome's look.
 //! Each card shows its Desk's windows where they are, scaled from their
 //! current buffers (nothing asks a client to redraw), with a header
-//! "N name ~/folder · K windows"; the current Desk is outlined in the
-//! focus colour; a dashed "+" card adds a Desk.
+//! "N name ~/folder · K windows" and what the Desk is doing: "here", when
+//! it was left ("12 min ago"), "parked 3 days · draws nothing", and
+//! "● 3 new" for windows asking for attention. The current Desk is
+//! outlined in the focus colour; a dashed "+" card adds a Desk.
 //!
-//! Click a Desk to go there, drag a window's thumbnail to another Desk,
-//! 1…9 to go to that Desk, type to filter windows by title (Return goes
-//! to the first match), Esc to close.
+//! Click a Desk to go there, drag a window's thumbnail to another Desk
+//! (a label says where it goes), 1…9 to go to that Desk, p to park the
+//! Desk under the pointer (its windows are told they're suspended, so they
+//! draw nothing until it's visited) or wake it, ❖-scroll to zoom, type (or
+//! / then type) to filter windows by title (Return goes to the first
+//! match), Esc to close.
 
 use smithay::input::keyboard::{Keysym, keysyms};
 use smithay::output::Output;
@@ -29,6 +34,37 @@ pub struct Overview {
     /// A thumbnail being dragged.
     pub drag: Option<ThumbDrag>,
     pub pointer: (f64, f64),
+    /// Columns fewer (+) or more (-) than the overview picks by itself.
+    pub zoom: i32,
+    /// The wheel's movement short of a zoom step.
+    pub wheel: f64,
+}
+
+/// How long ago, in a word or two: "just now", "12 min", "3 h", "3 days".
+pub fn age(secs: u64) -> String {
+    match secs {
+        0..=59 => "just now".to_string(),
+        60..=3599 => format!("{} min", secs / 60),
+        3600..=86_399 => format!("{} h", secs / 3600),
+        _ => match secs / 86_400 {
+            1 => "1 day".to_string(),
+            d => format!("{d} days"),
+        },
+    }
+}
+
+/// What a Desk is doing, after its window count: here, parked, or left.
+pub fn status(here: bool, parked: Option<u64>, left: Option<u64>, now: u64) -> Option<String> {
+    if here {
+        return Some("here".to_string());
+    }
+    if let Some(at) = parked {
+        return Some(format!("parked {} · draws nothing", age(now.saturating_sub(at))));
+    }
+    left.map(|at| match age(now.saturating_sub(at)) {
+        a if a == "just now" => a,
+        a => format!("{a} ago"),
+    })
 }
 
 /// A thumbnail being dragged: window, where it was grabbed, where the
@@ -54,6 +90,8 @@ pub fn toggle(state: &mut State) {
         thumbs: Vec::new(),
         drag: None,
         pointer: (0.0, 0.0),
+        zoom: 0,
+        wheel: 0.0,
     });
     let ms = state.az.motion_ms();
     state.lg.m().anims.start_overlay("overview", ms);
@@ -114,12 +152,45 @@ pub fn key(state: &mut State, syms: &[Keysym], mods: Mods, pressed: bool, utf8: 
     } else if is(keysyms::KEY_Up) && mods.ctrl && mods.logo {
         close(state);
         return Some(KeyDecision::Swallow);
+    } else if !filtering && utf8 == Some('p') && !mods.ctrl && !mods.logo && park_under_pointer(state) {
+        // Parked or woken: the card says so.
+    } else if !filtering && utf8 == Some('/') {
+        // "/" starts a filter (as typing does), and isn't part of it.
     } else if let Some(c) = utf8.filter(|c| !c.is_control() && !mods.ctrl && !mods.logo) {
         state.lg.m().overlays.overview.as_mut().unwrap().filter.push(c);
     }
     let o = state.lg.m().overlays.overview.as_ref().unwrap().output.clone();
     state.az.queue_redraw(&o);
     Some(KeyDecision::Swallow)
+}
+
+/// Parks the Desk under the pointer, or wakes it if it's parked. False
+/// when the pointer isn't over another Desk's card (then "p" filters).
+fn park_under_pointer(state: &mut State) -> bool {
+    let Some(ov) = state.lg.m().overlays.overview.as_ref() else { return false };
+    let (x, y) = ov.pointer;
+    let Some(desk) = ov.cards.iter().find(|(_, b)| b.contains(x, y)).and_then(|(d, _)| *d) else { return false };
+    let l = state.lg.r();
+    if desk == l.wm.current_desk() {
+        return false;
+    }
+    let parked = l.wm.desk(desk).is_some_and(|d| d.parked.is_some());
+    state.set_desk_parked(desk, !parked)
+}
+
+/// The wheel over the overview: ❖-scroll (or a plain one) zooms, a step
+/// a notch, a touchpad's movement adding up to one.
+pub fn scroll(state: &mut State, v: f64) -> bool {
+    let Some(ov) = state.lg.m().overlays.overview.as_mut() else { return false };
+    ov.wheel += v;
+    if ov.wheel.abs() >= 10.0 {
+        // Up (away) zooms in: fewer, bigger cards.
+        ov.zoom += if ov.wheel < 0.0 { 1 } else { -1 };
+        ov.wheel = 0.0;
+        let o = ov.output.clone();
+        state.az.queue_redraw(&o);
+    }
+    true
 }
 
 pub fn pointer_button(state: &mut State, pressed: bool, x: f64, y: f64) -> bool {
@@ -212,8 +283,6 @@ pub fn items(st: &mut State, output: &Output, scale: f64) -> aizome_comp_core::s
     let margin = (g.w * 0.05).clamp(24.0, 64.0);
     let top = g.y + margin * 0.6;
     let hw = pt.text_mid(&mut az.labels, "Desks", bold(20.0, p.text), g.x + margin, top, 32.0, 200.0);
-    let summary = format!("{} Desks · {} windows", desks.len(), total);
-    pt.text_mid(&mut az.labels, &summary, mono(11.0, p.text3), g.x + margin + hw + 12.0, top + 4.0, 28.0, 300.0);
     let fw = 320.0f64.min(g.w * 0.3);
     let field = Box2::new(g.right() - margin - fw, top, fw, 28.0);
     pt.fill(field, p.line2);
@@ -228,14 +297,17 @@ pub fn items(st: &mut State, output: &Output, scale: f64) -> aizome_comp_core::s
 
     // The grid: Desks plus the "+" card, at the output's aspect.
     let n = desks.len() + 1;
-    let cols = if n <= 2 {
+    let auto = if n <= 2 {
         n
     } else if n <= 4 {
         2
     } else {
         3
     }
-    .max(1);
+    .max(1) as i32;
+    // Zoomed: kept to between one column and every card in a row.
+    ov.zoom = ov.zoom.clamp(auto - n as i32, auto - 1);
+    let cols = (auto - ov.zoom) as usize;
     let rows = n.div_ceil(cols);
     let head_h = 26.0;
     let gap = 32.0;
@@ -252,6 +324,15 @@ pub fn items(st: &mut State, output: &Output, scale: f64) -> aizome_comp_core::s
     let grid_w = cols as f64 * cw + (cols - 1) as f64 * gap;
     let gx = g.x + ((g.w - grid_w) / 2.0).round();
     let k = cw / g.w;
+    let plural = |n: usize, one: &str, many: &str| if n == 1 { format!("1 {one}") } else { format!("{n} {many}") };
+    let summary = format!(
+        "{} · {} · zoom {:.0}%",
+        plural(desks.len(), "Desk", "Desks"),
+        plural(total, "window", "windows"),
+        k * 100.0
+    );
+    pt.text_mid(&mut az.labels, &summary, mono(11.0, p.text3), g.x + margin + hw + 12.0, top + 4.0, 28.0, 360.0);
+    let now = crate::actions::now_secs();
     ov.cards.clear();
     ov.thumbs.clear();
     let dragging = ov.drag.map(|d| d.0);
@@ -296,10 +377,22 @@ pub fn items(st: &mut State, output: &Output, scale: f64) -> aizome_comp_core::s
             rest.push_str(" · ");
         }
         rest.push_str(&if count == 1 { "1 window".to_string() } else { format!("{count} windows") });
-        if desk == current {
-            rest.push_str(" · here");
+        let (parked, left) = l.wm.desk(desk).map_or((None, None), |d| (d.parked, d.left));
+        if let Some(st) = status(desk == current, parked, left, now) {
+            rest.push_str(" · ");
+            rest.push_str(&st);
         }
-        pt.text_mid(&mut az.labels, &rest, mono(11.0, p.text3), hx, hy, head_h - 6.0, card.right() - hx);
+        if l.desk_audible(desk) {
+            rest.push_str(" · audio playing");
+        }
+        // Windows asking for attention, in amber after the rest.
+        let urgent = l.wm.desk_urgent_count(desk);
+        let new_w = if urgent > 0 { 70.0 } else { 0.0 };
+        hx += pt.text_mid(&mut az.labels, &rest, mono(11.0, p.text3), hx, hy, head_h - 6.0, card.right() - hx - new_w);
+        if urgent > 0 {
+            let new = format!("● {urgent} new");
+            pt.text_mid(&mut az.labels, &new, mono(11.0, p.amber), hx + 8.0, hy, head_h - 6.0, card.right() - hx - 8.0);
+        }
         // The card.
         if shadows {
             pt.fill(Box2::new(card.right(), card.y + 3.0, 3.0, card.h), p.slab);
@@ -323,7 +416,8 @@ pub fn items(st: &mut State, output: &Output, scale: f64) -> aizome_comp_core::s
             let dim = !matches(l, id, &ov.filter);
             let a = if dragging == Some(id) {
                 0.35
-            } else if dim {
+            } else if dim || parked.is_some() {
+                // A parked Desk's windows draw nothing: shown faintly.
                 0.25
             } else {
                 1.0
@@ -357,7 +451,8 @@ pub fn items(st: &mut State, output: &Output, scale: f64) -> aizome_comp_core::s
             pt.dashed(Box2::new(card.x - 3.0, card.y - 3.0, card.w + 6.0, card.h + 6.0), 2.0, p.focus);
         }
     }
-    // The dragged thumbnail follows the pointer.
+    // The dragged thumbnail follows the pointer, and over another Desk a
+    // label says where it goes: "Notes → Mail".
     if let Some((id, from, at)) = ov.drag
         && let Some((_, _, b)) = ov.thumbs.iter().find(|(w, ..)| *w == id).cloned()
     {
@@ -365,15 +460,37 @@ pub fn items(st: &mut State, output: &Output, scale: f64) -> aizome_comp_core::s
         pt.fill(Box2::new(moved.x + 3.0, moved.y + 3.0, moved.w, moved.h), p.slab);
         pt.fill(moved, p.bevel_lo);
         pt.thumbnail(az, id, moved.inset(1.0), 1.0);
+        let over = ov.cards.iter().find(|(_, c)| c.contains(at.0, at.1)).map(|(d, _)| *d);
+        let from_desk = l.wm.get(id).map(|w| w.desk);
+        let target = match over {
+            Some(Some(d)) if Some(d) != from_desk => {
+                let i = l.wm.desk_index(d).unwrap_or(0);
+                Some(l.wm.desk(d).map_or_else(|| i.to_string(), |d| d.name.clone()))
+            }
+            Some(None) => Some("a new Desk".to_string()),
+            _ => None,
+        };
+        if let Some(target) = target {
+            let title = l.wm.get(id).map(|w| w.title.clone()).unwrap_or_default();
+            let title: String =
+                if title.chars().count() > 32 { title.chars().take(31).chain(['…']).collect() } else { title };
+            let label = format!("{title} → {target}");
+            let style = mono_bold(11.0, p.on_selection);
+            let lw = az.labels.measure(&label, style.face, style.size()).0.ceil() + 16.0;
+            let lb = Box2::new(moved.x, (moved.bottom() + 6.0).min(g.bottom() - 26.0), lw, 22.0);
+            pt.fill(lb, p.selection);
+            pt.text_mid(&mut az.labels, &label, mono_bold(11.0, p.on_selection), lb.x + 8.0, lb.y, lb.h, lw);
+        }
     }
 
     // Hints.
     let hy = g.bottom() - 40.0;
     let mut hx = g.x + margin;
     for (k, what) in [
-        ("1…9", "go to a Desk"),
-        ("click", "go"),
+        ("❖ scroll", "zoom"),
         ("drag", "move a window to another Desk"),
+        ("1…9", "go to a Desk"),
+        ("p", "park a Desk"),
         ("type", "filter"),
         ("Esc", "close"),
     ] {
@@ -384,4 +501,27 @@ pub fn items(st: &mut State, output: &Output, scale: f64) -> aizome_comp_core::s
     let out = pt.finish(&mut ov.cache);
     l.overlays.overview = Some(ov);
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_desk_says_what_it_is_doing() {
+        assert_eq!(age(30), "just now");
+        assert_eq!(age(12 * 60), "12 min");
+        assert_eq!(age(3 * 3600 + 5), "3 h");
+        assert_eq!(age(86_400), "1 day");
+        assert_eq!(age(3 * 86_400), "3 days");
+        let now = 10_000_000;
+        assert_eq!(status(true, Some(now - 5), Some(now - 5), now).as_deref(), Some("here"));
+        assert_eq!(
+            status(false, Some(now - 3 * 86_400), Some(now), now).as_deref(),
+            Some("parked 3 days · draws nothing")
+        );
+        assert_eq!(status(false, None, Some(now - 12 * 60), now).as_deref(), Some("12 min ago"));
+        assert_eq!(status(false, None, Some(now - 10), now).as_deref(), Some("just now"));
+        assert_eq!(status(false, None, None, now), None, "never left: nothing to say");
+    }
 }

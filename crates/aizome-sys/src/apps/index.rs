@@ -291,10 +291,9 @@ impl AppIndex {
         Watcher::start(self.dirs.clone(), self.signature.clone(), wake, Duration::from_secs(2))
     }
 
-    /// Resolve an application identity for activation: an exact desktop
-    /// file ID (with or without `.desktop`, ignoring case), or an
-    /// unambiguous declared `StartupWMClass`. Unlike [`Self::match_window`],
-    /// this never guesses from reverse-DNS suffixes or executable names.
+    /// Resolve an app ID for window actions using only desktop IDs and
+    /// explicit StartupWMClass aliases. Ambiguous aliases are not resolved;
+    /// suffix and executable-name guesses belong to display matching only.
     pub fn match_window_identity(&self, app_id_or_wm_class: &str) -> Option<&App> {
         let wanted = app_id_or_wm_class.trim();
         if wanted.is_empty() {
@@ -304,17 +303,18 @@ impl AppIndex {
             return self.entries.get(*i);
         }
         let lower = wanted.to_lowercase();
+        let without_suffix = lower.strip_suffix(".desktop").unwrap_or(&lower);
+        // An application ID can itself end in .desktop (Telegram does).
+        // Match that complete ID before interpreting the suffix as a filename.
         let steps: [&dyn Fn(&MatchKeys) -> bool; 3] = [
-            &|keys| keys.id == lower,
-            &|keys| lower.strip_suffix(".desktop").is_some_and(|id| keys.id == id),
-            &|keys| keys.wm_class.as_deref() == Some(lower.as_str()),
+            &|keys: &MatchKeys| keys.id == lower,
+            &|keys: &MatchKeys| keys.id == without_suffix,
+            &|keys: &MatchKeys| keys.wm_class.as_deref() == Some(without_suffix),
         ];
         for step in steps {
-            let mut matches = self.info.iter().enumerate().filter(|(_, info)| step(&info.keys));
-            if let Some((i, _)) = matches.next() {
-                // Multiple entries declaring the same class cannot
-                // establish which application owns this window.
-                return matches.next().is_none().then(|| &self.entries[i]);
+            let mut matches = (0..self.entries.len()).filter(|&i| step(&self.info[i].keys));
+            if let Some(i) = matches.next() {
+                return if matches.next().is_none() { self.entries.get(i) } else { None };
             }
         }
         None
@@ -968,6 +968,29 @@ mod tests {
         }
         assert_eq!(woken.load(Ordering::SeqCst), 2, "the baseline differs from now");
         drop(watcher);
+    }
+
+    #[test]
+    fn window_identity_requires_an_unambiguous_id_or_explicit_alias() {
+        let tmp = TempDir::new("window-identity");
+        for (id, class) in [
+            ("org.example.Editor", "EditorWindow"),
+            ("org.example.One", "SharedWindow"),
+            ("org.example.Two", "SharedWindow"),
+        ] {
+            tmp.write(
+                &format!("usr/share/applications/{id}.desktop"),
+                &app("Editor", &format!("StartupWMClass={class}\n")),
+            );
+        }
+        let index = AppIndex::load_with(XdgDirs::rooted(tmp.path()), Locale::default());
+        for id in ["org.example.Editor", "org.example.Editor.desktop", "ORG.EXAMPLE.EDITOR", "editorwindow"] {
+            assert_eq!(index.match_window_identity(id).map(|a| a.id.as_str()), Some("org.example.Editor.desktop"));
+        }
+        for id in ["org.unrelated.Editor", "editor", "SharedWindow", "", "missing"] {
+            assert!(index.match_window_identity(id).is_none(), "{id} is not an unambiguous identity");
+        }
+        assert!(index.match_window("org.unrelated.Editor").is_some(), "display matching retains its heuristics");
     }
 
     fn matcher() -> (TempDir, AppIndex) {
