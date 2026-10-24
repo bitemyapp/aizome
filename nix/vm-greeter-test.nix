@@ -67,8 +67,15 @@ pkgs.testers.runNixOSTest {
 
     def outputs(user):
         uid = machine.succeed(f"id -u {user}").strip()
+        if user == "greeter":
+            # A killed compositor can leave an old IPC socket behind. The
+            # greeter names its Wayland socket after its own current pid.
+            pid = machine.succeed("pgrep -u greeter -x aizome-greeter").strip()
+            socket = f"/run/user/{uid}/aizome.aizome-greeter-{pid}.sock"
+        else:
+            socket = f"/run/user/{uid}/aizome.*.sock"
         return json.loads(machine.succeed(as_user(user,
-            f"aizomectl --json --socket /run/user/{uid}/aizome.*.sock outputs")))["outputs"]
+            f"aizomectl --json --socket {socket} outputs")))["outputs"]
 
     def scales(user, uid):
         value = machine.succeed(as_user(user,
