@@ -52,6 +52,44 @@ fn an_application_opened_with_the_inspector() {
     }
 }
 
+/// The GPU lens on a desktop with two cards, after two minutes of readings.
+fn workstation(theme: ThemeChoice) -> Harness<Myaku> {
+    let (signals, _) = Myaku::recorder();
+    let mut h = Harness::with(
+        Myaku::with_frame(
+            Arc::new(fixture::workstation(420, 1)),
+            signals,
+            Request { lens: Some(Lens::Gpu), ..Default::default() },
+        ),
+        Appearance { theme, ..Appearance::default() },
+        false,
+    );
+    for tick in 2..=120 {
+        h.send(Msg::Frame(Arc::new(fixture::workstation(420, tick))));
+    }
+    h
+}
+
+#[test]
+fn every_gpu() {
+    for (theme, name) in THEMES {
+        let mut h = workstation(theme);
+        golden(&mut h, "gpu", name);
+    }
+}
+
+#[test]
+fn one_gpu_with_the_inspector() {
+    for (theme, name) in THEMES {
+        let mut h = workstation(theme);
+        h.send(Msg::Gpu(Some("0000:01:00.0".into())));
+        let firefox = h.program().frame.groups.iter().find(|g| g.name == "Firefox").unwrap().key;
+        h.send(Msg::Select(Sel::Group(firefox)));
+        h.send(Msg::Inspector(true));
+        golden(&mut h, "gpu-inspector", name);
+    }
+}
+
 #[test]
 fn all_processes_by_disk() {
     let mut h = harness(ThemeChoice::Night);
