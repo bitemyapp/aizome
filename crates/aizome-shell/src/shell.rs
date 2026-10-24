@@ -1069,6 +1069,9 @@ impl Shell {
         match e {
             IpcEvent::Connected(s) => {
                 self.wm.reset(s.0);
+                // Also after a shell replacement: the desktop's theme may
+                // already be Day, so no theme-change event will arrive.
+                self.follow_foot(self.wm.windows.values().filter_map(|w| w.pid));
                 // What Night Light is doing, for the Display panel.
                 self.ipc.ask(Request::NightLight { enabled: None, temperature: None }, NIGHT_LIGHT_TAG);
                 // What's shared already (the shell restarted mid-share).
@@ -1077,6 +1080,12 @@ impl Shell {
             IpcEvent::Event(e) => {
                 self.wm.apply(&e);
                 match e {
+                    Event::WindowOpened { window } => {
+                        // Foot starts with its configured default palette.
+                        // Once mapped, its signal handlers are ready and it
+                        // can follow the current theme without a restart.
+                        self.follow_foot(window.pid);
+                    }
                     Event::ConfigChanged => self.reload_settings(),
                     Event::Binding { action, pointer, output } => self.binding(&action, pointer, output, cx),
                     Event::Idle { kind } if kind == "lock" => self.lock(cx),
@@ -1727,44 +1736,44 @@ impl Shell {
         self.theme_changed(day);
     }
 
-    /// The theme turned: foot instances and GTK follow (foot reloads its
-    /// colours on SIGUSR1 for dark and SIGUSR2 for light).
+    /// The theme turned: foot instances and GTK follow (foot selects its
+    /// dark palette on SIGUSR1 and its light palette on SIGUSR2).
     pub fn theme_changed(&mut self, day: bool) {
         self.follow_gtk();
         if self.theme_day == day {
             return;
         }
         self.theme_day = day;
+        self.follow_foot(self.wm.windows.values().filter_map(|w| w.pid));
+    }
+
+    /// Tell only mapped Foot processes belonging to this compositor. A
+    /// custom app_id still works; checking the process name keeps other
+    /// clients from being sent a signal just because they call themselves
+    /// "foot". The snapshot also scopes us to the right session, including
+    /// sessions with the same WAYLAND_DISPLAY in different runtime dirs.
+    fn follow_foot(&self, pids: impl IntoIterator<Item = i32>) {
         if !self.opts.live {
             return;
         }
-        // Only this session's foot, one whose WAYLAND_DISPLAY is ours: the
-        // user may have another session (a headless or nested Aizome beside
-        // their usual desktop) whose terminals aren't ours to recolour.
-        let display = std::env::var("WAYLAND_DISPLAY").ok();
-        std::thread::spawn(move || {
-            let signal = if day { libc::SIGUSR2 } else { libc::SIGUSR1 };
-            if let (Some(display), Ok(rd)) = (display, std::fs::read_dir("/proc")) {
-                let wanted = format!("WAYLAND_DISPLAY={display}");
-                let me = unsafe { libc::getuid() };
-                for e in rd.flatten() {
-                    let Ok(pid) = e.file_name().to_string_lossy().parse::<i32>() else { continue };
-                    let comm = std::fs::read_to_string(e.path().join("comm")).unwrap_or_default();
-                    let owner = std::os::unix::fs::MetadataExt::uid(&match e.metadata() {
-                        Ok(m) => m,
-                        Err(_) => continue,
-                    });
-                    if comm.trim() != "foot" || owner != me {
-                        continue;
-                    }
-                    let environ = std::fs::read(e.path().join("environ")).unwrap_or_default();
-                    if environ.split(|&b| b == 0).any(|var| var == wanted.as_bytes()) {
-                        // SAFETY: a signal to the user's own foot, in this session.
-                        unsafe { libc::kill(pid, signal) };
-                    }
-                }
+        let signal = if self.theme_day { libc::SIGUSR2 } else { libc::SIGUSR1 };
+        let me = unsafe { libc::getuid() };
+        // A foot server can own several windows. Deliver in event order,
+        // without racing background scans from successive theme changes.
+        for pid in pids.into_iter().collect::<std::collections::BTreeSet<_>>() {
+            if pid <= 0 {
+                continue;
             }
-        });
+            let path = PathBuf::from(format!("/proc/{pid}"));
+            let Ok(meta) = std::fs::metadata(&path) else { continue };
+            if std::os::unix::fs::MetadataExt::uid(&meta) != me
+                || std::fs::read_to_string(path.join("comm")).unwrap_or_default().trim() != "foot"
+            {
+                continue;
+            }
+            // SAFETY: a positive PID of the user's mapped Foot process.
+            unsafe { libc::kill(pid, signal) };
+        }
     }
 
     /// GTK and libadwaita apps follow the theme and the focus colour
