@@ -180,16 +180,21 @@ impl Backend {
         }
     }
 
-    /// Turns displays off or on (DPMS); a no-op off udev.
-    pub fn set_power(&mut self, az: &mut Aizome, on: bool) {
-        if let Backend::Udev(u) = self {
-            u.set_power(az, on);
-        }
-        for o in az.out.values_mut() {
+    /// Turns each display off or on (DPMS) as [`Aizome::wants_power`]
+    /// says; off udev only the state changes.
+    pub fn apply_power(&mut self, az: &mut Aizome) {
+        let outputs: Vec<Output> = az.out.keys().cloned().collect();
+        for output in outputs {
+            let on = az.wants_power(&output);
+            let Some(o) = az.out.get_mut(&output) else { continue };
+            if o.powered == on {
+                continue;
+            }
             o.powered = on;
-        }
-        if on {
-            az.queue_redraw_all();
+            o.redraw_queued |= on;
+            if let Backend::Udev(u) = self {
+                u.set_power(&output, on);
+            }
         }
     }
 

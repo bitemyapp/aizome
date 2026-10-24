@@ -291,6 +291,30 @@ impl AppIndex {
         Watcher::start(self.dirs.clone(), self.signature.clone(), wake, Duration::from_secs(2))
     }
 
+    /// Resolve an app ID for window actions using only desktop IDs and
+    /// explicit StartupWMClass aliases. Ambiguous aliases are not resolved;
+    /// suffix and executable-name guesses belong to display matching only.
+    pub fn match_window_identity(&self, app_id_or_wm_class: &str) -> Option<&App> {
+        let wanted = app_id_or_wm_class.trim();
+        if wanted.is_empty() {
+            return None;
+        }
+        if let Some(i) = self.by_id.get(&format!("{wanted}.desktop")).or_else(|| self.by_id.get(wanted)) {
+            return self.entries.get(*i);
+        }
+        let lower = wanted.to_lowercase();
+        let lower = lower.strip_suffix(".desktop").unwrap_or(&lower);
+        let steps: [&dyn Fn(&MatchKeys) -> bool; 2] =
+            [&|keys: &MatchKeys| keys.id == lower, &|keys: &MatchKeys| keys.wm_class.as_deref() == Some(lower)];
+        for step in steps {
+            let mut matches = (0..self.entries.len()).filter(|&i| step(&self.info[i].keys));
+            if let Some(i) = matches.next() {
+                return if matches.next().is_none() { self.entries.get(i) } else { None };
+            }
+        }
+        None
+    }
+
     /// The application a window belongs to, from its Wayland app ID or X11
     /// `WM_CLASS`; see the module documentation for the rules.
     pub fn match_window(&self, app_id_or_wm_class: &str) -> Option<&App> {
@@ -869,6 +893,29 @@ mod tests {
         }
         assert_eq!(woken.load(Ordering::SeqCst), 2, "the baseline differs from now");
         drop(watcher);
+    }
+
+    #[test]
+    fn window_identity_requires_an_unambiguous_id_or_explicit_alias() {
+        let tmp = TempDir::new("window-identity");
+        for (id, class) in [
+            ("org.example.Editor", "EditorWindow"),
+            ("org.example.One", "SharedWindow"),
+            ("org.example.Two", "SharedWindow"),
+        ] {
+            tmp.write(
+                &format!("usr/share/applications/{id}.desktop"),
+                &app("Editor", &format!("StartupWMClass={class}\n")),
+            );
+        }
+        let index = AppIndex::load_with(XdgDirs::rooted(tmp.path()), Locale::default());
+        for id in ["org.example.Editor", "org.example.Editor.desktop", "ORG.EXAMPLE.EDITOR", "editorwindow"] {
+            assert_eq!(index.match_window_identity(id).map(|a| a.id.as_str()), Some("org.example.Editor.desktop"));
+        }
+        for id in ["org.unrelated.Editor", "editor", "SharedWindow", "", "missing"] {
+            assert!(index.match_window_identity(id).is_none(), "{id} is not an unambiguous identity");
+        }
+        assert!(index.match_window("org.unrelated.Editor").is_some(), "display matching retains its heuristics");
     }
 
     fn matcher() -> (TempDir, AppIndex) {

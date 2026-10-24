@@ -72,6 +72,81 @@ fn key(c: &Compositor, keys: &str) {
     c.ok(Request::Synthesize { events: vec![Synthetic::Chord { keys: keys.into() }] });
 }
 
+/// The real palette and compositor, with a desktop ID different from the
+/// window's app ID. The Exec marker catches accidental duplicate launches.
+#[test]
+#[ignore = "requires AIZOME_ACTIVATION_TEST_SHELL pointing to a built aizome-shell"]
+fn palette_reveals_running_apps_on_their_desks() {
+    use aizome_ipc::{AppSel, DeskSel, Response};
+    let shell = std::env::var("AIZOME_ACTIVATION_TEST_SHELL")
+        .or_else(|_| std::env::var("AIZOME_LAYOUT_TEST_SHELL"))
+        .expect("shell binary");
+    let c = Compositor::start(Options::default());
+    let apps = c.dir.join("data/applications");
+    std::fs::create_dir_all(&apps).unwrap();
+    let marker = c.dir.join("duplicate-launch");
+    std::fs::write(
+        apps.join("org.example.ActivationFixture.desktop"),
+        format!(
+            "[Desktop Entry]\nType=Application\nName=ActivationFixture\nStartupWMClass=FixtureWindow\nExec=touch {}\n",
+            marker.display()
+        ),
+    )
+    .unwrap();
+    let _shell = program(&c, &shell, &[], "shell");
+    wait("the shell's Deskbar", || {
+        shell_state(&c, &shell)
+            .is_some_and(|s| s["surfaces"].as_array().is_some_and(|ss| ss.iter().any(|s| s == "Deskbar")))
+    });
+    let a = c.client(Spec::new("FixtureWindow", 0x2266cc));
+    let wa = c.wait_window("FixtureWindow");
+    let b = c.client(Spec::new("test.cover", 0x22cc22));
+    let wb = c.wait_window("test.cover");
+    c.ok(Request::Move { id: Some(wa.id), x: 120, y: 150 });
+    c.ok(Request::Move { id: Some(wb.id), x: 120, y: 150 });
+    b.wait_seen("cover has the keyboard", |s| s.keyboard_focus);
+
+    let activate = || {
+        shell_msg(&c, &shell, serde_json::json!({"request":"palette", "scope":"apps", "query":"ActivationFixture"}));
+        wait("palette open", || shell_state(&c, &shell).is_some_and(|s| s["palette"] == "ActivationFixture"));
+        a.wait_seen("palette took the keyboard", |s| !s.keyboard_focus);
+        c.settle();
+        key(&c, "return");
+        wait("palette closed", || shell_state(&c, &shell).is_some_and(|s| s["palette"].is_null()));
+        a.wait_seen("app has the keyboard", |s| s.keyboard_focus);
+        let ws = c.windows();
+        assert!(ws.iter().any(|w| w.id == wa.id && w.focused && !w.minimised && !w.hidden && w.group_active));
+        let selected = ws.iter().find(|w| w.id == wa.id).unwrap();
+        let top = ws.last().unwrap();
+        assert!(
+            top.id == wa.id || selected.group.is_some() && top.group == selected.group,
+            "the app's stack was raised"
+        );
+        c.settle();
+        assert_px(&c.screenshot(), 200, 250, rgb(0x2266cc), "the selected app is visible above its cover");
+        assert!(!marker.exists(), "activation launched a duplicate process");
+    };
+    activate();
+    // Asking for the already-focused app still returns the keyboard.
+    activate();
+    c.ok(Request::AddDesk { name: "Other".into(), folder: None, index: None });
+    c.ok(Request::MoveToDesk { id: Some(wa.id), desk: DeskSel::Index(2), follow: false });
+    c.ok(Request::Minimise { id: Some(wa.id) });
+    c.ok(Request::HideApp { app: AppSel { app_id: Some("FixtureWindow".into()), pid: None } });
+    activate();
+    assert!(matches!(c.request(Request::Desks), Response::Desks { current: 2, .. }));
+    // A sticky window is brought forward without leaving the current Desk.
+    c.ok(Request::Sticky { id: Some(wa.id), state: Some(true) });
+    c.ok(Request::SetDesk { desk: DeskSel::Index(1) });
+    c.ok(Request::Focus { id: wb.id });
+    activate();
+    assert!(matches!(c.request(Request::Desks), Response::Desks { current: 1, .. }));
+    // An inactive stack tab is selected as well as raised.
+    c.ok(Request::Stack { a: wa.id, b: wb.id });
+    c.ok(Request::Focus { id: wb.id });
+    activate();
+}
+
 #[test]
 #[ignore = "requires AIZOME_LAYOUT_TEST_SHELL and AIZOME_LAYOUT_TEST_CHROME; see docs/ipc.md"]
 fn real_launcher_chrome_and_calculator_keep_the_deskbar_clear() {

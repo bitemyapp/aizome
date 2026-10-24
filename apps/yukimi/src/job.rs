@@ -314,9 +314,12 @@ impl Job {
             }
             JobEvent::AuthorizationFailed(failure) => {
                 self.retry_authentication = failure == AuthorizationFailure::Unavailable;
-                self.status =
-                    if failure == AuthorizationFailure::Cancelled { "Cancelled" } else { "Permission unavailable" }
-                        .into();
+                self.status = match failure {
+                    AuthorizationFailure::Cancelled => "Cancelled",
+                    AuthorizationFailure::Denied => "Permission denied",
+                    AuthorizationFailure::Unavailable => "Permission unavailable",
+                }
+                .into();
                 self.outcome = Some(Outcome::Failed(failure.message().into()));
                 self.outcome.as_ref()
             }
@@ -528,6 +531,21 @@ echo '@nix {"action":"msg","level":0,"msg":"error: it broke"}' >&2; exit 1"#,
         };
         assert_eq!(authorization_failure(&error), None);
         assert_eq!(explain("126 files failed", true, false), "126 files failed");
+    }
+
+    #[test]
+    fn incomplete_or_non_utf8_output_never_causes_a_retry() {
+        for extra in [
+            "printf '\\377'",             // stdout must not be mistaken for empty output
+            "printf '\\377\\n' >&2",      // invalid stderr must not truncate the diagnostic
+            "head -c 8192 /dev/zero >&2", // stderr was too long to retain completely
+        ] {
+            let events = run(vec![root_script(&format!(
+                "echo 'Error executing command as another user: No authentication agent found.' >&2; {extra}; exit 127"
+            ))]);
+            assert!(!events.iter().any(|e| matches!(e, JobEvent::RecoveringAuthentication)));
+            assert!(matches!(events.last(), Some(JobEvent::Done(Err(_)))));
+        }
     }
 
     #[test]

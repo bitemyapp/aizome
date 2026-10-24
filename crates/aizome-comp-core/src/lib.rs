@@ -35,6 +35,7 @@ pub mod outputs;
 pub mod painter;
 pub mod pieces;
 pub mod popups;
+pub mod power;
 pub mod protocols;
 pub mod recovery;
 pub mod reload;

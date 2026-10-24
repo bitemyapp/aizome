@@ -103,7 +103,9 @@ Protocol version: **1** (`version` reports it).
   `return`, `escape`, `space`, `grave`, `up`/`down`/`left`/`right`, letters,
   digits, punctuation (`,` `.` `/` `;` `'` `[` `]` `\` `-` `=`), `f1`…`f12`,
   `print`) or an evdev code;
-- `chord {keys}`: `"super+shift+3"` presses in order, releases in reverse.
+- `chord {keys}`: `"super+shift+3"` presses in order, releases in reverse;
+- `lid {closed}`: the laptop's lid closing or opening, as its switch says
+  (`aizomectl input lid closed`).
 
 `aizomectl input key NAME` and `input button NAME` press and release
 (a tap); add `down` or `up` for one half. `aizomectl input type TEXT` taps
@@ -132,6 +134,18 @@ cargo test -p aizome-comp --test layout_desktop -- --ignored --nocapture
 It needs the shell, Chrome and Calculator installed. Chrome uses a fresh
 temporary profile and a blank page. Both D-Bus addresses are isolated from
 the login session; no physical input or session services are changed.
+
+The app activation check needs only a built shell. It selects an already
+running app through the real palette and checks raising, keyboard focus,
+Desk switching, hidden/minimised windows, sticky windows and stack tabs.
+Its fixture uses different desktop and window app IDs and detects duplicate
+launches:
+
+```sh
+cargo build -p aizome-comp -p aizome-shell
+AIZOME_ACTIVATION_TEST_SHELL="${CARGO_TARGET_DIR:-target}/debug/aizome-shell" \
+cargo test -p aizome-comp --test layout_desktop palette_reveals_running_apps_on_their_desks -- --ignored --nocapture
+```
 Screenshots are kept in the Cargo target's `tmp/aizome-shots/` directory.
 Use a separate `CARGO_TARGET_DIR` when another checkout is being built.
 
@@ -184,7 +198,9 @@ counting sticky ones), `current`.
 `name`, `make`, `model`, `serial`, `enabled`, `current_mode {width, height,
 refresh (mHz), preferred}`, `modes`, `scale`, `transform`, `logical {x,y,w,h}`
 (in points), `usable {x,y,w,h}` (minus layer-shell exclusive zones),
-`physical_size_mm`, `powered`, `primary` (the main display: `primary = true`
+`physical_size_mm`, `powered` (false while it's off: for idleness,
+`power-off-monitors`, or a laptop's panel behind its closed lid), `primary`
+(the main display: `primary = true`
 in the settings or `set-primary-output`, else the first in the layout; the
 Deskbar's, and where windows rescued from outputs that go end up),
 `mirror` (the output whose picture it shows; `logical` and `usable` are then

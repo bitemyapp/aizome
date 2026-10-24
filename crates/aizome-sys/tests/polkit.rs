@@ -19,9 +19,11 @@ const AGENT_PATH: &str = "/org/aizome/PolicyKit1/AuthenticationAgent";
 struct Registrations {
     agents: Vec<(String, String, String)>,
     unregistered: usize,
-    active: Option<String>,
-    reject: usize,
     attempts: usize,
+    failures: usize,
+    lost_replies: usize,
+    unregister_failures: usize,
+    owner: Option<String>,
 }
 
 struct Authority {
@@ -32,27 +34,39 @@ type Subject = (String, HashMap<String, OwnedValue>);
 
 #[zbus::interface(name = "org.freedesktop.PolicyKit1.Authority")]
 impl Authority {
-    fn register_authentication_agent(
+    async fn register_authentication_agent(
         &self,
         subject: Subject,
         locale: String,
         path: String,
         #[zbus(header)] header: zbus::message::Header<'_>,
     ) -> zbus::fdo::Result<()> {
-        let session =
-            subject.1.get("session-id").and_then(|v| String::try_from(v.try_clone().ok()?).ok()).unwrap_or_default();
-        assert_eq!(subject.0, "unix-session");
-        let mut log = self.log.lock().unwrap();
-        log.attempts += 1;
-        if log.reject > 0 {
-            log.reject -= 1;
-            return Err(zbus::fdo::Error::Failed("temporarily unavailable".into()));
+        let delay_reply = {
+            let mut log = self.log.lock().unwrap();
+            log.attempts += 1;
+            if log.failures > 0 {
+                log.failures -= 1;
+                return Err(zbus::fdo::Error::Failed("Authority not ready".into()));
+            }
+            if log.owner.is_some() {
+                return Err(zbus::fdo::Error::Failed("An authentication agent is already registered".into()));
+            }
+            let session = subject
+                .1
+                .get("session-id")
+                .and_then(|v| String::try_from(v.try_clone().ok()?).ok())
+                .unwrap_or_default();
+            assert_eq!(subject.0, "unix-session");
+            log.owner = header.sender().map(ToString::to_string);
+            log.agents.push((session, locale, path));
+            let delay = log.lost_replies > 0;
+            log.lost_replies = log.lost_replies.saturating_sub(1);
+            delay
+        };
+        if delay_reply {
+            // Registration succeeded, but the caller times out before the reply.
+            async_io::Timer::after(std::time::Duration::from_secs(3)).await;
         }
-        if log.active.is_some() {
-            return Err(zbus::fdo::Error::Failed("an agent is already registered".into()));
-        }
-        log.active = Some(header.sender().unwrap().to_string());
-        log.agents.push((session, locale, path));
         Ok(())
     }
     fn unregister_authentication_agent(
@@ -60,12 +74,43 @@ impl Authority {
         _subject: Subject,
         _path: String,
         #[zbus(header)] header: zbus::message::Header<'_>,
-    ) {
+    ) -> zbus::fdo::Result<()> {
         let mut log = self.log.lock().unwrap();
-        assert_eq!(log.active.as_deref(), header.sender().map(|s| s.as_str()));
-        log.active = None;
+        if log.unregister_failures > 0 {
+            log.unregister_failures -= 1;
+            return Err(zbus::fdo::Error::Failed("Authority temporarily unavailable".into()));
+        }
+        if log.owner.as_deref() != header.sender().map(|s| s.as_str()) {
+            return Err(zbus::fdo::Error::Failed("Not this caller's registration".into()));
+        }
+        log.owner = None;
         log.unregistered += 1;
+        Ok(())
     }
+}
+
+#[test]
+fn a_lost_registration_reply_does_not_block_retries() {
+    let bus = test_bus!();
+    let (_authority, log) = serve_polkitd(&bus);
+    log.lock().unwrap().lost_replies = 1;
+    // Recovery must also survive a failed cleanup of that uncertain registration.
+    log.lock().unwrap().unregister_failures = 1;
+    let agent = PolkitAgent::register_with(bus.bus(), "7".into(), Helper::Program("/unused".into()), |_| {}).unwrap();
+    assert!(eventually(|| log.lock().unwrap().agents.len() == 2));
+    assert_eq!(log.lock().unwrap().unregistered, 1);
+    drop(agent);
+    assert_eq!(log.lock().unwrap().unregistered, 2);
+}
+
+#[test]
+fn a_disconnected_bus_stops_the_registration_worker() {
+    let bus = test_bus!();
+    let (_authority, log) = serve_polkitd(&bus);
+    let agent = PolkitAgent::register_with(bus.bus(), "7".into(), Helper::Program("/unused".into()), |_| {}).unwrap();
+    assert!(eventually(|| log.lock().unwrap().agents.len() == 1));
+    drop(bus);
+    assert!(eventually(|| !agent.is_running()));
 }
 
 /// A directory with a helper script that wants the password "secret".
@@ -192,7 +237,7 @@ fn the_conversation_retries_after_a_wrong_password() {
         answering_ui(vec!["wrong", "secret"], events.clone()),
     )
     .unwrap();
-    assert_eq!(log.lock().unwrap().agents.len(), 1);
+    assert!(eventually(|| log.lock().unwrap().agents.len() == 1));
     begin(&polkitd, &agent_name, "cookie-42").unwrap();
     let log_lines = events.lock().unwrap().clone();
     let user = log_lines.iter().find_map(|l| l.strip_prefix("info Authenticating ")).unwrap().to_owned();
@@ -223,7 +268,7 @@ fn dismissing_the_dialog_cancels() {
         eprintln!("skipping: no passwd entry for this uid");
         return;
     }
-    let (polkitd, _log) = serve_polkitd(&bus);
+    let (polkitd, log) = serve_polkitd(&bus);
     let script = helper_script();
     let events = Arc::new(Mutex::new(Vec::new()));
     let agent_bus = bus.bus();
@@ -235,6 +280,7 @@ fn dismissing_the_dialog_cancels() {
         answering_ui(vec!["cancel"], events.clone()),
     )
     .unwrap();
+    assert!(eventually(|| log.lock().unwrap().agents.len() == 1));
     let result = begin(&polkitd, &agent_name, "cookie-7");
     match result {
         Err(zbus::Error::MethodError(name, _, _)) => {
@@ -253,7 +299,7 @@ fn polkitd_can_cancel_and_the_socket_helper_works() {
         eprintln!("skipping: no passwd entry for this uid");
         return;
     }
-    let (polkitd, _log) = serve_polkitd(&bus);
+    let (polkitd, log) = serve_polkitd(&bus);
     // A socket-activated helper of our own.
     let dir = std::env::temp_dir().join(format!("aizome-sys-polkit-sock-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
@@ -302,6 +348,7 @@ fn polkitd_can_cancel_and_the_socket_helper_works() {
         answering_ui(vec!["secret", "wait"], events.clone()),
     )
     .unwrap();
+    assert!(eventually(|| log.lock().unwrap().agents.len() == 1));
     begin(&polkitd, &agent_name, "cookie-a").unwrap();
     {
         let got = received.lock().unwrap();
@@ -333,95 +380,130 @@ fn polkitd_can_cancel_and_the_socket_helper_works() {
 }
 
 #[test]
-fn registers_after_delayed_start_and_recovers_repeated_authority_restarts() {
+fn restarts_cancel_old_prompts_and_authenticate_with_the_new_authority() {
     let bus = test_bus!();
+    assert!(has_passwd_entry(), "the authentication test needs a passwd entry");
+    let (old, old_log) = serve_polkitd(&bus);
     let script = helper_script();
     let events = Arc::new(Mutex::new(Vec::new()));
     let agent_bus = bus.bus();
     let agent_name = agent_bus.unique_name().unwrap();
     let agent = PolkitAgent::register_with(
-        agent_bus,
+        agent_bus.clone(),
         "7".into(),
         Helper::Program(script.clone()),
-        answering_ui(vec!["secret", "secret", "secret"], events.clone()),
+        answering_ui(vec!["wait", "secret", "secret"], events.clone()),
     )
     .unwrap();
-    assert!(!agent.is_registered());
-    for i in 0..3 {
-        let (authority, log) = serve_polkitd(&bus);
-        assert!(eventually(|| agent.is_registered() && log.lock().unwrap().agents.len() == 1));
-        if has_passwd_entry() {
-            begin(&authority, &agent_name, &format!("cookie-{i}")).unwrap();
-        }
-        authority.release_name("org.freedesktop.PolicyKit1").unwrap();
-        assert!(eventually(|| !agent.is_registered()));
-    }
+    assert!(eventually(|| old_log.lock().unwrap().agents.len() == 1));
+    let call = std::thread::spawn({
+        let old = old.clone();
+        let agent_name = agent_name.clone();
+        move || begin(&old, &agent_name, "reused-cookie")
+    });
+    assert!(eventually(|| events.lock().unwrap().iter().any(|e| e.starts_with("prompt"))));
+
+    // Leave the old connection alive so a stale call can still arrive.
+    old.release_name("org.freedesktop.PolicyKit1").unwrap();
+    assert!(eventually(|| events.lock().unwrap().last().is_some_and(|e| e == "done false")));
+    assert!(call.join().unwrap().is_err());
+    let (new, new_log) = serve_polkitd(&bus);
+    assert!(eventually(|| new_log.lock().unwrap().agents.len() == 1));
+    assert_eq!(events.lock().unwrap().last().unwrap(), "done false");
+    let before = events.lock().unwrap().len();
+    assert!(begin(&old, &agent_name, "stale-cookie").is_err());
+    assert_eq!(events.lock().unwrap().len(), before, "the old daemon cannot open prompts");
+    begin(&new, &agent_name, "reused-cookie").unwrap();
+    assert_eq!(events.lock().unwrap().last().unwrap(), "done true");
+
+    // More than one restart must work without replacing the agent.
+    new.release_name("org.freedesktop.PolicyKit1").unwrap();
+    let (third, third_log) = serve_polkitd(&bus);
+    assert!(eventually(|| third_log.lock().unwrap().agents.len() == 1));
+    begin(&third, &agent_name, "third-cookie").unwrap();
     drop(agent);
-    let (_authority, log) = serve_polkitd(&bus);
-    std::thread::sleep(std::time::Duration::from_millis(300));
-    assert_eq!(log.lock().unwrap().attempts, 0, "dropped agents must never register again");
+    assert_eq!(old_log.lock().unwrap().unregistered, 0);
+    assert_eq!(new_log.lock().unwrap().unregistered, 0);
+    assert_eq!(third_log.lock().unwrap().unregistered, 1);
+    assert!(begin(&third, &agent_name, "after-drop").is_err());
     std::fs::remove_dir_all(script.parent().unwrap()).unwrap();
 }
 
 #[test]
-fn retries_transient_failures_and_takes_over_from_a_retiring_shell() {
+fn an_absent_authority_and_a_temporary_registration_failure_recover() {
     let bus = test_bus!();
-    let (_authority, log) = serve_polkitd(&bus);
-    log.lock().unwrap().reject = 2;
-    let helper = Helper::Program("/unused".into());
-    let old = PolkitAgent::register_with(bus.bus(), "7".into(), helper.clone(), |_| {}).unwrap();
-    assert!(eventually(|| old.is_registered()));
-    let next = PolkitAgent::register_with(bus.bus(), "7".into(), helper, |_| {}).unwrap();
-    assert!(!next.is_registered());
-    drop(old);
-    assert!(eventually(|| next.is_registered()));
+    let agent = PolkitAgent::register_with(bus.bus(), "7".into(), Helper::Program("/unused".into()), |_| {}).unwrap();
+    let log = Arc::new(Mutex::new(Registrations { failures: 1, ..Default::default() }));
+    let polkitd = bus
+        .builder()
+        .name("org.freedesktop.PolicyKit1")
+        .unwrap()
+        .serve_at("/org/freedesktop/PolicyKit1/Authority", Authority { log: log.clone() })
+        .unwrap()
+        .build()
+        .unwrap();
+    assert!(eventually(|| log.lock().unwrap().agents.len() == 1));
+    assert_eq!(log.lock().unwrap().attempts, 2);
+    drop(agent);
+    assert_eq!(log.lock().unwrap().unregistered, 1);
+    // No stopped worker may register again with a replacement daemon.
+    polkitd.release_name("org.freedesktop.PolicyKit1").unwrap();
+    let (_new, new_log) = serve_polkitd(&bus);
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    assert_eq!(new_log.lock().unwrap().attempts, 0);
+}
+
+#[test]
+fn shell_handover_waits_for_the_previous_agent_and_duplicate_handles_are_safe() {
+    let bus = test_bus!();
+    let (_polkitd, log) = serve_polkitd(&bus);
+    let first_bus = bus.bus();
+    let first =
+        PolkitAgent::register_with(first_bus.clone(), "7".into(), Helper::Program("/unused".into()), |_| {}).unwrap();
+    assert!(eventually(|| log.lock().unwrap().agents.len() == 1));
+    assert!(PolkitAgent::register_with(first_bus, "7".into(), Helper::Program("/unused".into()), |_| {},).is_err());
+    let second_bus = bus.bus();
+    let second_name = second_bus.unique_name().unwrap();
+    let second = PolkitAgent::register_with(second_bus, "7".into(), Helper::Program("/unused".into()), |_| {}).unwrap();
+    assert!(eventually(|| log.lock().unwrap().attempts == 2));
+    assert_eq!(log.lock().unwrap().agents.len(), 1);
+    assert_eq!(log.lock().unwrap().unregistered, 0);
+    drop(first);
+    assert!(eventually(|| log.lock().unwrap().owner.as_deref() == Some(second_name.as_str())));
+    drop(second);
     assert_eq!(log.lock().unwrap().agents.len(), 2);
-    drop(next);
     assert_eq!(log.lock().unwrap().unregistered, 2);
 }
 
 #[test]
-fn authority_loss_closes_an_open_dialog_and_allows_a_new_conversation() {
+fn dropping_the_handle_cancels_a_pending_prompt_and_releases_the_object() {
     let bus = test_bus!();
-    if !has_passwd_entry() {
-        return;
-    }
-    let (authority, _log) = serve_polkitd(&bus);
+    assert!(has_passwd_entry(), "the authentication test needs a passwd entry");
+    let (polkitd, log) = serve_polkitd(&bus);
     let script = helper_script();
     let events = Arc::new(Mutex::new(Vec::new()));
     let agent_bus = bus.bus();
     let agent_name = agent_bus.unique_name().unwrap();
     let agent = PolkitAgent::register_with(
-        agent_bus,
+        agent_bus.clone(),
         "7".into(),
         Helper::Program(script.clone()),
-        answering_ui(vec!["wait", "secret"], events.clone()),
+        answering_ui(vec!["wait"], events.clone()),
     )
     .unwrap();
-    let pending = std::thread::spawn({
-        let authority = authority.clone();
-        let agent_name = agent_name.clone();
-        move || begin(&authority, &agent_name, "lost-cookie")
+    assert!(eventually(|| log.lock().unwrap().agents.len() == 1));
+    let call = std::thread::spawn({
+        let polkitd = polkitd.clone();
+        move || begin(&polkitd, &agent_name, "pending")
     });
     assert!(eventually(|| events.lock().unwrap().iter().any(|e| e.starts_with("prompt"))));
-    authority.release_name("org.freedesktop.PolicyKit1").unwrap();
-    assert!(eventually(|| events.lock().unwrap().contains(&"done false".to_owned())));
-    assert!(pending.join().unwrap().is_err());
-    let (replacement, log) = serve_polkitd(&bus);
-    assert!(eventually(|| agent.is_registered() && log.lock().unwrap().agents.len() == 1));
-    begin(&replacement, &agent_name, "fresh-cookie").unwrap();
-    assert!(events.lock().unwrap().contains(&"done true".to_owned()));
     drop(agent);
+    assert!(call.join().unwrap().is_err());
+    assert_eq!(events.lock().unwrap().last().unwrap(), "done false");
+    assert_eq!(log.lock().unwrap().unregistered, 1);
+    // The shared connection stays open; a new handle may reuse its path.
+    let next = PolkitAgent::register_with(agent_bus, "7".into(), Helper::Program(script.clone()), |_| {}).unwrap();
+    assert!(eventually(|| log.lock().unwrap().agents.len() == 2));
+    drop(next);
     std::fs::remove_dir_all(script.parent().unwrap()).unwrap();
-}
-
-#[test]
-fn a_disconnected_bus_stops_the_registration_worker() {
-    let bus = test_bus!();
-    let (_authority, _) = serve_polkitd(&bus);
-    let agent = PolkitAgent::register_with(bus.bus(), "7".into(), Helper::Program("/unused".into()), |_| {}).unwrap();
-    assert!(agent.is_running());
-    drop(bus);
-    assert!(eventually(|| !agent.is_running()));
-    assert!(!agent.is_registered());
 }

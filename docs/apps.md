@@ -226,8 +226,8 @@ As built: the helper is the program Sekka's polkit action
 `io.github.bitemyapp.Yukimi.change-system` names (its
 `org.freedesktop.policykit.exec.path`, read from the installed policy), run
 through `/run/wrappers/bin/pkexec --disable-internal-agent` with the GTK
-Yukimi's helper arguments, so it
-needs `programs.yukimi.enable` (Sekka sets it on every desktop) and nothing
+Yukimi's helper arguments, so it needs `programs.yukimi.enable` (Sekka sets
+it on every desktop) and nothing
 of Aizome's. Its cache is `~/.cache/aizome/yukimi`, reading the GTK
 Yukimi's package index and last check from `~/.cache/yukimi` until it has
 its own. `aizome-yukimi --sample` shows a sample system;
@@ -244,7 +244,8 @@ the helper's report without inventing a successful rollback.
 `nix build .#checks.x86_64-linux.polkit-recovery` exercises real Yukimi,
 polkit and PAM through two prebuilt system activations that change the
 package profile, then shell replacement, an interrupted password dialog,
-and retrying after a sustained agent outage. The fixture substitutes prebuilt profiles for Nix evaluation/building.
+and retrying after a sustained agent outage. The fixture substitutes
+prebuilt profiles for Nix evaluation/building.
 
 Beyond the GTK Yukimi, it changes what used to take typing `sudo` commands:
 
@@ -508,6 +509,58 @@ Port Tatami's Activity (`desktop/tatami/activity` on Sekka's main): apps
 and processes with CPU, memory, energy, disk and GPU use; sorting, search,
 quit and force quit; graphs of CPU, memory, disk and network over time; the
 inspector for a process. Through `aizome-sys::sysinfo`.
+
+GPU readings use DRM statistics for AMD/Intel and NVML for NVIDIA (loaded
+at runtime, with no NVIDIA dependency on other machines). NVIDIA graphics and
+compute process lists are merged by PID without counting their memory twice;
+card totals come directly from the driver. The newer NVML memory query separates
+driver-reserved memory from allocations, matching `nvidia-smi`'s used figure;
+the fallback for older drivers includes reservations. Unavailable counters show
+a dash rather than zero. amdgpu leaves out the engines a client hasn't used,
+so an amdgpu client listing none is idle, not unknown (the compositor's idle
+context on an integrated Radeon, for one).
+
+Across cards, % GPU and % Video are the busiest card's, as their column says:
+each card's figure is a share of its own engines, so 18% of an integrated
+Radeon and 2% of an RTX 5090 are not 20% of anything. Video memory adds up.
+Shared GPU (system memory mapped through DRM's GTT) adds up from the cards
+that report it; NVML has no such figure, so the column leaves when only
+NVIDIA cards are shown. Most clients are idle at any moment, so at the same
+% GPU or % Video the memory held decides: a browser holding 800 MiB comes
+before the hundreds of processes that use no card.
+
+In the GPU lens, each card's graph takes a place in the strip along the
+bottom, Network's first, then Disk's: how busy it is (violet) and how full
+its memory (cyan), over two minutes, with used and total memory above. The
+discrete cards come first. With several cards, the table gains a **Card**
+column saying which each application uses ("GeForce RTX 5090", "Both"), and
+the table can show one card alone: from the toolbar's pop-up beside
+Applications, from View ▸ GPUs (which opens the GPU lens from any other), or
+by pressing the card's graph (again for every card). The card shown is
+framed in the focus colour, as Tansu frames the partition selected; a
+graph under the pointer is framed faintly. With one card shown, the table
+lists its clients, idle ones holding memory included, with their use of
+that card alone; applications on several cards say how many of their
+processes use it ("1 of 14 processes"); the status line counts its clients
+and gives its clock, temperature and power. The other lenses always show
+every card's use, and the inspector gives the selection's use of each card
+it uses whichever is shown. The choice follows the card's PCI address
+across readings. Cards are named without their maker or codename ("Radeon
+Graphics" for "AMD Radeon Graphics (Granite Ridge)"); alike cards add their
+bus ("GeForce RTX 4090 · 41:00"), as Myaku's numbering of them would not
+match `nvidia-smi`'s.
+`aizome-myaku --print` also includes card and application video-memory usage.
+
+`cargo test -p aizome-myaku --test gpu` drives the choice from the toolbar,
+the strip and the menu on a made-up desktop with both cards
+(`fixture::workstation`), and covers figures across cards, other lenses,
+cards renumbered or gone, what can't be read, one card and five, and the
+smallest window; `--test look` holds its pictures in Night and Day, and
+`--test perf` a reading with one card shown (1.2 ms at the median, release,
+600 processes). On a machine with NVIDIA compute clients running, `cargo
+test -p aizome-myaku --test gpu live_ -- --ignored --nocapture` compares the
+sampler with `nvidia-smi` (allowing allocations to change between readings)
+and checks that idle amdgpu clients read as idle.
 
 ### Shashin (Images)
 

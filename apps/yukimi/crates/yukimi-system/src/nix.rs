@@ -131,32 +131,51 @@ pub fn stream_command(
     };
     let stdout = child.stdout.take().expect("piped");
     let reader = std::thread::spawn(move || {
-        let mut out = String::new();
-        let _ = std::io::Read::read_to_string(&mut BufReader::new(stdout), &mut out);
-        out
+        let mut out = Vec::new();
+        std::io::Read::read_to_end(&mut BufReader::new(stdout), &mut out)?;
+        Ok::<_, std::io::Error>(String::from_utf8_lossy(&out).into_owned())
     });
     let mut progress = Progress::default();
     let mut stderr = Some(String::new());
-    for line in BufReader::new(child.stderr.take().expect("piped")).lines().map_while(|l| l.ok()) {
+    let mut errors = BufReader::new(child.stderr.take().expect("piped"));
+    let mut bytes = Vec::new();
+    loop {
+        bytes.clear();
+        match errors.read_until(b'\n', &mut bytes) {
+            Ok(0) => break,
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(_) => {
+                // A partial diagnostic cannot establish that pkexec failed
+                // before the helper started. Still reap the child below.
+                stderr = None;
+                break;
+            }
+        }
         if let Some(text) = &mut stderr {
-            if text.len() + line.len() < 8192 {
-                text.push_str(&line);
-                text.push('\n');
+            if text.len() + bytes.len() < 8192
+                && let Ok(line) = std::str::from_utf8(&bytes)
+            {
+                text.push_str(line);
             } else {
                 stderr = None;
             }
         }
-        if progress.feed(&line) {
+        if progress.feed(String::from_utf8_lossy(&bytes).trim_end_matches(['\r', '\n'])) {
             update(&progress);
         }
     }
+    drop(errors);
     let status = child.wait().map_err(|e| Error::Spawn("nix".into(), e))?;
     {
         let mut state = stop.0.lock().unwrap_or_else(|p| p.into_inner());
         state.pid = None;
         state.stdin = None;
     }
-    let out = reader.join().unwrap_or_default();
+    let out = reader
+        .join()
+        .map_err(|_| Error::Failed("The command's output reader stopped unexpectedly".into()))?
+        .map_err(|error| Error::Failed(format!("The command's output could not be read: {error}")))?;
     if !status.success() {
         let message = progress
             .errors()
