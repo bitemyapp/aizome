@@ -38,21 +38,23 @@
 //! ```
 //!
 //! Needs polkit (`security.polkit.enable`, on by default). Only one agent
-//! can serve a session: register fails while another one (a different
-//! desktop's) has it.
+//! can serve a session. The handle follows polkit's bus owner, registers
+//! again after a restart, and retries while another shell still owns the
+//! session. Losing the owner cancels its pending conversations.
 
-use crate::bus::{Bus, Opts, value_u64};
+use crate::bus::{Bus, Opts, value_u64, with_timeout};
 use crate::error::{Error, Result};
 use crate::oneshot;
 use crate::service::lock;
+use futures_lite::StreamExt;
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 use zbus::zvariant::{OwnedValue, Value};
 
 const POLKIT: &str = "org.freedesktop.PolicyKit1";
@@ -526,7 +528,36 @@ fn identities(raw: &[(String, HashMap<String, OwnedValue>)]) -> Vec<Identity> {
 struct Agent {
     ui: Ui,
     helper: Helper,
-    sessions: Arc<Mutex<HashMap<String, Arc<Session>>>>,
+    state: Arc<Mutex<AgentState>>,
+}
+
+#[derive(Default)]
+struct AgentState {
+    owner: Option<String>,
+    sessions: HashMap<String, Arc<Session>>,
+}
+
+impl AgentState {
+    fn check_sender(&self, header: &zbus::message::Header<'_>) -> Result<(), PolkitError> {
+        if self.owner.as_deref().is_some_and(|owner| header.sender().is_some_and(|sender| sender == owner)) {
+            Ok(())
+        } else {
+            Err(PolkitError::Failed("The caller is not the current polkit authority".into()))
+        }
+    }
+}
+
+/// Close old dialogs before allowing requests from a new authority.
+fn change_owner(state: &Mutex<AgentState>, owner: Option<String>) {
+    let sessions = {
+        let mut state = lock(state);
+        state.owner = None;
+        std::mem::take(&mut state.sessions)
+    };
+    for session in sessions.into_values() {
+        session.finish(false);
+    }
+    lock(state).owner = owner;
 }
 
 #[derive(Debug, zbus::DBusError)]
@@ -546,6 +577,7 @@ impl Agent {
         details: HashMap<String, String>,
         cookie: String,
         identities_raw: Vec<(String, HashMap<String, OwnedValue>)>,
+        #[zbus(header)] header: zbus::message::Header<'_>,
     ) -> Result<(), PolkitError> {
         let people = identities(&identities_raw);
         if people.is_empty() {
@@ -558,26 +590,44 @@ impl Agent {
             helper: self.helper.clone(),
             inner: Mutex::new(SessionInner { reply: Some(tx), conversation: None, generation: 0 }),
         });
-        lock(&self.sessions).insert(cookie.clone(), session.clone());
-        (self.ui)(AuthEvent::Begin(AuthRequest {
-            cookie: cookie.clone(),
-            action_id,
-            message,
-            icon_name,
-            details,
-            identities: people,
-            session,
-        }));
+        {
+            let mut state = lock(&self.state);
+            state.check_sender(&header)?;
+            if state.sessions.contains_key(&cookie) {
+                return Err(PolkitError::Failed("An authentication with this cookie is already pending".into()));
+            }
+            state.sessions.insert(cookie.clone(), session.clone());
+            (self.ui)(AuthEvent::Begin(AuthRequest {
+                cookie: cookie.clone(),
+                action_id,
+                message,
+                icon_name,
+                details,
+                identities: people,
+                session: session.clone(),
+            }));
+        }
         let authorized = rx.await;
-        lock(&self.sessions).remove(&cookie);
+        let mut state = lock(&self.state);
+        if state.sessions.get(&cookie).is_some_and(|current| Arc::ptr_eq(current, &session)) {
+            state.sessions.remove(&cookie);
+        }
         match authorized {
             Some(true) => Ok(()),
             _ => Err(PolkitError::Cancelled("Authentication was cancelled".into())),
         }
     }
 
-    fn cancel_authentication(&self, cookie: String) -> Result<(), PolkitError> {
-        let session = lock(&self.sessions).get(&cookie).cloned();
+    fn cancel_authentication(
+        &self,
+        cookie: String,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+    ) -> Result<(), PolkitError> {
+        let session = {
+            let state = lock(&self.state);
+            state.check_sender(&header)?;
+            state.sessions.get(&cookie).cloned()
+        };
         match session {
             Some(session) => {
                 session.finish(false);
@@ -588,17 +638,25 @@ impl Agent {
     }
 }
 
-/// The registered agent; unregistered when dropped.
+/// A session's agent and its registration worker. Dropping it stops the
+/// worker, cancels pending prompts, and unregisters from its authority.
 pub struct PolkitAgent {
-    bus: Bus,
-    session_id: String,
+    stop: Option<oneshot::Sender<()>>,
+    worker: Option<std::thread::JoinHandle<()>>,
 }
 
-static AGENTS: AtomicU64 = AtomicU64::new(0);
+impl std::fmt::Debug for PolkitAgent {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PolkitAgent").finish_non_exhaustive()
+    }
+}
+
+const REGISTER_RETRY: Duration = Duration::from_secs(2);
 
 impl PolkitAgent {
-    /// Serve the agent on the system bus for this login session, with the
-    /// helper found on this system, handing events to `ui`.
+    /// Serve the agent for this login session and keep it registered.
+    /// Registration is asynchronous: an absent or restarting polkit, or
+    /// a previous shell still registered, does not disable this agent.
     pub fn register(ui: impl Fn(AuthEvent) + Send + Sync + 'static) -> Result<PolkitAgent> {
         let bus = Bus::system()?;
         let helper = Helper::find().ok_or_else(|| Error::Unavailable("polkit's agent helper".into()))?;
@@ -606,58 +664,137 @@ impl PolkitAgent {
         PolkitAgent::register_with(bus, session_id, helper, ui)
     }
 
-    /// Serve the agent on `bus` for the login session `session_id`, using
-    /// `helper`.
+    /// Serve and maintain the agent on `bus` for `session_id`, using `helper`.
     pub fn register_with(
         bus: Bus,
         session_id: String,
         helper: Helper,
         ui: impl Fn(AuthEvent) + Send + Sync + 'static,
     ) -> Result<PolkitAgent> {
-        if AGENTS.fetch_add(1, Ordering::AcqRel) > 0 && bus_has_agent(&bus) {
-            AGENTS.fetch_sub(1, Ordering::AcqRel);
+        // Subscribe before querying the owner or registering. The stream
+        // owns its match rule and releases it when the worker stops.
+        let rule = zbus::MatchRule::builder()
+            .msg_type(zbus::message::Type::Signal)
+            .sender("org.freedesktop.DBus")?
+            .interface("org.freedesktop.DBus")?
+            .member("NameOwnerChanged")?
+            .add_arg(POLKIT)?
+            .build();
+        let changes = zbus::block_on(with_timeout(
+            crate::bus::TIMEOUT,
+            zbus::MessageStream::for_match_rule(rule, bus.connection(), Some(64)),
+        ))
+        .ok_or(Error::Timeout)??;
+        let state = Arc::new(Mutex::new(AgentState::default()));
+        let agent = Agent { ui: Arc::new(ui), helper, state: state.clone() };
+        // ObjectServer::at atomically refuses an existing interface; a
+        // second handle must never remove the first one's served object.
+        if !zbus::block_on(bus.connection().object_server().at(AGENT_PATH, agent))? {
             return Err(Error::InvalidArgument("an agent is already registered on this connection".into()));
         }
-        let agent = Agent { ui: Arc::new(ui), helper, sessions: Arc::default() };
-        let conn = bus.connection().clone();
-        let served = zbus::block_on(async { conn.object_server().at(AGENT_PATH, agent).await });
-        if let Err(error) = served {
-            AGENTS.fetch_sub(1, Ordering::AcqRel);
-            return Err(error.into());
-        }
         if let Err(error) = crate::bus::wait_until_serving(&bus, AGENT_PATH) {
-            let _ = zbus::block_on(async { conn.object_server().remove::<Agent, _>(AGENT_PATH).await });
-            AGENTS.fetch_sub(1, Ordering::AcqRel);
+            let _ = zbus::block_on(bus.connection().object_server().remove::<Agent, _>(AGENT_PATH));
             return Err(error);
         }
-        let locale = std::env::var("LC_ALL")
-            .or_else(|_| std::env::var("LC_MESSAGES"))
-            .or_else(|_| std::env::var("LANG"))
-            .unwrap_or_else(|_| "C".into());
-        let registered = bus.call_with::<_, ()>(
-            Opts::QUERY,
-            POLKIT,
-            AUTHORITY_PATH,
-            IFACE_AUTHORITY,
-            "RegisterAuthenticationAgent",
-            &(subject(&session_id), locale, AGENT_PATH),
-        );
-        if let Err(error) = registered {
-            let _ = zbus::block_on(async { conn.object_server().remove::<Agent, _>(AGENT_PATH).await });
-            AGENTS.fetch_sub(1, Ordering::AcqRel);
-            return Err(match error {
-                Error::DBus { name, message } if name.ends_with("Failed") && message.contains("already") => {
-                    Error::Unavailable(format!("another authentication agent serves this session: {message}"))
-                }
-                other => other,
-            });
+        let (stop, stopped) = oneshot::channel();
+        let worker_bus = bus.clone();
+        let worker = std::thread::Builder::new()
+            .name("aizome-sys polkit registration".into())
+            .spawn(move || maintain(worker_bus, session_id, state, changes, stopped));
+        match worker {
+            Ok(worker) => Ok(PolkitAgent { stop: Some(stop), worker: Some(worker) }),
+            Err(error) => {
+                let _ = zbus::block_on(bus.connection().object_server().remove::<Agent, _>(AGENT_PATH));
+                Err(error.into())
+            }
         }
-        Ok(PolkitAgent { bus, session_id })
     }
 }
 
-fn bus_has_agent(bus: &Bus) -> bool {
-    zbus::block_on(async { bus.connection().object_server().interface::<_, Agent>(AGENT_PATH).await.is_ok() })
+fn maintain(
+    bus: Bus,
+    session_id: String,
+    state: Arc<Mutex<AgentState>>,
+    mut changes: zbus::MessageStream,
+    mut stopped: oneshot::Receiver<()>,
+) {
+    let locale = std::env::var("LC_ALL")
+        .or_else(|_| std::env::var("LC_MESSAGES"))
+        .or_else(|_| std::env::var("LANG"))
+        .unwrap_or_else(|_| "C".into());
+    let mut owner = bus.owner(POLKIT);
+    change_owner(&state, owner.clone());
+    let mut registered = false;
+    let mut warned = false;
+    loop {
+        if let Some(dest) = owner.as_deref().filter(|_| !registered) {
+            // Bind the call to this daemon, not the well-known name: a
+            // reply or cleanup must never affect its replacement.
+            match bus.call_with::<_, ()>(
+                Opts::QUERY,
+                dest,
+                AUTHORITY_PATH,
+                IFACE_AUTHORITY,
+                "RegisterAuthenticationAgent",
+                &(subject(&session_id), &locale, AGENT_PATH),
+            ) {
+                Ok(()) => {
+                    registered = true;
+                    log::info!("aizome-sys: polkit agent registered");
+                }
+                Err(error) if !warned => {
+                    log::warn!("aizome-sys: polkit registration deferred: {error}");
+                    warned = true;
+                }
+                Err(_) => {}
+            }
+        }
+        enum Next {
+            Stop,
+            Changed,
+            Retry,
+        }
+        let next = zbus::block_on(futures_lite::future::or(
+            async {
+                (&mut stopped).await;
+                Next::Stop
+            },
+            async {
+                let next = async {
+                    match changes.next().await {
+                        Some(Ok(_)) => Next::Changed,
+                        _ => Next::Stop,
+                    }
+                };
+                if !registered { with_timeout(REGISTER_RETRY, next).await.unwrap_or(Next::Retry) } else { next.await }
+            },
+        ));
+        match next {
+            Next::Stop => break,
+            Next::Retry | Next::Changed => {
+                // Reconcile queued signals with the current owner. An
+                // initial snapshot can already include a queued change.
+                let current = bus.owner(POLKIT);
+                if current != owner {
+                    change_owner(&state, current.clone());
+                    owner = current;
+                    registered = false;
+                    warned = false;
+                }
+            }
+        }
+    }
+    change_owner(&state, None);
+    if registered && let Some(owner) = owner {
+        let _ = bus.call::<_, ()>(
+            &owner,
+            AUTHORITY_PATH,
+            IFACE_AUTHORITY,
+            "UnregisterAuthenticationAgent",
+            &(subject(&session_id), AGENT_PATH),
+        );
+    }
+    let _ = zbus::block_on(bus.connection().object_server().remove::<Agent, _>(AGENT_PATH));
 }
 
 /// polkit's subject for a login session.
@@ -667,16 +804,12 @@ fn subject(session_id: &str) -> (&'static str, HashMap<&'static str, Value<'_>>)
 
 impl Drop for PolkitAgent {
     fn drop(&mut self) {
-        let _ = self.bus.call::<_, ()>(
-            POLKIT,
-            AUTHORITY_PATH,
-            IFACE_AUTHORITY,
-            "UnregisterAuthenticationAgent",
-            &(subject(&self.session_id), AGENT_PATH),
-        );
-        let conn = self.bus.connection().clone();
-        let _ = zbus::block_on(async move { conn.object_server().remove::<Agent, _>(AGENT_PATH).await });
-        AGENTS.fetch_sub(1, Ordering::AcqRel);
+        if let Some(stop) = self.stop.take() {
+            stop.send(());
+        }
+        if let Some(worker) = self.worker.take() {
+            let _ = worker.join();
+        }
     }
 }
 

@@ -408,6 +408,17 @@ The polkit agent (`aizome-sys`) asks the shell: an overlay dialog with the
 mark, the action's message, the identity (a dropdown if several admins), a
 password field, Cancel and Authenticate, PAM's prompts and errors inline.
 
+The shell owns a `PolkitAgent` handle for its lifetime. The handle watches
+polkit's D-Bus owner before registering and registers again when the daemon
+restarts, including during a system update. Registration failures retry
+every two seconds; a healthy registration waits for owner changes without
+polling. This also lets a replacement shell wait for the previous shell to
+release its registration. Losing the authority cancels its pending dialogs
+and helper conversations; requests from the old authority are rejected.
+Dropping the handle stops the worker and unregisters from that specific
+authority. The private-bus tests in `aizome-sys/tests/polkit.rs` exercise
+restarts, interrupted authentication, deferred registration and handover.
+
 ## Real and headless sessions
 
 Only the machine's Aizome session registers as polkit's agent, takes
