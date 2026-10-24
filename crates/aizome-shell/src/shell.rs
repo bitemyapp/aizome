@@ -350,6 +350,7 @@ pub struct Shell {
     _settings_watch: Option<aizome_config::Watcher>,
     _apps_watch: Option<aizome_sys::apps::Watcher>,
     _timedate: Option<aizome_sys::datetime::TimeDate>,
+    greeter_scales: Option<std::sync::mpsc::Sender<aizome_config::greeter::DisplayScales>>,
 }
 
 impl Shell {
@@ -454,6 +455,7 @@ impl Shell {
             _settings_watch: None,
             _apps_watch: None,
             _timedate: None,
+            greeter_scales: None,
         };
         s.read_settings();
         s.theme_day = s.settings.theme_now() == aizome_theme::ThemeName::Day;
@@ -1015,6 +1017,9 @@ impl Shell {
         if real_session() {
             let tx = tx.clone();
             crate::awake::watch(move |m| tx.send(m));
+            let scales = crate::greeter::start();
+            let _ = scales.send(aizome_config::greeter::DisplayScales::from_outputs(&self.settings.outputs));
+            self.greeter_scales = Some(scales);
         }
         {
             let tx = tx.clone();
@@ -1158,7 +1163,13 @@ impl Shell {
 
     fn reload_settings(&mut self) {
         if self.opts.live {
+            let old_outputs = self.settings.outputs.clone();
             self.settings = Settings::load_or_default();
+            if old_outputs != self.settings.outputs
+                && let Some(tx) = &self.greeter_scales
+            {
+                let _ = tx.send(aizome_config::greeter::DisplayScales::from_outputs(&self.settings.outputs));
+            }
         }
         self.read_settings();
         self.sync_power_key();
