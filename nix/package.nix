@@ -154,6 +154,9 @@ rustPlatform.buildRustPackage {
     rel=target/${target}/release
     lto=target/${target}/release-lto
     mkdir -p $out/bin $out/lib/aizome $out/share/aizome
+    install -Dm644 etc/org.aizome.DisplayScales.xml $out/share/dbus-1/interfaces/org.aizome.DisplayScales.xml
+    mkdir -p $out/share/accountsservice/interfaces
+    ln -s ../../dbus-1/interfaces/org.aizome.DisplayScales.xml $out/share/accountsservice/interfaces/org.aizome.DisplayScales.xml
     install -m755 $rel/aizome $out/bin/aizome
     # The core, the logic it loads, and the std they share.
     install -m644 $rel/libaizome_comp_core.so $rel/libaizome_comp_logic.so $out/lib/aizome/
