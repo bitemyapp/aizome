@@ -21,6 +21,7 @@ the Toolchest, the palette and the Deskbar show beside it and search by.
 | Myaku 脈 | Activity | `apps/myaku` | `aizome-myaku` | `org.aizome.Myaku` | pulse |
 | Shashin 写真 | Images | `apps/shashin` | `aizome-shashin` | `org.aizome.Shashin` | photograph |
 | Annai 案内 | Welcome | `apps/annai` | `aizome-annai` | `org.aizome.Annai` | guidance |
+| Koe 声 | Dictation | `apps/koe` | `aizome-koe` | `org.aizome.Koe` | voice |
 
 Also part of the session, not separate apps: the Toolchest, the command
 palette, notifications, the lock screen and the polkit dialog (all in
@@ -644,3 +645,29 @@ step; a "Show at login" checkbox.
 `$XDG_STATE_HOME/aizome/annai/state.json`. The session starts it through
 `apps/annai/data/org.aizome.Annai.Welcome.desktop`, an XDG autostart entry
 (`OnlyShowIn=Aizome`) installed into `/etc/xdg/autostart`.
+
+### Koe (Dictation)
+
+Speak, and the words are typed into the app in front: ❖⌥D to start and
+again to finish, recognised on this computer by Whisper (whisper.cpp,
+on the graphics card through Vulkan where there is one). Ported from Koe,
+its own repository until it joined Aizome; see `docs/koe.md`.
+
+As built: a window of two pages and a session service. **Dictation**
+sets everything up without a terminal: Download a Model and Turn On (Base,
+148 MB, checked against a pinned SHA-256; nothing is downloaded until
+asked), the switch (the service now and at each login, through the unit's
+`ExecCondition`, so it runs only for those who turned it on), the models
+(download, use, remove), language, translation, the graphics card, what
+happens to the words, finishing after a pause, and the shortcuts, which
+turning it on adds to `[keys.bindings]` when ❖⌥D and ❖⌥⎋ are free. With
+dictation off, the shortcut opens Koe. Settings are saved as they change
+in `$XDG_CONFIG_HOME/aizome/koe.toml`, and the service takes them up
+between dictations without restarting. **Vocabulary and Teaching** keeps
+packs of words (hints and approved corrections, shareable as `.koe.json`)
+and records reviewed examples for training later. The service
+(`aizome-koe daemon`) puts its microphone in the systray, pastes through
+the compositor's IPC after checking the focus and the lock, and keeps
+audio and transcripts in memory. `aizome-koe` also has the commands
+scripts and agents use (`record`, `status`, `watch`, `model`, `packs`,
+`words`, `examples`, `enable`, `disable`).

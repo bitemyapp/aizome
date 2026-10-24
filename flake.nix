@@ -113,6 +113,9 @@
         wallpaper-choice = import ./nix/vm-wallpaper-choice-test.nix { inherit pkgs self; };
         network-auth = import ./nix/vm-network-auth-test.nix { inherit pkgs self; };
         polkit-recovery = import ./nix/vm-polkit-recovery-test.nix { inherit pkgs self; };
+        # Koe set up from its window, and its service on, off and at the
+        # next start (nix/vm-koe-test.nix).
+        koe = import ./nix/vm-koe-test.nix { inherit pkgs self; };
       });
 
       devShells = forAll (pkgs: {
@@ -127,10 +130,15 @@
             pkg-config
             clang
             mold
+            # Koe's whisper.cpp, built by whisper-rs-sys.
+            cmake
           ];
           buildInputs = buildInputs pkgs;
           # dlopen'd at run time: EGL/GL drivers, fontconfig, xkbcommon.
           LD_LIBRARY_PATH = lib.makeLibraryPath (buildInputs pkgs);
+          # whisper-rs's own bindings, for the CPU build (the package's
+          # Vulkan build makes its own; nix/package.nix).
+          WHISPER_DONT_GENERATE_BINDINGS = "1";
           RUSTFLAGS = "-C link-arg=-fuse-ld=mold";
           # The compositor's core is a Rust dylib that needs -C prefer-dynamic
           # (docs/reload.md); the wrapper adds it for that crate alone.
