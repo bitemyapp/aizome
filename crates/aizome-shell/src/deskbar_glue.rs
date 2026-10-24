@@ -167,28 +167,16 @@ impl Shell {
 
     pub fn deskbar_msg(&mut self, m: DeskbarMsg, cx: &mut Cx<Msg>) {
         match m {
-            DeskbarMsg::FocusApp(app_id) => {
-                let hidden = self.wm.app_windows_by_recency(&app_id).iter().all(|w| w.hidden || w.minimised);
-                match self.wm.app_windows_by_recency(&app_id).first() {
-                    Some(w) if hidden => {
-                        let id = w.id;
-                        self.ipc.send(Request::ShowApp { app: crate::shell::app_sel(&app_id) });
-                        self.ipc.send(Request::Focus { id });
-                    }
-                    Some(w) => self.ipc.send(Request::Focus { id: w.id }),
-                    None => self.run(Action::Launch { app_id }, cx),
-                }
-            }
+            DeskbarMsg::FocusApp(app_id) => self.run(Action::FocusApp { app_id }, cx),
             DeskbarMsg::AppMenu(app_id, at) => {
                 let Some(k) = self.deskbar else { return };
-                let running = self.wm.is_running(&app_id);
+                let running = self.wm.app_window_to_activate(&app_id, self.apps.as_deref()).is_some();
                 let pinned = self.deskbar_cfg.pinned.contains(&app_id);
                 let menu = ShellMenu::new(
                     self.app_look(&app_id).0,
                     vec![
                         Entry::action("New Window", Action::NewWindow { app_id: app_id.clone() }),
-                        Entry::action("Hide", Action::Wm(Request::HideApp { app: crate::shell::app_sel(&app_id) }))
-                            .enabled(running),
+                        Entry::action("Hide", Action::HideApp { app_id: app_id.clone() }).enabled(running),
                         Entry::action("Quit", Action::QuitApp { app_id: app_id.clone() }).enabled(running),
                         Entry::separator(),
                         Entry::action("Keep in Deskbar", Action::Pin { app_id: app_id.clone(), on: !pinned })

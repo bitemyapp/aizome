@@ -775,17 +775,28 @@ impl Shell {
             },
             Action::Wm(req) => self.ipc.send(req),
             Action::QuitApp { app_id } => {
-                for w in self.wm.windows.values().filter(|w| w.app_id == app_id) {
+                for w in self.wm.app_windows_by_recency(&app_id, self.apps.as_deref()) {
                     self.ipc.send(Request::Close { id: Some(w.id) });
                 }
             }
-            Action::FocusApp { app_id } => match self.wm.app_windows_by_recency(&app_id).first() {
-                Some(w) => self.ipc.send(Request::Focus { id: w.id }),
-                None => self.launch(Launch::App { app_id, targets: vec![] }, cx),
-            },
-            Action::Launch { app_id } | Action::NewWindow { app_id } => {
-                self.launch(Launch::App { app_id, targets: vec![] }, cx)
+            Action::HideApp { app_id } => {
+                let ids: std::collections::BTreeSet<_> = self
+                    .wm
+                    .app_windows_by_recency(&app_id, self.apps.as_deref())
+                    .into_iter()
+                    .map(|w| w.app_id.as_str())
+                    .collect();
+                for id in ids {
+                    self.ipc.send(Request::HideApp { app: app_sel(id) });
+                }
             }
+            Action::Launch { app_id } | Action::FocusApp { app_id } => {
+                match self.wm.app_window_to_activate(&app_id, self.apps.as_deref()) {
+                    Some(w) => self.ipc.send(Request::Focus { id: w.id }),
+                    None => self.launch(Launch::App { app_id, targets: vec![] }, cx),
+                }
+            }
+            Action::NewWindow { app_id } => self.launch(Launch::App { app_id, targets: vec![] }, cx),
             Action::Spawn { argv } => self.launch(Launch::Argv(argv), cx),
             Action::Open { path } => {
                 let l = crate::launch::open_path(self.apps.as_deref(), &path);
@@ -1886,6 +1897,151 @@ impl Shell {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn app_identity_fixture() -> (aizome_kit::testing::Harness<Shell>, std::sync::mpsc::Receiver<(Request, Option<u64>)>)
+    {
+        use aizome_ipc::WindowInfo;
+        use aizome_sys::apps::{Locale, XdgDirs};
+        static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let root = std::env::temp_dir().join(format!("aizome-shell-identity-{}-{n}", std::process::id()));
+        let dirs = XdgDirs::rooted(&root);
+        let apps = dirs.data_home.join("applications");
+        std::fs::create_dir_all(&apps).unwrap();
+        std::fs::write(
+            apps.join("org.example.Editor.desktop"),
+            "[Desktop Entry]\nType=Application\nName=Editor\nExec=example-editor\nStartupWMClass=EditorWindow\n",
+        )
+        .unwrap();
+        let mut shell = Shell::new(Options::default());
+        shell.apps = Some(Arc::new(AppIndex::load_with(dirs, Locale::default())));
+        std::fs::remove_dir_all(root).unwrap();
+        shell.wm.reset(crate::wm::Snapshot {
+            current_desk: 1,
+            windows: ["org.example.Editor", "EditorWindow", "org.unrelated.Editor", "EditorWindow", "example-editor"]
+                .into_iter()
+                .enumerate()
+                .map(|(i, app)| WindowInfo {
+                    id: i as u64 + 1,
+                    app_id: app.into(),
+                    desk: Some(1),
+                    ..Default::default()
+                })
+                .collect(),
+            ..Default::default()
+        });
+        shell.wm.apply(&Event::WindowFocused { id: Some(2) });
+        shell.wm.apply(&Event::WindowFocused { id: Some(3) });
+        let (ipc, requests) = Ipc::recording();
+        shell.ipc = ipc;
+        (aizome_kit::testing::Harness::new(shell), requests)
+    }
+
+    #[test]
+    fn activation_and_quit_do_not_target_apps_with_similar_names() {
+        let (mut h, requests) = app_identity_fixture();
+        for app_id in ["org.example.Editor", "org.example.Editor.desktop", "editorwindow"] {
+            h.send(Msg::Run(Action::FocusApp { app_id: app_id.into() }));
+            assert_eq!(requests.try_recv().unwrap(), (Request::Focus { id: 2 }, None));
+            h.send(Msg::Run(Action::QuitApp { app_id: app_id.into() }));
+            let mut ids: Vec<_> = requests
+                .try_iter()
+                .map(|(req, _)| match req {
+                    Request::Close { id: Some(id) } => id,
+                    other => panic!("unexpected request: {other:?}"),
+                })
+                .collect();
+            ids.sort();
+            assert_eq!(ids, [1, 2, 4], "only the desktop ID and its explicit alias may be closed");
+        }
+        for (app_id, id) in [("org.unrelated.Editor", 3), ("example-editor", 5)] {
+            h.send(Msg::Run(Action::QuitApp { app_id: app_id.into() }));
+            assert_eq!(requests.try_recv().unwrap(), (Request::Close { id: Some(id) }, None));
+            assert!(requests.try_recv().is_err(), "unindexed apps still match their own exact ID");
+        }
+    }
+
+    #[test]
+    fn deskbar_hide_resolves_aliases_and_deduplicates_window_app_ids() {
+        use crate::deskbar::DeskbarMsg;
+        use aizome_kit::sidestep_ui::{Modifiers, NamedKey};
+        let (mut h, requests) = app_identity_fixture();
+        // Only the StartupWMClass alias is running; the pinned desktop ID
+        // must still offer Hide and send the ID the compositor recognizes.
+        h.program_mut().wm.apply(&Event::WindowClosed { id: 1 });
+        h.program_mut().deskbar_cfg.pinned = vec!["org.example.Editor".into()];
+        h.set_outputs(vec![Output {
+            id: 1,
+            name: "test".into(),
+            frame: Rect::new(0.0, 0.0, 1280.0, 800.0),
+            scale: 1.0,
+            integer_scale: 1,
+            ..Default::default()
+        }]);
+        h.send(Msg::Nothing);
+        let deskbar = h.program().deskbar.expect("Deskbar open");
+        requests.try_iter().for_each(drop);
+        h.send(Msg::Deskbar(DeskbarMsg::AppMenu("org.example.Editor".into(), Point::new(10.0, 10.0))));
+        assert_eq!(h.popups(deskbar).len(), 1);
+        h.type_text(deskbar, "Hide");
+        h.named(deskbar, NamedKey::Enter, Modifiers::NONE);
+        assert!(h.popups(deskbar).is_empty());
+        assert_eq!(requests.try_recv().unwrap(), (Request::HideApp { app: app_sel("EditorWindow") }, None));
+        assert!(requests.try_recv().is_err(), "two alias windows need one HideApp; unrelated apps are excluded");
+
+        // An app may have windows using both its desktop ID and its alias.
+        h.program_mut().wm.apply(&Event::WindowOpened {
+            window: aizome_ipc::WindowInfo {
+                id: 1,
+                app_id: "org.example.Editor".into(),
+                desk: Some(1),
+                ..Default::default()
+            },
+        });
+        h.send(Msg::Run(Action::HideApp { app_id: "org.example.Editor.desktop".into() }));
+        let sent: Vec<_> = requests.try_iter().collect();
+        assert_eq!(
+            sent,
+            [
+                (Request::HideApp { app: app_sel("EditorWindow") }, None),
+                (Request::HideApp { app: app_sel("org.example.Editor") }, None),
+            ]
+        );
+        h.send(Msg::Run(Action::HideApp { app_id: "not-running".into() }));
+        assert!(requests.try_recv().is_err(), "an app with no windows has nothing to hide");
+    }
+
+    #[test]
+    fn launchers_and_deskbar_activate_the_local_window_while_new_window_launches() {
+        use crate::deskbar::DeskbarMsg;
+        use aizome_ipc::WindowInfo;
+        use aizome_kit::testing::Harness;
+
+        let mut shell = Shell::new(Options::default());
+        shell.wm.reset(crate::wm::Snapshot {
+            current_desk: 1,
+            windows: vec![
+                WindowInfo { id: 1, app_id: "editor".into(), desk: Some(1), minimised: true, ..Default::default() },
+                WindowInfo { id: 2, app_id: "editor".into(), desk: Some(2), ..Default::default() },
+            ],
+            focused: Some(2),
+            ..Default::default()
+        });
+        let (ipc, requests) = Ipc::recording();
+        shell.ipc = ipc;
+        let mut h = Harness::new(shell);
+        for msg in [
+            Msg::Run(Action::Launch { app_id: "editor".into() }),
+            Msg::Run(Action::FocusApp { app_id: "editor".into() }),
+            Msg::Deskbar(DeskbarMsg::FocusApp("editor".into())),
+        ] {
+            h.send(msg);
+            assert_eq!(requests.try_recv().unwrap(), (Request::Focus { id: 1 }, None));
+            assert!(requests.try_recv().is_err(), "one request reveals and focuses the selected window");
+        }
+        h.send(Msg::Run(Action::NewWindow { app_id: "editor".into() }));
+        assert!(requests.try_recv().is_err(), "New Window never substitutes a focus request");
+    }
 
     #[test]
     fn the_compositor_says_whether_the_session_is_real() {
