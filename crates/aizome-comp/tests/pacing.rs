@@ -180,6 +180,67 @@ fn fifo_commits_of_a_hidden_window_still_apply() {
     );
 }
 
+/// An already-armed backstop must keep checking after the output stops
+/// drawing, even if its last frame was less than a second ago.
+#[test]
+fn fifo_commits_keep_progressing_after_display_power_off() {
+    let c = start();
+    let mut a = Client::new(&c, "fifo-power-off");
+    let frames: Vec<usize> = (0..20).map(|_| a.present(true, None)).collect();
+    a.wait_released(frames[18], Duration::from_secs(5));
+    std::thread::sleep(Duration::from_millis(50));
+    c.ok(Request::PowerOffMonitors);
+    let frames: Vec<usize> = (0..3).map(|_| a.present(true, None)).collect();
+    a.wait_released(frames[1], Duration::from_secs(4));
+}
+
+/// The first backstop tick finds no current barrier: the commit that
+/// installs it is still waiting on a timestamp. Later FIFO commits must
+/// still advance once that timestamp passes, without more client requests.
+#[test]
+fn hidden_fifo_commits_resume_after_a_future_timestamp() {
+    let c = start();
+    let mut a = Client::new(&c, "fifo-hidden-future");
+    let w = c.wait_window("fifo-hidden-future");
+    c.ok(Request::Minimise { id: Some(w.id) });
+    c.settle();
+    let at = monotonic() + Duration::from_millis(1500);
+    let first = a.present(true, Some(at));
+    a.present(true, Some(at));
+    a.present(true, Some(at));
+    a.wait_released(first + 1, Duration::from_secs(5));
+}
+
+/// wait_barrier need not set a replacement barrier. Once smithay consumes
+/// that wait, the pending cached state no longer contains the barrier;
+/// until its timestamp passes, the current state doesn't contain it either.
+#[test]
+fn hidden_fifo_wait_without_a_new_barrier_survives_a_future_timestamp() {
+    let c = start();
+    let mut a = Client::new(&c, "fifo-hidden-wait-only");
+    let w = c.wait_window("fifo-hidden-wait-only");
+    c.ok(Request::Minimise { id: Some(w.id) });
+    c.settle();
+    let at = monotonic() + Duration::from_millis(1500);
+    let first = a.present(true, Some(at));
+    a.fifo.wait_barrier();
+    a.present(false, Some(at));
+    a.wait_released(first, Duration::from_secs(4));
+}
+
+/// Real swapchains combine both constraints. Releasing the timestamp must
+/// preserve FIFO progress and its refresh pacing for the queued frames.
+#[test]
+fn visible_fifo_commits_with_timestamps_keep_drawing() {
+    let c = start();
+    let mut a = Client::new(&c, "fifo-timed");
+    let at = monotonic() + Duration::from_millis(100);
+    let frames: Vec<usize> = (0..20).map(|n| a.present(true, Some(at + REFRESH * n))).collect();
+    let second = a.wait_released(frames[0], Duration::from_secs(5));
+    let last = a.wait_released(frames[18], Duration::from_secs(5));
+    assert!(last - second >= REFRESH * 18 * 3 / 4, "timestamped FIFO commits ran faster than the refresh rate");
+}
+
 /// A timestamped commit applies when its time comes, not before, even
 /// with nothing else drawing.
 #[test]

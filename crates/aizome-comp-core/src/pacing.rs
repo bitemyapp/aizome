@@ -25,10 +25,10 @@ use smithay::output::Output;
 use smithay::reexports::calloop::RegistrationToken;
 use smithay::reexports::calloop::timer::{TimeoutAction, Timer};
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
-use smithay::reexports::wayland_server::{Client, Resource};
+use smithay::reexports::wayland_server::{Client, Resource, Weak};
 use smithay::utils::{Monotonic, Time};
 use smithay::wayland::commit_timing::{CommitTimerBarrierStateUserData, CommitTimerStateUserData, Timestamp};
-use smithay::wayland::compositor::{CompositorHandler, SurfaceData, with_states};
+use smithay::wayland::compositor::{Barrier, CompositorHandler, SurfaceData, is_sync_subsurface, with_states};
 use smithay::wayland::fifo::{FifoBarrierCachedState, FifoCachedState};
 
 use crate::state::{Aizome, State};
@@ -45,6 +45,8 @@ const PREDICTED: Duration = Duration::from_secs(1);
 pub struct Pacing {
     /// Clears the barriers no frame does; set while a commit waits on one.
     backstop: Option<RegistrationToken>,
+    /// Actual FIFO waits, including barriers in commits not applied yet.
+    fifo_waiters: Vec<(Weak<WlSurface>, Barrier)>,
     /// Wakes for the earliest timestamped commit, and when (monotonic).
     timed: Option<(RegistrationToken, Duration)>,
     /// Clients with barriers the last frame cleared.
@@ -79,15 +81,22 @@ impl Shown {
 /// was made and got this), so what the commit asks is still pending: if it
 /// will wait, makes sure something lets it through.
 pub fn commit_requested(state: &mut State, surface: &WlSurface) {
-    let (waits, at, output) = with_states(surface, |states| {
+    let sync_subsurface = is_sync_subsurface(surface);
+    let (barrier, at, output) = with_states(surface, |states| {
         let cache = &states.cached_state;
-        let waits = cache.has::<FifoCachedState>()
+        let barrier = if !sync_subsurface
+            && cache.has::<FifoCachedState>()
             && cache.get::<FifoCachedState>().pending().wait_barrier
-            && cache.get::<FifoBarrierCachedState>().pending().barrier.as_ref().is_some_and(|b| !b.is_signaled());
+        {
+            cache.get::<FifoBarrierCachedState>().pending().barrier.as_ref().filter(|b| !b.is_signaled()).cloned()
+        } else {
+            None
+        };
         let at = states.data_map.get::<CommitTimerStateUserData>().and_then(|t| t.borrow().timestamp);
-        (waits, at, surface_primary_scanout_output(surface, states))
+        (barrier, at, surface_primary_scanout_output(surface, states))
     });
-    if waits {
+    if let Some(barrier) = barrier {
+        state.az.pacing.fifo_waiters.push((surface.downgrade(), barrier));
         // Its output's next frame clears the barrier; the backstop clears
         // it if that frame doesn't come.
         if let Some(o) = &output {
@@ -162,10 +171,13 @@ impl State {
                 add(&mut clients, surface);
             }
         });
-        if !clients.is_empty() {
-            // What they commit next may wait again.
+        unblock(self, clients);
+        // A barrier can still be waiting for its commit's timestamp, or
+        // its output can have stopped drawing less than BACKSTOP ago.
+        // Neither clears a barrier this tick, but both need another tick.
+        self.az.pacing.fifo_waiters.retain(|(surface, barrier)| surface.is_alive() && !barrier.is_signaled());
+        if !self.az.pacing.fifo_waiters.is_empty() {
             arm_backstop(self);
-            unblock(self, clients);
         }
     }
 
