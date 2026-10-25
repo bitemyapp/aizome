@@ -288,7 +288,7 @@ where
 }
 
 /// After a frame: statistics, the surfaces' primary outputs, frame
-/// callbacks and presentation feedback.
+/// callbacks, fifo barriers and presentation feedback.
 pub fn post_frame(az: &mut Aizome, output: &Output, frame: &Frame, presented: bool) {
     if let Some(o) = az.out.get_mut(output) {
         if frame.damaged {
@@ -314,6 +314,7 @@ pub fn post_frame(az: &mut Aizome, output: &Output, frame: &Frame, presented: bo
     }
     update_primary_outputs(az, output, &frame.states);
     send_frames(az, output);
+    crate::pacing::frame_drawn(az, output);
     if presented && frame.damaged {
         let mut feedback = take_feedback(az, output, &frame.states);
         let refresh = az.out.get(output).map(|o| o.refresh).unwrap_or(Duration::from_millis(16));

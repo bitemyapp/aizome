@@ -150,6 +150,14 @@ Notes for client authors:
 - Frame callbacks fire after a frame that showed the surface, and roughly
   once a second for surfaces that don't show (other Desks, minimised).
   Nothing draws while nothing changes.
+- wp_fifo_v1 barriers clear the same way: after a frame on the surface's
+  output, so a Vulkan swapchain presenting with vsync (FIFO) gets one
+  frame a refresh, and within about a second where no frame shows the
+  surface (it doesn't show, or its display is off). A commit with a
+  wp_commit_timing_v1 timestamp goes into the first frame that reaches
+  the screen at or after it (counted from the display's last vblank), or
+  applies at that time if the surface doesn't show (`pacing.rs`;
+  `tests/pacing.rs`).
 - The shell's notification cards (layer namespace `aizome-notifications`)
   slide in from the screen's right edge when they come up and back out
   when they go, over the motion time with its ease-out and no fade (120 ms
