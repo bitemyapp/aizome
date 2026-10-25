@@ -68,6 +68,67 @@ fn merge_nvidia(gpus: &mut [model::Gpu], processes: &mut [Process], readings: &[
     }
 }
 
+/// The meters, as `Power` gives them: the processor package's counters
+/// (RAPL) where readable, else the package's meter as AMD's integrated
+/// graphics report it (the processor included), else the battery while it
+/// discharges, else nothing for the processor; and beside any of them, the
+/// discrete cards' own meters.
+pub(crate) fn meters(rapl: Option<f64>, battery: Option<f64>, discharging: bool, gpus: &[model::Gpu]) -> model::Power {
+    let package = gpus.iter().filter(|g| g.integrated && g.driver == "amdgpu").find_map(|g| g.power);
+    let graphics = gpus.iter().filter(|g| !g.integrated).filter_map(|g| g.power).reduce(|a, b| a + b);
+    let (meter, cpu) = match (rapl, package) {
+        (Some(w), _) => (Meter::Rapl, Some(w)),
+        (None, Some(w)) => (Meter::Package, Some(w)),
+        (None, None) if discharging && battery.is_some() => (Meter::Battery, None),
+        (None, None) if graphics.is_some() => (Meter::Graphics, None),
+        (None, None) => (Meter::None, None),
+    };
+    let total = match meter {
+        Meter::Battery => battery,
+        Meter::None => None,
+        _ => Some(cpu.unwrap_or(0.0) + graphics.unwrap_or(0.0)),
+    };
+    model::Power { meter, cpu, graphics, battery, on_battery: discharging, total, attributed: 0.0 }
+}
+
+/// Each process's part of what the meters measure (`None`: none of them
+/// measures it): of the processor's meter, or of the battery less the cards,
+/// by processor time; of each discrete card's, by its time on that card.
+/// What is left is the devices idling.
+pub(crate) fn attribute(
+    power: &model::Power,
+    gpus: &[model::Gpu],
+    processes: &[Process],
+    ncpu: f64,
+    floor: &mut Floor,
+    gpu_floors: &mut [Floor],
+) -> Vec<Option<f64>> {
+    let mut parts: Vec<Option<f64>> = vec![None; processes.len()];
+    let processor = match power.meter {
+        Meter::Battery => power.total.map(|b| (b - power.graphics.unwrap_or(0.0)).max(0.0)),
+        _ => power.cpu,
+    };
+    if let Some(watts) = processor {
+        let shares: Vec<f64> = processes.iter().map(|p| p.usage.cpu / (100.0 * ncpu)).collect();
+        for (part, w) in parts.iter_mut().zip(split(watts, floor.update(watts), &shares)) {
+            *part = Some(w);
+        }
+    }
+    for (device, (gpu, floor)) in gpus.iter().zip(gpu_floors).enumerate() {
+        let Some(watts) = gpu.power.filter(|_| !gpu.integrated) else { continue };
+        let shares: Vec<f64> = processes
+            .iter()
+            .map(|p| p.gpus.iter().filter(|g| g.device == device).filter_map(|g| g.usage.busy).sum::<f64>() / 100.0)
+            .collect();
+        for ((part, w), p) in parts.iter_mut().zip(split(watts, floor.update(watts), &shares)).zip(processes) {
+            if p.uses(device) {
+                *part = Some(part.unwrap_or(0.0) + w);
+            }
+        }
+    }
+    parts
+}
+
 /// What the window tells the sampler.
 pub enum Command {
     Interval(Duration),
@@ -155,7 +216,10 @@ pub struct Sampler {
     nvml: Option<Nvml>,
     rapl: Vec<PathBuf>,
     rapl_before: Option<Vec<EnergyCounter>>,
+    /// Each card's energy counter at the last reading, in joules.
+    gpu_energy: Vec<Option<f64>>,
     floor: Floor,
+    gpu_floors: Vec<Floor>,
     energy: HashMap<Key, (f64, f64)>,
     apps: Option<AppIndex>,
     uid: u32,
@@ -188,6 +252,7 @@ impl Sampler {
             })
             .collect();
         let nvml = cards.iter().any(|c| c.gpu.driver.as_deref() == Some("nvidia")).then(Nvml::open).flatten();
+        let count = cards.len();
         Sampler {
             procs: ProcessSampler::new(),
             reader: ProcReader::new(),
@@ -203,7 +268,9 @@ impl Sampler {
             nvml,
             rapl: rapl_domains(),
             rapl_before: None,
+            gpu_energy: vec![None; count],
             floor: Floor::default(),
+            gpu_floors: vec![Floor::default(); count],
             energy: HashMap::new(),
             apps: Some(AppIndex::load()),
             // SAFETY: getuid has no preconditions.
@@ -455,12 +522,14 @@ impl Sampler {
 
         lap("system", &mut phases);
         // Graphics cards.
+        let stats: Vec<_> = self.cards.iter().map(|c| gpu_stats(&c.gpu.card)).collect();
+        let mut counters: Vec<Option<f64>> = stats.iter().map(|s| s.energy).collect();
         let mut gpus: Vec<model::Gpu> = self
             .cards
             .iter()
+            .zip(&stats)
             .enumerate()
-            .map(|(i, c)| {
-                let s = gpu_stats(&c.gpu.card);
+            .map(|(i, (c, s))| {
                 let busy = s.busy.map(f64::from).or_else(|| client_busy(&processes, i));
                 model::Gpu {
                     name: c.gpu.name.clone(),
@@ -483,12 +552,27 @@ impl Sampler {
             })
             .collect();
         if let Some(nvml) = &mut self.nvml {
-            merge_nvidia(&mut gpus, &mut processes, &nvml.read());
+            let readings = nvml.read();
+            for r in &readings {
+                if let Some(d) = gpus.iter().position(|g| g.pci == r.pci) {
+                    counters[d] = r.energy;
+                }
+            }
+            merge_nvidia(&mut gpus, &mut processes, &readings);
+        }
+        // A card's energy counter gives its power over the interval; its
+        // meter, the power now.
+        for ((gpu, counter), before) in gpus.iter_mut().zip(counters).zip(&mut self.gpu_energy) {
+            if let (Some(b), Some(a)) = (*before, counter)
+                && seconds > 0.0
+                && a >= b
+            {
+                gpu.power = Some((a - b) / seconds);
+            }
+            *before = counter;
         }
 
-        // Power: the processor's counters where readable, else the battery
-        // while it discharges; shared by processor use.
-        let mut power = model::Power::default();
+        // Power: the meters, shared by use of what each measures.
         let counters = rapl_counters(&self.rapl);
         let rapl_watts = match (&self.rapl_before, &counters) {
             (Some(b), Some(a)) if seconds > 0.0 && b.len() == a.len() => {
@@ -498,28 +582,20 @@ impl Sampler {
         };
         self.rapl_before = counters;
         let (battery, discharging) = battery_draw();
-        power.battery = battery;
-        power.on_battery = discharging;
-        power.cpu = rapl_watts;
-        let (meter, total) = match (rapl_watts, battery) {
-            (Some(w), _) => (Meter::Rapl, Some(w)),
-            (None, Some(b)) if discharging => (Meter::Battery, Some(b)),
-            _ => (Meter::None, None),
-        };
-        power.meter = meter;
-        power.total = total;
-        if let Some(watts) = total {
-            let floor = self.floor.update(watts);
-            let shares: Vec<f64> = processes.iter().map(|p| p.usage.cpu / (100.0 * ncpu)).collect();
-            let parts = split(watts, floor, &shares);
-            power.attributed = parts.iter().sum();
-            for (p, w) in processes.iter_mut().zip(parts) {
+        let mut power = meters(rapl_watts, battery, discharging, &gpus);
+        let parts = attribute(&power, &gpus, &processes, ncpu, &mut self.floor, &mut self.gpu_floors);
+        power.attributed = parts.iter().flatten().sum();
+        for (p, part) in processes.iter_mut().zip(parts) {
+            if let Some(w) = part {
                 let e = self.energy.entry(p.key()).or_insert((0.0, 0.0));
                 e.0 += w * seconds;
                 e.1 += seconds;
                 p.usage.power = Some(w);
-                p.usage.energy = e.0;
-                p.usage.measured = e.1;
+            }
+            // What it used while measured, measured now or not.
+            if let Some(&(energy, measured)) = self.energy.get(&p.key()) {
+                p.usage.energy = energy;
+                p.usage.measured = measured;
             }
         }
         self.energy.retain(|k, _| seen.contains(k));
@@ -649,6 +725,50 @@ mod tests {
         assert_eq!(cards[0].vram_used, None);
         assert_eq!(cards[1].vram_used, Some(2941 << 20));
         assert_eq!(cards[1].busy, None);
+    }
+
+    #[test]
+    fn graphics_cards_measure_without_root_or_a_battery() {
+        let radeon = model::Gpu { driver: "amdgpu".into(), integrated: true, power: Some(48.0), ..Default::default() };
+        let rtx = model::Gpu { driver: "nvidia".into(), power: Some(400.0), ..Default::default() };
+        // A desktop: RAPL is root's and there's no battery, but the Radeon's
+        // meter is the processor package's, and the RTX has its own.
+        let p = meters(None, None, false, &[radeon.clone(), rtx.clone()]);
+        assert_eq!((p.meter, p.cpu, p.graphics, p.total), (Meter::Package, Some(48.0), Some(400.0), Some(448.0)));
+        let p = meters(Some(60.0), None, false, &[radeon, rtx.clone()]);
+        assert_eq!(
+            (p.meter, p.cpu, p.total),
+            (Meter::Rapl, Some(60.0), Some(460.0)),
+            "the package isn't counted twice"
+        );
+        let p = meters(None, None, false, std::slice::from_ref(&rtx));
+        assert_eq!((p.meter, p.cpu, p.total), (Meter::Graphics, None, Some(400.0)));
+        // A laptop: Intel's integrated graphics have no meter of their own.
+        let xe = model::Gpu { driver: "xe".into(), integrated: true, ..Default::default() };
+        let p = meters(None, Some(32.0), true, std::slice::from_ref(&xe));
+        assert_eq!((p.meter, p.graphics, p.total), (Meter::Battery, None, Some(32.0)));
+        assert_eq!(meters(None, Some(32.0), false, &[xe]).meter, Meter::None, "charging measures nothing");
+    }
+
+    #[test]
+    fn each_meter_is_shared_by_use_of_what_it_measures() {
+        let gpus = [model::Gpu { driver: "nvidia".into(), power: Some(400.0), ..Default::default() }];
+        let on_card = |busy| vec![GpuUse { device: 0, usage: GpuUsage { busy: Some(busy), ..Default::default() } }];
+        let cpu = |cpu| Usage { cpu, ..Default::default() };
+        let processes = [
+            Process { pid: 1, usage: cpu(100.0), gpus: on_card(50.0), ..Default::default() },
+            Process { pid: 2, gpus: on_card(0.0), ..Default::default() },
+            Process { pid: 3, usage: cpu(400.0), ..Default::default() },
+        ];
+        let parts = |power: &model::Power| {
+            attribute(power, &gpus, &processes, 16.0, &mut Floor::default(), &mut [Floor::default()])
+        };
+        // The card's meter alone: its idle client is measured, what uses no
+        // card isn't.
+        assert_eq!(parts(&meters(None, None, false, &gpus)), [Some(200.0), Some(0.0), None]);
+        // On battery, the card's part of the draw goes by its time on the
+        // card, the rest by processor time.
+        assert_eq!(parts(&meters(None, Some(480.0), true, &gpus)), [Some(205.0), Some(0.0), Some(20.0)]);
     }
 
     #[test]

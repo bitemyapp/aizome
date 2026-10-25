@@ -113,6 +113,21 @@ fn lenses_change_the_columns_and_energy_needs_a_meter() {
 }
 
 #[test]
+fn a_desktop_without_root_or_a_battery_measures_energy_by_its_meters() {
+    let (mut h, _) = start();
+    let w = h.window();
+    // RAPL is root's and there's no battery, but the Radeon's meter is the
+    // processor package's and the RTX has its own.
+    let f = fixture::workstation(300, 40);
+    assert_eq!(f.power.meter, Meter::Package);
+    h.send(Msg::Frame(Arc::new(f)));
+    h.send(Msg::Lens(Lens::Energy));
+    assert_eq!(h.program().lens, Lens::Energy, "the Energy lens is offered");
+    assert_eq!(names(&h)[0], "ollama", "the model's runner draws the most, on the RTX");
+    assert!(h.texts(w).iter().any(|t| t.starts_with("Processor ") && t.contains(" · Graphics ")), "{:?}", h.texts(w));
+}
+
+#[test]
 fn quitting_asks_first_and_signals_every_process_of_an_application() {
     let (mut h, sent) = start();
     let w = h.window();

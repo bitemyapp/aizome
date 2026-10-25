@@ -33,11 +33,17 @@ fn print() {
             g.vram_total.map(model::bytes).unwrap_or_else(|| "—".into())
         );
     }
+    let graphics = f.power.graphics.map(|w| format!("; graphics {}", model::watts(w))).unwrap_or_default();
     println!(
-        "Power: {}",
+        "Power: {}{graphics}",
         match f.power.meter {
             model::Meter::Rapl => format!("processor {}", f.power.cpu.map(model::watts).unwrap_or_default()),
+            model::Meter::Package => format!(
+                "processor {} (its integrated graphics' meter)",
+                f.power.cpu.map(model::watts).unwrap_or_default()
+            ),
             model::Meter::Battery => format!("battery {}", f.power.battery.map(model::watts).unwrap_or_default()),
+            model::Meter::Graphics => "graphics cards only (RAPL is readable only by root)".into(),
             model::Meter::None => "not measured (RAPL is readable only by root; the battery isn't discharging)".into(),
         }
     );

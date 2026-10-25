@@ -448,14 +448,20 @@ pub fn gpu_order(gpus: &[Gpu]) -> Vec<usize> {
     order
 }
 
-/// Where the power figures come from.
+/// Where the power figures come from. The discrete graphics cards' own
+/// meters add to any of them.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Meter {
     /// The processor's RAPL counters (readable: Myaku runs as root, or the
     /// counters were opened up).
     Rapl,
+    /// The processor package's meter as its integrated graphics report it:
+    /// an AMD APU's covers the processor too, and anyone may read it.
+    Package,
     /// The battery, while it discharges.
     Battery,
+    /// The graphics cards' meters alone: what uses no card isn't measured.
+    Graphics,
     /// Nothing measures power here.
     #[default]
     None,
@@ -464,7 +470,10 @@ pub enum Meter {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Power {
     pub meter: Meter,
+    /// The processor package, from RAPL or the integrated graphics' meter.
     pub cpu: Option<f64>,
+    /// The discrete graphics cards' meters together.
+    pub graphics: Option<f64>,
     pub battery: Option<f64>,
     pub on_battery: bool,
     /// What the meters measure together, and the part processes are held

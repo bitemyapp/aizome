@@ -493,11 +493,19 @@ fn status(m: &Myaku) -> Element<Msg> {
             parts.join(" · ")
         }
         Lens::Memory => format!("Swap {} of {}", model::bytes(s.memory.swap_used), model::bytes(s.memory.swap_total)),
-        Lens::Energy => match f.power.meter {
-            Meter::Rapl => format!("Processor {}", f.power.cpu.map(model::watts).unwrap_or_else(|| "—".into())),
-            Meter::Battery => format!("Battery {}", f.power.battery.map(model::watts).unwrap_or_else(|| "—".into())),
-            Meter::None => "No power meter".into(),
-        },
+        Lens::Energy => {
+            let watts = |w: Option<f64>| w.map(model::watts).unwrap_or_else(|| "—".into());
+            let mut parts = match f.power.meter {
+                Meter::Rapl | Meter::Package => vec![format!("Processor {}", watts(f.power.cpu))],
+                Meter::Battery => vec![format!("Battery {}", watts(f.power.battery))],
+                Meter::Graphics => Vec::new(),
+                Meter::None => vec!["No power meter".into()],
+            };
+            if f.power.graphics.is_some() {
+                parts.push(format!("Graphics {}", watts(f.power.graphics)));
+            }
+            parts.join(" · ")
+        }
         Lens::Gpu => super::gpu::status(m),
         Lens::Disk => s.disks.iter().map(|d| format!("{} {:.0}% busy", d.name, d.busy)).collect::<Vec<_>>().join(" · "),
     };

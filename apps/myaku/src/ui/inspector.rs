@@ -64,13 +64,23 @@ fn opt<T>(v: Option<T>, f: impl Fn(T) -> String) -> String {
 }
 
 fn energy_note(f: &Frame) -> &'static str {
+    let cards = f.power.graphics.is_some();
     match f.power.meter {
         Meter::None if f.power.battery.is_none() && !f.power.on_battery => {
             "Not measured: the processor's power meter (RAPL) is readable only by root here, and the battery isn't discharging."
         }
         Meter::None => "Not measured: no power meter is readable here.",
+        Meter::Battery if cards => {
+            "Estimated from the battery's draw: the graphics cards' part by share of each card, the rest by share of the processor."
+        }
         Meter::Battery => "Estimated from the battery's draw, by share of the processor.",
-        Meter::Rapl => "Estimated from the processor's power meter, by share of the processor.",
+        Meter::Rapl | Meter::Package if cards => {
+            "Estimated from the power meters of the processor, by share of it, and of the graphics cards, by share of each card."
+        }
+        Meter::Rapl | Meter::Package => "Estimated from the processor's power meter, by share of the processor.",
+        Meter::Graphics => {
+            "Estimated from the graphics cards' power meters, by share of each card. The processor's (RAPL) is readable only by root here: what uses no card isn't measured."
+        }
     }
 }
 

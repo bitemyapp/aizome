@@ -91,6 +91,18 @@ fn one_gpu_with_the_inspector() {
 }
 
 #[test]
+fn energy_on_a_desktop_with_the_inspector() {
+    for (theme, name) in THEMES {
+        let mut h = workstation(theme);
+        h.send(Msg::Lens(Lens::Energy));
+        let ollama = h.program().frame.groups.iter().find(|g| g.name == "ollama").unwrap().key;
+        h.send(Msg::Select(Sel::Group(ollama)));
+        h.send(Msg::Inspector(true));
+        golden(&mut h, "energy-inspector", name);
+    }
+}
+
+#[test]
 fn all_processes_by_disk() {
     let mut h = harness(ThemeChoice::Night);
     h.send(Msg::Show(Show::All));

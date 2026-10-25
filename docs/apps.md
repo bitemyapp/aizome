@@ -575,6 +575,18 @@ bus ("GeForce RTX 4090 · 41:00"), as Myaku's numbering of them would not
 match `nvidia-smi`'s.
 `aizome-myaku --print` also includes card and application video-memory usage.
 
+The Energy lens shows wherever a meter reads. The processor's is its RAPL
+counters, readable only by root, or else the meter an AMD integrated Radeon
+reports: amdgpu's is the whole package's on an APU, the processor included,
+and anyone may read it. Without either, the battery's draw counts while it
+discharges. Each discrete card's own meter adds to any of these: NVML's
+energy counter, or the card's hwmon meter. A desktop with no battery and
+RAPL kept for root (the integrated Radeon and RTX 5090 one) measures through
+these and keeps the lens. Each meter is shared by use of what it measures:
+the processor's (or the battery's draw less the cards') by processor time,
+a card's by its clients' time on that card, and what is left is the devices
+idling. With only the cards' meters, what uses no card shows a dash.
+
 `cargo test -p aizome-myaku --test gpu` drives the choice from the toolbar,
 the strip and the menu on a made-up desktop with both cards
 (`fixture::workstation`), and covers figures across cards, other lenses,
