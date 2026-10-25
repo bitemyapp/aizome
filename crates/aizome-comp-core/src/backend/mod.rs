@@ -351,18 +351,15 @@ fn update_primary_outputs(az: &Aizome, output: &Output, states: &RenderElementSt
 pub fn send_frames(az: &Aizome, output: &Output) {
     let time = az.now();
     let throttle = Some(Duration::from_millis(995));
-    let geo = az.output_geometry(output);
+    // The render states account for occlusion, subsurfaces, thumbnails and
+    // other outputs. A logically shown window may be fully covered by a
+    // fullscreen client, as may the shell's top/background layers.
     for m in az.windows.values() {
-        let visible = m.view.shown && crate::state::from_rect(m.view.rect.grow(az.view.outset)).overlaps(geo);
-        if visible {
-            m.window.send_frame(output, time, throttle, |_, _| Some(output.clone()));
-        } else {
-            m.window.send_frame(output, time, throttle, surface_primary_scanout_output);
-        }
+        m.window.send_frame(output, time, throttle, surface_primary_scanout_output);
     }
     let map = layer_map_for_output(output);
     for layer in map.layers() {
-        layer.send_frame(output, time, throttle, |_, _| Some(output.clone()));
+        layer.send_frame(output, time, throttle, surface_primary_scanout_output);
     }
     drop(map);
     if let Some(lock) = az.out.get(output).and_then(|o| o.lock_surface.as_ref()) {

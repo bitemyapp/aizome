@@ -306,6 +306,9 @@ pub struct Shell {
     /// Actions to carry out once the update in hand is done.
     pub(crate) pending_actions: Vec<Action>,
     pub(crate) deskbar_size: Option<aizome_kit::Size>,
+    pub(crate) deskbar_drag: Option<(String, Point)>,
+    pub(crate) deskbar_visibility: crate::deskbar_glue::Visibility,
+    pub(crate) deskbar_transient: bool,
     /// Apps' own icons (PNG), by app id, for apps the shell has no glyph for.
     pub(crate) icons: HashMap<String, Option<aizome_kit::Image>>,
     /// Apps' status items' icons, read once per change.
@@ -430,6 +433,9 @@ impl Shell {
             note_actions: HashMap::new(),
             pending_actions: Vec::new(),
             deskbar_size: None,
+            deskbar_drag: None,
+            deskbar_visibility: Default::default(),
+            deskbar_transient: false,
             icons: HashMap::new(),
             item_icons: HashMap::new(),
             item_wheel: HashMap::new(),
@@ -467,7 +473,14 @@ impl Shell {
 
     fn read_settings(&mut self) {
         self.bar_cfg = self.settings.menubar_settings();
-        self.deskbar_cfg = self.settings.deskbar_settings();
+        let deskbar = self.settings.deskbar_settings();
+        if deskbar.auto_hide != self.deskbar_cfg.auto_hide || deskbar.collapsed != self.deskbar_cfg.collapsed {
+            self.deskbar_visibility = crate::deskbar_glue::Visibility {
+                generation: self.deskbar_visibility.generation.wrapping_add(1),
+                ..Default::default()
+            };
+        }
+        self.deskbar_cfg = deskbar;
         self.notes_cfg = self.settings.notification_settings();
         self.lock_cfg = self.settings.lock_settings();
         self.palette_cfg = self.settings.palette_settings();
@@ -591,9 +604,7 @@ impl Shell {
     pub fn bar_model(&self, screen: &Screen) -> BarModel {
         let (app_name, menus) = self.focused_menus();
         let primary = self.primary().is_some_and(|p| p.output.id == screen.output.id);
-        let folded = self
-            .deskbar_cfg
-            .collapsed
+        let folded = (self.deskbar_cfg.collapsed || self.deskbar_cfg.auto_hide)
             .then(|| self.wm.deskbar(&self.deskbar_cfg.pinned).iter().filter(|a| !a.windows.is_empty()).count());
         BarModel {
             app_name,
@@ -609,6 +620,8 @@ impl Shell {
             meters: self.meters.clone(),
             clock: self.now.bar_label(self.bar_cfg.clock, self.bar_cfg.clock_seconds, self.bar_cfg.clock_date),
             folded_apps: folded,
+            deskbar_visible: self.deskbar_visible(),
+            deskbar_auto_hide: self.deskbar_cfg.auto_hide,
             unread: self.notes.unread_count(),
             banner: if primary { self.banner_view() } else { None },
             primary,
@@ -619,6 +632,7 @@ impl Shell {
 
     fn bar(&mut self, win: WindowKey, msg: BarMsg, cx: &mut Cx<Msg>) {
         match msg {
+            BarMsg::DeskbarHover(inside) => self.deskbar_hover(true, inside, cx),
             BarMsg::Run(a) => self.run(a, cx),
             BarMsg::Press(slot, rect) => {
                 // Pressing the open menu's title closes it (the press closed
@@ -812,7 +826,13 @@ impl Shell {
                 self.launch(l, cx);
             }
             Action::OpenUrl { url } => self.launch(Launch::Argv(vec!["xdg-open".into(), url]), cx),
-            Action::Settings { pane, anchor } => self.launch(crate::launch::settings(&pane, anchor.as_deref()), cx),
+            Action::Settings { pane, anchor } => {
+                // The shell owns the user's activation. A second launch
+                // forwards the pane, but the running instance has no fresh
+                // input serial with which to raise itself across Desks.
+                self.focus_app_window(crate::launch::SETTEI);
+                self.launch(crate::launch::settings(&pane, anchor.as_deref()), cx);
+            }
             Action::Copy { text } => cx.set_clipboard_text(&text),
             Action::StatusMenuItem { key, id } => self.status_menu_item(&key, id),
             Action::NewDesk => {
@@ -838,8 +858,11 @@ impl Shell {
             }
             Action::SetDeskbarCollapsed(on) => {
                 self.deskbar_cfg.collapsed = on;
+                self.deskbar_visibility.revealed = !on;
+                self.deskbar_visibility.generation = self.deskbar_visibility.generation.wrapping_add(1);
                 self.save_section("deskbar");
             }
+            Action::MoveDeskbarApp { app_id, down } => self.move_deskbar_app(&app_id, down),
             Action::EmptyTrash => crate::launch::empty_trash(),
             Action::MoveToTrash { path } => {
                 if let Err(e) = crate::launch::move_to_trash(&path) {
@@ -895,6 +918,18 @@ impl Shell {
         }
     }
 
+    /// Use the same explicit identities and Desk preference for every
+    /// activation path, including notifications and requested Settings panes.
+    pub(crate) fn focus_app_window(&self, app_id: &str) -> bool {
+        let window = self.wm.app_window_to_activate(app_id, self.apps.as_deref());
+        if let Some(w) = window {
+            self.ipc.send(Request::Focus { id: w.id });
+            true
+        } else {
+            false
+        }
+    }
+
     /// Start something, asking first for an activation token so its window
     /// comes up with the keyboard.
     pub fn launch(&mut self, l: Launch, cx: &mut Cx<Msg>) {
@@ -907,7 +942,7 @@ impl Shell {
         self.launches.insert(req, (l, cwd));
     }
 
-    fn save_section(&mut self, section: &str) {
+    pub(crate) fn save_section(&mut self, section: &str) {
         match section {
             "deskbar" => self.settings.set_shell_section("deskbar", &self.deskbar_cfg),
             "menubar" => self.settings.set_shell_section("menubar", &self.bar_cfg),
@@ -1606,6 +1641,29 @@ impl Program for Shell {
         self.sync_screens(outputs, cx);
     }
 
+    fn pointer_presence(&mut self, window: WindowKey, inside: bool, cx: &mut Cx<Msg>) {
+        if self.deskbar == Some(window) {
+            self.deskbar_hover(false, inside, cx);
+            self.after_update(cx);
+        }
+    }
+
+    fn drag_started(&mut self, window: WindowKey, drag: DragId, _cx: &mut Cx<Msg>) {
+        if self.deskbar == Some(window) {
+            let v = &mut self.deskbar_visibility;
+            v.native_drag = Some(drag);
+            v.generation = v.generation.wrapping_add(1);
+        }
+    }
+
+    fn drag_ended(&mut self, drag: DragId, _action: DropAction, cx: &mut Cx<Msg>) {
+        if self.deskbar_visibility.native_drag == Some(drag) {
+            self.deskbar_visibility.native_drag = None;
+            self.arm_deskbar_hide(cx);
+            self.after_update(cx);
+        }
+    }
+
     fn activation_token(&mut self, request: ActivationRequest, token: Option<String>, _cx: &mut Cx<Msg>) {
         if let Some((l, cwd)) = self.launches.remove(&request) {
             crate::launch::start(self.apps.as_deref(), &l, token, cwd);
@@ -1924,6 +1982,121 @@ impl Shell {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn running_settings() -> (aizome_kit::testing::Harness<Shell>, std::sync::mpsc::Receiver<(Request, Option<u64>)>) {
+        let mut h = aizome_kit::testing::Harness::new(Shell::new(Options::default()));
+        let (ipc, requests) = Ipc::recording();
+        let s = h.program_mut();
+        s.ipc = ipc;
+        s.wm.reset(crate::wm::Snapshot {
+            windows: vec![aizome_ipc::WindowInfo {
+                id: 42,
+                app_id: crate::launch::SETTEI.into(),
+                desk: Some(2),
+                minimised: true,
+                ..Default::default()
+            }],
+            ..Default::default()
+        });
+        // Record launch requests without delivering activation tokens or
+        // starting any process in the user's session.
+        s.opts.live = true;
+        (h, requests)
+    }
+
+    #[test]
+    fn opening_a_settings_pane_raises_the_existing_window_and_forwards_the_pane() {
+        let (mut h, requests) = running_settings();
+        h.send(Msg::Run(Action::Settings { pane: "keyboard".into(), anchor: Some("keyboard.caps".into()) }));
+        assert_eq!(requests.try_recv().unwrap().0, Request::Focus { id: 42 });
+        assert!(
+            h.program()
+                .launches
+                .values()
+                .any(|(launch, _)| { *launch == crate::launch::settings("keyboard", Some("keyboard.caps")) })
+        );
+    }
+
+    #[test]
+    fn opening_a_running_app_focuses_it_but_new_window_still_launches() {
+        let (mut h, requests) = running_settings();
+        h.send(Msg::Run(Action::Launch { app_id: crate::launch::SETTEI.into() }));
+        assert_eq!(requests.try_recv().unwrap().0, Request::Focus { id: 42 });
+        assert!(h.program().launches.is_empty());
+        h.send(Msg::Run(Action::NewWindow { app_id: crate::launch::SETTEI.into() }));
+        assert!(requests.try_recv().is_err());
+        assert_eq!(h.program().launches.len(), 1);
+    }
+
+    #[test]
+    fn app_activation_uses_recency_across_desktop_id_and_wm_class_aliases() {
+        let (mut h, requests) = running_settings();
+        let s = h.program_mut();
+        s.apps = Some(crate::apps::test_index(&[("code", "StartupWMClass=EditorWindow")]));
+        s.wm.reset(crate::wm::Snapshot {
+            windows: ["code", "Code", "EditorWindow"]
+                .into_iter()
+                .enumerate()
+                .map(|(id, app_id)| aizome_ipc::WindowInfo {
+                    id: id as u64 + 10,
+                    app_id: app_id.into(),
+                    ..Default::default()
+                })
+                .collect(),
+            ..Default::default()
+        });
+        for (focused, requested) in [(11, "code"), (12, "Code.desktop"), (10, "EditorWindow")] {
+            h.program_mut().wm.apply(&aizome_ipc::Event::WindowFocused { id: Some(focused) });
+            h.send(Msg::Run(Action::Launch { app_id: requested.into() }));
+            assert_eq!(requests.try_recv().unwrap().0, Request::Focus { id: focused });
+            assert!(h.program().launches.is_empty());
+        }
+    }
+
+    #[test]
+    fn app_activation_does_not_confuse_reverse_dns_suffixes() {
+        let (mut h, requests) = running_settings();
+        let s = h.program_mut();
+        s.apps = Some(crate::apps::test_index(&[("com.spotify.Client", "")]));
+        s.wm.reset(crate::wm::Snapshot {
+            windows: vec![aizome_ipc::WindowInfo { id: 10, app_id: "org.other.Client".into(), ..Default::default() }],
+            ..Default::default()
+        });
+        h.send(Msg::Run(Action::Launch { app_id: "com.spotify.Client".into() }));
+        assert!(requests.try_recv().is_err());
+        assert_eq!(h.program().launches.len(), 1);
+    }
+
+    #[test]
+    fn notification_without_a_window_launches_only_a_known_desktop_identity() {
+        use crate::notifications::{cards::CardMsg, store::Incoming};
+        for (name, hint, expected_app) in [
+            ("Editor", Some("org.example.Editor.desktop"), Some("org.example.Editor")),
+            ("org.other.Editor", None, None),
+            ("unknown-program --flag", None, None),
+            ("org.example.Editor", Some("org.other.Editor.desktop"), None),
+        ] {
+            let mut h = aizome_kit::testing::Harness::new(Shell::new(Options::default()));
+            let (ipc, requests) = Ipc::recording();
+            let s = h.program_mut();
+            s.ipc = ipc;
+            s.apps = Some(crate::apps::test_index(&[("org.example.Editor", "")]));
+            // Activation requests are recorded; no token is delivered, so
+            // the harness cannot start an actual application.
+            s.opts.live = true;
+            let incoming =
+                Incoming { app_name: name.into(), desktop_entry: hint.map(str::to_owned), ..Default::default() };
+            let filed = s.file_under(&incoming);
+            s.notes.post_as(7, incoming, filed, false, 0);
+            h.send(Msg::Card(CardMsg::Open(7)));
+            assert!(requests.try_recv().is_err(), "there is no running window to focus");
+            let launches: Vec<_> = h.program().launches.values().map(|(launch, _)| launch.clone()).collect();
+            let expected: Vec<_> =
+                expected_app.map(|app_id| Launch::App { app_id: app_id.into(), targets: vec![] }).into_iter().collect();
+            assert_eq!(launches, expected, "sender {name:?}, desktop hint {hint:?}");
+            assert!(h.program().notes.get(7).is_none());
+        }
+    }
 
     fn app_identity_fixture() -> (aizome_kit::testing::Harness<Shell>, std::sync::mpsc::Receiver<(Request, Option<u64>)>)
     {

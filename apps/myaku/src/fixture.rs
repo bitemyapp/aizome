@@ -139,6 +139,14 @@ pub fn frame(processes: usize, tick: u64) -> Frame {
             name: name.into(),
             app_id: app.map(str::to_owned),
             detail: detail.into(),
+            attribution: match kind {
+                Kind::App => format!(
+                    "The {name} process tree includes its helpers and commands. Members need not be direct children."
+                ),
+                Kind::Service => "This background program is shown separately from applications.".into(),
+                Kind::System => "Processes belonging to this system service are grouped together.".into(),
+                Kind::Kernel => "Kernel threads are grouped together separately from user programs.".into(),
+            },
             windows: usize::from(kind == Kind::App),
             focused: name == "Sumi",
             own: kind != Kind::System && kind != Kind::Kernel,

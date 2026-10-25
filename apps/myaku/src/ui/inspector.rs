@@ -26,6 +26,39 @@ fn section(title: &str, rows: Vec<Element<Msg>>) -> Element<Msg> {
     aizome_kit::widgets::layout::column(v).spacing(4.0).width(Length::Fill).into()
 }
 
+fn grouping(group: &model::Group, member: bool) -> Option<Element<Msg>> {
+    let mut rows = Vec::new();
+    if member {
+        rows.push(
+            row![
+                text(if group.kind == Some(Kind::App) { "Application" } else { "Group" })
+                    .size(12.0)
+                    .role(Role::Text3)
+                    .width(112.0),
+                button(group.name.clone())
+                    .plain()
+                    .compact()
+                    .on_press(Msg::Select(Sel::Group(group.key)))
+                    .id("inspector-group"),
+            ]
+            .spacing(8.0)
+            .into(),
+        );
+    }
+    if !group.attribution.trim().is_empty() {
+        rows.push(
+            text(group.attribution.clone())
+                .size(12.0)
+                .wrap()
+                .selectable()
+                .width(Length::Fill)
+                .id("group-attribution")
+                .into(),
+        );
+    }
+    (!rows.is_empty()).then(|| section("Grouping", rows))
+}
+
 fn opt<T>(v: Option<T>, f: impl Fn(T) -> String) -> String {
     v.map(f).unwrap_or_else(|| "—".into())
 }
@@ -150,6 +183,7 @@ pub fn view(m: &Myaku) -> Element<Msg> {
         Some(RowRef::Group(g)) => {
             let grp = &f.groups[g];
             let mut v = header(m, &grp.name, &group_detail(f, g), grp.kind);
+            v.extend(grouping(grp, false));
             v.extend(usage_sections(m, &grp.members, &grp.usage, grp.members.iter().all(|&i| f.processes[i].readable)));
             let mut list: Vec<Element<Msg>> = Vec::new();
             for &i in grp.members.iter().take(40) {
@@ -171,21 +205,11 @@ pub fn view(m: &Myaku) -> Element<Msg> {
             let p = &f.processes[i];
             let meta = format!("PID {} · {} · {}", p.pid, p.user, p.state_text());
             let mut v = header(m, &p.name, &meta, f.groups[p.group].kind);
+            v.extend(grouping(&f.groups[p.group], true));
             v.extend(usage_sections(m, &[i], &p.usage, p.readable));
             let mut about = Vec::new();
             if !p.role.is_empty() {
                 about.push(pair("Role", p.role.clone()));
-            }
-            let group = &f.groups[p.group];
-            if group.members.len() > 1 || group.name != p.name {
-                about.push(
-                    row![
-                        text("Application").size(12.0).role(Role::Text3).width(112.0),
-                        button(group.name.clone()).plain().compact().on_press(Msg::Select(Sel::Group(group.key))),
-                    ]
-                    .spacing(8.0)
-                    .into(),
-                );
             }
             if let Some(parent) = f.processes.iter().find(|q| q.pid == p.ppid) {
                 about.push(

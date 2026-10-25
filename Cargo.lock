@@ -384,6 +384,7 @@ name = "aizome-sys"
 version = "0.1.0"
 dependencies = [
  "async-io",
+ "event-listener",
  "futures-lite",
  "libc",
  "libpulse-binding",
@@ -412,6 +413,7 @@ version = "0.1.0"
 dependencies = [
  "aizome-config",
  "aizome-kit",
+ "aizome-sys",
  "env_logger",
  "log",
  "serde",

@@ -394,7 +394,15 @@ one scale, and tiles for feels-like, UV, wind (with a compass), humidity,
 the sun and precipitation. The first launch keeps the city of the
 machine's time zone and asks once whether to use the location; GeoClue is
 asked at city accuracy as `org.aizome.Tenki`, and positions go to
-Open-Meteo rounded to 0.01°. Forecasts are cached per place in
+Open-Meteo rounded to 0.01°. **Search for a City** leaves a pending or
+failed location search and focuses the sidebar. Disabling location or
+closing Tenki cancels its request; a late answer cannot change or save
+the position. The shared `aizome-sys` client gives connection setup,
+service calls and the position lookup one 20-second deadline in Tenki,
+then at most 250 ms to send cleanup without waiting for a service reply.
+The shell uses the same client with its existing 30-second deadline.
+The private-bus tests stall setup, property reads and cleanup separately;
+they never contact the host's location service. Forecasts are cached per place in
 `$XDG_CACHE_HOME/aizome/tenki/` (the window opens on the cache and says
 "Updated 12 min ago", or "Offline"), places are kept in
 `$XDG_DATA_HOME/aizome/tenki/places.json`, and units and the location
@@ -509,6 +517,22 @@ Port Tatami's Activity (`desktop/tatami/activity` on Sekka's main): apps
 and processes with CPU, memory, energy, disk and GPU use; sorting, search,
 quit and force quit; graphs of CPU, memory, disk and network over time; the
 inspector for a process. Through `aizome-sys::sysinfo`.
+
+Application groups follow identified windows and their process trees: helpers
+and commands belong with the app that started them, while a separately
+identified app launched from a terminal starts its own group. The desktop
+shell and session managers are boundaries. A dedicated application/service
+unit can reunite orphaned workers only when its ownership is unambiguous;
+sharing a login session or a slice is insufficient. Without compositor window
+information, grouping falls back to parentage and explicit application units.
+Labels use explicit identities or an unambiguous executable match, never a
+generic interpreter name or whichever window happened to be focused.
+
+The inspector's **Grouping** section explains the evidence separately from
+each process's **Parent** link. Shared unit membership does not imply direct
+parenthood. To inspect the same attribution without opening a window, run
+`cargo run -p aizome-myaku --example groups -- NAME` inside `nix develop`;
+omit `NAME` to include every group. This probe only reads the system.
 
 GPU readings use DRM statistics for AMD/Intel and NVML for NVIDIA (loaded
 at runtime, with no NVIDIA dependency on other machines). NVIDIA graphics and
