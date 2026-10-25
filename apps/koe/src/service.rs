@@ -15,7 +15,7 @@ use std::{
     collections::BTreeMap,
     path::{Path, PathBuf},
     process::{Command, Stdio},
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 pub const UNIT: &str = "aizome-koe.service";
@@ -60,15 +60,31 @@ fn wait(socket: &Path, up: bool) -> Result<()> {
     let deadline = Instant::now() + Duration::from_secs(10);
     while running(socket) != up {
         if Instant::now() > deadline {
-            bail!(if up {
-                "Koe's service didn't start; journalctl --user -u aizome-koe says why"
-            } else {
-                "Koe's service didn't stop"
-            });
+            bail!(if up { "Koe's service didn't start" } else { "Koe's service didn't stop" });
         }
         std::thread::sleep(Duration::from_millis(50));
     }
     Ok(())
+}
+
+/// The unit's own last fatal error since `since`, from the journal, so the
+/// window can say why it didn't start.
+fn why(since: SystemTime) -> Option<String> {
+    let since = since.duration_since(UNIX_EPOCH).ok()?.as_secs().saturating_sub(1);
+    let out = Command::new("journalctl")
+        .args(["--user", "--no-pager", "--output=cat", "--lines=50"])
+        .arg(format!("--since=@{since}"))
+        .arg(format!("_SYSTEMD_USER_UNIT={UNIT}"))
+        .stdin(Stdio::null())
+        .stderr(Stdio::null())
+        .output()
+        .ok()?;
+    reason(&String::from_utf8_lossy(&out.stdout)).map(str::to_owned)
+}
+
+/// The last fatal error in a daemon's output (main prints them as one line).
+fn reason(output: &str) -> Option<&str> {
+    output.lines().rev().find_map(|line| line.strip_prefix("aizome-koe: ")).map(str::trim).filter(|r| !r.is_empty())
 }
 
 impl Service for Session {
@@ -76,8 +92,12 @@ impl Service for Session {
         if running(&self.socket) {
             return Ok(());
         }
+        let asked = SystemTime::now();
         if self.unit && systemctl("start") {
-            return wait(&self.socket, true);
+            return wait(&self.socket, true).map_err(|error| match why(asked) {
+                Some(reason) => anyhow::anyhow!("Koe's service stopped: {reason}"),
+                None => error,
+            });
         }
         use std::os::unix::process::CommandExt;
         let mut child = Command::new(std::env::current_exe()?)
@@ -219,6 +239,17 @@ pub fn ensure_shortcuts(path: &Path, tell: bool) -> Result<Vec<String>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_failed_start_says_the_daemons_own_last_error() {
+        let journal = "aizome-koe: cannot bind the socket: first\n\
+                       [2026-10-24T20:00:00Z WARN  koe::daemon] something\n\
+                       aizome-koe: koe.toml: engine.threads must be at least 1\n\
+                       \n";
+        assert_eq!(reason(journal), Some("koe.toml: engine.threads must be at least 1"));
+        assert_eq!(reason("Started aizome-koe.service.\n"), None);
+        assert_eq!(reason(""), None);
+    }
 
     #[test]
     fn shortcuts_are_added_once_never_over_others_and_old_ones_move() {
