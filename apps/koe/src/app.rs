@@ -218,6 +218,9 @@ pub struct Koe {
     pub window: WindowKey,
     ticks: u64,
     pub instance: Option<std::os::unix::net::UnixListener>,
+    /// Closing once the download has stopped: its thread removes the
+    /// partial file, and the program mustn't end first.
+    closing: bool,
 }
 
 impl Koe {
@@ -246,6 +249,7 @@ impl Koe {
             window: WindowKey::NONE,
             ticks: 0,
             instance: None,
+            closing: false,
         };
         koe.read_config(true);
         koe.read_shortcuts(true);
@@ -328,23 +332,31 @@ impl Koe {
     }
 
     /// Change the configuration and save it; the service takes it up
-    /// within a second, between dictations.
-    fn change(&mut self, edit: impl FnOnce(&mut Config)) {
+    /// within a second, between dictations. Whether it's saved (or needed
+    /// no saving). Only the window's thread writes koe.toml (never a
+    /// worker), so one change never undoes another.
+    fn change(&mut self, edit: impl FnOnce(&mut Config)) -> bool {
+        // What's been saved from elsewhere since the last look stays.
+        self.read_config(false);
         if self.config_error.is_some() {
-            return;
+            return false;
         }
         let mut config = self.config.clone();
         edit(&mut config);
         if config == self.config && self.paths.config.exists() {
-            return;
+            return true;
         }
         match config.save(&self.paths.config) {
             Ok(()) => {
                 self.config = config;
                 self.config_stamp = stamp(&self.paths.config);
                 self.vocab.set_config(Arc::new(self.config.clone()));
+                true
             }
-            Err(error) => self.say_error(format!("Couldn't save Koe's settings: {error:#}")),
+            Err(error) => {
+                self.say_error(format!("Couldn't save Koe's settings: {error:#}"));
+                false
+            }
         }
     }
 
@@ -360,12 +372,16 @@ impl Koe {
         if self.switching.is_some() || self.config_error.is_some() {
             return;
         }
-        self.switching = Some(on);
         self.message = None;
+        // The choice is saved here, before any other setting can be; the
+        // worker only starts or stops the service.
+        if !self.change(|c| c.enabled = on) {
+            return;
+        }
+        self.switching = Some(on);
         let (paths, service) = (self.paths.clone(), self.service.clone());
         cx.spawn(move || {
             let result = (|| -> anyhow::Result<Option<String>> {
-                service::set_enabled(&paths.config, on)?;
                 // A settings file that can't be read keeps its shortcuts,
                 // and dictation goes on regardless.
                 let note = match on {
@@ -401,26 +417,43 @@ impl Koe {
         self.download = Some(Download { model: model.clone(), done: 0, cancel: cancel.clone(), then_enable });
         self.message = None;
         let (base, dir, tx) = (self.paths.model_source.clone(), self.paths.models.clone(), cx.stream());
+        let title = model.title();
         // A thread of its own: a download can take minutes.
-        let _ = std::thread::Builder::new().name("koe-download".into()).spawn(move || {
+        let spawned = std::thread::Builder::new().name("koe-download".into()).spawn(move || {
             let name = model.name.clone();
             let mut last = Instant::now() - Duration::from_secs(1);
-            let result = tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-                .map_err(anyhow::Error::from)
-                .and_then(|runtime| {
-                    runtime.block_on(models::download_from(&base, &model, &dir, &cancel, |done| {
-                        if last.elapsed() >= Duration::from_millis(100) || done == model.bytes {
-                            last = Instant::now();
-                            if !tx.send(Msg::Progress(name.clone(), done)) {
-                                cancel.store(true, Ordering::Relaxed);
+            // The window hears how it ended, however it ends: it may be
+            // waiting for this to close.
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .map_err(anyhow::Error::from)
+                    .and_then(|runtime| {
+                        runtime.block_on(models::download_from(&base, &model, &dir, &cancel, |done| {
+                            if last.elapsed() >= Duration::from_millis(100) || done == model.bytes {
+                                last = Instant::now();
+                                if !tx.send(Msg::Progress(name.clone(), done)) {
+                                    cancel.store(true, Ordering::Relaxed);
+                                }
                             }
-                        }
-                    }))
-                });
+                        }))
+                    })
+            }))
+            .unwrap_or_else(|_| Err(anyhow::anyhow!("the download stopped unexpectedly")));
             tx.send(Msg::Downloaded(name, result.map_err(|e| format!("{e:#}"))));
         });
+        if let Err(error) = spawned {
+            self.download = None;
+            self.say_error(format!("{title} didn't download: {error}"));
+        }
+    }
+
+    /// Close the window, once a teaching example is discarded.
+    fn close(&mut self, cx: &mut Cx<Msg>) {
+        if self.vocab.close(cx) {
+            cx.close_window(self.window);
+        }
     }
 
     /// Start another of Aizome's apps (`what` names it, if it can't start).
@@ -547,6 +580,10 @@ impl Program for Koe {
                             self.started = Some(self.ticks);
                         }
                         if !on {
+                            // It no longer answers, whether or not its
+                            // status stream has said so yet.
+                            self.status = None;
+                            self.vocab.set_status(None);
                             self.say("Dictation is off. Its service has stopped and won't start at login.");
                         }
                     }
@@ -575,10 +612,16 @@ impl Program for Koe {
                 }
             }
             Msg::Downloaded(name, result) => {
-                let Some(download) = self.download.take().filter(|d| d.model.name == name) else {
+                let Some(download) = self.download.take_if(|d| d.model.name == name) else {
                     return;
                 };
                 self.read_models();
+                if self.closing {
+                    // Stopped (or just finished) as the window closes, its
+                    // partial file gone: nothing more to do.
+                    self.close(cx);
+                    return;
+                }
                 match result {
                     Ok(path) => {
                         let title = download.model.title();
@@ -644,8 +687,12 @@ impl Program for Koe {
                     self.change(|c| c.engine.language = code);
                 }
             }
-            Msg::Translate(on) => self.change(|c| c.engine.translate = on),
-            Msg::Gpu(on) => self.change(|c| c.engine.gpu = on),
+            Msg::Translate(on) => {
+                self.change(|c| c.engine.translate = on);
+            }
+            Msg::Gpu(on) => {
+                self.change(|c| c.engine.gpu = on);
+            }
             Msg::Output(i) => {
                 let mode = [config::OutputMode::Paste, config::OutputMode::Clipboard, config::OutputMode::None];
                 if let Some(mode) = mode.get(i).copied() {
@@ -657,8 +704,12 @@ impl Program for Koe {
                     self.change(|c| c.audio.silence_seconds = s);
                 }
             }
-            Msg::AppendSpace(on) => self.change(|c| c.output.append_space = on),
-            Msg::Notify(on) => self.change(|c| c.output.notify = on),
+            Msg::AppendSpace(on) => {
+                self.change(|c| c.output.append_space = on);
+            }
+            Msg::Notify(on) => {
+                self.change(|c| c.output.notify = on);
+            }
             Msg::AddShortcuts => {
                 let (settings, tell) = (self.paths.settings.clone(), self.paths.desktop);
                 cx.spawn(move || {
@@ -698,20 +749,31 @@ impl Program for Koe {
                     self.say_error(format!("{error:#}"));
                 }
                 self.read_config(true);
+                // The usual settings have dictation off, and the service
+                // may still be running (or recording) with the old ones:
+                // it stops, as the switch stops it, before the window
+                // says it's off.
+                if self.config_error.is_none() {
+                    self.switch(false, cx);
+                }
             }
-            Msg::Close => {
-                if let Some(d) = self.download.take() {
+            Msg::Close => match &self.download {
+                // Closing when its thread has stopped and cleaned up.
+                Some(d) => {
                     d.cancel.store(true, Ordering::Relaxed);
+                    self.closing = true;
                 }
-                if self.vocab.close(cx) {
-                    cx.close_window(self.window);
-                }
-            }
+                None => self.close(cx),
+            },
             Msg::Vocab(msg) => self.vocab.update(msg, cx),
         }
     }
 
     fn close_requested(&mut self, _window: WindowKey, cx: &mut Cx<Msg>) -> bool {
+        if self.closing {
+            // It closes as soon as the download has stopped.
+            return false;
+        }
         if let Some(d) = &self.download {
             cx.alert(
                 self.window,

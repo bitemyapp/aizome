@@ -143,11 +143,52 @@ pub async fn download(name: &str, dir: &Path) -> Result<PathBuf> {
     download_from(&source(), &find(name)?, dir, &AtomicBool::new(false), |_| {}).await
 }
 
+/// How old a partial download's file must be before it's taken as
+/// abandoned: one under way writes at least once a minute (the read
+/// timeout), or stops and removes it.
+const ABANDONED: Duration = Duration::from_secs(10 * 60);
+
+/// Remove the partial downloads that a program which ended mid-download
+/// (logged out, killed) left in `dir`.
+fn remove_abandoned(dir: &Path) {
+    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        let old = entry.metadata().and_then(|m| m.modified()).is_ok_and(|t| t.elapsed().is_ok_and(|a| a > ABANDONED));
+        if name.starts_with(".ggml-") && name.ends_with(".part") && old {
+            let _ = std::fs::remove_file(entry.path());
+        }
+    }
+}
+
+/// Until `cancel` is set.
+async fn cancelled(cancel: &AtomicBool) {
+    while !cancel.load(Ordering::Relaxed) {
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+}
+
 /// Download `model` from `base` into `dir`, checking its size and SHA-256
 /// against the catalog before it takes the model's name. `progress` hears
-/// the bytes so far; setting `cancel` stops it, leaving nothing behind.
-/// Only HTTPS, or plain HTTP to this computer (tests).
+/// the bytes so far; setting `cancel` stops it, leaving nothing behind,
+/// even while it waits for the server. Only HTTPS, or plain HTTP to this
+/// computer (tests).
 pub async fn download_from(
+    base: &str,
+    model: &Model,
+    dir: &Path,
+    cancel: &AtomicBool,
+    progress: impl FnMut(u64),
+) -> Result<PathBuf> {
+    // The partial file belongs to `fetch`: stopping it removes the file.
+    tokio::select! {
+        result = fetch(base, model, dir, cancel, progress) => result,
+        () = cancelled(cancel) => bail!("download cancelled"),
+    }
+}
+
+async fn fetch(
     base: &str,
     model: &Model,
     dir: &Path,
@@ -160,6 +201,7 @@ pub async fn download_from(
         verify(&dest, model).context("existing model failed verification; remove it to download again")?;
         return Ok(dest);
     }
+    remove_abandoned(dir);
     if let Some(free) = free_bytes(dir) {
         // Room for the model and a little more, so the disk isn't left full.
         let needed = model.bytes + 64 * 1024 * 1024;
@@ -209,4 +251,29 @@ pub async fn download_from(
     file.as_file().sync_all()?;
     file.persist_noclobber(&dest).context("cannot install downloaded model; another download may have completed")?;
     Ok(dest)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::SystemTime;
+
+    #[test]
+    fn only_abandoned_partial_downloads_are_removed() {
+        let dir = tempfile::tempdir().unwrap();
+        let old = SystemTime::now() - ABANDONED - Duration::from_secs(60);
+        for (name, modified) in [
+            (".ggml-base.bin.a1b2c3.part", old),
+            (".ggml-small.bin.d4e5f6.part", SystemTime::now()),
+            ("ggml-base.bin", old),
+            (".notes.part", old),
+        ] {
+            std::fs::File::create(dir.path().join(name)).unwrap().set_modified(modified).unwrap();
+        }
+        remove_abandoned(dir.path());
+        let mut left: Vec<String> =
+            std::fs::read_dir(dir.path()).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into()).collect();
+        left.sort();
+        assert_eq!(left, [".ggml-small.bin.d4e5f6.part", ".notes.part", "ggml-base.bin"]);
+    }
 }

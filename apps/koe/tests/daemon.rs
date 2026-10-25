@@ -133,6 +133,10 @@ impl Harness {
     /// Koe's window on this daemon's data, on `page`. Its switch changes
     /// nothing: the harness runs the daemon.
     fn window(&self, page: Page) -> aizome_kit::testing::Harness<Koe> {
+        self.window_with(page, Arc::new(Unmanaged))
+    }
+    /// Koe's window, starting and stopping the daemon with `service`.
+    fn window_with(&self, page: Page, service: Arc<dyn Service>) -> aizome_kit::testing::Harness<Koe> {
         let data = self._dir.path().join("data/aizome/koe");
         let paths = Paths {
             config: self.config.clone(),
@@ -143,7 +147,7 @@ impl Harness {
             model_source: "http://127.0.0.1:9".into(),
             desktop: false,
         };
-        let mut app = Koe::new(paths, Arc::new(Unmanaged));
+        let mut app = Koe::new(paths, service);
         app.page = page;
         aizome_kit::testing::Harness::new(app)
     }
@@ -891,4 +895,51 @@ async fn command_line_turns_dictation_on_and_off_without_a_unit() {
     assert!(!koe(&["enabled"]).status.success());
     assert!(ipc::request(&socket, &Request::new(Action::Status)).await.is_err());
     assert!(!Config::load(&config_path).unwrap().enabled);
+
+    // Settings that can't be read are off at login; the running service
+    // stops all the same, and the command says what it couldn't save.
+    assert!(koe(&["enable"]).status.success());
+    assert!(ipc::request(&socket, &Request::new(Action::Status)).await.is_ok());
+    fs::write(&config_path, "[engine]\nlanguage = 3\n").unwrap();
+    let off = koe(&["disable"]);
+    assert!(!off.status.success());
+    assert!(String::from_utf8_lossy(&off.stderr).contains("koe.toml"), "{}", String::from_utf8_lossy(&off.stderr));
+    assert!(ipc::request(&socket, &Request::new(Action::Status)).await.is_err());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn starting_again_with_usual_settings_stops_a_recording_service_first() {
+    let h = Harness::start("http://127.0.0.1:9/inference".into(), None).await;
+    h.record_audio().await;
+    // The settings stop being readable while it records.
+    fs::write(&h.config, "[engine]\nlanguage = 3\n").unwrap();
+    // This daemon is the window's own to stop, as one it started would be.
+    let service = koe::service::Session { config: h.config.clone(), socket: h.socket.clone(), unit: false };
+    let mut ui = h.window_with(Page::Dictation, Arc::new(service));
+    let window = ui.window();
+    let has = |ui: &aizome_kit::testing::Harness<Koe>, text: &str| ui.texts(window).iter().any(|t| t.contains(text));
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while !has(&ui, "Koe's settings can't be read") {
+            ui.advance(Duration::from_millis(50));
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .expect("the window never said the settings can't be read");
+    assert_eq!(h.call(Action::Status).await.status.phase, Phase::Recording);
+    ui.send(koe::app::Msg::Reset);
+    tokio::time::timeout(Duration::from_secs(10), async {
+        while !has(&ui, "won't start at login") {
+            // Off, only once nothing is listening.
+            if has(&ui, "Dictation is off") && !has(&ui, "still running") {
+                assert!(ipc::request(&h.socket, &Request::new(Action::Status)).await.is_err());
+            }
+            ui.advance(Duration::from_millis(50));
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .expect("the service never stopped");
+    assert!(ipc::request(&h.socket, &Request::new(Action::Status)).await.is_err());
+    assert!(!Config::load(&h.config).unwrap().enabled);
 }

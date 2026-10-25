@@ -23,7 +23,10 @@ the palette. The **Dictation** page has everything:
 - **Download a Model and Turn On**, at first: it downloads Base (148 MB,
   many languages), checks it against the catalog's SHA-256, turns
   dictation on and gives it its shortcuts. The progress shows in place and
-  can be cancelled; a cancelled or failed download leaves nothing behind.
+  can be cancelled, even while the server has gone quiet; a cancelled or
+  failed download leaves nothing behind, and closing Koe during one waits
+  until it has. A partial file left by a session that ended mid-download
+  goes with the next download.
 - **The switch** at the top turns dictation on and off. On starts the
   service now and at every login; off stops it, and it no longer starts.
   Without a model it stays off.
@@ -50,14 +53,17 @@ the palette. The **Dictation** page has everything:
 The header says what dictation is doing: Ready (with the shortcut, and how
 long the last recognition took), Listening (with the time and the
 microphone's level), Transcribing, Typing, or what went wrong, with
-Dismiss.
+Dismiss. If the service is still running with dictation off (it couldn't
+be stopped, or `koe.toml` was edited), it says so, with Stop It.
 
 Settings apply as they change. The window saves `~/.config/aizome/koe.toml`
 (readable only by its owner) and the service reads it again within a
 second, between dictations: no restart, and the model reloads only when
 recognition settings changed. If the file can't be read, the window says
 why and offers to start again with the usual settings, keeping the broken
-file beside it as `koe.toml.broken`.
+file beside it as `koe.toml.broken`. The usual settings have dictation
+off, so the service stops first, whatever it was doing; `aizome-koe
+disable` stops it too, even when it can't save the choice.
 
 ## Using it
 
@@ -295,8 +301,10 @@ daemon through real sockets with a fixture microphone and a recognition
 server on this computer (dictation, pause, cancel, focus guards, held
 keys, teaching, settings applied without a restart, `enable` and
 `disable`), the window (setting up with a test catalog and model server,
-cancelled and damaged downloads, settings saved as they change, an
-unreadable `koe.toml`, teaching through the Vocabulary page), and golden
+cancelled and damaged downloads, cancelling or closing while the server is
+silent, settings saved as they change and while the switch works, an
+unreadable `koe.toml` reset while the service records, teaching through
+the Vocabulary page), and golden
 images of the pages (`tests/snapshots`, `AIZOME_UPDATE_GOLDENS=1`).
 `KOE_TEST_SCREENSHOTS=DIR cargo test -p aizome-koe --test look` also
 writes the whole Dictation page. Nothing uses the session's microphone,

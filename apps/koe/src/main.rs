@@ -330,8 +330,11 @@ async fn run(session: Session, command: Command) -> Result<()> {
             println!("Dictation is on");
         }
         Command::Disable => {
-            service::set_enabled(&path, false)?;
+            // The service stops even when the choice can't be saved: a
+            // configuration that can't be read is off at login already.
+            let saved = service::set_enabled(&path, false);
             tokio::task::spawn_blocking(move || session.stop()).await??;
+            saved?;
             println!("Dictation is off");
         }
         Command::Enabled => unreachable!("answered before the runtime starts"),

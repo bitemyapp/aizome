@@ -90,6 +90,12 @@ fn header(app: &Koe) -> Element<Msg> {
             .spacing(10.0)
             .into(),
         );
+    } else if !on && app.status.is_some() {
+        // Turned off where the service couldn't be stopped (or by editing
+        // koe.toml): the shortcut still works it.
+        title("Dictation is off");
+        more.push(detail("But its service is still running.".into(), Role::Warning));
+        more.push(button("Stop It").on_press(Msg::Enable(false)).id("stop-service").into());
     } else if !on {
         title("Dictation is off");
         if app.ready_to_recognise() {

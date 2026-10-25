@@ -8,6 +8,7 @@ use koe::{
     app::{Koe, Msg, Paths},
     config::Config,
     models::Model,
+    protocol::Status,
     service::{self, Service},
 };
 use sha2::{Digest, Sha256};
@@ -16,30 +17,49 @@ use std::{
     io::{Read, Write},
     net::TcpListener,
     path::PathBuf,
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
     time::{Duration, Instant},
 };
 
-/// What the window asked of the service.
+/// What the window asked of the service, once it's done.
 #[derive(Default)]
-struct Recorder(Mutex<Vec<&'static str>>);
+struct Recorder {
+    calls: Mutex<Vec<&'static str>>,
+    held: AtomicBool,
+}
 impl Recorder {
     fn calls(&self) -> Vec<&'static str> {
-        self.0.lock().unwrap().clone()
+        self.calls.lock().unwrap().clone()
+    }
+    /// Starting and stopping take until `release`.
+    fn hold(&self) {
+        self.held.store(true, Ordering::Relaxed);
+    }
+    fn release(&self) {
+        self.held.store(false, Ordering::Relaxed);
+    }
+    fn call(&self, what: &'static str) -> anyhow::Result<()> {
+        while self.held.load(Ordering::Relaxed) {
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        self.calls.lock().unwrap().push(what);
+        Ok(())
     }
 }
 impl Service for Recorder {
     fn start(&self) -> anyhow::Result<()> {
-        self.0.lock().unwrap().push("start");
-        Ok(())
+        self.call("start")
     }
     fn stop(&self) -> anyhow::Result<()> {
-        self.0.lock().unwrap().push("stop");
-        Ok(())
+        self.call("stop")
     }
 }
 
-/// Serve `bytes` to every request, `pause` between 64 KiB chunks.
+/// Serve `bytes` to every request, `pause` between 64 KiB chunks (a
+/// minute: a server that stops sending).
 fn model_server(bytes: Arc<Vec<u8>>, pause: Duration) -> String {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let addr = listener.local_addr().unwrap();
@@ -136,6 +156,18 @@ impl Rig {
         let r = self.h.find_id(w, id).unwrap_or_else(|| panic!("no {id}"));
         self.h.click(w, r.center());
     }
+    /// Run the window's timers and workers for `d`.
+    fn wait(&mut self, d: Duration) {
+        let until = Instant::now() + d;
+        while Instant::now() < until {
+            self.h.advance(Duration::from_millis(50));
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    }
+    /// The partial and whole models in the models' folder.
+    fn models(&self) -> Vec<PathBuf> {
+        fs::read_dir(self.path("models")).map(|d| d.flatten().map(|e| e.path()).collect()).unwrap_or_default()
+    }
 }
 
 #[test]
@@ -182,10 +214,74 @@ fn a_cancelled_download_leaves_nothing_behind() {
     r.settle("downloading", |r| r.has("Cancel"));
     r.h.send(Msg::CancelDownload);
     r.settle("stopped", |r| r.has("Stopped downloading Base"));
-    let left: Vec<_> = fs::read_dir(r.path("models")).map(|d| d.flatten().collect()).unwrap_or_default();
-    assert!(left.is_empty(), "{left:?}");
+    assert!(r.models().is_empty(), "{:?}", r.models());
     assert!(r.service.calls().is_empty());
     assert!(!r.path("koe.toml").exists(), "a download alone changes no setting");
+}
+
+#[test]
+fn cancelling_doesnt_wait_for_a_server_that_stopped_sending() {
+    let mut r = Rig::new(Duration::from_secs(60));
+    r.settle("off", |r| r.has("Dictation is off"));
+    r.click_id("download:base");
+    // Its partial file: the server has answered, and then stopped.
+    r.settle("partly downloaded", |r| r.models().len() == 1);
+    r.h.send(Msg::CancelDownload);
+    // Long before the read times out, a minute on.
+    r.settle("stopped", |r| r.has("Stopped downloading Base"));
+    assert!(r.models().is_empty(), "{:?}", r.models());
+}
+
+#[test]
+fn closing_during_a_download_waits_until_its_partial_file_is_gone() {
+    let mut r = Rig::new(Duration::from_secs(60));
+    r.settle("off", |r| r.has("Dictation is off"));
+    r.click_id("download:base");
+    // Its partial file: the server has answered, and then stopped.
+    r.settle("partly downloaded", |r| r.models().len() == 1);
+    let w = r.h.window();
+    r.h.request_close(w);
+    assert!(r.has("Stop downloading Base?"));
+    assert!(r.click_last("Stop and Close"));
+    // The program ends when its window closes, and would take the
+    // download's thread with it before the partial file was removed.
+    r.settle("closed", |r| r.h.windows().is_empty());
+    assert!(r.models().is_empty(), "{:?}", r.models());
+}
+
+#[test]
+fn settings_changed_while_the_service_starts_or_stops_keep_the_switchs_choice() {
+    let mut r = Rig::new(Duration::from_millis(2));
+    fs::create_dir_all(r.path("models")).unwrap();
+    fs::write(r.path("models/ggml-base.bin"), &*r.bytes).unwrap();
+    r.settle("ready to turn on", |r| r.h.program().ready_to_recognise());
+    for (on, language, code) in [(true, 2, "ja"), (false, 3, "zh")] {
+        r.service.hold();
+        r.h.send(Msg::Enable(on));
+        r.settle("switching", |r| r.h.program().switching == Some(on));
+        assert_eq!(r.config().enabled, on, "the choice is saved before the service is asked");
+        // Another setting changes while the service starts (or stops).
+        r.h.send(Msg::Language(language));
+        r.service.release();
+        r.settle("switched", |r| r.h.program().switching.is_none());
+        let config = r.config();
+        assert_eq!((config.enabled, config.engine.language.as_str()), (on, code));
+        assert_eq!(r.h.program().config.enabled, on);
+    }
+    assert_eq!(r.service.calls(), ["start", "stop"]);
+}
+
+#[test]
+fn a_service_running_with_dictation_off_says_so_and_stops() {
+    let mut r = Rig::new(Duration::from_millis(2));
+    r.settle("off", |r| r.has("Dictation is off"));
+    // Heard from the service (a stop that failed, or koe.toml edited).
+    r.wait(Duration::from_millis(200));
+    r.h.send(Msg::Status(Some(Status::default())));
+    assert!(r.has("But its service is still running"));
+    r.click_id("stop-service");
+    r.settle("stopped", |r| r.service.calls() == ["stop"]);
+    r.settle("off", |r| r.has("won't start at login") && !r.has("still running"));
 }
 
 #[test]
@@ -243,8 +339,18 @@ fn unreadable_settings_say_why_and_start_again_when_asked() {
     r.h.send(Msg::Translate(true));
     assert_eq!(fs::read_to_string(r.path("koe.toml")).unwrap(), "[engine]\nlanguage = 3\n");
     assert!(r.click_last("Use Usual Settings…"));
+    // The service may be running, recording even, with the old settings.
+    r.service.hold();
     assert!(r.click_last("Use Usual Settings"));
     r.settle("readable", |r| r.h.program().config_error.is_none());
     assert_eq!(r.config(), Config::default());
     assert_eq!(fs::read_to_string(r.path("koe.toml.broken")).unwrap(), "[engine]\nlanguage = 3\n");
+    // The usual settings have dictation off: the service stops, as the
+    // switch stops it, before the window says so.
+    r.wait(Duration::from_millis(500));
+    assert!(r.has("Turning dictation off"));
+    assert!(!r.has("Dictation is off"));
+    r.service.release();
+    r.settle("off", |r| r.has("Dictation is off"));
+    assert_eq!(r.service.calls(), ["stop"]);
 }
