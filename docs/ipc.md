@@ -348,7 +348,13 @@ Keyboard focus, highest first:
    so a menu opened for a `binding` event (which carries no Wayland
    serial) can grab with the client's last serial, or 0. A press outside
    the client, or focus moving to another window, closes the menus (and
-   the press then does what it does there);
+   the press then does what it does there). An input method's grab of
+   the keyboard (`zwp_input_method_v2`, which ibus holds while a text
+   field has the keys) doesn't keep a menu shut: a field's context menu
+   takes the keys over and keeps them after the input method lets go of
+   its grab, a field in the menu types through the input method with the
+   keys staying in the menu, and once the menu closes the input method
+   grabs them again for the field;
 4. an OnDemand layer surface, once clicked, until a window is clicked or
    it unmaps;
 5. the focused window.

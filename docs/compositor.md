@@ -415,6 +415,11 @@ nix develop --command cargo test -p aizome-comp
   popups): exclusive and on-demand keyboard interactivity, grabbing menus
   getting the keys and giving them back, menus closing for an exclusive
   surface or a click elsewhere, and the popup layer's stacking.
+- `tests/context_menus.rs`: an app with a text field and an input method
+  that grabs the keyboard while a field has it (as Telegram and ibus):
+  the field's context menu opening on a right-press, keeping the keys
+  once the input method lets go, and a field in the menu typing through
+  it.
 - `tests/sidestep.rs`: a sidestep-ui client (`examples/sidestep_client`):
   server-side decorations, frame callbacks on the content subsurface, a
   layer-shell panel's exclusive zone, the session lock, a see-through
