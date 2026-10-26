@@ -822,11 +822,16 @@ pub fn rescue_windows(st: &mut State) {
 }
 
 /// When a window first maps: where it goes, on its Desk's display (a new
-/// window's Desk is the current one; a dialog's, its parent's).
+/// window's Desk is the current one), or a dialog on its parent's (a
+/// sticky parent's Desk can be on another display, or none).
 pub fn place_new_window(st: &mut State, id: WinId, size: (i32, i32), parent: Option<WinId>) {
     let l = st.lg.r();
     let Some(desk) = l.wm.get(id).map(|w| w.desk) else { return };
-    let Some(output) = desk_output(st, desk) else { return };
+    let output = match parent.filter(|p| l.wm.contains(*p)) {
+        Some(p) => window_output(st, p),
+        None => desk_output(st, desk),
+    };
+    let Some(output) = output else { return };
     let usable = window_area(&st.az, &output);
     let frame = st.az.usable_area(&output);
     let insets = l.insets_for(id);

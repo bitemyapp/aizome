@@ -197,6 +197,25 @@ fn a_display_that_goes_and_comes_back_gets_its_desk_back() {
 }
 
 #[test]
+fn a_sticky_windows_dialog_opens_on_its_display() {
+    let c = Compositor::start(two("1280x800@1"));
+    let a_client = c.client(Spec::new("test.a", 0xcc2222));
+    let a = c.wait_window("test.a");
+    c.ok(Request::Sticky { id: Some(a.id), state: Some(true) });
+    // A's Desk goes to the second display; sticky, A stays on the first.
+    set_desk(&c, 1, Some("HEADLESS-2"));
+    assert_eq!((shows(&c, "HEADLESS-1"), shows(&c, "HEADLESS-2")), (Some(2), Some(1)));
+    c.wait_windows("A still on the first display", |ws| {
+        ws.iter().any(|w| w.id == a.id && w.output.as_deref() == Some("HEADLESS-1"))
+    });
+    // Its dialog opens beside it, not on the display showing A's Desk.
+    a_client.send(Cmd::Dialog("Save".into(), 0x22cc22));
+    let ws = c.wait_windows("the dialog placed", |ws| ws.iter().any(|w| w.title == "Save" && w.geometry.w == 200));
+    let d = ws.iter().find(|w| w.title == "Save").unwrap();
+    assert_eq!(d.output.as_deref(), Some("HEADLESS-1"), "with its parent: {d:?}");
+}
+
+#[test]
 fn a_desk_for_a_display_not_in_the_layout_is_refused() {
     let c = Compositor::start(two("1280x800@1"));
     match c.request(Request::SetDesk { desk: DeskSel::Index(2), output: Some("HDMI-9".into()) }) {

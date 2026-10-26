@@ -411,6 +411,9 @@ pub enum Cmd {
     Title(String),
     Color(u32),
     Fullscreen(bool, Option<usize>),
+    /// Opens a dialog: a 200×150 toplevel of this title and colour, with
+    /// the window as its parent.
+    Dialog(String, u32),
     Quit,
 }
 
@@ -473,6 +476,7 @@ struct App {
     surface: Option<wl_surface::WlSurface>,
     xdg_surface: Option<xdg_surface::XdgSurface>,
     toplevel: Option<xdg_toplevel::XdgToplevel>,
+    dialog: Option<(wl_surface::WlSurface, xdg_surface::XdgSurface, xdg_toplevel::XdgToplevel)>,
     pending_size: Option<(i32, i32)>,
     size: (i32, i32),
     needs_draw: bool,
@@ -511,6 +515,7 @@ fn run_client(stream: UnixStream, spec: Spec, rx: Receiver<Cmd>, seen: Arc<Mutex
         surface: None,
         xdg_surface: None,
         toplevel: None,
+        dialog: None,
         pending_size: None,
         needs_draw: false,
         configured: false,
@@ -562,6 +567,16 @@ fn run_client(stream: UnixStream, spec: Spec, rx: Receiver<Cmd>, seen: Arc<Mutex
                         tl.unset_fullscreen();
                     }
                 }
+                Cmd::Dialog(title, color) => {
+                    let s = app.compositor.create_surface(&qh, ());
+                    let xs = wm.get_xdg_surface(&s, &qh, DialogColor(color));
+                    let tl = xs.get_toplevel(&qh, DialogColor(color));
+                    tl.set_parent(app.toplevel.as_ref());
+                    tl.set_app_id(app.spec.app_id.clone());
+                    tl.set_title(title);
+                    s.commit();
+                    app.dialog = Some((s, xs, tl));
+                }
                 Cmd::Quit => app.quit = true,
             }
         }
@@ -586,6 +601,11 @@ fn run_client(stream: UnixStream, spec: Spec, rx: Receiver<Cmd>, seen: Arc<Mutex
             break;
         }
     }
+    if let Some((s, x, t)) = app.dialog.take() {
+        t.destroy();
+        x.destroy();
+        s.destroy();
+    }
     if let Some(t) = app.toplevel.take() {
         t.destroy();
     }
@@ -604,7 +624,15 @@ impl App {
             return;
         }
         self.needs_draw = false;
-        let (w, h) = self.size;
+        let s = self.surface.clone().unwrap();
+        if self.spec.animated {
+            s.frame(qh, ());
+        }
+        self.paint(qh, &s, self.size, self.spec.color);
+    }
+
+    /// Fills a surface with one colour, opaque, and commits it.
+    fn paint(&self, qh: &QueueHandle<App>, s: &wl_surface::WlSurface, (w, h): (i32, i32), c: u32) {
         let stride = w * 4;
         let len = (stride * h) as usize;
         // Safety: memfd_create with a static name.
@@ -613,7 +641,6 @@ impl App {
         // Safety: we own the new fd.
         let fd = unsafe { OwnedFd::from_raw_fd(fd) };
         let mut file = std::fs::File::from(fd);
-        let c = self.spec.color;
         let px = [c as u8, (c >> 8) as u8, (c >> 16) as u8, 0xff];
         let mut data = Vec::with_capacity(len);
         for _ in 0..(w * h) {
@@ -623,14 +650,10 @@ impl App {
         let pool = self.shm.create_pool(file.as_fd(), len as i32, qh, ());
         let buffer = pool.create_buffer(0, w, h, stride, wl_shm::Format::Argb8888, qh, ());
         pool.destroy();
-        let s = self.surface.as_ref().unwrap();
         let opaque = self.compositor.create_region(qh, ());
         opaque.add(0, 0, w, h);
         s.set_opaque_region(Some(&opaque));
         opaque.destroy();
-        if self.spec.animated {
-            s.frame(qh, ());
-        }
         s.attach(Some(&buffer), 0, 0);
         s.damage_buffer(0, 0, w, h);
         s.commit();
@@ -834,6 +857,40 @@ impl Dispatch<xdg_surface::XdgSurface, ()> for App {
                 app.surface.as_ref().unwrap().commit();
             }
         }
+    }
+}
+
+/// A dialog's surface and toplevel, by the colour it draws.
+#[derive(Clone, Copy)]
+struct DialogColor(u32);
+
+impl Dispatch<xdg_surface::XdgSurface, DialogColor> for App {
+    fn event(
+        app: &mut Self,
+        xs: &xdg_surface::XdgSurface,
+        event: xdg_surface::Event,
+        color: &DialogColor,
+        _: &Connection,
+        qh: &QueueHandle<Self>,
+    ) {
+        if let xdg_surface::Event::Configure { serial } = event {
+            xs.ack_configure(serial);
+            if let Some((s, ..)) = &app.dialog {
+                app.paint(qh, s, (200, 150), color.0);
+            }
+        }
+    }
+}
+
+impl Dispatch<xdg_toplevel::XdgToplevel, DialogColor> for App {
+    fn event(
+        _: &mut Self,
+        _: &xdg_toplevel::XdgToplevel,
+        _: xdg_toplevel::Event,
+        _: &DialogColor,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
     }
 }
 
