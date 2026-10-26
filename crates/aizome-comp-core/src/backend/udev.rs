@@ -1095,6 +1095,9 @@ fn vblank(state: &mut State, node: DrmNode, crtc: crtc::Handle, metadata: &mut O
         _ => (state.az.clock.now(), wp_presentation_feedback::Kind::Vsync),
     };
     let seq = metadata.as_ref().map(|m| m.sequence as u64).unwrap_or(0);
+    if let Some(o) = state.az.out.get_mut(&output) {
+        o.presented = Some(Duration::from(time));
+    }
     match submitted {
         Ok(Some(Some(mut feedback))) => feedback.presented(time, Refresh::fixed(refresh), seq, flags),
         Ok(_) => {}

@@ -32,6 +32,7 @@ pub mod ipc;
 pub mod logic;
 pub mod night;
 pub mod outputs;
+pub mod pacing;
 pub mod painter;
 pub mod pieces;
 pub mod popups;

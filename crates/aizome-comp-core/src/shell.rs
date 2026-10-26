@@ -63,6 +63,13 @@ impl CompositorHandler for State {
     }
 
     fn new_surface(&mut self, surface: &WlSurface) {
+        // A commit waiting on a fifo barrier or a time gets a frame or a
+        // timer to let it through. This hook runs before smithay's own for
+        // those (added with the surface's fifo or timer object, later), so
+        // what the commit asks is still there to read.
+        add_pre_commit_hook::<Self, _>(surface, |state, _dh, surface| {
+            crate::pacing::commit_requested(state, surface);
+        });
         // Wait for a dmabuf's fence before applying the commit, so frames
         // never sample unfinished buffers.
         add_pre_commit_hook::<Self, _>(surface, |state, _dh, surface| {
