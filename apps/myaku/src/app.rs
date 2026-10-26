@@ -61,6 +61,8 @@ pub enum Msg {
     Activate(usize),
     Select(Sel),
     Inspector(bool),
+    EnergyMeters,
+    CloseEnergyMeters,
     /// Ask before signalling the selection (`true`: force).
     AskQuit(bool),
     /// Signal what was selected when asked.
@@ -98,6 +100,8 @@ impl Request {
 
 pub struct Myaku {
     pub window: WindowKey,
+    /// The optional, live explanation of the meters used for Energy.
+    pub energy_meters: Option<WindowKey>,
     /// What shows: the last reading, as the chosen card sees it in the GPU
     /// lens.
     pub frame: Arc<Frame>,
@@ -145,6 +149,7 @@ impl Myaku {
     pub fn with_frame(frame: Arc<Frame>, signaller: Signaller, request: Request) -> Myaku {
         let mut m = Myaku {
             window: WindowKey::NONE,
+            energy_meters: None,
             frame: Arc::new(Frame::default()),
             reading: Arc::new(Frame::default()),
             gpu: None,
@@ -545,6 +550,17 @@ impl Program for Myaku {
                 }
             }
             Msg::Inspector(on) => self.inspector = on,
+            Msg::EnergyMeters => {
+                let window = *self.energy_meters.get_or_insert_with(|| {
+                    cx.open_window(WindowSpec::new("Energy Meters").size(520.0, 500.0).min_size(380.0, 320.0).utility())
+                });
+                cx.activate(window);
+            }
+            Msg::CloseEnergyMeters => {
+                if let Some(window) = self.energy_meters.take() {
+                    cx.close_window(window);
+                }
+            }
             Msg::AskQuit(force) => match self.can_quit() {
                 Ok(sel) => {
                     let (members, name) = self.targets(sel);
@@ -600,8 +616,19 @@ impl Program for Myaku {
         self.tell_sampler();
     }
 
-    fn view(&self, _window: WindowKey) -> Element<Msg> {
-        crate::ui::view::window(self)
+    fn view(&self, window: WindowKey) -> Element<Msg> {
+        if Some(window) == self.energy_meters { crate::ui::energy::view(self) } else { crate::ui::view::window(self) }
+    }
+
+    fn close_requested(&mut self, window: WindowKey, cx: &mut Cx<Msg>) -> bool {
+        if Some(window) == self.energy_meters {
+            self.energy_meters = None;
+        } else if window == self.window
+            && let Some(meters) = self.energy_meters.take()
+        {
+            cx.close_window(meters);
+        }
+        true
     }
 
     fn menus(&self) -> MenuBar<Msg> {
@@ -643,6 +670,7 @@ impl Program for Myaku {
                 )
                 .shortcut(Shortcut::cmd('I')),
             )
+            .item(MenuItem::new("Energy Meters…", Msg::EnergyMeters))
             .submenu(INTERVALS.iter().fold(Menu::new("Update Frequency"), |m, (label, ms)| {
                 m.item(MenuItem::new(*label, Msg::Interval(*ms)).checked(self.interval == *ms))
             }));

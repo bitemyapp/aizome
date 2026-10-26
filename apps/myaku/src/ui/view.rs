@@ -509,8 +509,20 @@ fn status(m: &Myaku) -> Element<Msg> {
         Lens::Gpu => super::gpu::status(m),
         Lens::Disk => s.disks.iter().map(|d| format!("{} {:.0}% busy", d.name, d.busy)).collect::<Vec<_>>().join(" · "),
     };
+    let right = aizome_kit::status_text(right);
+    let right = if m.lens == Lens::Energy {
+        mouse_area(right)
+            .on_press(Msg::EnergyMeters)
+            .cursor(aizome_kit::sidestep_ui::Cursor::Pointer)
+            .tooltip("Show the energy meters Myaku is using")
+            .label("Energy meters")
+            .id("energy-meters")
+            .into()
+    } else {
+        right
+    };
     aizome_kit::status_bar(vec![
         text(left).size(11.5).role(if error { Role::Danger } else { Role::Text3 }).width(Length::Fill).into(),
-        aizome_kit::status_text(right),
+        right,
     ])
 }

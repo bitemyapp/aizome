@@ -112,6 +112,17 @@ fn energy_without_a_readable_meter() {
 }
 
 #[test]
+fn optional_energy_meter_windows() {
+    for (theme, name) in THEMES {
+        for (mut h, kind) in [(workstation(theme), "measured"), (harness(theme), "unmeasured")] {
+            h.send(Msg::EnergyMeters);
+            let window = h.program().energy_meters.unwrap();
+            assert_golden(&mut h, window, format!("tests/snapshots/meters-{kind}-{name}.png"), 1.0);
+        }
+    }
+}
+
+#[test]
 fn all_processes_by_disk() {
     let mut h = harness(ThemeChoice::Night);
     h.send(Msg::Show(Show::All));

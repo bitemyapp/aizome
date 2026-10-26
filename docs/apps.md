@@ -579,6 +579,14 @@ The Energy lens is always available, including when no power meter can be
 read. Unmeasured values show as dashes, with "No power meter" in the status
 line; the selected lens stays open if readings stop.
 
+Choose **View → Energy Meters…**, or click the Energy status, to open a
+small live window listing the meters, their watts and whether each counts
+toward the total. It explains overlapping readings: a graphics card's
+power is already included when the battery supplies the total, and an AMD
+package reading is not added on top of RAPL. Unavailable readings are
+labelled without assuming why access failed. This optional window uses
+the sampler's existing readings and closes independently of the main view.
+
 The processor's meter is its RAPL counters, readable only by root, or else
 the meter an AMD integrated Radeon reports: amdgpu's is the whole package's
 on an APU, the processor included, and anyone may read it. Without either,
