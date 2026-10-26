@@ -352,11 +352,15 @@ Keyboard focus, highest first:
    the client, or focus moving to another window, closes the menus (and
    the press then does what it does there). An input method's grab of
    the keyboard (`zwp_input_method_v2`, which ibus holds while a text
-   field has the keys) doesn't keep a menu shut: a field's context menu
-   takes the keys over and keeps them after the input method lets go of
-   its grab, a field in the menu types through the input method with the
-   keys staying in the menu, and once the menu closes the input method
-   grabs them again for the field;
+   field has the keys) doesn't keep shut a menu of the client typed into
+   or pointed at (a field's context menu) or of a layer surface (the
+   shell's, for a binding); another client's menu is dismissed. The menu
+   opens over the input method's grab rather than in its place: the keys
+   go to its topmost popup, and the menu's own grab takes the keyboard
+   once the input method lets go (ibus does as the field loses the keys).
+   A field in the menu types through the input method with the keys
+   staying in the menu, and once the menu closes the input method grabs
+   them again for the field (or still has them, if it kept its grab);
 4. an OnDemand layer surface, once clicked, until a window is clicked or
    it unmaps;
 5. the focused window.

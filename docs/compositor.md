@@ -467,7 +467,10 @@ nix develop --command cargo test -p aizome-comp
   that grabs the keyboard while a field has it (as Telegram and ibus):
   the field's context menu opening on a right-press, keeping the keys
   once the input method lets go, and a field in the menu typing through
-  it.
+  it; an input method that keeps its grab having the keys again after
+  the menu; another client's menu refused over the grab and the shell's
+  (serial 0, as for F10) opening; and a menu refused for a pointer grab
+  leaving the field and the input method be.
 - `tests/sidestep.rs`: a sidestep-ui client (`examples/sidestep_client`):
   server-side decorations, frame callbacks on the content subsurface, a
   layer-shell panel's exclusive zone, the session lock, a see-through

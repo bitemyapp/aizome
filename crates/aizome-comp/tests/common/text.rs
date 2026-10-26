@@ -3,10 +3,9 @@
 //! focused field, as Qt's and GTK's are) and which opens a grabbing context
 //! menu on a right-button press, with that press's serial; and an input
 //! method that grabs the keyboard while a text input is active and lets go
-//! when none is, as ibus does.
+//! when none is, as ibus does (or keeps its grab throughout, which the
+//! protocol allows).
 
-use std::io::Write;
-use std::os::fd::{AsFd, FromRawFd, OwnedFd};
 use std::os::unix::net::UnixStream;
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::sync::{Arc, Mutex};
@@ -15,16 +14,18 @@ use std::time::{Duration, Instant};
 
 use wayland_client::globals::{GlobalListContents, registry_queue_init};
 use wayland_client::protocol::{
-    wl_buffer, wl_compositor, wl_keyboard, wl_pointer, wl_registry, wl_seat, wl_shm, wl_shm_pool, wl_surface,
+    wl_buffer, wl_callback, wl_compositor, wl_keyboard, wl_pointer, wl_registry, wl_seat, wl_shm, wl_shm_pool,
+    wl_surface,
 };
 use wayland_client::{Connection, Dispatch, EventQueue, Proxy, QueueHandle, WEnum};
 use wayland_protocols::wp::text_input::zv3::client::{zwp_text_input_manager_v3, zwp_text_input_v3};
+use wayland_protocols::xdg::decoration::zv1::client::{zxdg_decoration_manager_v1, zxdg_toplevel_decoration_v1};
 use wayland_protocols::xdg::shell::client::{xdg_popup, xdg_positioner, xdg_surface, xdg_toplevel, xdg_wm_base};
 use wayland_protocols_misc::zwp_input_method_v2::client::{
     zwp_input_method_keyboard_grab_v2, zwp_input_method_manager_v2, zwp_input_method_v2,
 };
 
-use super::Compositor;
+use super::{Compositor, dispatch_round, solid_buffer};
 
 const BTN_RIGHT: u32 = 0x111;
 
@@ -37,29 +38,6 @@ fn wait<T: Clone + std::fmt::Debug>(seen: &Mutex<T>, what: &str, f: impl Fn(&T) 
         }
         assert!(Instant::now() < deadline, "timed out waiting for {what}: {s:?}");
         std::thread::sleep(Duration::from_millis(20));
-    }
-}
-
-/// Reads and dispatches until `quit` says so or the compositor drops the
-/// connection, running `each` between rounds.
-fn pump<S: 'static>(conn: &Connection, queue: &mut EventQueue<S>, state: &mut S, mut each: impl FnMut(&mut S) -> bool) {
-    while each(state) {
-        let _ = conn.flush();
-        if let Some(guard) = queue.prepare_read() {
-            let fd = guard.connection_fd();
-            let mut pfd = libc::pollfd { fd: std::os::fd::AsRawFd::as_raw_fd(&fd), events: libc::POLLIN, revents: 0 };
-            // Safety: one valid pollfd.
-            if unsafe { libc::poll(&mut pfd, 1, 20) } > 0 {
-                if guard.read().is_err() {
-                    break;
-                }
-            } else {
-                drop(guard);
-            }
-        }
-        if queue.dispatch_pending(state).is_err() {
-            break;
-        }
     }
 }
 
@@ -86,6 +64,9 @@ impl FieldSeen {
 }
 
 pub enum FieldCmd {
+    /// The app opens its menu at the pointer without a press (for a key,
+    /// say), grabbing with the latest serial it has.
+    OpenMenu,
     /// The app closes its menu (a command chosen, or Escape).
     CloseMenu,
     Quit,
@@ -101,11 +82,15 @@ impl TextApp {
     /// `field_in_menu`: the menu has a text field of its own (a search
     /// field, say), focused while it shows.
     pub fn spawn(c: &Compositor, field_in_menu: bool) -> TextApp {
+        TextApp::spawn_as(c, APP_ID, field_in_menu)
+    }
+
+    pub fn spawn_as(c: &Compositor, app_id: &'static str, field_in_menu: bool) -> TextApp {
         let stream = UnixStream::connect(c.dir.join(&c.socket)).expect("connect to the compositor");
         let (tx, rx) = channel();
         let seen = Arc::new(Mutex::new(FieldSeen::default()));
         let seen2 = seen.clone();
-        let join = std::thread::spawn(move || run_app(stream, field_in_menu, rx, seen2));
+        let join = std::thread::spawn(move || run_app(stream, app_id, field_in_menu, rx, seen2));
         TextApp { tx, seen, join: Some(join) }
     }
 
@@ -150,6 +135,8 @@ struct App {
     menu: Option<Menu>,
     /// Where the pointer is on the window.
     pointer: (f64, f64),
+    /// The latest input serial (an entry, a key, a press).
+    serial: u32,
 }
 
 impl App {
@@ -163,23 +150,14 @@ impl App {
         }
     }
 
-    fn draw(&self, surface: &wl_surface::WlSurface, (w, h): (i32, i32), color: u32, qh: &QueueHandle<App>) {
-        let len = (w * h * 4) as usize;
-        // Safety: memfd_create with a static name.
-        let fd = unsafe { OwnedFd::from_raw_fd(libc::memfd_create(c"aizome-text-test".as_ptr(), 0)) };
-        let mut file = std::fs::File::from(fd);
-        let px = [color as u8, (color >> 8) as u8, (color >> 16) as u8, 0xff];
-        let data: Vec<u8> = std::iter::repeat_n(px, (w * h) as usize).flatten().collect();
-        file.write_all(&data).unwrap();
-        let pool = self.shm.create_pool(file.as_fd(), len as i32, qh, ());
-        let buffer = pool.create_buffer(0, w, h, w * 4, wl_shm::Format::Argb8888, qh, ());
-        pool.destroy();
+    fn draw(&self, surface: &wl_surface::WlSurface, size: (i32, i32), color: u32, qh: &QueueHandle<App>) {
+        let buffer = solid_buffer(&self.shm, size, color, qh);
         surface.attach(Some(&buffer), 0, 0);
-        surface.damage_buffer(0, 0, w, h);
+        surface.damage_buffer(0, 0, size.0, size.1);
         surface.commit();
     }
 
-    /// The context menu at the pointer, grabbing with the press's serial.
+    /// The context menu at the pointer, grabbing with `serial`.
     fn open_menu(&mut self, serial: u32, qh: &QueueHandle<App>) {
         if self.menu.is_some() {
             return;
@@ -213,7 +191,13 @@ impl App {
     }
 }
 
-fn run_app(stream: UnixStream, field_in_menu: bool, rx: Receiver<FieldCmd>, seen: Arc<Mutex<FieldSeen>>) {
+fn run_app(
+    stream: UnixStream,
+    app_id: &'static str,
+    field_in_menu: bool,
+    rx: Receiver<FieldCmd>,
+    seen: Arc<Mutex<FieldSeen>>,
+) {
     let conn = Connection::from_socket(stream).expect("wayland connection");
     let (globals, mut queue): (_, EventQueue<App>) = registry_queue_init(&conn).expect("registry");
     let qh = queue.handle();
@@ -223,14 +207,18 @@ fn run_app(stream: UnixStream, field_in_menu: bool, rx: Receiver<FieldCmd>, seen
     let seat: wl_seat::WlSeat = globals.bind(&qh, 5..=9, ()).expect("wl_seat");
     let manager: zwp_text_input_manager_v3::ZwpTextInputManagerV3 =
         globals.bind(&qh, 1..=1, ()).expect("zwp_text_input_manager_v3");
+    let decorations: zxdg_decoration_manager_v1::ZxdgDecorationManagerV1 =
+        globals.bind(&qh, 1..=1, ()).expect("zxdg_decoration_manager_v1");
     let _keyboard = seat.get_keyboard(&qh, ());
     let _pointer = seat.get_pointer(&qh, ());
     let text_input = manager.get_text_input(&seat, &qh, ());
     let surface = compositor.create_surface(&qh, ());
     let xdg = wm.get_xdg_surface(&surface, &qh, ());
     let toplevel = xdg.get_toplevel(&qh, ());
-    toplevel.set_app_id(APP_ID.into());
+    toplevel.set_app_id(app_id.into());
     toplevel.set_title("Chat".into());
+    // Aizome's frame, with a tab to drag it by.
+    decorations.get_toplevel_decoration(&toplevel, &qh, ()).set_mode(zxdg_toplevel_decoration_v1::Mode::ServerSide);
     surface.commit();
     let mut app = App {
         seen,
@@ -244,16 +232,20 @@ fn run_app(stream: UnixStream, field_in_menu: bool, rx: Receiver<FieldCmd>, seen
         text_input,
         menu: None,
         pointer: (0.0, 0.0),
+        serial: 0,
     };
-    pump(&conn, &mut queue, &mut app, |app| {
+    'run: loop {
         for cmd in rx.try_iter() {
             match cmd {
+                FieldCmd::OpenMenu => app.open_menu(app.serial, &qh),
                 FieldCmd::CloseMenu => app.close_menu(),
-                FieldCmd::Quit => return false,
+                FieldCmd::Quit => break 'run,
             }
         }
-        true
-    });
+        if !dispatch_round(&conn, &mut queue, &mut app) {
+            break;
+        }
+    }
     app.close_menu();
     toplevel.destroy();
     app.xdg.destroy();
@@ -288,6 +280,8 @@ ignore!(App:
     wl_seat::WlSeat,
     xdg_positioner::XdgPositioner,
     xdg_toplevel::XdgToplevel,
+    zxdg_decoration_manager_v1::ZxdgDecorationManagerV1,
+    zxdg_toplevel_decoration_v1::ZxdgToplevelDecorationV1,
     zwp_text_input_manager_v3::ZwpTextInputManagerV3
 );
 
@@ -367,12 +361,14 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for App {
         _: &QueueHandle<Self>,
     ) {
         match event {
-            wl_keyboard::Event::Enter { surface, .. } => {
+            wl_keyboard::Event::Enter { serial, surface, .. } => {
+                app.serial = serial;
                 let name = app.name_of(&surface);
                 app.seen.lock().unwrap().focus = name;
             }
             wl_keyboard::Event::Leave { .. } => app.seen.lock().unwrap().focus = None,
-            wl_keyboard::Event::Key { key, state: WEnum::Value(wl_keyboard::KeyState::Pressed), .. } => {
+            wl_keyboard::Event::Key { serial, key, state: WEnum::Value(wl_keyboard::KeyState::Pressed), .. } => {
+                app.serial = serial;
                 let mut seen = app.seen.lock().unwrap();
                 let to = seen.focus.unwrap_or_default();
                 seen.keys.push((to, key));
@@ -392,7 +388,8 @@ impl Dispatch<wl_pointer::WlPointer, ()> for App {
         qh: &QueueHandle<Self>,
     ) {
         match event {
-            wl_pointer::Event::Enter { surface, surface_x, surface_y, .. } if surface == app.surface => {
+            wl_pointer::Event::Enter { serial, surface, surface_x, surface_y } if surface == app.surface => {
+                app.serial = serial;
                 app.pointer = (surface_x, surface_y);
             }
             wl_pointer::Event::Motion { surface_x, surface_y, .. } if app.menu.is_none() => {
@@ -404,7 +401,13 @@ impl Dispatch<wl_pointer::WlPointer, ()> for App {
                 button: BTN_RIGHT,
                 state: WEnum::Value(wl_pointer::ButtonState::Pressed),
                 ..
-            } => app.open_menu(serial, qh),
+            } => {
+                app.serial = serial;
+                app.open_menu(serial, qh);
+            }
+            wl_pointer::Event::Button { serial, state: WEnum::Value(wl_pointer::ButtonState::Pressed), .. } => {
+                app.serial = serial;
+            }
             _ => {}
         }
     }
@@ -453,7 +456,8 @@ pub struct ImeSeen {
     pub active: bool,
     /// Times it has been activated.
     pub activations: u32,
-    /// It holds a keyboard grab.
+    /// It holds a keyboard grab, as far as the compositor knows: it says
+    /// so once the compositor has handled the grab or the release.
     pub grabbed: bool,
     /// Keys pressed (evdev codes) that came through its grab.
     pub keys: Vec<u32>,
@@ -467,13 +471,24 @@ pub struct InputMethod {
 
 impl InputMethod {
     /// Running once this returns: text inputs focused after it reach it.
+    /// It grabs the keyboard while one is active and lets go when none is.
     pub fn spawn(c: &Compositor) -> InputMethod {
+        InputMethod::start(c, false)
+    }
+
+    /// One that grabs the keyboard when first activated and keeps the grab
+    /// while no text input is active.
+    pub fn spawn_holding(c: &Compositor) -> InputMethod {
+        InputMethod::start(c, true)
+    }
+
+    fn start(c: &Compositor, holds: bool) -> InputMethod {
         let stream = UnixStream::connect(c.dir.join(&c.socket)).expect("connect to the compositor");
         let (quit, rx) = channel();
         let (ready_tx, ready) = channel();
         let seen = Arc::new(Mutex::new(ImeSeen::default()));
         let seen2 = seen.clone();
-        let join = std::thread::spawn(move || run_ime(stream, rx, ready_tx, seen2));
+        let join = std::thread::spawn(move || run_ime(stream, holds, rx, ready_tx, seen2));
         ready.recv_timeout(Duration::from_secs(10)).expect("the input method came up");
         InputMethod { quit, seen, join: Some(join) }
     }
@@ -500,11 +515,13 @@ struct Ime {
     seen: Arc<Mutex<ImeSeen>>,
     input_method: zwp_input_method_v2::ZwpInputMethodV2,
     grab: Option<zwp_input_method_keyboard_grab_v2::ZwpInputMethodKeyboardGrabV2>,
+    /// Keeps its grab while no text input is active.
+    holds: bool,
     active: bool,
     pending: Option<bool>,
 }
 
-fn run_ime(stream: UnixStream, quit: Receiver<()>, ready: Sender<()>, seen: Arc<Mutex<ImeSeen>>) {
+fn run_ime(stream: UnixStream, holds: bool, quit: Receiver<()>, ready: Sender<()>, seen: Arc<Mutex<ImeSeen>>) {
     let conn = Connection::from_socket(stream).expect("wayland connection");
     let (globals, mut queue): (_, EventQueue<Ime>) = registry_queue_init(&conn).expect("registry");
     let qh = queue.handle();
@@ -512,10 +529,10 @@ fn run_ime(stream: UnixStream, quit: Receiver<()>, ready: Sender<()>, seen: Arc<
     let manager: zwp_input_method_manager_v2::ZwpInputMethodManagerV2 =
         globals.bind(&qh, 1..=1, ()).expect("zwp_input_method_manager_v2");
     let input_method = manager.get_input_method(&seat, &qh, ());
-    let mut ime = Ime { seen, input_method, grab: None, active: false, pending: None };
+    let mut ime = Ime { seen, input_method, grab: None, holds, active: false, pending: None };
     queue.roundtrip(&mut ime).expect("roundtrip");
     let _ = ready.send(());
-    pump(&conn, &mut queue, &mut ime, |_| quit.try_recv().is_err());
+    while quit.try_recv().is_err() && dispatch_round(&conn, &mut queue, &mut ime) {}
     if let Some(g) = ime.grab.take() {
         g.release();
     }
@@ -543,7 +560,7 @@ impl Dispatch<zwp_input_method_v2::ZwpInputMethodV2, ()> for Ime {
         im: &zwp_input_method_v2::ZwpInputMethodV2,
         event: zwp_input_method_v2::Event,
         _: &(),
-        _: &Connection,
+        conn: &Connection,
         qh: &QueueHandle<Self>,
     ) {
         match event {
@@ -552,14 +569,19 @@ impl Dispatch<zwp_input_method_v2::ZwpInputMethodV2, ()> for Ime {
             // As ibus: the keyboard is grabbed on activation and let go on
             // deactivation, once `done` applies them.
             zwp_input_method_v2::Event::Done => {
+                let had_grab = ime.grab.is_some();
                 match ime.pending.take() {
                     Some(true) if !ime.active => {
                         ime.active = true;
-                        ime.grab = Some(im.grab_keyboard(qh, ()));
+                        if ime.grab.is_none() {
+                            ime.grab = Some(im.grab_keyboard(qh, ()));
+                        }
                     }
                     Some(false) if ime.active => {
                         ime.active = false;
-                        if let Some(g) = ime.grab.take() {
+                        if !ime.holds
+                            && let Some(g) = ime.grab.take()
+                        {
                             g.release();
                         }
                     }
@@ -570,9 +592,29 @@ impl Dispatch<zwp_input_method_v2::ZwpInputMethodV2, ()> for Ime {
                     seen.activations += 1;
                 }
                 seen.active = ime.active;
-                seen.grabbed = ime.grab.is_some();
+                // `grabbed` changes once the compositor answers the sync
+                // sent after the grab or release: a key sent once it says
+                // so meets the grab, or doesn't.
+                if ime.grab.is_some() != had_grab {
+                    conn.display().sync(qh, ime.grab.is_some());
+                }
             }
             _ => {}
+        }
+    }
+}
+
+impl Dispatch<wl_callback::WlCallback, bool> for Ime {
+    fn event(
+        ime: &mut Self,
+        _: &wl_callback::WlCallback,
+        event: wl_callback::Event,
+        grabbed: &bool,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        if let wl_callback::Event::Done { .. } = event {
+            ime.seen.lock().unwrap().grabbed = *grabbed;
         }
     }
 }

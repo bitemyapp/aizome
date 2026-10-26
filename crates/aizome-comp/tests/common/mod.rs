@@ -19,7 +19,7 @@ use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
-use aizome_ipc::{Client, Request, Response, WindowInfo};
+use aizome_ipc::{Client, Request, Response, Synthetic, WindowInfo};
 use wayland_client::globals::{GlobalListContents, registry_queue_init};
 use wayland_client::protocol::{
     wl_buffer, wl_callback, wl_compositor, wl_keyboard, wl_output, wl_registry, wl_seat, wl_shm, wl_shm_pool,
@@ -219,6 +219,62 @@ impl Drop for Compositor {
             eprintln!("compositor log and screenshots kept in {}", self.dir.display());
         }
     }
+}
+
+/// Presses a key and lets go of it, in one batch.
+pub fn tap(c: &Compositor, key: &str) {
+    c.ok(Request::Synthesize {
+        events: vec![
+            Synthetic::Key { key: key.into(), pressed: true },
+            Synthetic::Key { key: key.into(), pressed: false },
+        ],
+    });
+}
+
+/// The middle of a window, in global points.
+pub fn centre(w: &WindowInfo) -> (f64, f64) {
+    ((w.geometry.x + w.geometry.w / 2) as f64, (w.geometry.y + w.geometry.h / 2) as f64)
+}
+
+/// A buffer of one opaque colour (0xRRGGBB), in shared memory.
+pub fn solid_buffer<S>(shm: &wl_shm::WlShm, (w, h): (i32, i32), color: u32, qh: &QueueHandle<S>) -> wl_buffer::WlBuffer
+where
+    S: Dispatch<wl_shm_pool::WlShmPool, ()> + Dispatch<wl_buffer::WlBuffer, ()> + 'static,
+{
+    let len = (w * h * 4) as usize;
+    // Safety: memfd_create with a static name.
+    let fd = unsafe { libc::memfd_create(c"aizome-test".as_ptr(), 0) };
+    assert!(fd >= 0);
+    // Safety: we own the new fd.
+    let mut file = std::fs::File::from(unsafe { OwnedFd::from_raw_fd(fd) });
+    // Copied in doubling runs: fast enough, unoptimised, for a fullscreen
+    // client drawing every frame.
+    let data = [color as u8, (color >> 8) as u8, (color >> 16) as u8, 0xff].repeat((w * h) as usize);
+    file.write_all(&data).unwrap();
+    let pool = shm.create_pool(file.as_fd(), len as i32, qh, ());
+    let buffer = pool.create_buffer(0, w, h, w * 4, wl_shm::Format::Argb8888, qh, ());
+    pool.destroy();
+    buffer
+}
+
+/// One round of a test client's loop: sends what it queued, reads what the
+/// compositor sends within 20 ms, and dispatches it. False once the
+/// connection is gone.
+pub fn dispatch_round<S>(conn: &Connection, queue: &mut EventQueue<S>, state: &mut S) -> bool {
+    let _ = conn.flush();
+    if let Some(guard) = queue.prepare_read() {
+        let fd = guard.connection_fd();
+        let mut pfd = libc::pollfd { fd: std::os::fd::AsRawFd::as_raw_fd(&fd), events: libc::POLLIN, revents: 0 };
+        // Safety: one valid pollfd.
+        if unsafe { libc::poll(&mut pfd, 1, 20) } > 0 {
+            if guard.read().is_err() {
+                return false;
+            }
+        } else {
+            drop(guard);
+        }
+    }
+    queue.dispatch_pending(state).is_ok()
 }
 
 /// A screenshot's pixels.
@@ -583,21 +639,7 @@ fn run_client(stream: UnixStream, spec: Spec, rx: Receiver<Cmd>, seen: Arc<Mutex
         if app.needs_draw && app.configured {
             app.draw(&qh);
         }
-        let _ = conn.flush();
-        if let Some(guard) = queue.prepare_read() {
-            let fd = guard.connection_fd();
-            let mut pfd = libc::pollfd { fd: std::os::fd::AsRawFd::as_raw_fd(&fd), events: libc::POLLIN, revents: 0 };
-            // Safety: one valid pollfd.
-            let n = unsafe { libc::poll(&mut pfd, 1, 20) };
-            if n > 0 {
-                if guard.read().is_err() {
-                    break;
-                }
-            } else {
-                drop(guard);
-            }
-        }
-        if queue.dispatch_pending(&mut app).is_err() {
+        if !dispatch_round(&conn, &mut queue, &mut app) {
             break;
         }
     }
@@ -633,23 +675,7 @@ impl App {
 
     /// Fills a surface with one colour, opaque, and commits it.
     fn paint(&self, qh: &QueueHandle<App>, s: &wl_surface::WlSurface, (w, h): (i32, i32), c: u32) {
-        let stride = w * 4;
-        let len = (stride * h) as usize;
-        // Safety: memfd_create with a static name.
-        let fd = unsafe { libc::memfd_create(c"aizome-test".as_ptr(), 0) };
-        assert!(fd >= 0);
-        // Safety: we own the new fd.
-        let fd = unsafe { OwnedFd::from_raw_fd(fd) };
-        let mut file = std::fs::File::from(fd);
-        let px = [c as u8, (c >> 8) as u8, (c >> 16) as u8, 0xff];
-        let mut data = Vec::with_capacity(len);
-        for _ in 0..(w * h) {
-            data.extend_from_slice(&px);
-        }
-        file.write_all(&data).unwrap();
-        let pool = self.shm.create_pool(file.as_fd(), len as i32, qh, ());
-        let buffer = pool.create_buffer(0, w, h, stride, wl_shm::Format::Argb8888, qh, ());
-        pool.destroy();
+        let buffer = solid_buffer(&self.shm, (w, h), c, qh);
         let opaque = self.compositor.create_region(qh, ());
         opaque.add(0, 0, w, h);
         s.set_opaque_region(Some(&opaque));
@@ -1008,20 +1034,7 @@ fn run_lock(stream: UnixStream, color: u32, rx: Receiver<Cmd>, locked: Arc<Mutex
         if rx.try_iter().any(|c| matches!(c, Cmd::Quit)) {
             quit = true;
         }
-        let _ = conn.flush();
-        if let Some(guard) = queue.prepare_read() {
-            let fd = guard.connection_fd();
-            let mut pfd = libc::pollfd { fd: std::os::fd::AsRawFd::as_raw_fd(&fd), events: libc::POLLIN, revents: 0 };
-            // Safety: one valid pollfd.
-            if unsafe { libc::poll(&mut pfd, 1, 20) } > 0 {
-                if guard.read().is_err() {
-                    break;
-                }
-            } else {
-                drop(guard);
-            }
-        }
-        if queue.dispatch_pending(&mut state).is_err() {
+        if !dispatch_round(&conn, &mut queue, &mut state) {
             break;
         }
     }
@@ -1092,17 +1105,7 @@ impl Dispatch<ext_session_lock_surface_v1::ExtSessionLockSurfaceV1, ()> for Lock
         if let ext_session_lock_surface_v1::Event::Configure { serial, width, height } = event {
             ls.ack_configure(serial);
             let (w, h) = (width as i32, height as i32);
-            let len = (w * h * 4) as usize;
-            // Safety: memfd_create with a static name.
-            let fd = unsafe { OwnedFd::from_raw_fd(libc::memfd_create(c"aizome-lock".as_ptr(), 0)) };
-            let mut file = std::fs::File::from(fd);
-            let c = s.color;
-            let px = [c as u8, (c >> 8) as u8, (c >> 16) as u8, 0xff];
-            let data: Vec<u8> = std::iter::repeat_n(px, (w * h) as usize).flatten().collect();
-            file.write_all(&data).unwrap();
-            let pool = s.shm.create_pool(file.as_fd(), len as i32, qh, ());
-            let buffer = pool.create_buffer(0, w, h, w * 4, wl_shm::Format::Argb8888, qh, ());
-            pool.destroy();
+            let buffer = solid_buffer(&s.shm, (w, h), s.color, qh);
             s.surface.attach(Some(&buffer), 0, 0);
             s.surface.damage_buffer(0, 0, w, h);
             s.surface.commit();
