@@ -10,6 +10,7 @@ rust-version.workspace = true
 # Copied from Sekka's Yukimi (apps/yukimi/crates/yukimi-system), with its
 # dependencies named here instead of in Sekka's workspace.
 [dependencies]
+aizome-ipc = { path = "../../../../crates/aizome-ipc" }
 yukimi-store = { path = "../yukimi-store" }
 yukimi-config = { path = "../yukimi-config" }
 serde = { version = "1", features = ["derive"] }
