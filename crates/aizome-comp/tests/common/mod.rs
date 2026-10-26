@@ -6,6 +6,7 @@
 
 pub mod desktop;
 pub mod layer;
+pub mod text;
 
 use std::io::Write;
 use std::os::fd::{AsFd, FromRawFd, OwnedFd};

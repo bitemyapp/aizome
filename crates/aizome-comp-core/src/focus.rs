@@ -5,7 +5,9 @@ use std::borrow::Cow;
 
 use smithay::backend::input::KeyState;
 use smithay::backend::renderer::utils::with_renderer_surface_state;
-use smithay::desktop::{LayerSurface, PopupKind, PopupUngrabStrategy, WindowSurfaceType, layer_map_for_output};
+use smithay::desktop::{
+    LayerSurface, PopupKeyboardGrab, PopupKind, PopupUngrabStrategy, WindowSurfaceType, layer_map_for_output,
+};
 use smithay::input::Seat;
 use smithay::input::keyboard::{KeyboardTarget, KeysymHandle, ModifiersState};
 use smithay::input::pointer::{
@@ -179,17 +181,30 @@ impl PopupGrabbed {
 impl State {
     /// Gives keyboard focus to what should have it: the lock surface, an
     /// exclusive layer surface, a layer surface clicked on, or the focused
-    /// window.
+    /// window, and to the topmost popup of a menu open on it.
     pub fn update_keyboard_focus(&mut self) {
         // The logic's latest word on which window has focus.
         self.lg_call((), |vt, st| (vt.publish)(st));
-        let target = self.az.keyboard_target().map(Focus);
+        let mut target = self.az.keyboard_target().map(Focus);
         let Some(keyboard) = self.az.seat.get_keyboard() else { return };
         // A popup grab gives way to whatever else must have the keyboard
         // (the lock, an exclusive layer surface, the switcher): its popups
         // close.
         if self.az.popup_grab.as_ref().is_some_and(|g| g.live() && target.as_ref().map(|f| &f.0) != Some(&g.root)) {
             self.dismiss_popup_grab();
+        }
+        // An open menu has the keys in its topmost popup, kept there by its
+        // grab of the keyboard. An input method letting go of its own grab
+        // ends the menu's too (smithay ends whatever grab the keyboard has),
+        // and one typing into a field in the menu holds the keyboard
+        // instead: the menu's grab comes back when the keyboard has none,
+        // and the keys stay in the menu either way.
+        if let Some(grab) = self.az.popup_grab.as_ref().filter(|g| g.live()).map(|g| g.grab.clone()) {
+            if !keyboard.is_grabbed() {
+                tracing::debug!(target: "aizome::focus", "popup grab takes the keyboard back");
+                keyboard.set_grab(self, PopupKeyboardGrab::new(&grab), grab.serial());
+            }
+            target = grab.current_grab();
         }
         if keyboard.current_focus() != target {
             tracing::debug!(
@@ -224,9 +239,19 @@ impl State {
     /// Once a popup grab has ended (its popups destroyed), its keyboard and
     /// pointer grabs go and the keyboard returns to what should have it
     /// (not necessarily the grab's root: a menu of the menu bar opened by a
-    /// shortcut gives the keys back to the window that had them).
+    /// shortcut gives the keys back to the window that had them). While it
+    /// lasts, the keys follow its topmost popup, past an input method
+    /// taking and letting go of the keyboard (`update_keyboard_focus`).
     pub fn check_popup_grab(&mut self) {
-        if !self.az.popup_grab.as_ref().is_some_and(|g| g.grab.has_ended()) {
+        let Some(g) = self.az.popup_grab.as_ref() else { return };
+        if g.live() {
+            let menu = g.grab.current_grab();
+            if self.az.seat.get_keyboard().is_some_and(|k| !k.is_grabbed() || k.current_focus() != menu) {
+                self.update_keyboard_focus();
+            }
+            return;
+        }
+        if !g.grab.has_ended() {
             return;
         }
         let Some(g) = self.az.popup_grab.take() else { return };
