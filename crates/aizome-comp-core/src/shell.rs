@@ -30,6 +30,7 @@ use smithay::wayland::compositor::{
     add_pre_commit_hook, get_parent, is_sync_subsurface, with_states,
 };
 use smithay::wayland::dmabuf::get_dmabuf;
+use smithay::wayland::input_method::InputMethodSeat;
 use smithay::wayland::session_lock::{LockSurface, SessionLockHandler, SessionLockManagerState, SessionLocker};
 use smithay::wayland::shell::wlr_layer::{
     Layer, LayerSurface as WlrLayerSurface, LayerSurfaceData, WlrLayerShellHandler, WlrLayerShellState,
@@ -460,9 +461,15 @@ impl XdgShellHandler for State {
         };
         debug!(target: "aizome::focus", root = ?root.id(), "popup grab");
         if let Some(keyboard) = seat.get_keyboard() {
+            // An input method holds the keyboard while a text field has it
+            // (ibus does): the field's context menu opens over that grab
+            // and takes the keys, and the input method grabs them again
+            // once the field has the keyboard back.
             if keyboard.is_grabbed()
+                && !seat.input_method().keyboard_grabbed()
                 && !(keyboard.has_grab(serial) || keyboard.has_grab(grab.previous_serial().unwrap_or(serial)))
             {
+                debug!(target: "aizome::focus", "popup grab refused: another grab has the keyboard");
                 grab.ungrab(PopupUngrabStrategy::All);
                 return;
             }
@@ -474,6 +481,7 @@ impl XdgShellHandler for State {
                 && !(pointer.has_grab(serial)
                     || pointer.has_grab(grab.previous_serial().unwrap_or_else(|| grab.serial())))
             {
+                debug!(target: "aizome::focus", "popup grab refused: another grab has the pointer");
                 grab.ungrab(PopupUngrabStrategy::All);
                 return;
             }
