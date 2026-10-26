@@ -25,6 +25,7 @@ use wayland_client::protocol::{
     wl_surface,
 };
 use wayland_client::{Connection, Dispatch, EventQueue, QueueHandle, WEnum};
+use wayland_protocols::wp::text_input::zv3::client::{zwp_text_input_manager_v3, zwp_text_input_v3};
 use wayland_protocols::xdg::decoration::zv1::client::{zxdg_decoration_manager_v1, zxdg_toplevel_decoration_v1};
 use wayland_protocols::xdg::shell::client::{xdg_surface, xdg_toplevel, xdg_wm_base};
 
@@ -313,6 +314,10 @@ pub struct Spec {
     pub animated: bool,
     /// Hold the first buffer until `Cmd::Map`, even after acknowledging configure.
     pub defer_mapping: bool,
+    /// Take text from input methods over text-input-v3 as foot does: enabled
+    /// while the window has the keys, a commit applied only by a `done`
+    /// whose serial counts its own commits.
+    pub text_input: bool,
 }
 
 impl Spec {
@@ -329,7 +334,12 @@ impl Spec {
             fullscreen_output: None,
             animated: false,
             defer_mapping: false,
+            text_input: false,
         }
+    }
+    pub fn text_input(mut self) -> Spec {
+        self.text_input = true;
+        self
     }
     pub fn animated(mut self) -> Spec {
         self.animated = true;
@@ -387,6 +397,12 @@ pub struct Seen {
     pub scrolled: f64,
     /// Buttons: (code, pressed).
     pub buttons: Vec<(u32, bool)>,
+    /// Text input: enabled (its `enter` came), the text input methods
+    /// committed and it applied, and how many `done`s it dropped for a
+    /// serial not its own.
+    pub ime_enabled: bool,
+    pub ime_text: String,
+    pub ime_dropped: u32,
 }
 
 pub enum Cmd {
@@ -461,6 +477,10 @@ struct App {
     needs_draw: bool,
     configured: bool,
     quit: bool,
+    /// Text input: commits made (what a `done` must say), and the string
+    /// committed since the last `done`.
+    ti_serial: u32,
+    ti_commit: Option<String>,
 }
 
 fn run_client(stream: UnixStream, spec: Spec, rx: Receiver<Cmd>, seen: Arc<Mutex<Seen>>) {
@@ -494,7 +514,14 @@ fn run_client(stream: UnixStream, spec: Spec, rx: Receiver<Cmd>, seen: Arc<Mutex
         needs_draw: false,
         configured: false,
         quit: false,
+        ti_serial: 0,
+        ti_commit: None,
     };
+    let _text_input = (spec.text_input)
+        .then(|| globals.bind::<zwp_text_input_manager_v3::ZwpTextInputManagerV3, _, _>(&qh, 1..=1, ()).ok())
+        .flatten()
+        .zip(seat.as_ref())
+        .map(|(m, s)| m.get_text_input(s, &qh, ()));
     let surface = app.compositor.create_surface(&qh, ());
     let xs = wm.get_xdg_surface(&surface, &qh, ());
     let tl = xs.get_toplevel(&qh, ());
@@ -636,8 +663,51 @@ ignore!(
     wl_shm_pool::WlShmPool,
     wl_surface::WlSurface,
     zxdg_decoration_manager_v1::ZxdgDecorationManagerV1,
-    wl_seat::WlSeat
+    wl_seat::WlSeat,
+    zwp_text_input_manager_v3::ZwpTextInputManagerV3
 );
+
+impl Dispatch<zwp_text_input_v3::ZwpTextInputV3, ()> for App {
+    fn event(
+        app: &mut Self,
+        ti: &zwp_text_input_v3::ZwpTextInputV3,
+        event: zwp_text_input_v3::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        use zwp_text_input_v3::{ContentHint, ContentPurpose, Event};
+        match event {
+            // As foot: enable on enter, with a content type and cursor.
+            Event::Enter { .. } => {
+                ti.enable();
+                ti.set_content_type(ContentHint::None, ContentPurpose::Terminal);
+                ti.set_cursor_rectangle(0, 0, 8, 16);
+                ti.commit();
+                app.ti_serial += 1;
+                app.seen.lock().unwrap().ime_enabled = true;
+            }
+            Event::Leave { .. } => {
+                ti.disable();
+                ti.commit();
+                app.ti_serial += 1;
+                app.seen.lock().unwrap().ime_enabled = false;
+            }
+            Event::CommitString { text } => app.ti_commit = text,
+            Event::Done { serial } => {
+                let commit = app.ti_commit.take();
+                let mut seen = app.seen.lock().unwrap();
+                // foot's ime.c: "IME serial mismatch" drops the lot.
+                if serial != app.ti_serial {
+                    seen.ime_dropped += 1;
+                } else if let Some(t) = commit {
+                    seen.ime_text.push_str(&t);
+                }
+            }
+            _ => {}
+        }
+    }
+}
 
 impl Dispatch<wl_callback::WlCallback, ()> for App {
     fn event(
