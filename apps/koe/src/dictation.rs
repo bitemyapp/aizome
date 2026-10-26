@@ -69,6 +69,15 @@ fn header(app: &Koe) -> Element<Msg> {
         title("Koe's settings can't be read");
         more.push(detail(error.clone(), Role::Danger));
         more.push(button("Use Usual Settings…").on_press(Msg::AskReset).into());
+        if app.status.is_some() {
+            more.push(
+                button("Stop It")
+                    .on_press(Msg::Enable(false))
+                    .enabled(app.switching.is_none())
+                    .id("stop-service")
+                    .into(),
+            );
+        }
     } else if let Some(turning_on) = app.switching.or(app.started.and(app.status.is_none().then_some(true))) {
         title(if turning_on { "Turning dictation on…" } else { "Turning dictation off…" });
         more.push(progress_indeterminate().into());

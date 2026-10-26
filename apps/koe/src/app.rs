@@ -336,28 +336,31 @@ impl Koe {
     /// no saving). Only the window's thread writes koe.toml (never a
     /// worker), so one change never undoes another.
     fn change(&mut self, edit: impl FnOnce(&mut Config)) -> bool {
+        match self.try_change(edit) {
+            Ok(()) => true,
+            Err(error) => {
+                self.say_error(error);
+                false
+            }
+        }
+    }
+
+    fn try_change(&mut self, edit: impl FnOnce(&mut Config)) -> Result<(), String> {
         // What's been saved from elsewhere since the last look stays.
         self.read_config(false);
-        if self.config_error.is_some() {
-            return false;
+        if let Some(error) = &self.config_error {
+            return Err(format!("Couldn't read Koe's settings: {error}"));
         }
         let mut config = self.config.clone();
         edit(&mut config);
         if config == self.config && self.paths.config.exists() {
-            return true;
+            return Ok(());
         }
-        match config.save(&self.paths.config) {
-            Ok(()) => {
-                self.config = config;
-                self.config_stamp = stamp(&self.paths.config);
-                self.vocab.set_config(Arc::new(self.config.clone()));
-                true
-            }
-            Err(error) => {
-                self.say_error(format!("Couldn't save Koe's settings: {error:#}"));
-                false
-            }
-        }
+        config.save(&self.paths.config).map_err(|error| format!("Couldn't save Koe's settings: {error:#}"))?;
+        self.config = config;
+        self.config_stamp = stamp(&self.paths.config);
+        self.vocab.set_config(Arc::new(self.config.clone()));
+        Ok(())
     }
 
     fn say(&mut self, s: impl Into<String>) {
@@ -369,13 +372,16 @@ impl Koe {
     }
 
     fn switch(&mut self, on: bool, cx: &mut Cx<Msg>) {
-        if self.switching.is_some() || self.config_error.is_some() {
+        if self.switching.is_some() || (on && self.config_error.is_some()) {
             return;
         }
         self.message = None;
         // The choice is saved here, before any other setting can be; the
-        // worker only starts or stops the service.
-        if !self.change(|c| c.enabled = on) {
+        // worker only starts or stops the service. A failed save mustn't
+        // prevent stopping a running microphone.
+        let saved = self.try_change(|c| c.enabled = on);
+        if on && let Err(error) = &saved {
+            self.say_error(error.clone());
             return;
         }
         self.switching = Some(on);
@@ -388,7 +394,12 @@ impl Koe {
                     true => service::ensure_shortcuts(&paths.settings, paths.desktop)
                         .err()
                         .map(|e| format!("Dictation has no shortcut: {e:#}")),
-                    false => None,
+                    false => saved.err().map(|error| {
+                        format!(
+                            "Dictation's service has stopped, but Koe couldn't save the off setting. \
+                             It may start again at login. {error}"
+                        )
+                    }),
                 };
                 if on {
                     service.start()?;
@@ -584,7 +595,9 @@ impl Program for Koe {
                             // status stream has said so yet.
                             self.status = None;
                             self.vocab.set_status(None);
-                            self.say("Dictation is off. Its service has stopped and won't start at login.");
+                            if self.message.is_none() {
+                                self.say("Dictation is off. Its service has stopped and won't start at login.");
+                            }
                         }
                     }
                     Err(error) => self.say_error(if on {

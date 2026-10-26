@@ -234,10 +234,12 @@ pub async fn run(path: PathBuf, settings: Option<PathBuf>, mut updates: watch::R
                             }).await.map_err(anyhow::Error::from).and_then(|r| r).err(),
                             None => None,
                         };
-                        match saved {
-                            Some(error) => Some(format!("Cannot turn dictation off: {error:#}")),
-                            None => request(&path, Action::Shutdown).await,
-                        }
+                        // Stopping the microphone doesn't depend on
+                        // persisting the choice for the next login.
+                        request(&path, Action::Shutdown).await.or_else(|| saved.map(|error| {
+                            format!("Dictation's service has stopped, but Koe couldn't save the off setting. \
+                                     It may start again at login. {error:#}")
+                        }))
                     }
                     Item::Daemon(action) => request(&path, action).await,
                 };

@@ -6,9 +6,9 @@
 use aizome_kit::testing::Harness;
 use koe::{
     app::{Koe, Msg, Paths},
-    config::Config,
+    config::{Backend, Config},
     models::Model,
-    protocol::Status,
+    protocol::{Phase, Status},
     service::{self, Service},
 };
 use sha2::{Digest, Sha256};
@@ -282,6 +282,55 @@ fn a_service_running_with_dictation_off_says_so_and_stops() {
     r.click_id("stop-service");
     r.settle("stopped", |r| r.service.calls() == ["stop"]);
     r.settle("off", |r| r.has("won't start at login") && !r.has("still running"));
+}
+
+#[test]
+fn turning_off_stops_recording_even_when_the_choice_cannot_be_saved() {
+    let mut r = Rig::new(Duration::from_millis(2));
+    let mut config = Config { enabled: true, ..Config::default() };
+    config.engine.backend = Backend::Http;
+    config.save(&r.path("koe.toml")).unwrap();
+    r.settle("on", |r| r.h.program().config.enabled);
+    // Block the atomic write, including when the tests run as root.
+    fs::create_dir(r.path("koe.toml.tmp")).unwrap();
+    r.h.send(Msg::Status(Some(Status { phase: Phase::Recording, ..Status::default() })));
+    r.click_id("dictation-switch");
+    r.settle("stopped", |r| r.service.calls() == ["stop"] && r.h.program().switching.is_none());
+    assert!(r.h.program().status.is_none());
+    assert!(r.config().enabled, "the saved choice could not change");
+    assert!(r.has("service has stopped"));
+    assert!(r.has("couldn't save") && r.has("may start again at login"));
+    assert!(!r.has("won't start at login"));
+}
+
+#[test]
+fn unreadable_settings_still_offer_to_stop_recording_without_replacing_them() {
+    let mut r = Rig::new(Duration::from_millis(2));
+    let broken = "[engine]\nlanguage = 3\n";
+    fs::write(r.path("koe.toml"), broken).unwrap();
+    r.settle("error shown", |r| r.has("Koe's settings can't be read"));
+    r.h.send(Msg::Status(Some(Status { phase: Phase::Recording, ..Status::default() })));
+    r.click_id("stop-service");
+    r.settle("stopped", |r| r.service.calls() == ["stop"] && r.h.program().switching.is_none());
+    assert!(r.h.program().status.is_none());
+    assert_eq!(fs::read_to_string(r.path("koe.toml")).unwrap(), broken);
+    assert!(r.has("service has stopped") && r.has("couldn't save"));
+    assert!(!r.has("won't start at login"));
+}
+
+#[test]
+fn turning_on_still_requires_saving_the_choice() {
+    let mut r = Rig::new(Duration::from_millis(2));
+    let mut config = Config::default();
+    config.engine.backend = Backend::Http;
+    config.save(&r.path("koe.toml")).unwrap();
+    r.settle("ready", |r| r.h.program().ready_to_recognise());
+    fs::create_dir(r.path("koe.toml.tmp")).unwrap();
+    r.click_id("dictation-switch");
+    r.settle("save error", |r| r.has("Couldn't save Koe's settings"));
+    assert!(!r.config().enabled);
+    assert!(r.h.program().switching.is_none());
+    assert!(r.service.calls().is_empty());
 }
 
 #[test]

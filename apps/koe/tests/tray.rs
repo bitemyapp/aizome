@@ -66,6 +66,28 @@ async fn click(menu: &Proxy<'_>, label: &str) -> Result<()> {
 #[tokio::test]
 #[ignore = "requires dbus-daemon; uses an isolated session bus and fake microphone"]
 async fn tray_registers_updates_controls_and_recovers_after_host_restart() -> Result<()> {
+    exercise_tray(None).await
+}
+
+#[tokio::test]
+#[ignore = "requires dbus-daemon; uses an isolated session bus and fake microphone"]
+async fn tray_turns_off_when_settings_cannot_be_saved() -> Result<()> {
+    exercise_tray(Some(SettingsFailure::Write)).await
+}
+
+#[tokio::test]
+#[ignore = "requires dbus-daemon; uses an isolated session bus and fake microphone"]
+async fn tray_turns_off_when_settings_cannot_be_read() -> Result<()> {
+    exercise_tray(Some(SettingsFailure::Read)).await
+}
+
+#[derive(Clone, Copy)]
+enum SettingsFailure {
+    Write,
+    Read,
+}
+
+async fn exercise_tray(failure: Option<SettingsFailure>) -> Result<()> {
     let dir = tempfile::tempdir()?;
     let mut bus = Process(
         Command::new("dbus-daemon")
@@ -155,6 +177,14 @@ async fn tray_registers_updates_controls_and_recovers_after_host_restart() -> Re
         .await?
         .context("tray did not re-register")?;
     ensure!(again == service, "tray identity changed");
+    click(&menu, "Start Dictation").await?;
+    wait_phase(&socket, Phase::Recording).await?;
+    let broken = "[engine]\nlanguage = 3\n";
+    match failure {
+        Some(SettingsFailure::Write) => std::fs::create_dir(config_path.with_extension("toml.tmp"))?,
+        Some(SettingsFailure::Read) => std::fs::write(&config_path, broken)?,
+        None => {}
+    }
     click(&menu, "Turn Off Dictation").await?;
     tokio::time::timeout(Duration::from_secs(5), async {
         loop {
@@ -167,6 +197,12 @@ async fn tray_registers_updates_controls_and_recovers_after_host_restart() -> Re
     })
     .await?;
     ensure!(!socket.exists(), "socket remains after tray quit");
-    ensure!(!Config::load(&config_path)?.enabled, "turning off kept dictation on");
+    match failure {
+        Some(SettingsFailure::Write) => ensure!(Config::load(&config_path)?.enabled, "settings were overwritten"),
+        Some(SettingsFailure::Read) => {
+            ensure!(std::fs::read_to_string(&config_path)? == broken, "settings were overwritten")
+        }
+        None => ensure!(!Config::load(&config_path)?.enabled, "turning off kept dictation on"),
+    }
     Ok(())
 }

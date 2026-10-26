@@ -166,10 +166,11 @@ fn parts(chord: &str) -> ([bool; 4], String) {
     let mut key = String::new();
     for part in chord.split('+').map(str::trim) {
         match part.to_lowercase().as_str() {
-            "ctrl" | "control" => mods[0] = true,
-            "alt" | "option" | "opt" => mods[1] = true,
-            "shift" => mods[2] = true,
-            "super" | "logo" | "cmd" | "mod4" | "win" => mods[3] = true,
+            "ctrl" | "control" | "⌃" => mods[0] = true,
+            "alt" | "option" | "opt" | "⌥" => mods[1] = true,
+            "shift" | "⇧" => mods[2] = true,
+            "super" | "logo" | "cmd" | "mod4" | "win" | "❖" => mods[3] = true,
+            "esc" => key = "escape".into(),
             k => key = k.into(),
         }
     }
@@ -272,6 +273,28 @@ mod tests {
         assert!(add_shortcuts(&mut b));
         assert_eq!(chords(&b, TOGGLE), ["Super+Alt+D"]);
         assert_eq!(b.len(), 2);
+    }
+
+    #[test]
+    fn shortcut_aliases_keep_the_actions_already_bound_to_them() {
+        for chord in ["Super+Alt+Esc", "Option+Cmd+Esc", "⌥+❖+Escape", "❖+⌥+Esc"] {
+            let mut bindings = BTreeMap::from([
+                ("Super+Alt+D".to_owned(), TOGGLE.to_owned()),
+                (chord.to_owned(), "spawn foot".to_owned()),
+            ]);
+            assert!(!add_shortcuts(&mut bindings), "rebound {chord}");
+            assert_eq!(bindings[chord], "spawn foot");
+            assert!(chords(&bindings, CANCEL).is_empty());
+        }
+        for chord in ["⌥+❖+D", "❖+Alt+d", "Super+⌥+D"] {
+            let mut bindings = BTreeMap::from([
+                ("Super+Alt+Escape".to_owned(), CANCEL.to_owned()),
+                (chord.to_owned(), "spawn foot".to_owned()),
+            ]);
+            assert!(!add_shortcuts(&mut bindings), "rebound {chord}");
+            assert_eq!(bindings[chord], "spawn foot");
+            assert!(chords(&bindings, TOGGLE).is_empty());
+        }
     }
 
     #[test]
