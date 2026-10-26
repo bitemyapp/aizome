@@ -329,12 +329,13 @@ impl InputMethodHandler for State {
 
     fn popup_repositioned(&mut self, _surface: ImePopupSurface) {}
 
+    /// The window geometry of the surface with the text field: a window's,
+    /// or a menu's for a field in a menu (GTK's emoji search).
     fn parent_geometry(&self, parent: &WlSurface) -> Rectangle<i32, Logical> {
-        self.az
-            .window_for_surface(parent)
-            .and_then(|id| self.az.windows.get(&id))
-            .map(|m| m.window.geometry())
-            .unwrap_or_default()
+        if let Some(m) = self.az.window_for_surface(parent).and_then(|id| self.az.windows.get(&id)) {
+            return m.window.geometry();
+        }
+        self.az.popups.find_popup(parent).map(|p| p.geometry()).unwrap_or_default()
     }
 }
 
