@@ -4,6 +4,8 @@
 
 use std::time::Duration;
 
+use aizome_sys::sysinfo::power::Floor;
+
 use crate::model::{Frame, Gpu, GpuUsage, GpuUse, Group, Kind, Memory, Meter, Power, Process, System, Usage};
 
 /// A small, steady generator of numbers in `[0, 1)`.
@@ -350,7 +352,35 @@ pub fn workstation(processes: usize, tick: u64) -> Frame {
     f.processes.push(runner);
     f.system.processes = f.processes.len();
     f.total_graphics();
+    measure(&mut f);
     f
+}
+
+/// The workstation's meters as the sampler reads them: RAPL is root's and
+/// there's no battery, but the Radeon's meter is the processor package's
+/// and the RTX has its own. Each process draws as it does now since the
+/// first reading.
+fn measure(f: &mut Frame) {
+    f.power = crate::sampler::meters(None, None, false, &f.gpus);
+    let cores = f.system.cores.len().max(1) as f64;
+    let mut floors = vec![Floor::default(); f.gpus.len()];
+    let parts = crate::sampler::attribute(&f.power, &f.gpus, &f.processes, cores, &mut Floor::default(), &mut floors);
+    f.power.attributed = parts.iter().flatten().sum();
+    let seconds = f.tick as f64;
+    let Frame { processes, groups, .. } = f;
+    for (p, part) in processes.iter_mut().zip(parts) {
+        p.usage.power = part;
+        if let Some(w) = part {
+            p.usage.energy = w * seconds;
+            p.usage.measured = seconds;
+        }
+    }
+    for g in groups.iter_mut() {
+        let members = || g.members.iter().map(|&m| &processes[m].usage);
+        g.usage.power = members().filter_map(|u| u.power).reduce(|a, b| a + b);
+        g.usage.energy = members().map(|u| u.energy).sum();
+        g.usage.measured = members().map(|u| u.measured).fold(0.0, f64::max);
+    }
 }
 
 #[cfg(test)]

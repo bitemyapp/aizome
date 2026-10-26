@@ -576,6 +576,30 @@ bus ("GeForce RTX 4090 · 41:00"), as Myaku's numbering of them would not
 match `nvidia-smi`'s.
 `aizome-myaku --print` also includes card and application video-memory usage.
 
+The Energy lens is always available, including when no power meter can be
+read. Unmeasured values show as dashes, with "No power meter" in the status
+line; the selected lens stays open if readings stop.
+
+Choose **View → Energy Meters…**, or click the Energy status, to open a
+small live window listing the meters, their watts and whether each counts
+toward the total. It explains overlapping readings: a graphics card's
+power is already included when the battery supplies the total, and an AMD
+package reading is not added on top of RAPL. Unavailable readings are
+labelled without assuming why access failed. This optional window uses
+the sampler's existing readings and closes independently of the main view.
+
+The processor's meter is its RAPL counters, readable only by root, or else
+the meter an AMD integrated Radeon reports: amdgpu's is the whole package's
+on an APU, the processor included, and anyone may read it. Without either,
+the battery's draw counts while it discharges. Each discrete card's own
+meter adds to any of these: NVML's energy counter, or the card's hwmon
+meter. A desktop with no battery and RAPL kept for root (the integrated
+Radeon and RTX 5090 one) measures through these. Each meter is shared by
+use of what it measures: the processor's (or the battery's draw less the
+cards') by processor time, a card's by its clients' time on that card,
+and what is left is the devices idling. With only the cards' meters,
+what uses no card shows a dash.
+
 `cargo test -p aizome-myaku --test gpu` drives the choice from the toolbar,
 the strip and the menu on a made-up desktop with both cards
 (`fixture::workstation`), and covers figures across cards, other lenses,

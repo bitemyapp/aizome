@@ -5,6 +5,7 @@
 
 use std::sync::Arc;
 
+use aizome_kit::layout::Point;
 use aizome_kit::sidestep_ui::{Modifiers, NamedKey};
 use aizome_kit::testing::Harness;
 use aizome_sys::sysinfo::Signal;
@@ -77,24 +78,36 @@ fn searching_finds_applications_and_their_processes() {
 }
 
 #[test]
-fn lenses_change_the_columns_and_energy_needs_a_meter() {
+fn energy_stays_available_when_a_meter_starts_or_stops_reading() {
     let (mut h, _) = start();
     let w = h.window();
     h.command(w, '2');
     assert_eq!(h.program().lens, Lens::Memory);
     let firefox = h.program().frame.groups.iter().find(|g| g.name == "Firefox").unwrap().usage.private.unwrap();
     assert!(h.texts(w).iter().any(|t| *t == myaku::model::bytes(firefox)), "the Private column shows");
-    // No meter here: the Energy lens isn't offered, and says so.
-    h.send(Msg::Lens(Lens::Energy));
-    assert_eq!(h.program().lens, Lens::Memory);
-    assert!(!h.texts(w).iter().any(|t| t == "Energy"));
+    // No meter here: Energy is still available through its shortcut and
+    // toolbar, with missing measurements rather than invented zeros.
+    h.command(w, '3');
+    assert_eq!(h.program().lens, Lens::Energy);
+    h.command(w, '2');
+    let tab = h
+        .inspected(w)
+        .into_iter()
+        .find_map(|node| node["parts"].as_array()?.iter().find(|part| part["name"] == "Energy").cloned())
+        .expect("the Energy tab is visible without a meter");
+    let [x, y, width, height] = std::array::from_fn(|i| tab["rect"][i].as_f64().unwrap());
+    h.click(w, Point::new(x + width / 2.0, y + height / 2.0));
+    assert_eq!(h.program().lens, Lens::Energy);
+    assert!(h.texts(w).iter().any(|t| t == "No power meter"));
+    assert!(h.texts(w).iter().any(|t| t == "—"));
+    assert!(!h.texts(w).iter().any(|t| t.ends_with(" W") || t.ends_with(" mW") || t.ends_with("Wh")));
     h.send(Msg::Inspector(true));
     assert!(
         h.texts(w)
             .iter()
             .any(|t| t.contains("Not measured: the processor's power meter (RAPL) is readable only by root"))
     );
-    // With the battery discharging, it is.
+    // Readings appear in the selected lens when the battery discharges.
     let mut f: Frame = fixture::frame(300, 3);
     f.power.meter = Meter::Battery;
     f.power.battery = Some(9.0);
@@ -103,13 +116,35 @@ fn lenses_change_the_columns_and_energy_needs_a_meter() {
         p.usage.power = Some(p.usage.cpu / 100.0);
     }
     h.send(Msg::Frame(Arc::new(f)));
-    h.send(Msg::Lens(Lens::Energy));
     assert_eq!(h.program().lens, Lens::Energy);
-    let average = h.program().frame.groups[0].usage.average_power();
-    assert!(
-        average.is_none() || h.texts(w).iter().any(|t| t.ends_with(" W") || t.ends_with(" mW")),
-        "power figures show"
-    );
+    assert!(h.texts(w).iter().any(|t| t == "Battery 9.0 W"), "the meter's reading shows");
+    // Losing the meter must not switch the user's lens back to CPU.
+    h.send(Msg::Frame(Arc::new(fixture::frame(300, 4))));
+    assert_eq!(h.program().lens, Lens::Energy);
+    assert!(h.texts(w).iter().any(|t| t == "No power meter"));
+}
+
+#[test]
+fn launching_into_energy_without_a_meter_keeps_the_requested_lens() {
+    let (h, _) = start_with(Request { lens: Some(Lens::Energy), ..Default::default() });
+    assert_eq!(h.program().lens, Lens::Energy);
+    let w = h.window();
+    assert!(h.texts(w).iter().any(|t| t == "No power meter"));
+}
+
+#[test]
+fn a_desktop_without_root_or_a_battery_measures_energy_by_its_meters() {
+    let (mut h, _) = start();
+    let w = h.window();
+    // RAPL is root's and there's no battery, but the Radeon's meter is the
+    // processor package's and the RTX has its own.
+    let f = fixture::workstation(300, 40);
+    assert_eq!(f.power.meter, Meter::Package);
+    h.send(Msg::Frame(Arc::new(f)));
+    h.send(Msg::Lens(Lens::Energy));
+    assert_eq!(h.program().lens, Lens::Energy, "the Energy lens is offered");
+    assert_eq!(names(&h)[0], "ollama", "the model's runner draws the most, on the RTX");
+    assert!(h.texts(w).iter().any(|t| t.starts_with("Processor ") && t.contains(" · Graphics ")), "{:?}", h.texts(w));
 }
 
 #[test]

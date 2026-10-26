@@ -271,7 +271,9 @@ fn the_toolbar_fits_at_the_smallest_size() {
     let selector = h.find_id(w, "gpu-selector").unwrap();
     let search = h.find_id(w, "search").unwrap();
     assert!(selector.x1 < search.x0 && search.x1 <= 760.0, "{selector:?} {search:?}");
-    assert!(search.width() >= 150.0, "the search field gives a little room: {search:?}");
+    // Beside all five lenses and the selector, the search field gives a
+    // little room.
+    assert!(search.width() >= 110.0, "the search field gives a little room: {search:?}");
     let strip = ["gpu-card-1", "gpu-card-0"].map(|id| h.find_id(w, id).unwrap());
     assert!(strip[1].x1 <= 760.0);
 }
