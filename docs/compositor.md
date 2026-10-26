@@ -317,7 +317,8 @@ Notes for client authors:
 - **Stacks**: drag a tab past another window's tab (a dashed slot and
   "Release to stack with ‹title›" show) to stack; click a background tab
   to show it, drag it away to tear it out (⌥-drag tears out the showing
-  one); ⌥❖S stacks with the window behind; IPC `stack`/`unstack`.
+  one); ⌥❖S stacks with the window behind; ⌥❖[ and ⌥❖] show the
+  previous and next tab; IPC `stack`/`unstack`.
 - **Desks**: four by default (settings `[[desks]]`). Each display shows a
   Desk of its own, as XMonad's screens show workspaces: the main display
   starts on the first, the others on the next ones. The current Desk is
