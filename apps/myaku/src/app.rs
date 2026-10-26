@@ -10,7 +10,7 @@ use aizome_kit::prelude::*;
 use aizome_sys::sysinfo::Signal;
 
 use crate::history::History;
-use crate::model::{self, Frame, Kind, Lens, Meter};
+use crate::model::{self, Frame, Kind, Lens};
 use crate::sampler::{self, Command};
 use crate::ui::columns::{self, Col};
 
@@ -213,10 +213,10 @@ impl Myaku {
         cols
     }
 
-    /// The lenses that have something to show here.
+    /// The available lenses. Energy stays available when no meter reads;
+    /// its missing measurements show as dashes.
     pub fn lens_shown(&self, lens: Lens) -> bool {
         match lens {
-            Lens::Energy => self.frame.power.meter != Meter::None,
             Lens::Gpu => !self.frame.gpus.is_empty(),
             _ => true,
         }

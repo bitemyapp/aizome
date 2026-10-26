@@ -103,6 +103,15 @@ fn energy_on_a_desktop_with_the_inspector() {
 }
 
 #[test]
+fn energy_without_a_readable_meter() {
+    for (theme, name) in THEMES {
+        let mut h = harness(theme);
+        h.send(Msg::Lens(Lens::Energy));
+        golden(&mut h, "energy-unmeasured", name);
+    }
+}
+
+#[test]
 fn all_processes_by_disk() {
     let mut h = harness(ThemeChoice::Night);
     h.send(Msg::Show(Show::All));
