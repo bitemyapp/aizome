@@ -7,7 +7,7 @@
 
 mod common;
 
-use aizome_ipc::{DeskInfo, DeskSel, Request, Response, Synthetic, WindowInfo};
+use aizome_ipc::{DeskInfo, DeskSel, Event, Request, Response, Synthetic, WindowInfo};
 use common::*;
 
 const DESKTOP: u32 = 0x16161e;
@@ -221,5 +221,32 @@ fn a_desk_for_a_display_not_in_the_layout_is_refused() {
     match c.request(Request::SetDesk { desk: DeskSel::Index(2), output: Some("HDMI-9".into()) }) {
         Response::Error { message } => assert!(message.contains("HDMI-9"), "{message}"),
         r => panic!("{r:?}"),
+    }
+}
+
+#[test]
+fn losing_an_unfocused_display_announces_that_its_desk_is_no_longer_visible() {
+    // The shell underlines Desks shown on another display from its event
+    // subscription. Correct answers to `desks` alone don't refresh it.
+    for lid in [true, false] {
+        let c = Compositor::start(Options { outputs: &["eDP-1=1280x800@1", "1280x800@1"], ..Default::default() });
+        set_desk(&c, 2, Some("HEADLESS-2"));
+        for enabled in [false, true, false, true] {
+            let mut events = aizome_ipc::Client::connect_to(&c.ipc).unwrap().events().unwrap();
+            events.stream().set_read_timeout(Some(std::time::Duration::from_secs(10))).unwrap();
+            if lid {
+                c.ok(Request::Synthesize { events: vec![Synthetic::Lid { closed: !enabled }] });
+            } else {
+                c.ok(config("eDP-1", enabled));
+            }
+            assert_eq!(current(&c), 2, "focus stays on the external display");
+            let expected = desks(&c);
+            assert_eq!(expected[0].output.as_deref(), enabled.then_some("eDP-1"));
+            let announced = events.find_map(|event| match event.expect("the shell needs updated Desk visibility") {
+                Event::DesksChanged { desks } => Some(desks),
+                _ => None,
+            });
+            assert_eq!(announced.as_ref(), Some(&expected), "lid={lid}, enabled={enabled}");
+        }
     }
 }

@@ -701,9 +701,16 @@ pub fn sync_screens(st: &mut State) {
     if same {
         return;
     }
+    let removed = l.wm.screens().iter().any(|s| !geoms.iter().any(|g| g.output == s.output));
     let before = l.wm.current_desk();
     let moves = st.lg.m().wm.sync_screens(&geoms, primary.as_deref());
     desks_moved(st, before, &moves, false);
+    if removed && moves.is_empty() && st.lg.r().wm.current_desk() == before {
+        // Losing an unfocused display moves no remaining Desk and leaves
+        // focus alone, but its Desk is no longer visible. The shell still
+        // needs that change to clear its "shown elsewhere" underline.
+        st.emit_desks();
+    }
     apply_relaid(st);
 }
 
