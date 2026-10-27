@@ -229,10 +229,7 @@ fn losing_an_unfocused_display_announces_that_its_desk_is_no_longer_visible() {
     // The shell underlines Desks shown on another display from its event
     // subscription. Correct answers to `desks` alone don't refresh it.
     for lid in [true, false] {
-        let c = Compositor::start(Options {
-            outputs: &["eDP-1=1280x800@1", "1280x800@1"],
-            ..Default::default()
-        });
+        let c = Compositor::start(Options { outputs: &["eDP-1=1280x800@1", "1280x800@1"], ..Default::default() });
         set_desk(&c, 2, Some("HEADLESS-2"));
         for enabled in [false, true, false, true] {
             let mut events = aizome_ipc::Client::connect_to(&c.ipc).unwrap().events().unwrap();
