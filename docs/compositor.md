@@ -277,7 +277,11 @@ Notes for client authors:
 - **The lid**: while a laptop's lid is closed (libinput's lid switch), its
   own panel (`eDP-*`, `LVDS-*`, `DSI-*`) is off, its CRTC disabled as
   idleness does, and other monitors stay on. Opening the lid turns it on
-  again and counts as input. It stays in the layout, so nothing moves.
+  again and counts as input. With an external display in the layout,
+  the panel leaves the layout too: its focused Desk moves to the display
+  left. Opening the lid restores the panel's live mode, scale and position,
+  and its Desk returns. Undocking while closed restores its layout but
+  keeps it dark until opened. An explicitly disabled panel stays disabled.
   That matters when logind doesn't suspend on the lid (Keep Awake,
   docked); a panel another output mirrors stays on, since its frames
   drive the mirror's. `powered` in the IPC's outputs says which are off.
