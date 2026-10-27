@@ -22,9 +22,9 @@
 //!
 //! With `--scope`, systemd-run asks the manager for a scope holding its own
 //! process, prints `Running as unit: <unit>` on stderr and then execs the
-//! command, so the launched program is our child and `systemd-run` never
-//! "returns". [`launch`] therefore only waits for that line (milliseconds),
-//! then hands the child to a small thread that reaps it when it exits. The
+//! command, so the launched program is the process systemd-run was and
+//! `systemd-run` never "returns". [`launch`] therefore only waits for that
+//! line (milliseconds). The
 //! program's output goes to the journal (a journald stream tagged with the
 //! app's ID, as systemd gives services; `/dev/null` without journald):
 //! that is its stdout, and the `sh` wrapper points its stderr there too,
@@ -38,12 +38,19 @@
 //! systemd-run fails (exits without starting the scope, or says nothing
 //! for 5 seconds, in which case it is killed).
 //!
-//! **Either way** the process starts in its own session (`setsid`, so a
-//! terminal's Ctrl-C or the launcher's process group don't reach it), with
-//! stdin, stdout and stderr on `/dev/null`, and a thread reaps it, so no
-//! zombies are left. `XDG_ACTIVATION_TOKEN` and `DESKTOP_STARTUP_ID` are
-//! never inherited from the launcher; with an activation token both are
-//! set to it.
+//! **Either way** the process is not the launcher's child: a go-between
+//! forks it and exits at once, as `g_spawn_async` does, and the program
+//! waits until it has been handed to the nearest subreaper (the user
+//! manager) or init before it execs. An app that sets a parent-death signal
+//! (`bwrap --die-with-parent`, which every Nix `buildFHSEnv` app such as
+//! Claude Desktop runs under) would otherwise be killed with the launcher,
+//! so a shell restart took it down; even the launcher's thread ending would
+//! do, the signal following the thread that forked. Nothing is left to
+//! reap, and its new parent reaps it. It starts in its own session
+//! (`setsid`, so a terminal's Ctrl-C or the launcher's process group don't
+//! reach it), with stdin on `/dev/null` and its output in the journal.
+//! `XDG_ACTIVATION_TOKEN` and `DESKTOP_STARTUP_ID` are never inherited from
+//! the launcher; with an activation token both are set to it.
 //!
 //! **D-Bus activation**: a `DBusActivatable=true` entry is started through
 //! `org.freedesktop.Application` on the session bus ([`activate_dbus`]:
@@ -60,7 +67,8 @@ use super::exec::{Exec, ExecContext};
 use super::xdg::find_program;
 use crate::{Error, Result, Task, Wake};
 use std::collections::HashMap;
-use std::io::BufRead;
+use std::io::{BufRead, Read};
+use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -318,20 +326,76 @@ fn output(identifier: &str) -> (Stdio, Stdio) {
 }
 
 /// Settings common to both ways of starting: directory, environment,
-/// standard streams (output to the journal), a new session.
-fn prepare(command: &mut Command, dir: &Path, options: &LaunchOptions, identifier: &str) {
+/// standard streams (output to the journal), and a start apart from us
+/// (see [`detach`]). Spawn, then [`Detached::pid`] says which process the
+/// program is.
+fn prepare(command: &mut Command, dir: &Path, options: &LaunchOptions, identifier: &str) -> std::io::Result<Detached> {
     let (stdout, stderr) = output(identifier);
     command.current_dir(dir).stdin(Stdio::null()).stdout(stdout).stderr(stderr);
     set_activation_env(command, options.activation_token.as_deref());
-    // SAFETY: setsid is async-signal-safe and touches no memory; it is
-    // the only thing done between fork and exec.
+    let mut fds = [0; 2];
+    // Safety: pipe2 fills both descriptors on success, which we then own.
+    let (read, write) = unsafe {
+        if libc::pipe2(fds.as_mut_ptr(), libc::O_CLOEXEC) < 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        (std::fs::File::from_raw_fd(fds[0]), OwnedFd::from_raw_fd(fds[1]))
+    };
+    let report = write.as_raw_fd();
+    // Safety: detach makes only async-signal-safe calls and touches no
+    // memory but its stack.
     unsafe {
-        command.pre_exec(|| {
-            if libc::setsid() < 0 {
-                return Err(std::io::Error::last_os_error());
+        command.pre_exec(move || detach(report));
+    }
+    Ok(Detached { read, write: Some(write) })
+}
+
+/// Between fork and exec: fork again, the go-between writing the
+/// program's process ID to `report` and exiting, so the program becomes the
+/// subreaper's (or init's) and not ours before anything of it runs. A
+/// parent-death signal it sets then names a parent that outlives the
+/// shell. Then a new session.
+fn detach(report: RawFd) -> std::io::Result<()> {
+    // Safety: getpid, fork, write, _exit, getppid, sched_yield and setsid
+    // are async-signal-safe.
+    unsafe {
+        let go_between = libc::getpid();
+        match libc::fork() {
+            -1 => Err(std::io::Error::last_os_error()),
+            0 => {
+                while libc::getppid() == go_between {
+                    libc::sched_yield();
+                }
+                if libc::setsid() < 0 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                Ok(())
             }
-            Ok(())
-        });
+            pid => {
+                let pid = (pid as u32).to_ne_bytes();
+                libc::write(report, pid.as_ptr().cast(), pid.len());
+                libc::_exit(0)
+            }
+        }
+    }
+}
+
+/// The pipe a [`detach`]ed program's process ID comes through.
+struct Detached {
+    read: std::fs::File,
+    /// Ours, closed once spawned, so the read ends if the go-between does.
+    write: Option<OwnedFd>,
+}
+
+impl Detached {
+    /// The program's process ID, once `go_between` (what spawn gave) has
+    /// said it; the go-between, gone by then, is reaped.
+    fn pid(mut self, mut go_between: Child) -> std::io::Result<u32> {
+        self.write = None;
+        let mut pid = [0; 4];
+        let read = self.read.read_exact(&mut pid);
+        let _ = go_between.wait();
+        read.map(|()| u32::from_ne_bytes(pid))
     }
 }
 
@@ -349,11 +413,10 @@ fn spawn_plain(argv: &[String], dir: &Path, options: &LaunchOptions) -> Result<L
     let mut command = Command::new(program);
     command.args(args);
     let identifier = Path::new(program).file_name().map_or(program.clone(), |n| n.to_string_lossy().into_owned());
-    prepare(&mut command, dir, options, &identifier);
-    let child =
-        command.spawn().map_err(|error| Error::Command { program: program.clone(), message: error.to_string() })?;
-    let pid = child.id();
-    reap(child);
+    let failed = |error: std::io::Error| Error::Command { program: program.clone(), message: error.to_string() };
+    let detached = prepare(&mut command, dir, options, &identifier).map_err(failed)?;
+    let child = command.spawn().map_err(failed)?;
+    let pid = detached.pid(child).map_err(failed)?;
     Ok(Launched { pid, unit: None, argv: argv.to_vec() })
 }
 
@@ -381,16 +444,18 @@ fn spawn_scope(
     }
     let shell = if Path::new("/bin/sh").exists() { "/bin/sh" } else { "sh" };
     command.args(["--", shell, "-c", "exec \"$@\" 2>&1", "aizome-launch"]).args(argv);
-    prepare(&mut command, dir, options, entry.app_id());
+    let failed = |error: std::io::Error| Fallback(format!("{program}: {error}"));
+    let detached = prepare(&mut command, dir, options, entry.app_id()).map_err(failed)?;
     command.stderr(Stdio::piped());
-    let mut child = command.spawn().map_err(|error| Fallback(format!("{program}: {error}")))?;
-    let pid = child.id();
+    let mut child = command.spawn().map_err(failed)?;
+    let stderr = child.stderr.take();
+    let pid = detached.pid(child).map_err(failed)?;
     let launched = || Launched { pid, unit: Some(unit.clone()), argv: argv.to_vec() };
 
     // Read stderr on a thread until systemd-run names the unit (it then
     // execs the wrapper, which closes stderr) or exits.
-    let Some(stderr) = child.stderr.take() else {
-        kill(child);
+    let Some(stderr) = stderr else {
+        kill(pid);
         return Err(Fallback("no stderr pipe".into()));
     };
     let (sender, receiver) = mpsc::channel();
@@ -420,59 +485,46 @@ fn spawn_scope(
         }
     });
     if let Err(error) = reader {
-        kill(child);
+        kill(pid);
         return Err(Fallback(format!("no thread to read systemd-run: {error}")));
     }
     match receiver.recv_timeout(timeout) {
-        Ok(None) => {
-            reap(child);
-            Ok(launched())
-        }
+        Ok(None) => Ok(launched()),
         Ok(Some(said)) => {
             // Stderr closed without the line: systemd-run failed and is
             // exiting, or (if it stopped printing the line) exec'd the
-            // program.
+            // program. It isn't ours to wait for: whether it stays tells.
             let deadline = Instant::now() + Duration::from_millis(500);
-            loop {
-                match child.try_wait() {
-                    Ok(Some(status)) if status.success() => return Ok(launched()),
-                    Ok(Some(status)) => return Err(Fallback(format!("{status}: {said}"))),
-                    Ok(None) if Instant::now() < deadline => std::thread::sleep(Duration::from_millis(5)),
-                    Ok(None) => {
-                        reap(child);
-                        return Ok(launched());
-                    }
-                    Err(error) => {
-                        kill(child);
-                        return Err(Fallback(error.to_string()));
-                    }
+            while running(pid) {
+                if Instant::now() >= deadline {
+                    return Ok(launched());
                 }
+                std::thread::sleep(Duration::from_millis(5));
             }
+            Err(Fallback(if said.is_empty() { "it exited".into() } else { said }))
         }
         Err(mpsc::RecvTimeoutError::Timeout) => {
-            kill(child);
+            kill(pid);
             Err(Fallback(format!("no answer in {timeout:?}")))
         }
         Err(mpsc::RecvTimeoutError::Disconnected) => {
-            kill(child);
+            kill(pid);
             Err(Fallback("the reader thread died".into()))
         }
     }
 }
 
-/// Wait for `child` on a small thread so it doesn't stay a zombie.
-fn reap(mut child: Child) {
-    let spawned = std::thread::Builder::new().name("aizome-sys reaper".into()).stack_size(64 * 1024).spawn(move || {
-        let _ = child.wait();
-    });
-    if let Err(error) = spawned {
-        log::warn!("apps: no thread to reap a launched process: {error}");
-    }
+/// Whether process `pid` is there and not a zombie.
+fn running(pid: u32) -> bool {
+    let Ok(stat) = std::fs::read_to_string(format!("/proc/{pid}/stat")) else { return false };
+    stat.rsplit_once(')').and_then(|(_, rest)| rest.split_whitespace().next()).is_some_and(|state| state != "Z")
 }
 
-fn kill(mut child: Child) {
-    let _ = child.kill();
-    let _ = child.wait();
+fn kill(pid: u32) {
+    // Safety: kill() with a pid and a valid signal; its new parent reaps it.
+    unsafe {
+        libc::kill(pid as i32, libc::SIGKILL);
+    }
 }
 
 /// systemd-run, if it and the user manager are there.
@@ -716,6 +768,12 @@ Exec=echo "\\$HOME" "a\\\\b" 100%% two\sspaces
         after_comm.split_whitespace().nth(3).and_then(|s| s.parse().ok()).unwrap()
     }
 
+    /// The parent's process ID from /proc/<pid>/stat (field 4).
+    fn parent_of(stat: &str) -> u32 {
+        let after_comm = stat.rsplit_once(')').map(|(_, rest)| rest).unwrap_or("");
+        after_comm.split_whitespace().nth(1).and_then(|s| s.parse().ok()).unwrap()
+    }
+
     /// Wait until `pid` is gone (reaped), not a zombie.
     fn assert_reaped(pid: u32) {
         let deadline = Instant::now() + Duration::from_secs(10);
@@ -748,6 +806,7 @@ Exec=echo "\\$HOME" "a\\\\b" 100%% two\sspaces
         assert_eq!(Path::new(field(&report, "pwd")), probe.tmp.path().join("work").canonicalize().unwrap());
         assert_eq!(field(&report, "token"), "tok-1:tok-1");
         assert_eq!(session_of(field(&report, "stat")), pid, "its own session");
+        assert_ne!(parent_of(field(&report, "stat")), std::process::id(), "not our child");
         assert_reaped(pid);
     }
 
@@ -778,6 +837,7 @@ Exec=echo "\\$HOME" "a\\\\b" 100%% two\sspaces
         assert_eq!(field(&report, "token"), "unset:unset");
         assert!(field(&report, "cgroup").ends_with(&format!("/{unit}")), "{report}");
         assert_eq!(session_of(field(&report, "stat")), pid);
+        assert_ne!(parent_of(field(&report, "stat")), std::process::id(), "not our child");
         assert!(took < Duration::from_secs(2), "{took:?}");
         assert_reaped(pid);
     }
@@ -824,6 +884,47 @@ Exec=echo "\\$HOME" "a\\\\b" 100%% two\sspaces
         let launched = launch(&app, &options).unwrap();
         let report = probe.report(launched[0].pid);
         assert_eq!(field(&report, "args"), format!("-e sh {}", script.display()));
+    }
+
+    /// An app with a parent-death signal (as `bwrap --die-with-parent` sets
+    /// for every Nix `buildFHSEnv` app) outlives what launched it: here the
+    /// thread, which ends once the program has set the signal (the shell
+    /// launches from such a thread, and a shell restart ends them all).
+    #[test]
+    fn parent_death_signals_spare_the_app() {
+        if find_program("setpriv").is_none() {
+            eprintln!("no setpriv here; skipping");
+            return;
+        }
+        let probe = Probe::new("launch-pdeathsig");
+        probe.tmp.write(
+            "armed.sh",
+            "touch \"$(dirname \"$0\")/armed\"\nsleep 0.3\nexec sh \"$(dirname \"$0\")/probe.sh\" \"$@\"\n",
+        );
+        let app = entry(&format!(
+            "[Desktop Entry]\nType=Application\nName=Armed\nExec=setpriv --pdeathsig KILL sh \"{}\" %F\n",
+            probe.tmp.path().join("armed.sh").display()
+        ));
+        let mut backends = vec![("plain", Backend::Plain)];
+        backends.extend(systemd_backend().map(|backend| ("systemd", backend)));
+        for (name, backend) in backends {
+            let _ = std::fs::remove_file(probe.tmp.path().join("armed"));
+            let (app, armed) = (app.clone(), probe.tmp.path().join("armed"));
+            let options = LaunchOptions { targets: vec![format!("/{name}")], ..LaunchOptions::default() };
+            let launched = std::thread::spawn(move || {
+                let launched = launch_with(&app, &options, &backend).unwrap();
+                let deadline = Instant::now() + Duration::from_secs(10);
+                while !armed.exists() && Instant::now() < deadline {
+                    std::thread::sleep(Duration::from_millis(5));
+                }
+                launched
+            })
+            .join()
+            .unwrap();
+            let report = probe.report(launched[0].pid);
+            assert_eq!(field(&report, "args"), format!("/{name}"), "{name}");
+            assert_reaped(launched[0].pid);
+        }
     }
 
     #[test]
