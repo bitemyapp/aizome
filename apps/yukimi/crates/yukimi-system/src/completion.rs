@@ -623,7 +623,7 @@ fn read_with_session(include_session: bool) -> Completion {
     let system = system_state(&booted, &active, &selected, receipt.as_ref().ok(), &boot_id());
     with_session(system, include_session, || {
         if std::env::var("XDG_CURRENT_DESKTOP").is_ok_and(|s| s.split(':').any(|s| s.eq_ignore_ascii_case("aizome"))) {
-            aizome::read(&booted, &active)
+            aizome::read(&active)
         } else if in_tatami() {
             read_tatami(&active)
         } else {
