@@ -208,18 +208,22 @@ fn an_input_methods_text_reaches_a_text_input_after_a_display_comes() {
     im.commit("a");
     term.wait_seen("the first letter", |s| s.ime_text == "a");
 
-    // A display goes and comes back: a new wl_output global, and the input
-    // method counts from zero again.
-    c.ok(config("HEADLESS-2", false));
-    c.ok(config("HEADLESS-2", true));
-    let before = im.seen();
-    im.wait("the new display's global", |s| s.globals > 0);
-    assert!(im.seen().active, "still active: {before:?}");
+    // Repeated docking must keep working without restarting the input
+    // method, reopening the terminal or moving focus away and back.
+    let mut expected = String::from("a");
+    for text in ["izome", " second dock", " third dock"] {
+        let before = im.seen();
+        c.ok(config("HEADLESS-2", false));
+        c.ok(config("HEADLESS-2", true));
+        im.wait("the new display's global", |s| s.globals > before.globals);
+        assert!(im.seen().active, "still active: {before:?}");
 
-    im.commit("izome");
-    let seen = term.wait_seen("what it typed next", |s| s.ime_text == "aizome" || s.ime_dropped > 0);
-    assert_eq!(seen.ime_text, "aizome", "the text input dropped the input method's commit: {seen:?}");
-    assert_eq!(seen.ime_dropped, 0, "{seen:?}");
+        im.commit(text);
+        expected.push_str(text);
+        let seen = term.wait_seen("what it typed next", |s| s.ime_text == expected || s.ime_dropped > 0);
+        assert_eq!(seen.ime_text, expected, "the text input dropped the input method's commit: {seen:?}");
+        assert_eq!(seen.ime_dropped, 0, "{seen:?}");
+    }
 }
 
 #[test]
